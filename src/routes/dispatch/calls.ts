@@ -3,6 +3,8 @@ import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { emitAnalytics, flexEvent } from '../../utils/analytics';
+import { recordAudit } from '../../utils/auditLog';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -13,6 +15,8 @@ import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 import { codedLike, escapeLike } from '../../utils/searchText';
 import { planAction, isCfsVerb } from '../../utils/cfsActions';
+import { crossLinkPsoCloseToServe } from '../../utils/psoServeCrosslink';
+import { log } from '../../utils/logger';
 
 const calls = new Hono<Env>();
 
@@ -36,6 +40,7 @@ async function ensureCfsActionLog(db: ReturnType<typeof getDb>): Promise<void> {
 // had only authMiddleware (valid JWT), so any authenticated user including
 // client_viewer could create/update/delete calls and assign units.
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
+const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
@@ -72,12 +77,14 @@ export const LIST_VIEW_COLUMNS = [
   // Geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
   'beat_id', 'beat_name', 'beat_descriptor',
-  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
-  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
-  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
-  // patched directly per memory project-live-d1-schema-patches). Including
-  // them risks `no such column` 500s on prod if the patch was never applied.
-  // Re-add once a migration backfills them.
+  // Safety flags shown on the dispatcher's row at a glance. The rest of the
+  // safety/tactical flags load on the detail GET only — keeping the list
+  // projection lean both for screen real-estate and for staying clear of the
+  // D1 100-column SELECT cap that already constrains this query.
+  // `officer_safety_caution` (migration 0003:70) and `pinned`
+  // (migration 0003:100, read here via the cfe.pinned JOIN below) both exist
+  // in migrations and are surfaced via the detail GET / the pinned-sort key
+  // respectively — they don't need to live in the row projection.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
   // Mileage + overdue
   'starting_mileage', 'ending_mileage', 'overdue_notified',
@@ -89,7 +96,7 @@ export const LIST_VIEW_COLUMNS = [
 export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
-calls.get('/', async (c) => {
+calls.get('/', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate, search, archived, page, limit, active } = c.req.query();
@@ -162,7 +169,7 @@ calls.get('/', async (c) => {
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
-    console.error('Get calls error:', err);
+    log.error('Get calls error', {}, err);
     return c.json({ error: 'Failed to get calls' }, 500);
   }
 });
@@ -170,6 +177,11 @@ calls.get('/', async (c) => {
 // POST /dispatch/calls - Create call
   const VALID_PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4']);
   const VALID_PRIORITIES_SQL = ['P1', 'P2', 'P3', 'P4'];
+  // Mirrors the enum used by POST /:id/status (line 973) AND the CHECK
+  // constraint on calls_for_service.status (migrations/0001_initial.sql:84).
+  // 'on_hold' is intentionally absent — hold is an orthogonal flag in
+  // calls_for_service_ext.held_at, not a status value.
+  const VALID_STATUSES = new Set(['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived']);
   calls.post('/', requireRole(...WRITE_ROLES), async (c) => {
     try {
       const db = getDb(c.env);
@@ -209,7 +221,7 @@ calls.get('/', async (c) => {
     });
     if (rcResult.card) {
       for (const [k, v] of Object.entries(rcResult.appliedFlags)) {
-        if (body[k] == null || body[k] === '') body[k] = v as any;
+        if (body[k] == null || body[k] === '') body[k] = v;
       }
     }
 
@@ -244,11 +256,11 @@ calls.get('/', async (c) => {
     }
     // Same guard for client_id when present (some clients send it
     // directly on create instead of inheriting via property).
-    if ((body as any).client_id != null && (body as any).client_id !== '') {
+    if (body.client_id != null && body.client_id !== '') {
       const exists = await queryFirst<{ id: number }>(
-        db, 'SELECT id FROM clients WHERE id = ?', (body as any).client_id,
+        db, 'SELECT id FROM clients WHERE id = ?', body.client_id,
       );
-      if (!exists) (body as any).client_id = null;
+      if (!exists) body.client_id = null;
     }
     // dispatcher_id is taken from JWT below — but verify the user row
     // still exists (sessions can outlive deleted users).
@@ -293,7 +305,7 @@ calls.get('/', async (c) => {
         if (district) {
           const fill = (key: string, value: unknown) => {
             if (value != null && value !== '' && (body[key] == null || body[key] === '')) {
-              body[key] = value as any;
+              body[key] = value;
             }
           };
           fill('sector_id', district.sector_id);
@@ -308,7 +320,7 @@ calls.get('/', async (c) => {
         }
       }
     } catch (err) {
-      console.warn('[calls.create] district backfill skipped:', (err as Error)?.message);
+      log.warn('[calls.create] district backfill skipped', { message: (err as Error)?.message });
     }
 
     const cols: string[] = [];
@@ -369,6 +381,17 @@ calls.get('/', async (c) => {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
 
+      // Analytics lakehouse: call-created event (best-effort, no-op until the
+      // EVENTS pipeline is provisioned; fire-and-forget, never blocks dispatch).
+      emitAnalytics(c, c.env.EVENTS, [flexEvent({
+        event_type: 'cfs_created', occurred_at: new Date().toISOString(),
+        actor_id: (c.get('userId') as number | undefined) ?? null,
+        entity_type: 'call', entity_id: callId,
+        lat: body.latitude, lng: body.longitude, status: 'pending',
+        label: body.incident_type, priority: body.priority, category: 'dispatch',
+        payload: { call_number: callNumber, address: body.location_address ?? null },
+      })]);
+
       // Write the PSO/process-service/tactical-flag overflow columns AND the
       // applied run card to the ext table in one INSERT OR IGNORE + UPDATE.
       // INSERT OR IGNORE then UPDATE matches the rest of the ext write flow.
@@ -386,7 +409,7 @@ calls.get('/', async (c) => {
           extWriteParams.push(callId);
           await execute(db, `UPDATE calls_for_service_ext SET ${extSet.join(', ')} WHERE id = ?`, ...extWriteParams);
         } catch (extErr) {
-          console.warn('call ext write failed (non-fatal):', extErr);
+          log.warn('call ext write failed (non-fatal)', { err: extErr });
         }
       }
 
@@ -399,14 +422,9 @@ calls.get('/', async (c) => {
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-          userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
-        );
+        await recordAudit(c, { action: 'CREATE', entityType: 'call', entityId: callId, details: `Created call ${callNumber}`, actorId: userId });
       } catch (auditErr) {
-        console.warn('audit_log insert failed for call create:', auditErr);
+        log.warn('audit_log insert failed for call create', { err: auditErr });
       }
 
       // Broadcast to every connected dispatcher so rosters re-render
@@ -414,28 +432,23 @@ calls.get('/', async (c) => {
       await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
-    } catch (sqlErr: any) {
+    } catch (sqlErr: unknown) {
       // Surface the real SQL error so the dispatcher (and we) can see
       // which column / FK is rejecting. Without this the client sees a
       // generic 500 and we can't debug from production.
-      const msg = String(sqlErr?.message || sqlErr || 'unknown');
-      console.error('Create call INSERT failed:', {
-        msg,
-        userId,
-        cols,
-        params: bindParams,
-      });
+      const msg = String((sqlErr as Error)?.message || sqlErr || 'unknown');
+      log.error('Create call INSERT failed', { msg, userId, cols, params: bindParams });
       if (msg.includes('FOREIGN KEY')) {
         return c.json({
-          error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${(body as any).client_id ?? null}. Detail: ${msg}`,
+          error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${body.client_id ?? null}. Detail: ${msg}`,
           code: 'FK_VIOLATION',
         }, 500);
       }
       return c.json({ error: `Failed to create call: ${msg}`, code: 'INSERT_FAILED' }, 500);
     }
-  } catch (err: any) {
-    console.error('Create call outer error:', err);
-    return c.json({ error: `Failed to create call: ${err?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
+  } catch (err: unknown) {
+    log.error('Create call outer error', {}, err);
+    return c.json({ error: `Failed to create call: ${(err as Error)?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
   }
 });
 
@@ -549,7 +562,7 @@ calls.post('/archive-bulk', requireRole(...WRITE_ROLES), async (c) => {
     const result = await execute(db,
       `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
       ...statuses);
-    const archived_count = (result as any)?.meta?.changes ?? 0;
+    const archived_count = result.meta.changes ?? 0;
     // Release every unit whose linked call is now (or already was) terminal —
     // also heals any strays left over from pre-fix archives.
     try {
@@ -570,7 +583,7 @@ calls.post('/archive-bulk', requireRole(...WRITE_ROLES), async (c) => {
           });
         }
       }
-    } catch (err) { console.warn('[calls] bulk-archive unit release failed (non-fatal):', err); }
+    } catch (err) { log.warn('[calls] bulk-archive unit release failed (non-fatal)', { err }); }
     return c.json({ archived_count });
   } catch (err) {
     return c.json({ error: 'Bulk archive failed' }, 500);
@@ -598,7 +611,7 @@ calls.get('/:id', async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
     const soft = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
-      try { return await fn(); } catch (err) { console.warn(`[calls/:id] sub-query degraded:`, (err as Error)?.message); return fallback; }
+      try { return await fn(); } catch (err) { log.warn(`[calls/:id] sub-query degraded`, { message: (err as Error)?.message }); return fallback; }
     };
 
     const ext = await soft(() => queryFirst<Record<string, unknown>>(
@@ -664,7 +677,7 @@ calls.get('/:id', async (c) => {
       ...(visit_history ? { visit_history } : {}),
     });
   } catch (err) {
-    console.error('GET /dispatch/calls/:id failed:', err);
+    log.error('GET /dispatch/calls/:id failed', {}, err);
     return c.json({ error: 'Failed to get call', detail: (err as Error)?.message }, 500);
   }
 });
@@ -726,6 +739,9 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // process service
   'process_service_type', 'process_served_to', 'process_served_address',
   'process_attempts', 'process_served_at', 'process_service_result',
+  // Court name for PSO calls — surfaced on the Notice of Attempt PDF.
+  // Column added via migration 0145_cfs_court_name.sql.
+  'court_name',
   // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
   // the 100-column D1 cap. New tactical flags should land here too.
   'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
@@ -776,8 +792,33 @@ calls.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
 
     for (const [key, val] of Object.entries(body)) {
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
+        let bindVal: unknown;
+        if (key === 'assigned_unit_ids') {
+          bindVal = canonicalUnitIdsJson(val);
+        } else if (key === 'priority' && val != null) {
+          // REGRESSION-GUARD: mirror POST normalization + CHECK enum on
+          // calls_for_service.priority. Without this, a bad value reaches
+          // the bind at line 804 and the CHECK rejects with a raw SQL
+          // error that the catch leaks as a 500. Same posture as the POST
+          // path at line 188.
+          const normalized = String(val).toUpperCase();
+          if (!VALID_PRIORITIES.has(normalized)) {
+            return c.json({ error: `Invalid priority '${val}'. Must be P1, P2, P3, or P4.`, code: 'INVALID_PRIORITY' }, 400);
+          }
+          bindVal = normalized;
+        } else if (key === 'status' && val != null) {
+          // Mirror /:id/status enum check (line 973) so the PUT path cannot
+          // sneak past with hyphenated/uppercase variants that the CHECK rejects.
+          const normalized = String(val).toLowerCase();
+          if (!VALID_STATUSES.has(normalized)) {
+            return c.json({ error: `Invalid status '${val}'. Must be one of: ${[...VALID_STATUSES].join(', ')}.`, code: 'INVALID_STATUS' }, 400);
+          }
+          bindVal = normalized;
+        } else {
+          bindVal = val ?? null;
+        }
         baseUpdates.push(`${key} = ?`);
-        baseParams.push(key === 'assigned_unit_ids' ? canonicalUnitIdsJson(val) : (val ?? null));
+        baseParams.push(bindVal);
       } else if (UPDATABLE_CALL_COLUMNS_EXT.has(key)) {
         extUpdates.push(`${key} = ?`);
         extParams.push(val ?? null);
@@ -809,7 +850,7 @@ calls.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
       db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
     return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
-    console.error('PUT /dispatch/calls/:id failed:', err);
+    log.error('PUT /dispatch/calls/:id failed', {}, err);
     return c.json({ error: 'Failed to update call', detail: (err as Error)?.message }, 500);
   }
 });
@@ -839,7 +880,7 @@ calls.get('/:id/audit-trail', async (c) => {
     );
     return c.json({ events: rows });
   } catch (err) {
-    console.error('GET /dispatch/calls/:id/audit-trail failed:', err);
+    log.error('GET /dispatch/calls/:id/audit-trail failed', {}, err);
     return c.json({ events: [] });
   }
 });
@@ -861,6 +902,12 @@ calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
     await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+    // Broadcast so peer consoles drop the deleted call from their boards
+    // immediately (without this they keep showing it until the 20s
+    // cross-device poll refreshes). Mirrors the undo-redispatch path's
+    // call_deleted broadcast at line 1632; payload is just { id } because
+    // the row is gone and the client only needs the id to remove it.
+    try { await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id: Number(id) } }); } catch { log.warn('Broadcast call_deleted failed', { callId: id }); /* never block the response */ }
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     // Surface the real reason (FK name, missing table) instead of an opaque 500.
@@ -885,6 +932,22 @@ calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
 // objects). Best-effort: a sync failure never fails the call transition.
 const CALL_ENGAGED_STATUSES = new Set(['dispatched', 'enroute', 'onscene']);
 const CALL_TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+
+// Re-fetch the merged `calls_for_service` + `calls_for_service_ext` row so a
+// broadcast carries the same shape the GET surfaces (the client's mapDbCall
+// reads ext fields like held_at). The pattern was inlined at three sites
+// (hold, resume, assign-unit) — DRY'd here so every broadcast path matches.
+// Returns null if the call no longer exists (e.g. concurrent DELETE).
+async function mergedCallRow(
+  db: ReturnType<typeof getDb>,
+  id: string | number | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (id == null || id === '') return null;
+  const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  if (!row) return null;
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...row, ...(ext || {}) };
+}
 
 async function syncUnitsWithCallStatus(
   db: D1Database,
@@ -925,7 +988,7 @@ async function syncUnitsWithCallStatus(
       }
     }
   } catch (err) {
-    console.warn('[calls] unit/board sync failed (non-fatal):', err);
+    log.warn('[calls] unit/board sync failed (non-fatal)', { err });
   }
 }
 
@@ -961,6 +1024,16 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
+    // Analytics lakehouse: call status-change event (best-effort, fire-and-forget).
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
+      event_type: 'cfs_status', occurred_at: new Date().toISOString(),
+      actor_id: (c.get('userId') as number | undefined) ?? null,
+      entity_type: 'call', entity_id: id, status,
+      lat: updated?.latitude, lng: updated?.longitude,
+      label: updated?.incident_type, priority: updated?.priority, category: 'dispatch',
+      payload: { call_number: updated?.call_number ?? null, disposition: disposition ?? null },
+    })]);
+
     // Audit trail — parity with the legacy handler this replaced (which wrote
     // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
     // for dispatch transitions. Best-effort: never fail the transition on an
@@ -970,15 +1043,11 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
       const userId = c.get('userId') as number | undefined;
       if (userId != null) {
         const callNumber = (updated?.call_number as string) ?? `#${id}`;
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'STATUS_CHANGE', 'call', ?, ?, datetime('now'))`,
-          userId, id, `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}`,
-        );
+        await recordAudit(c, { action: 'STATUS_CHANGE', entityType: 'call', entityId: id, actorId: userId,
+          details: `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}` });
       }
     } catch (auditErr) {
-      console.warn('audit_log insert failed for status change:', auditErr);
+      log.warn('audit_log insert failed for status change', { err: auditErr });
     }
 
     // CRITICAL FIX: Merge ext table data (PSO/process fields) into the response.
@@ -1035,7 +1104,24 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
           }
         }
       } catch (err) {
-        console.warn('[calls] auto-mileage failed (non-fatal):', err);
+        log.warn('[calls] auto-mileage failed (non-fatal)', { err });
+      }
+    }
+
+    // PSO Client Request cross-link: when a PSO CFS hits a terminal status,
+    // mirror the close into the Process Server queue — find/create the linked
+    // serve_queue row + log a serve_attempts row with the structured PS code
+    // derived from the disposition. Best-effort: a failure here MUST NOT
+    // break the CFS status transition itself.
+    let psoCrosslink: Awaited<ReturnType<typeof crossLinkPsoCloseToServe>> | null = null;
+    if (id && ['cleared', 'closed', 'cancelled'].includes(status)
+        && (updated?.incident_type as string | undefined) === 'pso_client_request') {
+      try {
+        psoCrosslink = await crossLinkPsoCloseToServe(db, id, {
+          actorUserId: (c.get('userId') as number | undefined) ?? null,
+        });
+      } catch (xlErr) {
+        log.warn('[pso crosslink] non-fatal', { message: (xlErr as Error)?.message });
       }
     }
 
@@ -1043,7 +1129,9 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     // emitted NO broadcast at all, so dispatched→enroute→onscene→cleared changes
     // only surfaced on the next adaptive poll — the unit board lagged reality.
     await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
-    return c.json(merged);
+    // psoCrosslink summary lets the dispatch client toast "Sent to Process
+    // Server queue" + jump to the queue row without an extra round-trip.
+    return c.json(psoCrosslink ? { ...merged, pso_crosslink: psoCrosslink } : merged);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
@@ -1094,7 +1182,7 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
           `INSERT INTO call_links (call_id, entity_type, entity_id, created_at) VALUES (?, ?, ?, datetime('now'))`,
           id, plan.link.entity_type, plan.link.entity_id);
       } catch (linkErr) {
-        console.warn('[cfs action] call_links insert degraded:', (linkErr as Error)?.message);
+        log.warn('[cfs action] call_links insert degraded', { message: (linkErr as Error)?.message });
       }
     }
 
@@ -1106,23 +1194,41 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
       id, String(action ?? verb), verb, JSON.stringify(params ?? {}), plan.narrative, userId ?? null);
     try {
       if (userId != null) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'CFS_ACTION', 'call', ?, ?, datetime('now'))`,
-          userId, id, plan.narrative);
+        await recordAudit(c, { action: 'CFS_ACTION', entityType: 'call', entityId: id, details: plan.narrative, actorId: userId });
       }
     } catch (auditErr) {
-      console.warn('[cfs action] audit_log insert degraded:', (auditErr as Error)?.message);
+      log.warn('[cfs action] audit_log insert degraded', { message: (auditErr as Error)?.message });
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db,
-      `SELECT c.id, c.status, c.priority, c.disposition, c.unit_call_signs, e.narrative
+      `SELECT c.id, c.status, c.priority, c.disposition, c.unit_call_signs, c.incident_type, e.narrative
          FROM calls_for_service c
          LEFT JOIN calls_for_service_ext e ON e.id = c.id
         WHERE c.id = ?`, id);
-    return c.json({ success: true, action: action ?? verb, narrative: plan.narrative, call: updated });
+
+    // PSO Client Request cross-link: mirror the close into the Process
+    // Server queue when the action transitioned the call to a terminal
+    // state. Same idempotent helper as POST /:id/status. Best-effort.
+    let psoCrosslink: Awaited<ReturnType<typeof crossLinkPsoCloseToServe>> | null = null;
+    const updatedStatus = String(updated?.status ?? '');
+    if (id && ['cleared', 'closed', 'cancelled'].includes(updatedStatus)
+        && (updated?.incident_type as string | undefined) === 'pso_client_request') {
+      try {
+        psoCrosslink = await crossLinkPsoCloseToServe(db, id, { actorUserId: userId ?? null });
+      } catch (xlErr) {
+        log.warn('[pso crosslink action] non-fatal', { message: (xlErr as Error)?.message });
+      }
+    }
+
+    return c.json({
+      success: true,
+      action: action ?? verb,
+      narrative: plan.narrative,
+      call: updated,
+      ...(psoCrosslink ? { pso_crosslink: psoCrosslink } : {}),
+    });
   } catch (err) {
-    console.error('POST /dispatch/calls/:id/action failed:', err);
+    log.error('POST /dispatch/calls/:id/action failed', {}, err);
     return c.json({ error: 'action failed' }, 500);
   }
 });
@@ -1156,6 +1262,10 @@ calls.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    try {
+      const merged = await mergedCallRow(db, id);
+      if (merged) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    } catch { log.warn('Broadcast unarchive call_updated failed', { callId: id }); /* never block the response */ }
     return c.json({ message: 'Unarchived' });
   } catch (err) { return c.json({ error: 'Unarchive failed' }, 500); }
 });
@@ -1182,7 +1292,11 @@ calls.post('/:id/hold', requireRole(...WRITE_ROLES), async (c) => {
     // doesn't lose them after a hold operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(row || {}), ...(ext || {}) });
+    const merged = { ...(row || {}), ...(ext || {}) };
+    // Broadcast so the held badge appears on peer dispatchers' queues
+    // immediately (mapDbCall derives the synthetic 'on_hold' status from held_at).
+    try { if (row) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged }); } catch { log.warn('Broadcast call_updated (hold) failed', { callId: id }); /* never block the response */ }
+    return c.json(merged);
   } catch (err) {
     return c.json({ error: 'Hold failed' }, 500);
   }
@@ -1203,23 +1317,16 @@ calls.post('/:id/resume', requireRole(...WRITE_ROLES), async (c) => {
     // doesn't lose them after a resume operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(row || {}), ...(ext || {}), held_at: null });
+    const merged = { ...(row || {}), ...(ext || {}), held_at: null };
+    // Broadcast so peer queues drop the held badge immediately.
+    try { if (row) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged }); } catch { log.warn('Broadcast call_updated (resume) failed', { callId: id }); /* never block the response */ }
+    return c.json(merged);
   } catch (err) {
     return c.json({ error: 'Resume failed' }, 500);
   }
 });
 
 // POST /dispatch/calls/:id/assign-unit
-//
-// CROSS-INTEGRATION GUARD (Claude Opus 4.8): `units.current_call_id`
-// is a single-pointer column. A second call pulling the same unit via
-// this endpoint without going through /:id/unassign-unit first would
-// (a) leave the FIRST call's `assigned_unit_ids` JSON still
-// containing the unit id, and (b) overwrite `unit.current_call_id` so
-// the unit "vanishes" from call A's detail panel and reappears on
-// call B's. The dispatcher's view then lists the unit on B but the
-// call-A panel claims no unit is on-scene. Return 409 with the
-// pointer to the unassign endpoint so the client can recover cleanly.
 calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -1241,17 +1348,18 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
     const unit = await queryFirst<{ id: number; current_call_id: number | null; call_sign: string | null }>(
       db, 'SELECT id, current_call_id, call_sign FROM units WHERE id = ?', unit_id);
     if (!unit) return c.json({ error: `Unit ${unit_id} does not exist`, code: 'UNIT_NOT_FOUND' }, 404);
-    if (unit.current_call_id != null && unit.current_call_id !== callId) {
+    const prevCallId = unit.current_call_id != null && unit.current_call_id !== callId ? unit.current_call_id : null;
+    if (prevCallId != null) {
       // Auto-unassign from old call so dispatchers can reassign in one step.
       try {
         const oldCall = await queryFirst<{ assigned_unit_ids: string }>(
-          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unit.current_call_id);
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prevCallId);
         if (oldCall) {
           const oldAssigned = parseUnitIds(oldCall.assigned_unit_ids).filter((u) => u !== Number(unit_id));
           await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?',
-            canonicalUnitIdsJson(oldAssigned), unit.current_call_id);
+            canonicalUnitIdsJson(oldAssigned), prevCallId);
         }
-      } catch { /* best-effort — proceed with assignment even if old-call cleanup fails */ }
+      } catch { log.warn('Old-call cleanup failed during unit assign', { unitId: unit_id, prevCallId }); /* best-effort — proceed with assignment even if old-call cleanup fails */ }
     }
     const assigned = parseUnitIds(call.assigned_unit_ids);
     if (!assigned.includes(Number(unit_id))) assigned.push(Number(unit_id));
@@ -1268,7 +1376,7 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
       if (call.latitude != null && call.longitude != null) {
         const dLat = 0.001;
         const dLng = 0.001 / Math.max(0.01, Math.cos(call.latitude * Math.PI / 180));
-        const alerts = await query<any>(db, `
+        const alerts = await query<Record<string, unknown>>(db, `
           SELECT id, address, latitude, longitude, alert_type, alert_level,
                  title, description, flags
           FROM premise_alerts
@@ -1278,10 +1386,10 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
             AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
-        const within50m = alerts.filter((a: any) => {
-          const dLatR = (a.latitude - call.latitude!) * Math.PI / 180;
-          const dLngR = (a.longitude - call.longitude!) * Math.PI / 180;
-          const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(a.latitude * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
+        const within50m = alerts.filter((a: Record<string, unknown>) => {
+          const dLatR = (Number(a.latitude) - call.latitude!) * Math.PI / 180;
+          const dLngR = (Number(a.longitude) - call.longitude!) * Math.PI / 180;
+          const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(Number(a.latitude) * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
           return 6371000 * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)) <= 50;
         });
         if (within50m.length > 0) {
@@ -1297,27 +1405,40 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
           }
         }
       }
-    } catch (err) { console.error('[dispatch] premise auto-push:', err); }
+    } catch (err) { log.error('[dispatch] premise auto-push', {}, err); }
 
     // Return the full updated call row (not a bare {message}). The client
     // (handleAssignUnit) feeds this straight into mapDbCall() and replaces the
     // selected call with it — a partial response yields a blank-id corrupted
     // call that wipes the call out of the dispatch UI. Mirrors /dispatch,
     // /auto-assign, and /transfer, which all return the full row.
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updated = await mergedCallRow(db, id);
+
+    // Broadcast so peer consoles update without waiting for the 20s cross-device
+    // poll. Two frames are required:
+    //   1. call_updated for the NEW call (this one) so its assigned_unit_ids
+    //      change reaches every dispatcher's call board immediately.
+    //   2. call_updated for the OLD call if the unit was reassigned from it
+    //      (otherwise Tab A keeps showing the unit on the old call for ~20s,
+    //      which causes coordination errors during fast-moving incidents).
+    //   3. unit_status_changed for the unit itself so the unit panel shows
+    //      it on the new call.
+    try {
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+      if (prevCallId != null) {
+        const oldUpdated = await mergedCallRow(db, prevCallId);
+        if (oldUpdated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: oldUpdated });
+      }
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'unit_status_changed',
+        unit: { id: unit.id, call_sign: unit.call_sign, status: 'dispatched', current_call_id: callId },
+      });
+    } catch { log.warn('Broadcast after unit assign failed', { unitId: unit_id, callId: id }); /* never block the response */ }
     return c.json({ ...(updated || {}), premise_pushed });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/unassign-unit
-//
-// CROSS-INTEGRATION (Claude Opus 4.8): when removing a unit from a
-// call, the inverse pointer on the unit row (units.current_call_id)
-// must be cleared in the same handler — otherwise the unit keeps
-// pointing at the call it was just removed from, and the dispatch
-// list view shows the unit as "still on call N" with no assigned
-// call. Same bug as the pre-Claude /:id/assign-unit overwrite (see
-// above). Verified id is the call being unassigned from.
 calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -1344,18 +1465,25 @@ calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
     // Return the full updated call row — the client (handleUnassignUnit) runs it
     // through mapDbCall() and replaces the selected call; a bare {message}
     // corrupts the call to a blank-id object. Mirrors /assign-unit.
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updated = await mergedCallRow(db, id);
+
+    // Broadcast: call_updated so peer dispatchers see the unit drop from this
+    // call, and unit_status_changed so the unit panel shows the unit free
+    // (status=available, current_call_id=null). Mirrors the syncUnitsWithCallStatus
+    // pattern at line 920-933 for terminal-status releases.
+    try {
+      const unitRow = await queryFirst<{ call_sign: string | null }>(db, 'SELECT call_sign FROM units WHERE id = ?', unit_id);
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'unit_status_changed',
+        unit: { id: unit_id, call_sign: unitRow?.call_sign ?? null, status: 'available', current_call_id: null, current_call_number: null },
+      });
+    } catch { log.warn('Broadcast after unit unassign failed', { unitId: unit_id }); /* never block the response */ }
     return c.json(updated || {});
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/dispatch - Multi-unit dispatch
-//
-// CROSS-INTEGRATION GUARD (Claude Opus 4.8): bulk-assign must not pull
-// a unit away from a different call it was already committed to (the
-// single-pointer bug from /:id/assign-unit). Validate all unit_ids
-// FIRST, return a single 409 listing the offenders, then apply the
-// writes. All-or-nothing keeps the dispatcher's view consistent.
 calls.post('/:id/dispatch', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -1465,9 +1593,9 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     const parentId = parseInt(c.req.param('id') ?? '', 10);
     if (isNaN(parentId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
 
-    const parentBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
+    const parentBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     if (!parentBase) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
-    const parentExt = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
+    const parentExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
 
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
@@ -1519,27 +1647,27 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     try {
       const persons = await query<{ person_id: number; role: string | null; notes: string | null }>(db, 'SELECT person_id, role, notes FROM call_persons WHERE call_id = ?', parentId);
       for (const p of persons) {
-        try { await execute(db, 'INSERT INTO call_persons (call_id, person_id, role, notes) VALUES (?, ?, ?, ?)', newCallId, p.person_id, p.role, p.notes); } catch { /* skip dup/constraint */ }
+        try { await execute(db, 'INSERT INTO call_persons (call_id, person_id, role, notes) VALUES (?, ?, ?, ?)', newCallId, p.person_id, p.role, p.notes); } catch { log.warn('Redispatch copy person failed', { personId: p.person_id, newCallId }); /* skip dup/constraint */ }
       }
-    } catch (e) { console.warn('redispatch copy persons failed (non-fatal):', e); }
+    } catch (e) { log.warn('redispatch copy persons failed (non-fatal)', { err: e }); }
     try {
       const vehicles = await query<{ vehicle_id: number; role: string | null; notes: string | null }>(db, 'SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?', parentId);
       for (const v of vehicles) {
-        try { await execute(db, 'INSERT INTO call_vehicles (call_id, vehicle_id, role, notes) VALUES (?, ?, ?, ?)', newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip dup/constraint */ }
+        try { await execute(db, 'INSERT INTO call_vehicles (call_id, vehicle_id, role, notes) VALUES (?, ?, ?, ?)', newCallId, v.vehicle_id, v.role, v.notes); } catch { log.warn('Redispatch copy vehicle failed', { vehicleId: v.vehicle_id, newCallId }); /* skip dup/constraint */ }
       }
-    } catch (e) { console.warn('redispatch copy vehicles failed (non-fatal):', e); }
+    } catch (e) { log.warn('redispatch copy vehicles failed (non-fatal)', { err: e }); }
 
     // ── Parent back-link note ──
     let parentNotes: any[] = [];
-    try { parentNotes = JSON.parse(parentBase.notes || '[]'); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
+    try { parentNotes = JSON.parse(String(parentBase.notes ?? '[]')); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
     parentNotes.push({ id: String(Date.now() + 1), author: 'System', text: `Re-dispatched → new call ${newCallNumber}`, timestamp: nowIso });
     await execute(db, "UPDATE calls_for_service SET notes = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(parentNotes), parentId);
 
     // ── Audit trail (best-effort) ──
     try {
-      await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'call_redispatched', 'call', parentId, `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`);
-      await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'call_created_from_redispatch', 'call', newCallId, `Created from re-dispatch of ${parentBase.call_number} (${ordinal(newAttempt)} attempt)`);
-    } catch (e) { console.warn('redispatch audit_log failed (non-fatal):', e); }
+      await recordAudit(c, { action: 'call_redispatched', entityType: 'call', entityId: parentId, details: `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`, actorId: userId });
+      await recordAudit(c, { action: 'call_created_from_redispatch', entityType: 'call', entityId: newCallId, details: `Created from re-dispatch of ${parentBase.call_number} (${ordinal(newAttempt)} attempt)`, actorId: userId });
+    } catch (e) { log.warn('redispatch audit_log failed (non-fatal)', { err: e }); }
 
     // ── Build response: merged child row + full chain ──
     const newBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId);
@@ -1560,7 +1688,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
-    console.error('Re-dispatch call error:', err);
+    log.error('Re-dispatch call error', {}, err);
     return c.json({ error: `Failed to re-dispatch call: ${(err as Error)?.message || 'unknown'}`, code: 'REDISPATCH_CALL_ERROR' }, 500);
   }
 });
@@ -1575,11 +1703,11 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     const childId = parseInt(c.req.param('id') ?? '', 10);
     if (isNaN(childId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
 
-    const childBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', childId);
+    const childBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', childId);
     if (!childBase) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
-    const childExt = await queryFirst<Record<string, any>>(db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', childId);
+    const childExt = await queryFirst<Record<string, unknown>>(db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', childId);
 
-    const parentId = childExt?.parent_call_id;
+    const parentId = childExt?.parent_call_id as number | undefined;
     if (parentId == null) return c.json({ error: 'This call is not a re-dispatch — it has no parent call', code: 'NOT_A_REDISPATCH' }, 400);
 
     // Pending-only, unless admin (which logs an override).
@@ -1587,10 +1715,10 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
       return c.json({ error: 'Can only undo a return visit that is still pending. Once dispatched, it cannot be undone.', code: 'CHILD_NOT_PENDING' }, 400);
     }
     if (user.role === 'admin' && childBase.status !== 'pending') {
-      try { await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'ADMIN_OVERRIDE', 'call', childId, `Admin override: bypassed pending-only undo-redispatch (status: ${childBase.status})`); } catch { /* non-fatal */ }
+      await recordAudit(c, { action: 'ADMIN_OVERRIDE', entityType: 'call', entityId: childId, details: `Admin override: bypassed pending-only undo-redispatch (status: ${childBase.status})`, actorId: userId });
     }
 
-    const parentBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
+    const parentBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     if (!parentBase) return c.json({ error: 'Parent call not found', code: 'PARENT_NOT_FOUND' }, 404);
 
     // Delete child + related rows. D1 may not enforce FK ON DELETE CASCADE, so
@@ -1603,17 +1731,17 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
       'DELETE FROM calls_for_service_ext WHERE id = ?',
       'DELETE FROM calls_for_service WHERE id = ?',
     ]) {
-      try { await execute(db, sql, childId); } catch (e) { console.warn(`undo-redispatch ${sql} failed (non-fatal):`, e); }
+      try { await execute(db, sql, childId); } catch (e) { log.warn(`undo-redispatch ${sql} failed (non-fatal)`, { err: e }); }
     }
 
     // Restore parent notes: drop the "Re-dispatched → new call X" note, add an undo note.
     let parentNotes: any[] = [];
-    try { parentNotes = JSON.parse(parentBase.notes || '[]'); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
+    try { parentNotes = JSON.parse(String(parentBase.notes ?? '[]')); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
     parentNotes = parentNotes.filter((n: any) => !String(n?.text || '').includes(`Re-dispatched → new call ${childBase.call_number}`));
     parentNotes.push({ id: String(Date.now()), author: user.full_name || 'System', text: `Return visit ${childBase.call_number} was undone`, timestamp: new Date().toISOString() });
     await execute(db, "UPDATE calls_for_service SET notes = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(parentNotes), parentId);
 
-    try { await execute(db, "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", userId, 'undo_redispatch', 'call', parentId, `Undid return visit ${childBase.call_number} for ${parentBase.call_number}`); } catch (e) { console.warn('undo-redispatch audit_log failed (non-fatal):', e); }
+    await recordAudit(c, { action: 'undo_redispatch', entityType: 'call', entityId: parentId, details: `Undid return visit ${childBase.call_number} for ${parentBase.call_number}`, actorId: userId });
 
     const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
@@ -1623,7 +1751,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {
-    console.error('Undo redispatch error:', err);
+    log.error('Undo redispatch error', {}, err);
     return c.json({ error: `Failed to undo return visit: ${(err as Error)?.message || 'unknown'}`, code: 'UNDO_REDISPATCH_ERROR' }, 500);
   }
 });
@@ -1636,8 +1764,13 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
     }
     const db = getDb(c.env);
-    const unit = await queryFirst<{ id: number; unit_number: string }>(db,
-      'SELECT id, unit_number FROM units WHERE id = ?', body.unit_id);
+    // `call_sign` is the units table's human-readable id (UNIQUE NOT NULL);
+    // there is NO `unit_number` column on units (that lives on the GPS-device
+    // table) — selecting it threw `no such column` and the catch turned every
+    // reassign into a generic 500. Return it as `target` so the God Mode toast
+    // renders "Reassigned N calls to D19" instead of "...to undefined".
+    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
+      'SELECT id, call_sign FROM units WHERE id = ?', body.unit_id);
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
     let updated = 0;
     for (const callId of body.call_ids.slice(0, 50)) {
@@ -1646,10 +1779,10 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
           `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now') WHERE id = ?`,
           canonicalUnitIdsJson([body.unit_id]), callId);
         updated++;
-      } catch { /* skip individual failures */ }
+      } catch { log.warn('Bulk reassign update failed for call', { callId, unitId: body.unit_id }); /* skip individual failures */ }
     }
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
-    return c.json({ success: true, updated, total: body.call_ids.length });
+    return c.json({ success: true, updated, total: body.call_ids.length, target: unit.call_sign });
   } catch (err) {
     return c.json({ error: 'Bulk reassign failed' }, 500);
   }
@@ -1718,7 +1851,7 @@ calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
         }
       }
     } catch (err) {
-      console.warn('[calls] force-close-all unit release failed (non-fatal):', err);
+      log.warn('[calls] force-close-all unit release failed (non-fatal)', { err });
     }
 
     // One summary audit row — a bulk close is destructive and worth a trail.
@@ -1726,19 +1859,16 @@ calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
     try {
       const userId = c.get('userId') as number | undefined;
       if (userId != null) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'FORCE_CLOSE_ALL', 'call', NULL, ?, datetime('now'))`,
-          userId, `Force-closed ${ids.length} open call(s) with disposition "${disposition}"`);
+        await recordAudit(c, { action: 'FORCE_CLOSE_ALL', entityType: 'call', entityId: null, details: `Force-closed ${ids.length} open call(s) with disposition "${disposition}"`, actorId: userId });
       }
     } catch (auditErr) {
-      console.warn('audit_log insert failed for force-close-all:', auditErr);
+      log.warn('audit_log insert failed for force-close-all', { err: auditErr });
     }
 
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_force_close', closed: ids.length, disposition });
     return c.json({ success: true, closed: ids.length });
   } catch (err) {
-    console.error('Force close-all error:', err);
+    log.error('Force close-all error', {}, err);
     return c.json({ error: 'Force close failed' }, 500);
   }
 });

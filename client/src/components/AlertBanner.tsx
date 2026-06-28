@@ -60,7 +60,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             {/* Alert content */}
             <div className="flex-1 min-w-0">
               <div
-                className="font-bold uppercase tracking-wider text-white"
+                className="font-bold uppercase tracking-wider text-rmpg-100"
                 style={{ fontSize: '10px', lineHeight: '14px' }}
               >
                 {alert.title}

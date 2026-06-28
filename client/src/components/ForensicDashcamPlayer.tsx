@@ -33,6 +33,9 @@ import { loadVehicleDetector, detectVehicles, type DetectorStatus } from '../uti
 import {
   emptyTrackerState, stepTracker, visibleTracks, primaryTrack, type TrackerState, type Track,
 } from '../utils/vehicleTracker';
+import {
+  loadPlateDetector, detectPlateBboxes, plateBoxToFrame, bestPlate, type PlateDetectorStatus,
+} from '../utils/fastAlpr';
 import { aggressionScore, detectAnomalies, proximity, type RiskScore, type Anomaly } from '../utils/tacticalIntel';
 
 interface VehicleAttrs { state?: string | null; make?: string | null; model?: string | null; color?: string | null; year?: number | null }
@@ -42,6 +45,7 @@ interface MediaResp {
   still_url: string | null; plate: string | null; plate_confidence: number | null;
   plate_accepted?: boolean | null; plate_review_status?: string | null;
   vehicle: VehicleAttrs | null; detections?: unknown[];
+  footage_request_id?: number | null;  // set when a full-drive trip covers this event
 }
 
 const GOLD = '#d4a017';
@@ -84,6 +88,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const screenedRef = useRef<string>('');                    // last plate screened (dedupe)
   const captureRef = useRef<() => void>(() => {});           // latest evidence-capture fn (avoids stale closure)
   const magCanvasRef = useRef<HTMLCanvasElement | null>(null); // latest enhanced plate crop (drives OCR re-scan)
+  // W7: closest-vehicle lock — prefer the current primary across frames (hysteresis)
+  const primaryLockIdRef = useRef<number | null>(null);
+  // W8: fast-alpr ONNX plate detector
+  const [plateDetStatus, setPlateDetStatus] = useState<PlateDetectorStatus>('idle');
+  const [onnxPlateBox, setOnnxPlateBox] = useState<[number, number, number, number] | null>(null);
+  const plateDetRef = useRef<unknown>(null);
 
   useEffect(() => {
     let alive = true;
@@ -188,6 +198,20 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     };
   }, [aiOn, media?.has_video, media?.id]);
 
+  // W8: Lazy-load the ONNX plate detector alongside COCO-SSD.
+  // Resolves null when unavailable → caller falls back to heuristic plateRegion().
+  useEffect(() => {
+    if (!aiOn) { plateDetRef.current = null; setPlateDetStatus('idle'); setOnnxPlateBox(null); return; }
+    let cancelled = false;
+    setPlateDetStatus('loading');
+    loadPlateDetector().then((m) => {
+      if (cancelled) return;
+      plateDetRef.current = m;
+      setPlateDetStatus(m ? 'ready' : 'unavailable');
+    });
+    return () => { cancelled = true; };
+  }, [aiOn]);
+
   const gps = media?.gps || [];
   const stats = useMemo(() => trackStats(gps), [gps]);
   const trackPts = useMemo(() => normalizeTrack(gps, 100, 100, 8), [gps]);
@@ -221,7 +245,48 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     const right = [...roadPath].reverse().map((p) => `L${(p.x + p.halfWidth).toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     return `${left} ${right} Z`;
   }, [roadPath]);
-  const primary = useMemo(() => primaryTrack(tracks, natW, natH), [tracks, natW, natH]);
+  // W7: primary vehicle lock — once we commit to a track, prefer it across frames
+  // (hysteresis). The lock releases if the track goes missing for > 3 ticks.
+  const primary = useMemo(() => {
+    const best = primaryTrack(tracks, natW, natH);
+    const lockedId = primaryLockIdRef.current;
+    if (lockedId !== null) {
+      const locked = tracks.find((t) => t.id === lockedId);
+      if (locked && locked.missed <= 3) return locked; // stay on the locked track
+      primaryLockIdRef.current = null;                 // lock expired
+    }
+    if (best) primaryLockIdRef.current = best.id;
+    return best;
+  }, [tracks, natW, natH]);
+
+  // W8: When the primary vehicle changes and the ONNX detector is ready, crop the
+  // primary bbox from the current video frame, run plate detection, and map the
+  // result back to full-frame coordinates. Lives here so `primary` is in scope.
+  useEffect(() => {
+    if (!primary || !nat || plateDetStatus !== 'ready' || !plateDetRef.current) {
+      setOnnxPlateBox(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const v = videoRef.current;
+      if (!v || v.readyState < 2) return;
+      const [bx, by, bw, bh] = clampBox(
+        [primary.bbox[0], primary.bbox[1], primary.bbox[2], primary.bbox[3]],
+        nat.w, nat.h,
+      );
+      if (bw < 20 || bh < 20) return;
+      const crop = document.createElement('canvas');
+      crop.width = Math.round(bw); crop.height = Math.round(bh);
+      try { crop.getContext('2d')!.drawImage(v, bx, by, bw, bh, 0, 0, bw, bh); } catch { return; }
+      const plates = await detectPlateBboxes(plateDetRef.current, crop);
+      if (cancelled) return;
+      const top = bestPlate(plates);
+      setOnnxPlateBox(top ? plateBoxToFrame(top, [bx, by, bw, bh], crop) : null);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primary?.id, primary?.bbox[0], primary?.bbox[1], plateDetStatus, nat]);
 
   // Wave 4 — tactical intel/AI: pursuit-aggression score, driving anomalies,
   // and a closing-proximity alarm derived from the primary track's frame fill.
@@ -288,7 +353,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     try { ctx.drawImage(v, 0, 0, W, H); } catch { return null; }
     ctx.lineWidth = Math.max(2, W / 380);
     for (const tr of tracks) {
-      ctx.strokeStyle = primary && tr.id === primary.id ? (critical.length ? '#ef4444' : '#d4a017') : '#7dd3fc';
+      ctx.strokeStyle = primary && tr.id === primary.id ? reticleColor : '#7dd3fc';
       ctx.strokeRect(tr.bbox[0], tr.bbox[1], tr.bbox[2], tr.bbox[3]);
     }
     if (primary && media?.plate) {
@@ -341,42 +406,84 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
     logAudit('forensic_report_export', `${stats.maxSpeed.toFixed(0)}mph peak${media?.plate ? ` plate ${media.plate}` : ''}`);
   };
 
-  // Best-frame plate re-scan — crop the primary vehicle, enhance, re-OCR via ALPR.
+  // Best-frame plate re-scan — W7 multi-frame consensus: sample 3 nearby frames
+  // (t−0.5s, t, t+0.5s), OCR each, pick the majority-vote winner. Falls back to
+  // the magnifier crop when it's live (single enhanced frame = "what you see").
   const [rescan, setRescan] = useState<{ busy: boolean; result: string | null }>({ busy: false, result: null });
   const rescanPlate = async () => {
     if (!primary || !nat) { setRescan({ busy: false, result: 'No target vehicle in frame' }); return; }
     setRescan({ busy: true, result: null });
+    const v = videoRef.current;
     try {
       // "What you see is what gets OCR'd": when the Plate Magnifier is live, send the
-      // exact ENHANCED plate crop you're looking at (preset filter baked in). Else fall
-      // back to a fresh vehicle crop + the default OCR enhancement.
-      let ocrImage: Blob | null = null;
+      // exact ENHANCED plate crop (preset filter baked in) — single frame, no consensus.
       const mag = magCanvasRef.current;
       if (magnifierOn && enhanceKey !== 'none' && mag && mag.width > 1) {
-        ocrImage = await new Promise<Blob | null>((res) => mag.toBlob((b) => res(b), 'image/jpeg', 0.95));
+        const ocrImage = await new Promise<Blob | null>((res) => mag.toBlob((b) => res(b), 'image/jpeg', 0.95));
+        if (ocrImage) {
+          const fd = new FormData();
+          fd.append('image', ocrImage, 'rescan.jpg');
+          fd.append('capture_reason', 'forensic_rescan');
+          const r = await apiPostForm<{ capture?: { plate?: string | null; confidence?: number | null } }>('/alpr/capture', fd);
+          const got = r?.capture?.plate || null;
+          if (got) {
+            setMedia((m) => (m ? { ...m, plate: got, plate_confidence: r.capture?.confidence ?? m.plate_confidence, plate_accepted: false, plate_review_status: 'needs_review' } : m));
+            screenedRef.current = '';
+          }
+          setRescan({ busy: false, result: got ? `Read: ${got} (verify)` : 'No plate resolved' });
+          logAudit('forensic_plate_rescan', got ? `read ${got}` : 'no read');
+          return;
+        }
       }
-      if (!ocrImage) {
+
+      // Multi-frame consensus: scrub to t-0.5, t, t+0.5 — capture each frame crop,
+      // POST to /alpr/capture, collect plate readings, pick the majority winner.
+      if (!v) { setRescan({ busy: false, result: 'Frame not ready' }); return; }
+      const baseT = v.currentTime;
+      const offsets = [-0.5, 0, 0.5];
+      const readings: string[] = [];
+      let lastConf: number | null = null;
+      for (const offset of offsets) {
+        await new Promise<void>((res) => {
+          const target = Math.max(0, Math.min(v.duration || 1e9, baseT + offset));
+          if (Math.abs(v.currentTime - target) < 0.05) { res(); return; }
+          const onSeeked = () => { v.removeEventListener('seeked', onSeeked); res(); };
+          v.addEventListener('seeked', onSeeked);
+          v.currentTime = target;
+        });
+        // Small settle delay so the video element paints the new frame.
+        await new Promise((res) => setTimeout(res, 60));
         const canvas = composeFrameCanvas(false);
-        if (!canvas) { setRescan({ busy: false, result: 'Frame not ready' }); return; }
-        const [bx, by, bw, bh] = clampBox([primary.bbox[0] - primary.bbox[2] * 0.1, primary.bbox[1] - primary.bbox[3] * 0.1, primary.bbox[2] * 1.2, primary.bbox[3] * 1.2], nat.w, nat.h);
+        if (!canvas) continue;
+        const [bx, by, bw, bh] = clampBox(
+          [primary.bbox[0] - primary.bbox[2] * 0.1, primary.bbox[1] - primary.bbox[3] * 0.1, primary.bbox[2] * 1.2, primary.bbox[3] * 1.2],
+          nat.w, nat.h,
+        );
         const crop = document.createElement('canvas'); crop.width = bw; crop.height = bh;
         crop.getContext('2d')!.drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh);
         const raw: Blob = await new Promise((res) => crop.toBlob((b) => res(b as Blob), 'image/jpeg', 0.95));
-        ocrImage = await enhancePlateImage(raw, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 1.0 });
+        const ocrImage = await enhancePlateImage(raw, { targetWidth: 1280, maxWidth: 1600, contrast: true, sharpen: 1.0 });
+        try {
+          const fd = new FormData();
+          fd.append('image', ocrImage, `rescan_${offset}.jpg`);
+          fd.append('capture_reason', 'forensic_rescan');
+          const r = await apiPostForm<{ capture?: { plate?: string | null; confidence?: number | null } }>('/alpr/capture', fd);
+          if (r?.capture?.plate) { readings.push(r.capture.plate); lastConf = r.capture.confidence ?? null; }
+        } catch { /* one frame failing doesn't abort the consensus */ }
       }
-      const fd = new FormData();
-      fd.append('image', ocrImage, 'rescan.jpg');
-      fd.append('capture_reason', 'forensic_rescan');
-      const r = await apiPostForm<{ capture?: { plate?: string | null; confidence?: number | null }; hits?: any[] }>('/alpr/capture', fd);
-      const got = r?.capture?.plate || null;
-      // A fresh single re-OCR is never auto-confirmed — surface it as needs_review so
-      // it can't masquerade as a positive ID (consistent with the #1278 honesty fix).
+      // Restore playhead to where the user was.
+      v.currentTime = baseT;
+
+      // Majority vote: count occurrences of each plate string, pick the most common.
+      const votes = readings.reduce<Record<string, number>>((acc, p) => ({ ...acc, [p]: (acc[p] || 0) + 1 }), {});
+      const got = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0] || null;
       if (got) {
-        setMedia((m) => (m ? { ...m, plate: got, plate_confidence: r.capture?.confidence ?? m.plate_confidence, plate_accepted: false, plate_review_status: 'needs_review' } : m));
+        setMedia((m) => (m ? { ...m, plate: got, plate_confidence: lastConf ?? m.plate_confidence, plate_accepted: false, plate_review_status: 'needs_review' } : m));
         screenedRef.current = '';
       }
-      setRescan({ busy: false, result: got ? `Read: ${got} (verify)` : 'No plate resolved' });
-      logAudit('forensic_plate_rescan', got ? `read ${got}` : 'no read');
+      const frameCount = readings.length;
+      setRescan({ busy: false, result: got ? `Read: ${got} (${frameCount}/3 frames, verify)` : 'No plate resolved' });
+      logAudit('forensic_plate_rescan', got ? `consensus ${got} ${frameCount}/3` : 'no read');
     } catch (e) {
       setRescan({ busy: false, result: 'Re-scan failed' });
     }
@@ -424,7 +531,21 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
   const preset = useMemo(() => presetByKey(enhanceKey) ?? ENHANCE_PRESETS[0], [enhanceKey]);
   const videoFilter = useMemo(() => cssFilterFor(preset) || undefined, [preset]);
   // Plate region (natural px) of the primary vehicle — fed to the magnifier + OCR.
-  const plateBox = useMemo(() => (primary ? clampBox(plateRegion(primary.bbox), natW, natH) : null), [primary, natW, natH]);
+  // W8: prefer the ONNX detector's precise box; fall back to the heuristic lower-centre guess.
+  const plateBox = useMemo(
+    () => onnxPlateBox ?? (primary ? clampBox(plateRegion(primary.bbox), natW, natH) : null),
+    [onnxPlateBox, primary, natW, natH],
+  );
+
+  // W7: dynamic reticle color derived from live threat/hit signals.
+  // red  = confirmed hotlist hit OR alert-level proximity
+  // yellow = any watchlist hit OR warn-proximity OR active driving threat
+  // green = clear
+  const reticleColor = useMemo((): string => {
+    if (critical.length > 0 || (prox && prox.level === 'alert')) return '#ef4444';
+    if (hits.length > 0 || (prox && prox.level === 'caution') || threats.length > 0) return '#f59e0b';
+    return '#22c55e';
+  }, [critical, hits, prox, threats]);
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col" role="dialog" aria-label="Forensic dashcam player">
@@ -434,6 +555,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           <Car className="w-4 h-4 text-[#d4a017] shrink-0" />
           <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">FORENSIC PLAYBACK</span>
           {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{evType.replace(/_/g, ' ')}</span>}
+          {media?.footage_request_id && (
+            <a href={`/flexcam/${media.footage_request_id}`} target="_blank" rel="noreferrer"
+              className="text-[9px] font-bold uppercase px-1.5 py-0.5 border border-blue-700/50 bg-blue-900/30 text-blue-300 hover:border-blue-400 transition-colors whitespace-nowrap">
+              ▶ Full Trip
+            </a>
+          )}
           <span className="text-[11px] text-rmpg-400 truncate">{media?.address || address || ''}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -488,7 +615,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
             {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-rmpg-500">(telemetry)</span>}
           </button>
-          <button onClick={onClose} className="text-rmpg-400 hover:text-white p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
         </div>
       </div>
 
@@ -533,7 +660,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     {aiOn && tracks.map((tr) => {
                       const isP = !!primary && tr.id === primary.id;
                       const [x, y, w, h] = tr.bbox;
-                      const col = isP ? (critical.length ? '#ef4444' : '#d4a017') : '#7dd3fc';
+                      const col = isP ? reticleColor : '#7dd3fc';
                       const isVeh = tr.cls !== 'person';
                       // per-vehicle LP region (non-primary get a faint scan box)
                       const plr = isVeh && !isP ? clampBox(plateRegion(tr.bbox), natW, natH) : null;
@@ -840,7 +967,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       {rescan.result && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border border-[#d4a017] text-[#d4a017] text-[11px] font-mono tracking-wider flex items-center gap-2">
           <ScanSearch className="w-3.5 h-3.5" /> PLATE RE-SCAN — {rescan.result}
-          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-white ml-1" aria-label="Dismiss">×</button>
+          <button onClick={() => setRescan({ busy: false, result: null })} className="text-rmpg-500 hover:text-rmpg-100 ml-1" aria-label="Dismiss">×</button>
         </div>
       )}
       {dossier && <PlateDossier plate={dossier} onClose={() => setDossier(null)} />}

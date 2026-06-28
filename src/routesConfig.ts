@@ -57,9 +57,11 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
+import automation from './routes/automation';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
@@ -88,16 +90,23 @@ import properties from './routes/properties';
 import geocode from './routes/geocode';
 import crime from './routes/crime';
 import warrants from './routes/warrants';
+import workOrders from './routes/workOrders';
+import inspectionTemplates from './routes/inspectionTemplates';
+import fleetViz from './routes/fleetViz';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
+import auditEmit from './routes/auditEmit';
+import auditByEntity from './routes/auditByEntity';
 import arrests from './routes/arrests';
+import assessor from './routes/assessor';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
+import analytics from './routes/analytics';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -110,6 +119,7 @@ import deepResearch from './routes/deepResearch';
 import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
+import fleetio from './routes/fleetio';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
@@ -118,27 +128,32 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
+import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
+import serve from './routes/serve';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
-import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
-import serve from './routes/serve';
+import nsopw from './routes/nsopw';
+import mapAnnotations from './routes/mapAnnotations';
+import personIntel from './routes/personIntel';
+import investigation from './routes/investigation';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import knowledgeBase from './routes/knowledgeBase';
 import recruitment from './routes/recruitment';
+import refData from './routes/refData';
 import reports from './routes/reports';
 import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
@@ -151,6 +166,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
@@ -165,7 +181,6 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
-import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
@@ -201,6 +216,10 @@ import flexcam from './routes/flexcam';
 import coloradoDoc from './routes/coloradoDoc';
 // Server-side Mapbox proxy backing client/src/utils/mapboxServices.ts.
 import mapbox from './routes/mapbox';
+// Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
+// which some operator networks block; redirect those POSTs to a same-origin
+// 204 to kill the console spam without affecting map functionality.
+import mapboxTelemetry from './routes/mapboxTelemetry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -292,6 +311,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/welfare', router: welfare, auth: 'required' },
 
   // ── Admin / personnel / presence ───────────────────────────
+  { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
+    note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
+  { prefix: '/api/admin/dev', router: adminDev, auth: 'required',
+    note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
@@ -360,16 +383,22 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
+  { prefix: '/api/fleetio', router: fleetio, auth: 'required',
+    note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
+  { prefix: '/api/geofences', router: geofences, auth: 'required',
+    note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
-    note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
+    note: 'Full HR module: dashboard, leave/PTO, disciplinary, reviews, payroll (periods/rates/entries/overtime), grievances, documents/acknowledgments, attendance, PIPs. /benefits returns [] (table deferred).' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
+  { prefix: '/api/map/annotations', router: mapAnnotations, auth: 'required',
+    note: 'Shared map annotation pins (map_annotations table). All authenticated roles.' },
   { prefix: '/api/narcotics', router: narcotics, auth: 'required',
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
@@ -380,12 +409,22 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
     note: 'Mileage anchor (auto-pickup) + admin fix/audit chain rewrite + FORM PS-211 trip-log payload' },
-  { prefix: '/api/radio', router: radio, auth: 'required',
+    { prefix: '/api/person-intel', router: personIntel, auth: 'required',
+      note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
+  { prefix: '/api/investigation', router: investigation, auth: 'required',
+    note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
+    { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
+  { prefix: '/api/ref-data', router: refData, auth: 'required',
+    note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
+  { prefix: '/api/nsopw', router: nsopw, auth: 'required',
+    note: 'NSOPW nationwide SOR cross-reference. Name+DOB search, ' +
+      'per-person re-screen, run/cache audit. See migration 0146 + ' +
+      'docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md.' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   // Alias — ServePage calls /api/process-server/* but the handlers live
@@ -419,13 +458,21 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
+  { prefix: '/api/analytics', router: analytics, auth: 'required',
+    note: 'R2 Data Catalog (Iceberg) analytics over R2 SQL: ALPR plate history + summary + raw query. 503s until the ANALYTICS pipeline + R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN are provisioned.' },
   { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
     note: 'In-video redaction custody store: persist client-redacted MP4 to R2 + video_redactions chain-of-custody row' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
+  { prefix: '/api/assessor', router: assessor, auth: 'required',
+    note: 'Salt Lake County Assessor lookup + apply: /parcels?address, /parcel/:no, POST /apply. KV-cached 30d; 503 when FIRECRAWL_API_KEY is unset.' },
+  { prefix: '/api/automation', router: automation, auth: 'required',
+    note: 'Case management automation rules: CRUD, toggle, execution log. Cron-driven SLA escalation and unassigned-alert rules.' },
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
+  { prefix: '/api/audit-emit', router: auditEmit, auth: 'required' },
+  { prefix: '/api/audit/by-vehicle', router: auditByEntity, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
   { prefix: '/api/billing', router: serveBilling, auth: 'required',
@@ -503,6 +550,13 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
     note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
 
+  // ── Mapbox telemetry sink (public; longer prefix wins) ─────
+  // Registered BEFORE /api/mapbox so the trie matches this prefix first.
+  // mapboxLoader points mapboxgl.config.EVENTS_URL here so SDK POSTs land
+  // on a 204 instead of events.mapbox.com (which some operator networks block).
+  { prefix: '/api/mapbox/events', router: mapboxTelemetry, auth: 'public',
+    note: 'Mapbox SDK telemetry sink — POST /v2 returns 204, swallows the payload' },
+
   // ── Mapbox server-side proxy ───────────────────────────────
   // Backs client/src/utils/mapboxServices.ts (geocode/directions/isochrone/
   // matrix/optimization/map-matching/tilequery/static-map/token-status). The
@@ -528,6 +582,15 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
+  // ── Work orders — Fleet.io PR 5 subsystem ─────────────────
+  { prefix: '/api/work-orders', router: workOrders, auth: 'required',
+    note: 'Fleet.io PR 5: work_orders + line_items + attachments + comments. Header CRUD + status-transition guard + close-rollup (line-items.total → work_orders.actual_cost). All mutations emit work_order.* events to fleetio_events.' },
+  // ── Inspection templates — Fleet.io PR 6 subsystem ────────
+  { prefix: '/api/inspection-templates', router: inspectionTemplates, auth: 'required',
+    note: 'Fleet.io PR 6: inspection_templates CRUD (admin/manager). Versioned — editing an in-use template forks a new version + parent_template_id. The submit path at /api/inspections/by-token/:token (in src/routes/inspections.ts) consumes the template + emits inspection.submit + auto-creates fleet_maintenance on failed items.' },
+  // ── Fleet visualization — Fleet.io PR 7-9 backend ─────────
+  { prefix: '/api/fleet-viz', router: fleetViz, auth: 'required',
+    note: 'Fleet.io PR 7-9 backend: 11 read-only aggregate routes feeding the dashboard (F1 KPI / F2 dossier / F3 readiness / V1 fleet-map / V2 pm-timeline / V3 mpg-by-officer / V4 cost-per-mile / V5 work-order-flow / V6 fuel-anomalies / V7 calls-per-gallon / V8 pm-upcoming). React UI lands as PR 7b/8b/9b cluster.' },
 
   // ── Stub endpoints (dashboard/feature compatibility) ──────
   // All point at the same stubs router which fans out to its internal
@@ -596,11 +659,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/pdf-engine', router: pdfEngine, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
   { prefix: '/api/voice-persona', router: voicePersona, auth: 'required' },
-
-  // Microsoft 365 email integration. Mount as 'public' so the OAuth
-  // callback (which Microsoft redirects to without a JWT) is reachable;
-  // every other route inside the router applies authMiddleware itself.
-  { prefix: '/api/email', router: email, auth: 'public' },
 
   // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every
   // path (verify is RMPG-only); admin/manager gating is applied per-route inside.

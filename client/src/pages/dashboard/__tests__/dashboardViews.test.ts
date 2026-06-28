@@ -115,7 +115,9 @@ describe('persistence', () => {
 describe('toolbarActionsForView', () => {
   it('patrol leads with field actions', () => {
     const ids = toolbarActionsForView('patrol').map((a) => a.id);
-    expect(ids.slice(0, 3)).toEqual(['startPatrol', 'newCitation', 'processServer']);
+    // Patrol officers see field tools first: start, scan, camera. Citation
+    // and capture follow. Order chosen to mirror the on-foot workflow.
+    expect(ids.slice(0, 3)).toEqual(['startPatrol', 'patrolScan', 'fieldCamera']);
   });
   it('dispatch/admin lead with call/incident actions', () => {
     expect(toolbarActionsForView('dispatch').map((a) => a.id).slice(0, 2)).toEqual(['newCall', 'newIncident']);
@@ -125,5 +127,15 @@ describe('toolbarActionsForView', () => {
     const ids = toolbarActionsForView('dispatch').map((a) => a.id);
     expect(ids).toContain('print');
     expect(ids).toContain('refresh');
+  });
+  it('surfaces the recent-feature actions on every view', () => {
+    // Quick Capture / Field Camera / Tasks were previously unreachable from
+    // the dashboard. Regression guard: every view must offer them.
+    for (const view of ['dispatch', 'patrol', 'admin'] as const) {
+      const ids = toolbarActionsForView(view).map((a) => a.id);
+      expect(ids).toContain('quickCapture');
+      expect(ids).toContain('fieldCamera');
+      expect(ids).toContain('tasks');
+    }
   });
 });

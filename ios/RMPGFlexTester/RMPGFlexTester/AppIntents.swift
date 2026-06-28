@@ -30,6 +30,8 @@ struct PanicIntent: AppIntent {
     static var title: LocalizedStringResource = "Send Panic Alarm"
     static var description = IntentDescription("Sends a Priority-1 officer-assist alarm to RMPG dispatch.")
     static var openAppWhenRun = false
+    // Fire even when the phone is locked — a panic must not require Face ID.
+    static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let client = await authedClient() else {

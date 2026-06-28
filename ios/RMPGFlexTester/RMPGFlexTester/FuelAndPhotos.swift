@@ -135,7 +135,7 @@ struct FuelPurchaseSheet: View {
                 Button(busy ? "LOGGING…" : "LOG FUEL EXPENSE") { Task { await submit() } }
                     .fontWeight(.bold)
                     .disabled(busy || (gallons.isEmpty && totalCost.isEmpty))
-                if let status { Text(status).font(.system(size: 11, design: .monospaced)) }
+                if let status { Text(status).font(Theme.Typography.mono) }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.base)

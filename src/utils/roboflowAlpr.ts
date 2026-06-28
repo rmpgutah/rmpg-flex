@@ -245,7 +245,8 @@ export interface AlprResult extends ParsedAlpr {
 // ── Request building (pure) ──────────────────────────────────
 
 export function alprRunUrl(opts?: { apiUrl?: string; workspaceName?: string; workflowId?: string }): string {
-  const base = (opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE).replace(/\/+$/, '');
+  let base = opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE;
+  while (base.endsWith('/')) base = base.slice(0, -1);
   const ws = opts?.workspaceName || ROBOFLOW_WORKSPACE;
   const wf = opts?.workflowId || ROBOFLOW_WORKFLOW_ID;
   return `${base}/${ws}/workflows/${wf}`;
@@ -495,8 +496,75 @@ function asBool(v: unknown): boolean {
 }
 function yearFrom(v: unknown): number | null {
   const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
-  const m = /\b(?:19|20)\d{2}\b/.exec(s);
-  return m ? Number(m[0]) : null;
+  const all = s.match(/\b(?:19|20)\d{2}\b/g);
+  if (!all || !all.length) return null;
+  if (all.length === 1) return Number(all[0]);
+  // Range like "2018-2022" → midpoint (2020); more robust than earliest year.
+  const nums = all.map(Number);
+  return Math.round((Math.min(...nums) + Math.max(...nums)) / 2);
+}
+
+/** Canonical color vocabulary — normalize free-text Roboflow color values. */
+const COLOR_MAP: Record<string, string> = {
+  white: 'WHITE', pearl: 'WHITE', cream: 'WHITE', ivory: 'WHITE',
+  black: 'BLACK', charcoal: 'BLACK', 'jet black': 'BLACK',
+  silver: 'SILVER', metallic: 'SILVER',
+  gray: 'GRAY', grey: 'GRAY',
+  red: 'RED', crimson: 'RED', burgundy: 'MAROON',
+  blue: 'BLUE', navy: 'DARK BLUE', 'dark blue': 'DARK BLUE', 'navy blue': 'DARK BLUE',
+  green: 'GREEN', 'dark green': 'DARK GREEN', olive: 'DARK GREEN',
+  brown: 'BROWN', bronze: 'BROWN',
+  tan: 'TAN', beige: 'BEIGE', champagne: 'BEIGE',
+  gold: 'GOLD', yellow: 'YELLOW',
+  orange: 'ORANGE',
+  maroon: 'MAROON', wine: 'MAROON',
+  purple: 'PURPLE', violet: 'PURPLE',
+};
+
+// Sorted longest-key-first so multi-word entries ("navy blue") match before
+// single-word entries ("blue") when the input contains both.
+const COLOR_ENTRIES = Object.entries(COLOR_MAP).sort((a, b) => b[0].length - a[0].length);
+
+/** Normalize a free-text color value to the controlled vocabulary (uppercase
+ *  canonical word). Returns the input uppercased if no mapping found. */
+export function normalizeVehicleColor(raw: string | null): string | null {
+  if (!raw) return null;
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return null;
+  for (const [key, canonical] of COLOR_ENTRIES) {
+    if (lower === key || lower.includes(key)) return canonical;
+  }
+  return raw.trim().toUpperCase();
+}
+
+/** Common make alias map — normalize Roboflow free-text make names. */
+const MAKE_MAP: Record<string, string> = {
+  toyota: 'TOYOTA', chevy: 'CHEVROLET', chevrolet: 'CHEVROLET',
+  ford: 'FORD', honda: 'HONDA', nissan: 'NISSAN',
+  dodge: 'DODGE', chrysler: 'CHRYSLER', jeep: 'JEEP', ram: 'RAM',
+  gmc: 'GMC', buick: 'BUICK', cadillac: 'CADILLAC',
+  hyundai: 'HYUNDAI', kia: 'KIA', subaru: 'SUBARU', mitsubishi: 'MITSUBISHI',
+  mazda: 'MAZDA', volkswagen: 'VOLKSWAGEN', vw: 'VOLKSWAGEN',
+  bmw: 'BMW', mercedes: 'MERCEDES-BENZ', 'mercedes-benz': 'MERCEDES-BENZ',
+  audi: 'AUDI', lexus: 'LEXUS', acura: 'ACURA', infiniti: 'INFINITI',
+  lincoln: 'LINCOLN', volvo: 'VOLVO', tesla: 'TESLA',
+  pontiac: 'PONTIAC', saturn: 'SATURN', oldsmobile: 'OLDSMOBILE',
+  mini: 'MINI', 'land rover': 'LAND ROVER', jaguar: 'JAGUAR',
+  porsche: 'PORSCHE', ferrari: 'FERRARI', lamborghini: 'LAMBORGHINI',
+  maserati: 'MASERATI', fiat: 'FIAT', alfa: 'ALFA ROMEO', 'alfa romeo': 'ALFA ROMEO',
+  genesis: 'GENESIS', rivian: 'RIVIAN', lucid: 'LUCID',
+};
+
+/** Normalize a free-text make value to the canonical brand name.
+ *  Returns uppercased original if no alias matches. */
+export function normalizeVehicleMake(raw: string | null): string | null {
+  if (!raw) return null;
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return null;
+  for (const [key, canonical] of Object.entries(MAKE_MAP)) {
+    if (lower === key || lower.startsWith(key + ' ') || lower.startsWith(key + '-')) return canonical;
+  }
+  return raw.trim().toUpperCase();
 }
 /**
  * Normalize a per-field confidence to the [0,1] band the trust/0.85 gate
@@ -589,9 +657,9 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
   return {
     plate: plateRaw ? cleanPlate(plateRaw) : null,
     state: asStr(vd.license_plate_state_or_region) ?? firstStringByKey(entry, KEY.state),
-    make: asStr(vd.make),
-    model: asStr(vd.model),
-    color: asStr(vd.color_primary) ?? asStr(vd.color_secondary) ?? firstStringByKey(entry, KEY.color),
+    make: normalizeVehicleMake(asStr(vd.make)),
+    model: asStr(vd.model)?.toUpperCase() ?? null,
+    color: normalizeVehicleColor(asStr(vd.color_primary) ?? asStr(vd.color_secondary) ?? firstStringByKey(entry, KEY.color)),
     year: yearFrom(vd.year_range) ?? yearFrom(entry.year),
     vehicleType: asStr(vd.vehicle_type) ?? asStr(vd.plate_type),
     confidence,
@@ -660,9 +728,9 @@ function vehicleFromRecord(v: Record<string, unknown>): AlprVehicle {
   return {
     plate: plate ? cleanPlate(plate) : null,
     state: asStr(v.license_plate_state_or_region),
-    make: asStr(v.make),
-    model: asStr(v.model),
-    color: asStr(v.color_primary) ?? asStr(v.color_secondary),
+    make: normalizeVehicleMake(asStr(v.make)),
+    model: asStr(v.model)?.toUpperCase() ?? null,
+    color: normalizeVehicleColor(asStr(v.color_primary) ?? asStr(v.color_secondary)),
     year: yearFrom(v.year_range),
     vehicleType: asStr(v.vehicle_type),
     plateType: asStr(v.plate_type),

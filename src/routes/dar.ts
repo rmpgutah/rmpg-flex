@@ -22,6 +22,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { darNumber, nextDarSeq, parseArr, summarizeDar, type AutoPopulate } from '../utils/dar';
 
 const dar = new Hono<Env>();
@@ -43,34 +44,61 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     activities_narrative TEXT,
     notable_events TEXT,
     safety_concerns TEXT,
+    equipment_issues TEXT,
+    recommendations TEXT,
     review_notes TEXT,
     reviewed_by INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     submitted_at TEXT,
     approved_at TEXT
   )`);
+  // Idempotent column additions for tables that existed before these fields
+  // were introduced. D1 does not support IF NOT EXISTS on ADD COLUMN, so we
+  // swallow the "duplicate column name" error silently.
+  for (const col of ['equipment_issues TEXT', 'recommendations TEXT']) {
+    await execute(db, `ALTER TABLE daily_activity_reports ADD COLUMN ${col}`).catch(() => {/* already exists */});
+  }
 }
 
-const SELECT_WITH_OFFICER = `SELECT d.*, u.full_name AS officer_name
-  FROM daily_activity_reports d LEFT JOIN users u ON u.id = d.officer_id`;
+// Join both the filing officer AND the reviewing supervisor so the client
+// and PDF can display "Reviewed by Lt. Smith" without a second round-trip.
+const SELECT_WITH_OFFICER = `SELECT d.*, u.full_name AS officer_name,
+  rv.full_name AS reviewed_by_name
+  FROM daily_activity_reports d
+  LEFT JOIN users u  ON u.id  = d.officer_id
+  LEFT JOIN users rv ON rv.id = d.reviewed_by`;
 
 // GET / — paginated list.
+// Accepts: status, officer_id, shift_date, search (dar_number/officer_name),
+//          page (1-based), limit (alias: per_page, max 200, default 50).
 dar.get('/', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
-  const { status, officer_id, shift_date, page = '1', per_page = '50' } = c.req.query();
+  const {
+    status, officer_id, shift_date, search,
+    page = '1', limit: limitQ, per_page,
+  } = c.req.query();
   const where: string[] = []; const p: unknown[] = [];
-  if (status) { where.push('d.status = ?'); p.push(status); }
+  if (status)     { where.push('d.status = ?');    p.push(status); }
   if (officer_id) { where.push('d.officer_id = ?'); p.push(parseInt(officer_id, 10)); }
   if (shift_date) { where.push('d.shift_date = ?'); p.push(shift_date); }
+  if (search) {
+    where.push('(d.dar_number LIKE ? OR u.full_name LIKE ?)');
+    p.push(`%${search}%`, `%${search}%`);
+  }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const lim = Math.min(parseInt(per_page, 10) || 50, 200);
+  const lim = Math.min(parseInt(limitQ ?? per_page ?? '50', 10) || 50, 200);
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const rows = await query<Record<string, unknown>>(db,
     `${SELECT_WITH_OFFICER} ${clause} ORDER BY d.shift_date DESC, d.id DESC LIMIT ? OFFSET ?`,
     ...p, lim, (pageNum - 1) * lim);
   const total = await queryFirst<{ n: number }>(db,
-    `SELECT COUNT(*) AS n FROM daily_activity_reports d ${clause}`, ...p);
-  return c.json({ data: rows, pagination: { page: pageNum, per_page: lim, total: Number(total?.n ?? 0) } });
+    `SELECT COUNT(*) AS n FROM daily_activity_reports d
+     LEFT JOIN users u ON u.id = d.officer_id ${clause}`, ...p);
+  const totalCount = Number(total?.n ?? 0);
+  return c.json({
+    data: rows,
+    pagination: { page: pageNum, per_page: lim, total: totalCount, totalPages: Math.max(1, Math.ceil(totalCount / lim)) },
+  });
 });
 
 // GET /export/csv — must be before /:id.
@@ -154,7 +182,8 @@ dar.get('/:id', async (c): Promise<Response> => {
 });
 
 const UPDATABLE = new Set(['shift_start', 'shift_end', 'calls_handled', 'incidents_created',
-  'citations_issued', 'patrols_completed', 'activities_narrative', 'notable_events', 'safety_concerns']);
+  'citations_issued', 'patrols_completed', 'activities_narrative', 'notable_events', 'safety_concerns',
+  'equipment_issues', 'recommendations']);
 
 dar.put('/:id', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
@@ -174,7 +203,18 @@ dar.put('/:id/submit', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
   const id = parseInt(c.req.param('id'), 10);
   await execute(db, `UPDATE daily_activity_reports SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?`, id);
-  return c.json({ data: await queryFirst(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id) });
+  const row = await queryFirst<Record<string, unknown>>(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id);
+
+  // Analytics lakehouse: DAR-filed event on final submit only (best-effort, fire-and-forget).
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
+    event_type: 'dar_filed', occurred_at: new Date().toISOString(),
+    actor_id: (row?.officer_id as number | undefined) ?? null,
+    entity_type: 'dar', entity_id: id, status: 'submitted',
+    label: (row?.dar_number as string | undefined) ?? null, category: 'reporting',
+    payload: { shift_date: (row?.shift_date as string | undefined) ?? null },
+  })]);
+
+  return c.json({ data: row });
 });
 
 dar.put('/:id/approve', async (c): Promise<Response> => {

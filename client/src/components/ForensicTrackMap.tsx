@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 
 const GOLD = '#d4a017';
@@ -24,12 +24,19 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  // posMarkerRef is the playback dot, refreshed every animation frame. The
+  // start + end pins were previously created in a local closure with no ref —
+  // they leaked across unmount cycles. markersRef tracks EVERY marker the
+  // component owns so the cleanup loop can detach them all.
   const posMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const readyRef = useRef(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const coords = gps.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+  // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature so
+  // a ClearPath device's pre-fix frames never anchor the route line off-coast.
+  const coords = gps.filter((p) => isValidLngLat(p.longitude, p.latitude));
 
   // Init once.
   useEffect(() => {
@@ -52,7 +59,15 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
           map.addSource('pred', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
           map.addLayer({ id: 'pred', type: 'line', source: 'pred', paint: { 'line-color': GOLD, 'line-width': 3, 'line-dasharray': [1.5, 1.5], 'line-opacity': 0.85 } });
           if (line.length) {
-            const mk = (lngLat: [number, number], color: string) => { const el = buildDotMarker({ color, size: 10 }); return new mapboxgl.Marker({ element: el }).setLngLat(lngLat).addTo(map); };
+            // mk() now both adds the marker AND retains its handle so cleanup
+            // can call .remove() on every owned marker (was: returned handle
+            // discarded → start + end markers leaked DOM nodes per unmount).
+            const mk = (lngLat: [number, number], color: string): mapboxgl.Marker => {
+              const el = buildDotMarker({ color, size: 10 });
+              const m = new mapboxgl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+              markersRef.current.push(m);
+              return m;
+            };
             mk(line[0] as [number, number], '#22c55e');
             mk(line[line.length - 1] as [number, number], '#ef4444');
             // White playback-position dot with a gold ring — a plain (non-directional)
@@ -60,7 +75,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
             const pel = buildDotMarker({ color: '#ffffff', size: 14 });
             pel.style.border = `2px solid ${GOLD}`;
             pel.style.boxShadow = `0 0 8px ${GOLD}`;
-            posMarkerRef.current = new mapboxgl.Marker({ element: pel }).setLngLat(line[0] as [number, number]).addTo(map);
+            const posMarker = new mapboxgl.Marker({ element: pel }).setLngLat(line[0] as [number, number]).addTo(map);
+            posMarkerRef.current = posMarker;
+            markersRef.current.push(posMarker);
             const b = line.reduce((acc, c) => acc.extend(c as [number, number]), new mapboxgl.LngLatBounds(line[0] as [number, number], line[0] as [number, number]));
             map.fitBounds(b, { padding: 28, maxZoom: 17, duration: 0 });
           }
@@ -73,7 +90,12 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
     })();
     return () => {
       cancelled = true;
-      if (posMarkerRef.current) { posMarkerRef.current.remove(); posMarkerRef.current = null; }
+      // Detach every owned marker — start, end, AND playback. Calling .remove
+      // is idempotent and never throws even after map.remove(), so the order
+      // is safe.
+      markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
+      markersRef.current = [];
+      posMarkerRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       readyRef.current = false;
     };
@@ -85,7 +107,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     const pos = positionAtTime(gps, tSec);
-    if (pos && posMarkerRef.current) posMarkerRef.current.setLngLat([pos.longitude, pos.latitude]);
+    if (pos && isValidLngLat(pos.longitude, pos.latitude) && posMarkerRef.current) {
+      posMarkerRef.current.setLngLat([pos.longitude, pos.latitude]);
+    }
     const src = map.getSource('pred') as mapboxgl.GeoJSONSource | undefined;
     if (src) {
       const head = pos ? [[pos.longitude, pos.latitude]] : [];
@@ -95,7 +119,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   }, [tSec, predicted, gps]);
 
   return (
-    <div className="relative w-full border border-[#1a1a1a] bg-[#050505]" style={{ height }}>
+    <div className="relative w-full border border-border-default bg-surface-overlay" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0" />
       {!loaded && !error && (
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>

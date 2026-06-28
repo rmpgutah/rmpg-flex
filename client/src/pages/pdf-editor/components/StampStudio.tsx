@@ -393,20 +393,20 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
     window.setTimeout(() => setSavedMsg(null), 3000);
   };
 
-  const field = 'w-full bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-[#d4a017]';
+  const field = 'w-full bg-surface-base border border-border-default rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-[#d4a017]';
   const lbl = 'block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5';
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222] rounded-[2px] w-full max-w-[860px] max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-full max-w-[860px] max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header + tabs */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamp Studio
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
-        <div className="flex border-b border-[#222]">
+        <div className="flex border-b border-border-default">
           {(['templates', 'background'] as StudioTab[]).map((t) => (
             <button key={t} type="button" onClick={() => { setTab(t); setError(null); }}
               className="px-4 py-2 text-[11px] font-medium uppercase tracking-wider"
@@ -416,7 +416,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* ── Controls ── */}
           <div className="space-y-3">
             {error && (
@@ -452,10 +452,10 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                     <div className="flex items-center gap-2">
                       <input id="ff-stampstudio-ink" type="color" value={tpl.ink}
                         onChange={(e) => setTpl({ ...tpl, ink: e.target.value })}
-                        className="w-8 h-7 bg-transparent border border-[#222] rounded-[2px] cursor-pointer" />
-                      {['#c0392b', '#111111', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
+                        className="w-8 h-7 bg-transparent border border-border-default rounded-[2px] cursor-pointer" />
+                      {['#c0392b', 'var(--surface-base)', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
                         <button key={c} type="button" aria-label={`Ink ${c}`} onClick={() => setTpl({ ...tpl, ink: c })}
-                          className="w-5 h-5 rounded-full border border-[#333]" style={{ background: c }} />
+                          className="w-5 h-5 rounded-full border border-border-subtle" style={{ background: c }} />
                       ))}
                     </div>
                   </div>
@@ -480,7 +480,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                         {(['APPROVED', 'DENIED', 'PENDING'] as const).map((d) => (
                           <button key={d} type="button" onClick={() => setTpl({ ...tpl, decision: d })}
                             className="py-1.5 rounded-[2px] text-[10px] font-bold border"
-                            style={{ borderColor: tpl.decision === d ? DECISION_COLOR[d] : '#222', color: tpl.decision === d ? DECISION_COLOR[d] : '#888', background: '#0d0d0d' }}>{d}</button>
+                            style={{ borderColor: tpl.decision === d ? DECISION_COLOR[d] : '#222', color: tpl.decision === d ? DECISION_COLOR[d] : '#888', background: 'var(--surface-overlay)' }}>{d}</button>
                         ))}
                       </div>
                     </div>
@@ -498,7 +498,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                       {TEXT_WORDS.map((w) => (
                         <button key={w} type="button" onClick={() => setTpl({ ...tpl, textWord: w })}
                           className="py-1.5 rounded-[2px] text-[10px] font-bold border"
-                          style={{ borderColor: tpl.textWord === w ? '#d4a017' : '#222', color: tpl.textWord === w ? '#d4a017' : '#888', background: '#0d0d0d' }}>{w}</button>
+                          style={{ borderColor: tpl.textWord === w ? '#d4a017' : '#222', color: tpl.textWord === w ? '#d4a017' : '#888', background: 'var(--surface-overlay)' }}>{w}</button>
                       ))}
                     </div>
                   </div>
@@ -526,7 +526,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                   <Upload className="w-3.5 h-3.5" /> {srcCanvas ? 'Replace image' : 'Upload PNG / JPEG'}
                 </button>
                 {!srcCanvas && (
-                  <div className="bg-[#0d0d0d] border border-[#222] rounded-sm p-4 text-[10px] text-rmpg-500">
+                  <div className="bg-surface-base border border-border-default rounded-sm p-4 text-[10px] text-rmpg-500">
                     Upload a signature, logo, or stamp photographed on white paper. The studio knocks out the light background so it drops cleanly onto a page.
                   </div>
                 )}
@@ -545,7 +545,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                     </div>
                     <div>
                       <span className={lbl}>Before</span>
-                      <div className="rounded-sm overflow-hidden inline-block border border-[#222]" style={{ background: '#fff' }}>
+                      <div className="rounded-sm overflow-hidden inline-block border border-border-default" style={{ background: '#fff' }}>
                         <PreviewImg canvas={srcCanvas} max={150} />
                       </div>
                     </div>
@@ -558,7 +558,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
           {/* ── Live preview (transparency checkerboard) ── */}
           <div className="space-y-3">
             <span className={lbl}>Preview (transparent)</span>
-            <div className="rounded-sm border border-[#222] flex items-center justify-center p-3 min-h-[200px]" style={{ background: CHECKER }}>
+            <div className="rounded-sm border border-border-default flex items-center justify-center p-3 min-h-[200px]" style={{ background: CHECKER }}>
               {outputCanvas
                 ? <canvas ref={previewRef} className="max-w-full" style={{ maxHeight: 260, width: 'auto', height: 'auto' }} />
                 : <span className="text-[10px] text-rmpg-600">Upload an image to preview.</span>}
@@ -572,9 +572,9 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[#222]">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border-default">
           <button type="button" onClick={() => { setSrcCanvas(null); setError(null); }}
-            className="text-[10px] text-rmpg-500 hover:text-white inline-flex items-center gap-1"
+            className="text-[10px] text-rmpg-500 hover:text-rmpg-100 inline-flex items-center gap-1"
             style={{ visibility: tab === 'background' && srcCanvas ? 'visible' : 'hidden' }}>
             <RotateCcw className="w-3 h-3" /> Clear upload
           </button>

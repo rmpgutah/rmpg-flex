@@ -14,7 +14,7 @@
 // ============================================================
 
 import { extractVisionWorkersAI } from './visionExtract';
-import { cleanPlate } from './roboflowAlpr';
+import { cleanPlate, normalizeVehicleColor, normalizeVehicleMake } from './roboflowAlpr';
 import { CONDITIONS } from './alprEdit';
 import type { ExtractionResult } from './serveIntakeExtract';
 
@@ -62,7 +62,16 @@ export function plateResultFromExtraction(r: ExtractionResult | null): Cloudflar
   const plate = cleanPlate(rawPlate);
   if (!plate) return null;
   const yearStr = str(f.vehicle_year);
-  const year = yearStr && /^\d{4}$/.test(yearStr) ? Number(yearStr) : null;
+  // Accept an exact 4-digit year OR extract midpoint from a range like "2018-2022".
+  let year: number | null = null;
+  if (yearStr) {
+    const all = yearStr.match(/\b(?:19|20)\d{2}\b/g);
+    if (all && all.length === 1) year = Number(all[0]);
+    else if (all && all.length > 1) {
+      const nums = all.map(Number);
+      year = Math.round((Math.min(...nums) + Math.max(...nums)) / 2);
+    }
+  }
   // Prefer the plate field's own confidence; fall back to the overall doc score.
   const plateConf = typeof f.plate_number?.confidence === 'number' ? f.plate_number.confidence
     : (typeof r.confidence === 'number' ? r.confidence : null);
@@ -73,9 +82,9 @@ export function plateResultFromExtraction(r: ExtractionResult | null): Cloudflar
   return {
     plate,
     state: str(f.plate_state),
-    make: str(f.vehicle_make),
-    model: str(f.vehicle_model),
-    color: str(f.vehicle_color),
+    make: normalizeVehicleMake(str(f.vehicle_make)),
+    model: str(f.vehicle_model)?.toUpperCase() ?? null,
+    color: normalizeVehicleColor(str(f.vehicle_color)),
     year,
     plateType: str(f.plate_type),
     bodyStyle: str(f.vehicle_body),

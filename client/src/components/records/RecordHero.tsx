@@ -80,15 +80,15 @@ function RecordHero({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-sm font-bold text-white truncate tracking-wide uppercase">
+            <h2 className="text-sm font-bold text-rmpg-100 truncate tracking-wide uppercase">
               {name}
             </h2>
             <span
               className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-[2px] rounded-[2px] leading-none whitespace-nowrap ${posture.pulse ? 'animate-led-pulse' : ''}`}
               style={{
-                color: isClear ? '#8a8a8a' : t.text,
+                color: isClear ? 'var(--rmpg-400)' : t.text,
                 background: isClear ? 'rgba(255,255,255,0.04)' : t.bg,
-                border: `1px solid ${isClear ? '#2b2b2b' : t.border}`,
+                border: `1px solid ${isClear ? 'var(--border-default)' : t.border}`,
               }}
               title={`Record posture: ${posture.label}`}
             >

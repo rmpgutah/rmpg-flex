@@ -26,7 +26,7 @@ struct PreTripInspectionSheet: View {
         NavigationStack {
             Form {
                 Section("VEHICLE") {
-                    Text(vehicleLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    Text(vehicleLabel).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white)
                     TextField("Current odometer (mi)", text: $odometer).keyboardType(.numberPad)
                     FuelLevelPicker(level: $fuelLevel)
                 }
@@ -34,7 +34,7 @@ struct PreTripInspectionSheet: View {
                     InspectionPhotoStrip(context: "pre-trip", photoUrls: $photoUrls)
                     if photoUrls.isEmpty {
                         Text("At least one photo is required.")
-                            .font(.system(size: 11)).foregroundStyle(Theme.orange)
+                            .font(Theme.Typography.caption).foregroundStyle(Theme.orange)
                     }
                 }
                 VehicleInspectionForm(lines: $lines)
@@ -44,7 +44,7 @@ struct PreTripInspectionSheet: View {
                 Section {
                     Button(submitting ? "LOGGING…" : "LOG PRE-TRIP") { Task { await submit() } }
                         .fontWeight(.bold).disabled(!canSubmit)
-                    if let error { Text(error).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.red) }
+                    if let error { Text(error).font(Theme.Typography.mono).foregroundStyle(Theme.red) }
                 }
             }
             .scrollContentBackground(.hidden)

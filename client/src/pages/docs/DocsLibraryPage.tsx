@@ -39,7 +39,7 @@ export default function DocsLibraryPage() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#666]" />
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
           <input className="input-dark w-full text-xs pl-7" placeholder="Search titles…" value={q}
             onChange={(e) => setQ(e.target.value)} />
         </div>
@@ -59,11 +59,11 @@ export default function DocsLibraryPage() {
       {loading ? (
         <div className="flex items-center text-[#888] text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
       ) : items.length === 0 ? (
-        <div className="text-[#545454] text-xs py-8 text-center">No documents. Create one to get started.</div>
+        <div className="text-rmpg-500 text-xs py-8 text-center">No documents. Create one to get started.</div>
       ) : (
-        <table className="w-full text-left">
+        <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
-            <tr className="text-[9px] uppercase tracking-wider text-[#888] border-b border-[#232323]">
+            <tr className="text-[9px] uppercase tracking-wider text-[#888] border-b border-border-default">
               <th className="py-[3px] font-semibold">Title</th>
               <th className="py-[3px] font-semibold">Status</th>
               <th className="py-[3px] font-semibold">Owner</th>
@@ -72,20 +72,20 @@ export default function DocsLibraryPage() {
           </thead>
           <tbody>
             {items.map((d) => (
-              <tr key={d.id} className="text-[11px] border-b border-[#141414] hover:bg-[#0b0b0b] cursor-pointer" onClick={() => setOpenId(d.id)}>
-                <td className="py-[2px] text-[#e5e7eb]">{d.title}</td>
+              <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
+                <td className="py-[2px] text-rmpg-200">{d.title}</td>
                 <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{d.status}</span></td>
                 <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>
-                <td className="py-[2px] text-[#666] font-mono">{d.updated_at || d.created_at}</td>
+                <td className="py-[2px] text-rmpg-500 font-mono">{d.updated_at || d.created_at}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {openId != null && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-[1000px] h-[88vh] bg-[#000] border border-[#232323] rounded-[2px] overflow-hidden">
+          <div className="relative w-full max-w-[1000px] h-[88vh] bg-[#000] border border-border-default rounded-[2px] overflow-hidden">
             <DocumentEditor documentId={openId} onClose={() => { setOpenId(null); void refresh(); }} onChanged={refresh} />
           </div>
         </div>

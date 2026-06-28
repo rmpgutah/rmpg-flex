@@ -53,7 +53,8 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     expect(data.clientName).toBe('Acme Property Management');
     expect(data.serviceAddress).toContain('4376 W 3100 S');
     expect(data.attempts).toHaveLength(1);
-    expect(data.attempts[0].date).toBe('2026-06-08');
+    // splitStamp now produces MM/DD/YYYY for the recipient copy.
+    expect(data.attempts[0].date).toBe('06/08/2026');
     expect(data.attempts[0].result).toBe('PS No Access');
     expect(data.redispatchCallNumber).toBe('CFS26-00060');
     // Without a serve job the respondent fields degrade gracefully —

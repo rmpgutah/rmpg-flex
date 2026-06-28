@@ -527,6 +527,31 @@ export function useDispatchVoiceAlerts(options?: {
       })
     );
 
+    // ── Serve attempt pre-event reminder ──────────────────────
+    // Fires when the random pre-event window (30 min–6 h before the
+    // attempt window opens) arrives. Shows a dispatch banner + voice.
+    unsubs.push(
+      subscribe('serve_attempt_reminder' as any, (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const name = data.recipientName || 'recipient';
+        const addr = data.recipientAddress || '';
+        const mins: number = data.minutesBefore ?? 0;
+        const timeUntil = mins < 60
+          ? `${mins} minutes`
+          : `${Math.round(mins / 60)} hour${Math.round(mins / 60) > 1 ? 's' : ''}`;
+        const windowStr = data.windowStart && data.windowEnd ? ` (${data.windowStart}–${data.windowEnd})` : '';
+        const text = `Serve attempt reminder: ${name}${addr ? ` at ${addr}` : ''}. Window opens in approximately ${timeUntil}${windowStr}.`;
+        speak(text, 'moderate');
+        onAlert?.({
+          id: `serve-remind-${data.queueId}-${data.attemptNumber ?? 0}-${Date.now()}`,
+          severity: data.priority === 'urgent' || data.priority === 'rush' ? 'moderate' : 'minor',
+          title: 'SERVE WINDOW',
+          message: data.message || text,
+          timestamp: Date.now(),
+        });
+      })
+    );
+
     // ── Radio cross-integration (selcall pages) ──
     unsubs.push(
       subscribe('radio_transmit_start', (_msg) => {

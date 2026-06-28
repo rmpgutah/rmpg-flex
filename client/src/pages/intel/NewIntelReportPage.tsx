@@ -56,23 +56,23 @@ export default function NewIntelReportPage() {
   };
 
   return (
-    <div className="p-4 space-y-3" style={{ background: '#000', minHeight: '100%', color: '#ddd' }}>
+    <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--rmpg-200)' }}>
       <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>NEW INTELLIGENCE REPORT</h1>
       {err && <div style={{ color: '#ef4444', fontSize: 11 }}>{err}</div>}
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Title
         <input aria-label="title" value={title} onChange={(e) => setTitle(e.target.value)}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]" />
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Raw narrative
         <textarea aria-label="narrative" value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={8}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]" />
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
       <label className="block text-[10px] text-[#888] uppercase tracking-wider">Source type
         <select aria-label="source type" value={sourceType} onChange={(e) => setSourceType(e.target.value)}
-          className="mt-1 w-full bg-[#070707] border border-[#232323] rounded-[2px] px-2 py-[6px] text-[12px] text-[#e8e8e8]">
+          className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200">
           {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
         </select>
       </label>
@@ -82,7 +82,7 @@ export default function NewIntelReportPage() {
         {THREATS.map((t) => (
           <button key={t} onClick={() => setThreat(t)}
             className="px-2 py-1 text-[10px] uppercase rounded-[2px]"
-            style={{ background: threat === t ? '#d4a017' : '#0b0b0b', color: threat === t ? '#000' : '#888' }}>{t}</button>
+            style={{ background: threat === t ? '#d4a017' : 'var(--surface-overlay)', color: threat === t ? '#000' : '#888' }}>{t}</button>
         ))}
       </div>
 

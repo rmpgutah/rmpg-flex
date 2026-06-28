@@ -96,11 +96,11 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/95 flex flex-col tactical-dark" role="dialog" aria-label="Redaction studio">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#232323] shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border-default shrink-0">
         <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-[#d4a017]">
           <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — EVENT #{eventId}
         </span>
-        <button onClick={onClose} className="text-rmpg-400 hover:text-white p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
+        <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] overflow-hidden">
@@ -120,7 +120,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
           </div>
         </div>
 
-        <div className="border-l border-[#232323] overflow-auto p-3 space-y-3 text-[11px] text-rmpg-200">
+        <div className="border-l border-border-default overflow-auto p-3 space-y-3 text-[11px] text-rmpg-200">
           <button onClick={runScan} disabled={scan.busy} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-60">
             {scan.busy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning… {Math.round(scan.frac * 100)}%</> : <><ScanSearch className="w-3.5 h-3.5" /> Auto-detect plates + faces</>}
           </button>
@@ -139,10 +139,10 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
             </label>
           ) : null)}
 
-          <div className="border-t border-[#232323] pt-2 space-y-2">
+          <div className="border-t border-border-default pt-2 space-y-2">
             <div className="flex items-center justify-between">
               <span>Style</span>
-              <select value={style} onChange={(e) => { const s = e.target.value as RedactionStyle; setStyle(s); setRegions((rs) => rs.map((r) => ({ ...r, style: s }))); }} className="bg-black border border-[#232323] px-1 py-0.5">
+              <select value={style} onChange={(e) => { const s = e.target.value as RedactionStyle; setStyle(s); setRegions((rs) => rs.map((r) => ({ ...r, style: s }))); }} className="bg-black border border-border-default px-1 py-0.5">
                 <option value="blur">Blur</option><option value="pixelate">Pixelate</option><option value="box">Black box</option>
               </select>
             </div>
@@ -150,10 +150,10 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
               <span>Strength</span>
               <input type="range" min={4} max={40} value={strength} onChange={(e) => { const v = Number(e.target.value); setStrength(v); setRegions((rs) => rs.map((r) => ({ ...r, strength: v }))); }} />
             </div>
-            <button onClick={addManual} className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 border border-[#232323] hover:border-[#d4a017]"><Square className="w-3.5 h-3.5" /> Add manual box (at playhead)</button>
+            <button onClick={addManual} className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 border border-border-default hover:border-[#d4a017]"><Square className="w-3.5 h-3.5" /> Add manual box (at playhead)</button>
           </div>
 
-          <div className="border-t border-[#232323] pt-2 max-h-40 overflow-auto space-y-1">
+          <div className="border-t border-border-default pt-2 max-h-40 overflow-auto space-y-1">
             {regions.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-2">
                 <span className="truncate" style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>

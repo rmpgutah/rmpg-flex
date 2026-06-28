@@ -314,20 +314,20 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
+                <label htmlFor="ff-adminnotifrulestab-1" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
                 <input id="ff-adminnotifrulestab-1" type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
+                <label htmlFor="ff-adminnotifrulestab-2" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
                 <input id="ff-adminnotifrulestab-2" type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
+                  <label htmlFor="ff-adminnotifrulestab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
                   <select id="ff-adminnotifrulestab-3" value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
                     {TRIGGER_EVENTS.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}{t.live ? '' : ' (not yet active)'}</option>
@@ -344,7 +344,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   })()}
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>
+                  <label htmlFor="ff-adminnotifrulestab-4" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>
                   <select id="ff-adminnotifrulestab-4" value={form.notification_type} onChange={(e) => setForm((f) => ({ ...f, notification_type: e.target.value as any }))} className="select-dark w-full text-xs">
                     <option value="in_app">In-App Only</option>
                     <option value="email">Email Only</option>

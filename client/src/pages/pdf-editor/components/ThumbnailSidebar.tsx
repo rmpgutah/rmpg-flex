@@ -86,13 +86,13 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
   }, [pdfBytes, pageOrder, thumbScale]);
 
   return (
-    <div className={`bg-[#0d0d0d] border border-[#222222] rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
+    <div className={`bg-surface-base border border-border-default rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
       <div className="flex items-center justify-between px-1 pt-1">
         <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Pages</div>
         {onToggleSize && (
           <IconButton onClick={onToggleSize} aria-label={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
             title={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
-            className="p-0.5 text-rmpg-400 hover:text-white">
+            className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
             {large ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
           </IconButton>
         )}
@@ -131,14 +131,14 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             className={`group relative rounded-sm border ${
               isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
               batchSelected ? 'border-[#d4a017] ring-1 ring-[#d4a017]' :
-              active ? 'border-[#d4a017]' : 'border-[#222]'
+              active ? 'border-[#d4a017]' : 'border-border-default'
             } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
 
             {onTogglePageSelect && (
               <button type="button" onClick={(e) => { e.stopPropagation(); onTogglePageSelect(idx); }}
                 aria-label={batchSelected ? `Deselect page ${pageNumber}` : `Select page ${pageNumber} for batch ops`}
                 title="Select for batch rotate / crop-all"
-                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-[#444] text-transparent'}`}>
+                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-rmpg-600 text-transparent'}`}>
                 ✓
               </button>
             )}
@@ -152,7 +152,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             >
               <div className="bg-white aspect-[3/4] flex items-center justify-center overflow-hidden">
                 {pageOrder[idx] === 0 ? (
-                  <div className="text-[10px] text-gray-400">Blank</div>
+                  <div className="text-[10px] text-rmpg-400">Blank</div>
                 ) : (
                   <canvas
                     ref={(el) => { if (el) refs.current.set(idx, el); else refs.current.delete(idx); }}
@@ -164,28 +164,28 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             </button>
             <div className="flex items-center justify-between gap-0.5 mt-1 opacity-60 group-hover:opacity-100">
               <IconButton onClick={() => onMove(idx, -1)} aria-label="Move up" title="Move up" disabled={idx === 0}
-                className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowUp className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"><ArrowUp className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onMove(idx, 1)} aria-label="Move down" title="Move down" disabled={idx === pageOrder.length - 1}
-                className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowDown className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"><ArrowDown className="w-3 h-3" /></IconButton>
               {onRotateCcw && (
                 <IconButton onClick={() => onRotateCcw(idx)} aria-label="Rotate 90° counter-clockwise" title="Rotate 90° counter-clockwise"
-                  className="p-0.5 text-rmpg-400 hover:text-white"><RotateCcw className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><RotateCcw className="w-3 h-3" /></IconButton>
               )}
               <IconButton onClick={() => onRotate(idx)} aria-label="Rotate 90° clockwise" title="Rotate 90° clockwise"
-                className="p-0.5 text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><RotateCw className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onInsertBlank(idx)} aria-label="Insert blank after" title="Insert blank after"
-                className="p-0.5 text-rmpg-400 hover:text-white"><FilePlus2 className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><FilePlus2 className="w-3 h-3" /></IconButton>
               {onDuplicate && (
                 <IconButton onClick={() => onDuplicate(idx)} aria-label="Duplicate page" title="Duplicate this page"
-                  className="p-0.5 text-rmpg-400 hover:text-white"><Copy className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><Copy className="w-3 h-3" /></IconButton>
               )}
               {onExtract && (
                 <IconButton onClick={() => onExtract(idx)} aria-label="Extract page" title="Extract page to new PDF"
-                  className="p-0.5 text-rmpg-400 hover:text-white"><FileOutput className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><FileOutput className="w-3 h-3" /></IconButton>
               )}
               {meta?.crop && onClearCrop && (
                 <IconButton onClick={() => onClearCrop(idx)} aria-label="Clear crop" title="Clear crop"
-                  className="p-0.5 text-[#d4a017] hover:text-white"><Crop className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-[#d4a017] hover:text-rmpg-100"><Crop className="w-3 h-3" /></IconButton>
               )}
               <IconButton onClick={() => onDelete(idx)} aria-label="Delete page" title="Delete page"
                 className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></IconButton>

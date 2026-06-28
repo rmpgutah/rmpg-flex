@@ -19,7 +19,7 @@ struct FleetReadinessView: View {
                     if loading && vehicles.isEmpty {
                         ProgressView().tint(Theme.gold).padding(.top, 30)
                     } else if vehicles.isEmpty {
-                        Text("No fleet vehicles.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                        EmptyState(icon: "car.2", title: "No fleet vehicles").padding(.top, 24)
                     } else {
                         summaryGrid
                         SectionHeader(title: "Vehicles · \(vehicles.count)")
@@ -55,7 +55,7 @@ struct FleetReadinessView: View {
 
     private func countTile(_ label: String, _ n: Int, _ c: Color) -> some View {
         VStack(spacing: 2) {
-            Text("\(n)").font(.system(size: 20, weight: .bold)).foregroundStyle(n > 0 ? c : Theme.neutral)
+            Text("\(n)").font(Theme.Typography.title).fontWeight(.bold).foregroundStyle(n > 0 ? c : Theme.neutral)
             Text(label).font(.system(size: 8, weight: .semibold)).foregroundStyle(Theme.neutral)
                 .multilineTextAlignment(.center).lineLimit(2)
         }
@@ -70,7 +70,7 @@ struct FleetReadinessView: View {
             HStack(spacing: 10) {
                 Image(systemName: r.icon).font(.system(size: 15)).foregroundStyle(c).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(v.number).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    Text(v.number).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white)
                     Text([v.name.isEmpty ? nil : v.name, v.mileage.map { "\($0) mi" }]
                             .compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: 10)).foregroundStyle(Theme.neutral).lineLimit(1)

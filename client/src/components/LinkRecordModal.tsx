@@ -160,7 +160,7 @@ export default function LinkRecordModal({
 
       {/* Search Input */}
       <div>
-        <label className={labelClass}>Search {targetType}</label>
+        <label htmlFor="ff-linkrecordmodal-0" className={labelClass}>Search {targetType}</label>
         <div className="relative">
           <Search
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500"
@@ -242,7 +242,7 @@ export default function LinkRecordModal({
 
       {/* Relationship Dropdown */}
       <div>
-        <label className={labelClass}>Relationship</label>
+        <label htmlFor="ff-linkrecordmodal-1" className={labelClass}>Relationship</label>
         <select id="ff-linkrecordmodal-1"
           className="input-dark w-full text-xs"
           value={relationship}

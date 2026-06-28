@@ -1,6 +1,6 @@
 import type { IntelOverview } from '../useIntelOverview';
 
-const TILE = 'border border-[#1f1f1f] bg-[#070707] rounded-[2px] p-3 text-center';
+const TILE = 'border border-border-default bg-surface-overlay rounded-[2px] p-3 text-center';
 
 export default function StatTiles({ stats }: { stats: IntelOverview['stats'] }) {
   const items = [
@@ -13,7 +13,7 @@ export default function StatTiles({ stats }: { stats: IntelOverview['stats'] }) 
       {items.map((it) => (
         <div key={it.l} className={TILE}>
           <div className={`font-mono text-[20px] font-bold ${it.c}`}>{it.n}</div>
-          <div className="text-[8px] text-[#777] uppercase tracking-wide mt-[3px]">{it.l}</div>
+          <div className="text-[8px] text-rmpg-400 uppercase tracking-wide mt-[3px]">{it.l}</div>
         </div>
       ))}
     </div>

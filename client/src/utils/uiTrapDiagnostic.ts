@@ -203,26 +203,21 @@ export async function flushPendingPayloads(): Promise<void> {
 }
 
 // ── UI recovery: un-trap a frozen page ───────────────────────
+
 /**
- * Best-effort un-trap of a frozen UI: reset scroll/overflow locks and neutralize
- * orphaned full-screen click-blocking overlays (a stuck modal backdrop that
- * never unmounted is the leading cause of "buttons stopped working"). It does
- * NOT touch legitimate open dialogs/menus — only big fixed overlays that carry
- * no dialog semantics (no role, no aria-modal, no aria-label). Neutralizes by
- * setting pointer-events:none (non-destructive — preserves DOM/state) rather
- * than removing nodes.
+ * Detect genuine input-trapping overlays: fixed-position, ~full-viewport,
+ * pointer-active elements that carry NO dialog semantics. A stuck modal backdrop
+ * that never unmounted is the leading cause of "buttons stopped working", and
+ * the leading cause of THAT is a 404/throw inside an async handler that skipped
+ * the overlay's teardown. Legitimate dialogs/menus (role, aria-modal,
+ * aria-label) and the app shell (#root) are deliberately excluded, as are
+ * backdrops that host a real dialog. This is the SHARED predicate behind both
+ * the manual Ctrl+Alt+D recovery and the automatic watchdog, so the two can
+ * never disagree on what counts as a trap.
  */
-export function attemptTrapRecovery(): string[] {
-  const actions: string[] = [];
+export function findBlockingOverlays(): HTMLElement[] {
+  const out: HTMLElement[] = [];
   try {
-    // 1) Release scroll/overflow locks (common "can't interact/scroll" cause)
-    for (const el of [document.body, document.documentElement]) {
-      if (el && el.style.overflow && el.style.overflow !== 'visible') {
-        el.style.overflow = '';
-        actions.push(`reset ${el.tagName.toLowerCase()} overflow lock`);
-      }
-    }
-    // 2) Neutralize orphaned full-screen click-blocking overlays
     const vw = window.innerWidth, vh = window.innerHeight;
     for (const el of Array.from(document.querySelectorAll('*'))) {
       const he = el as HTMLElement;
@@ -230,9 +225,8 @@ export function attemptTrapRecovery(): string[] {
       if (s.position !== 'fixed') continue;
       if (s.pointerEvents === 'none') continue;
       const r = he.getBoundingClientRect();
-      const coversViewport = r.width >= vw * 0.8 && r.height >= vh * 0.8;
-      if (!coversViewport) continue;
-      // Skip legitimate dialogs/menus and anything with a11y semantics or content meaning.
+      if (!(r.width >= vw * 0.8 && r.height >= vh * 0.8)) continue;
+      // Skip legitimate dialogs/menus and anything with a11y semantics.
       const role = he.getAttribute('role');
       if (role === 'dialog' || role === 'menu' || role === 'alertdialog' || role === 'listbox') continue;
       if (he.getAttribute('aria-modal') === 'true') continue;
@@ -240,13 +234,68 @@ export function attemptTrapRecovery(): string[] {
       // Skip app shell / known roots that should keep pointer events.
       if (he.id === 'root' || he.id === 'pre-splash') continue;
       if (he.querySelector('[role="dialog"],[aria-modal="true"]')) continue; // backdrop hosting a real dialog — leave it
-      // Looks like an orphaned blocker — neutralize its click-trap.
-      he.style.pointerEvents = 'none';
-      actions.push(`neutralized fixed overlay z=${s.zIndex || '?'} ${(he.className || '').toString().slice(0, 60)}`);
+      out.push(he);
     }
+  } catch { /* best effort */ }
+  return out;
+}
+
+/** Release a body/html scroll-lock if one is set. Returns the actions taken. */
+function releaseOverflowLocks(): string[] {
+  const actions: string[] = [];
+  for (const el of [document.body, document.documentElement]) {
+    if (el && el.style.overflow && el.style.overflow !== 'visible') {
+      el.style.overflow = '';
+      actions.push(`reset ${el.tagName.toLowerCase()} overflow lock`);
+    }
+  }
+  return actions;
+}
+
+/** Neutralize an overlay's click-trap non-destructively (preserves DOM/state). */
+function neutralizeOverlay(he: HTMLElement): string {
+  const z = getComputedStyle(he).zIndex || '?';
+  he.style.pointerEvents = 'none';
+  return `neutralized fixed overlay z=${z} ${(he.className || '').toString().slice(0, 60)}`;
+}
+
+/**
+ * Best-effort un-trap of a frozen UI (manual Ctrl+Alt+D path): unconditionally
+ * release scroll/overflow locks, then neutralize every orphaned full-screen
+ * click-blocking overlay. Non-destructive — sets pointer-events:none rather than
+ * removing nodes, so component state survives. The user explicitly asked to
+ * un-stick the page, so this is the aggressive variant.
+ */
+export function attemptTrapRecovery(): string[] {
+  const actions: string[] = [];
+  try {
+    actions.push(...releaseOverflowLocks());
+    for (const he of findBlockingOverlays()) actions.push(neutralizeOverlay(he));
   } catch {
     /* best effort */
   }
+  return actions;
+}
+
+/**
+ * Conservative auto-recovery used by the watchdog: act ONLY when a genuine
+ * blocking overlay is present. Unlike attemptTrapRecovery, this performs ZERO
+ * DOM mutation when nothing is trapped, so a routine API error that left the UI
+ * perfectly usable triggers no side effects (no spurious overflow reset, no
+ * fighting a legitimately-open overlay that simply has no a11y semantics yet).
+ * Returns the actions taken (empty array when there was nothing to recover).
+ */
+export function recoverIfTrapped(): string[] {
+  const actions: string[] = [];
+  try {
+    // Always release overflow locks — an async error may have stranded
+    // overflow:hidden on body even when no blocking overlay is visible
+    // (e.g. the modal that set the lock was already removed by a later
+    // render, but the inline overflow style was never restored).
+    actions.push(...releaseOverflowLocks());
+    const blockers = findBlockingOverlays();
+    for (const he of blockers) actions.push(neutralizeOverlay(he));
+  } catch { /* best effort */ }
   return actions;
 }
 
@@ -255,11 +304,11 @@ export function attemptTrapRecovery(): string[] {
  * Inline-styled, pointer-events:none, high z-index — visible even when the
  * app CSS is broken. Auto-removes after 4 s.
  */
-function showRecoveryToast(actions: string[]): void {
+function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured'): void {
   try {
     const blocked = actions.filter((a) => a.startsWith('neutralized'));
     const overflows = actions.filter((a) => a.startsWith('reset'));
-    const parts: string[] = ['UI diagnostic captured'];
+    const parts: string[] = [headline];
     if (blocked.length > 0) {
       parts.push(`recovered ${blocked.length} blocker${blocked.length > 1 ? 's' : ''}`);
     }
@@ -278,7 +327,7 @@ function showRecoveryToast(actions: string[]): void {
       left: '50%',
       transform: 'translateX(-50%)',
       zIndex: '2147483647',
-      background: '#1a1a1a',
+      background: 'var(--surface-raised)',
       color: '#d4a017',
       border: '1px solid #d4a017',
       borderRadius: '2px',
@@ -298,18 +347,98 @@ function showRecoveryToast(actions: string[]): void {
   }
 }
 
+// ── Automatic trap watchdog ──────────────────────────────────
+/**
+ * A 404 (or any thrown API error) inside an async handler/effect becomes an
+ * UNHANDLED PROMISE REJECTION — React ErrorBoundaries can't see it (they only
+ * catch render/lifecycle throws), so if the failing operation had put up a
+ * full-screen blocking overlay and its teardown sat AFTER the `await` (never
+ * reached on throw), the overlay is stranded and the whole app appears frozen:
+ * "buttons dead, no pathway, no error card". This watchdog promotes the existing
+ * manual Ctrl+Alt+D recovery into an automatic safety net so field users aren't
+ * stuck. On a rejection it waits `delayMs` (letting a correct teardown win the
+ * race), then recovers ONLY if a genuine trap still persists. Throttled so a
+ * rejection storm can't loop. Dependencies are injected so the scheduling and
+ * throttle logic is unit-testable without a real DOM or wall clock.
+ */
+export interface TrapWatchdogDeps {
+  /** Returns the recovery actions taken; empty when there was no trap to fix. */
+  recoverIfTrapped: () => string[];
+  /** Called with the non-empty action list after a successful auto-recovery. */
+  onRecovered: (actions: string[]) => void;
+  setTimer: (cb: () => void, ms: number) => number;
+  clearTimer: (handle: number) => void;
+  now: () => number;
+  /** Grace period before checking for a persistent trap. Default 1500ms. */
+  delayMs?: number;
+  /** Minimum gap between two auto-recoveries. Default 5000ms. */
+  throttleMs?: number;
+}
+
+export interface TrapWatchdog {
+  /** Arm a delayed trap check (call on an unhandled rejection / uncaught error). */
+  notifyPotentialTrap(): void;
+  /** Cancel any pending check. */
+  dispose(): void;
+}
+
+export function createTrapWatchdog(deps: TrapWatchdogDeps): TrapWatchdog {
+  const delayMs = deps.delayMs ?? 1500;
+  const throttleMs = deps.throttleMs ?? 5000;
+  let pending: number | null = null;
+  let lastRecoveryAt = -Infinity;
+
+  const runCheck = (): void => {
+    pending = null;
+    // Don't fight a recovery we just performed (guards against a rejection loop).
+    if (deps.now() - lastRecoveryAt < throttleMs) return;
+    const actions = deps.recoverIfTrapped();
+    if (actions.length > 0) {
+      lastRecoveryAt = deps.now();
+      deps.onRecovered(actions);
+    }
+  };
+
+  return {
+    notifyPotentialTrap(): void {
+      if (pending !== null) return; // coalesce a burst of rejections into one check
+      pending = deps.setTimer(runCheck, delayMs);
+    },
+    dispose(): void {
+      if (pending !== null) { deps.clearTimer(pending); pending = null; }
+    },
+  };
+}
+
 // ── Install global keystroke + error capture ─────────────────
 let installed = false;
 export function installUiTrapHotkey(): void {
   if (installed) return;
   installed = true;
 
+  const watchdog = createTrapWatchdog({
+    recoverIfTrapped,
+    onRecovered: (actions) => {
+      // Persist evidence of what was stuck, then tell the user in plain language.
+      void captureUiTrap('auto_recovered_after_unhandled_rejection');
+      showRecoveryToast(actions, 'Screen unlocked after a failed request');
+    },
+    setTimer: (cb, ms) => window.setTimeout(cb, ms),
+    clearTimer: (h) => window.clearTimeout(h),
+    now: () => Date.now(),
+  });
+
   // Capture global JS errors so we know if a render exception preceded the freeze
   window.addEventListener('error', (e) => {
     captureError(`error: ${e.message} at ${e.filename}:${e.lineno}`);
+    // Arm the watchdog only for genuine script exceptions — resource-load errors
+    // (img/script 404) fire here too but carry no message and can't strand an
+    // overlay. The check itself is a no-op when nothing is actually trapped.
+    if (e.error || e.message) watchdog.notifyPotentialTrap();
   });
   window.addEventListener('unhandledrejection', (e) => {
     captureError(`unhandledrejection: ${String(e.reason).slice(0, 300)}`);
+    watchdog.notifyPotentialTrap();
   });
 
   // Ctrl+Alt+D — Diagnostic + recovery. Reachable even when click handlers are dead.

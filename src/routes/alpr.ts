@@ -33,10 +33,13 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { notConfigured } from '../utils/notConfigured';
 import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
+import { emitAnalytics, alprReadEvent } from '../utils/analytics';
+import { recordAudit } from '../utils/auditLog';
 
 const alpr = new Hono<Env>();
 
@@ -583,6 +586,18 @@ alpr.post('/capture', operational, async (c) => {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId, imageKey,
   });
 
+  // Fan each finalized read out to the analytics lakehouse (best-effort; no-op
+  // until the ANALYTICS pipeline is provisioned). D1 above is the source of truth.
+  if (fin.vehicles.length) {
+    const occurredAt = new Date().toISOString();
+    emitAnalytics(c, c.env.ANALYTICS, fin.vehicles.map((v) =>
+      alprReadEvent(
+        { captureRowId, callId, incidentId, lat, lng, locationText, userId, source: 'field' },
+        v, occurredAt,
+      ),
+    ));
+  }
+
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   // Honest status: reflect finalize's real outcome instead of hardcoding success.
   const finalized = fin.status === 'done';
@@ -802,10 +817,7 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
     confirmReviewStatus(persisted), corrected, userId, id);
   if (!persisted) {
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'ALPR_ACCEPT_UNLINKED', 'alpr_capture', ?, 'authoritative write failed', datetime('now'))`,
-        userId, id);
+      await recordAudit(c, { action: 'ALPR_ACCEPT_UNLINKED', entityType: 'alpr_capture', entityId: id, details: 'authoritative write failed', actorId: userId });
     } catch { /* best-effort */ }
   }
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
@@ -917,10 +929,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   try {
     const diff = describeEdit(row, values);
     const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
-      userId, id, detail.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_VERIFY', entityType: 'alpr_capture', entityId: id, details: detail.slice(0, 500), actorId: userId });
   } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
 
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
@@ -987,10 +996,7 @@ alpr.post('/captures/bulk', operational, async (c) => {
   // One audit row for the batch.
   try {
     const okCount = results.filter((r) => r.ok).length;
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_BULK_VERIFY', 'alpr_capture', 0, ?, datetime('now'))`,
-      userId, `${action} ${okCount}/${ids.length}`.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_BULK_VERIFY', entityType: 'alpr_capture', entityId: 0, details: `${action} ${okCount}/${ids.length}`.slice(0, 500), actorId: userId });
   } catch { /* best-effort */ }
   return c.json({ success: true, action, results, hits: allHits });
 });
@@ -1071,7 +1077,7 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
 // then routed through the same trust path as every other source (source_type='edge_lora').
 alpr.post('/edge', async (c) => {
   const secret = c.env.ALPR_EDGE_SECRET;
-  if (!secret) return c.json({ error: 'edge ingest not configured' }, 503);
+  if (!secret) return notConfigured(c, 'alpr_edge_secret_unset', { error: 'edge ingest not configured' });
   const ts = Number(c.req.header('X-Edge-Timestamp'));
   const sig = c.req.header('X-Edge-Signature') ?? '';
   const body = await c.req.text();
@@ -1137,6 +1143,23 @@ alpr.post('/edge', async (c) => {
       trust.consensusRatio, trust.trustScore, trust.basis, 'edge_lora', 0);
     photoRowId = r.meta.last_row_id as number;
   }
+  // Fan the edge read out to the analytics lakehouse (best-effort; no-op until
+  // the ANALYTICS pipeline is provisioned). Edge reads are unattended → userId null.
+  emitAnalytics(c, c.env.ANALYTICS, [alprReadEvent(
+    {
+      captureRowId: null, callId: null, incidentId: null,
+      lat: num(rec.lat), lng: num(rec.lng), locationText: rec.location_text ?? null,
+      userId: null, source: 'edge',
+    },
+    {
+      plate: rec.plate ?? null, canonical_plate: canonical, state: rec.state ?? null,
+      make: rec.make ?? null, model: rec.model ?? null, year: rec.year ?? null,
+      color: rec.color ?? null, vehicle_type: rec.type ?? null,
+      trust_score: trust.trustScore, vehicle_record_id: screen.vehicleId ?? null, hits,
+    },
+    new Date().toISOString(),
+  )]);
+
   return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
                   trust_basis: trust.basis, photo_row_id: photoRowId,
                   sighting_id: sightingId, hits,

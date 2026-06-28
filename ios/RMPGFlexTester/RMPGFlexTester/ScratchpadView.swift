@@ -32,7 +32,7 @@ struct ScratchpadView: View {
         NavigationStack {
             VStack(spacing: 8) {
                 TextEditor(text: $text)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(Theme.Typography.mono)
                     .foregroundStyle(.white)
                     .scrollContentBackground(.hidden)
                     .padding(6)
@@ -52,7 +52,7 @@ struct ScratchpadView: View {
                     .buttonStyle(RaisedButtonStyle())
                     .disabled(text.isEmpty)
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("CALL SCRATCHPAD")
             .navigationBarTitleDisplayMode(.inline)

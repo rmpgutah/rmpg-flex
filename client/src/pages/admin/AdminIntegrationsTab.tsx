@@ -85,7 +85,7 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
-  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
+  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4o / 4o-mini — narrative generation, report writing, evidence analysis. Used as fallback below Claude in the callAi() chain across Deep Research, OCR, Intel AI. Test sends a minimal Chat Completions ping.', pattern: /^sk-(?:proj-)?[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk- or sk-proj-', testable: true },
   { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks. Deep Research & OCR silently fall back to free Workers AI when this is invalid or out of credit — use Test to confirm it actually works.', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-', testable: true },
   { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
   { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },
@@ -383,7 +383,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
-                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
+                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-rmpg-100 font-mono placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
                 />
                 <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -394,7 +394,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 type="button"
                 onClick={() => handleSave(key)}
                 disabled={!values[key]?.trim() || saving === key}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white rounded-sm transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-rmpg-100 rounded-sm transition-colors"
               >
                 {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 Save
@@ -682,7 +682,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="p-4 space-y-4">
             {/* URL */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
+              <label htmlFor="ff-adminintegrationstab-1" className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm">
                   <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
@@ -699,7 +699,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
             {/* API Key */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">
+              <label htmlFor="ff-adminintegrationstab-2" className="block text-xs text-rmpg-500 mb-1">
                 API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
               </label>
               <div className="flex items-center gap-2">
@@ -727,7 +727,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                 >
                   {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                   Save
@@ -772,10 +772,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
 
       {/* ── Cloud Storage & Infrastructure ── */}
-      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-gray-400" />} keys={CLOUD_STORAGE_KEYS} />
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-rmpg-400" />} keys={CLOUD_STORAGE_KEYS} />
 
       {/* ── Data Services ── */}
-      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-gray-400" />} keys={DATA_SERVICE_KEYS} />
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-rmpg-400" />} keys={DATA_SERVICE_KEYS} />
 
       {/* ── RapidAPI & Third-Party ── */}
       <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
@@ -789,7 +789,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
           <button type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Create API Key
@@ -994,7 +994,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               {!createdKey ? (
                 <>
                   <div>
-                    <label className="block text-xs text-rmpg-500 mb-1">Key Name</label>
+                    <label htmlFor="ff-adminintegrationstab-3" className="block text-xs text-rmpg-500 mb-1">Key Name</label>
                     <input id="ff-adminintegrationstab-3"
                       type="text"
                       value={newKeyName}
@@ -1015,7 +1015,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     <button type="button"
                       onClick={handleCreate}
                       disabled={creating || !newKeyName.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                     >
                       {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3.5 h-3.5" />}
                       Create
@@ -1032,7 +1032,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       </code>
                       <button type="button"
                         onClick={() => handleCopy(createdKey)}
-                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                         title="Copy to clipboard"
                       >
                         {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1049,7 +1049,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <div className="flex justify-end">
                     <button type="button"
                       onClick={closeCreateModal}
-                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                     >
                       Close
                     </button>

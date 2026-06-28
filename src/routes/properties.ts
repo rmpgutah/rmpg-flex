@@ -82,7 +82,13 @@ properties.put('/:id', async (c) => {
       'alarm_account', 'alarm_company', 'alarm_system', 'camera_system',
       'closing_hours', 'contact_email', 'opening_hours', 'parking_info',
       'patrol_frequency', 'roof_access', 'secondary_contact_name',
-      'secondary_contact_phone', 'utility_shutoffs']);
+      'secondary_contact_phone', 'utility_shutoffs',
+      // Assessor-sourced columns (migration 0142). `year_built` was already
+      // writable above (pre-existing column from 0037); the rest are new.
+      'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+      'total_market_value', 'land_sqft',
+      'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+      'assessor_last_synced_at', 'assessor_source_url']);
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
     if (cols.length === 0) return c.json({ message: 'No changes' });

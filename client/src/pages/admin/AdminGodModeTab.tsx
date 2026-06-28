@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { toDisplayLabel } from '../../utils/formatters';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
@@ -60,6 +61,10 @@ export default function AdminGodModeTab() {
   const [impersonateUserId, setImpersonateUserId] = useState('');
   const [users, setUsers] = useState<any[]>([]);
 
+  // Dispatch units (bulk-reassign target — dispatch assigns calls to UNITS,
+  // not directly to officers; each option still shows the staffing officer)
+  const [units, setUnits] = useState<any[]>([]);
+
   // Broadcast
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastMessage, setBroadcastMessage] = useState('');
@@ -105,16 +110,18 @@ export default function AdminGodModeTab() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [stats, overview, bk, userList] = await Promise.all([
+      const [stats, overview, bk, userList, unitList] = await Promise.all([
         apiFetch<DbStats>('/admin/database/stats').catch(() => null),
         apiFetch<SystemOverview>('/admin/system-overview').catch(() => null),
         apiFetch<Backup[]>('/admin/database/backups').catch(() => []),
         apiFetch<any[]>('/personnel').catch(() => []),
+        apiFetch<any[]>('/dispatch/units').catch(() => []),
       ]);
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);
       setBackups(asArray<Backup>(bk));
       setUsers(asArray<any>(userList));
+      setUnits(asArray<any>(unitList));
 
       const [ws, presence, lockdown, feed] = await Promise.all([
         apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
@@ -233,8 +240,12 @@ export default function AdminGodModeTab() {
     const ids = reassignCallIds.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
     if (!ids.length || !reassignTargetId) return;
     try {
-      const r = await apiFetch<any>('/admin/calls/bulk-reassign', {
-        method: 'POST', body: JSON.stringify({ call_ids: ids, target_officer_id: parseInt(reassignTargetId) }),
+      // Mounted at /api/dispatch/calls in the Worker (calls.post('/bulk-reassign')).
+      // The old /admin/calls/bulk-reassign had no route — this button 404'd.
+      // Dispatch assigns calls to UNITS (assigned_unit_ids), so the target is a
+      // unit_id; the handler returns `target` = the unit's call-sign for the toast.
+      const r = await apiFetch<any>('/dispatch/calls/bulk-reassign', {
+        method: 'POST', body: JSON.stringify({ call_ids: ids, unit_id: parseInt(reassignTargetId) }),
       });
       showResult('success', `Reassigned ${r.updated} calls to ${r.target}`);
     } catch (err: any) { showResult('error', err.message); }
@@ -346,7 +357,7 @@ export default function AdminGodModeTab() {
           <Shield size={20} className="text-red-400" />
           <h2 className="text-sm font-bold text-red-400 uppercase tracking-wider">God Mode — Admin Control Panel</h2>
         </div>
-        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-surface-raised hover:bg-surface-overlay border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
+        <button onClick={loadData} disabled={loading} className="flex items-center gap-1 px-2 py-1 bg-surface-raised hover:bg-surface-overlay border border-border-default rounded-sm text-[11px] text-rmpg-300">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
         </button>
       </div>
@@ -362,7 +373,7 @@ export default function AdminGodModeTab() {
       {/* System Overview */}
       {systemOverview?.server && (
         <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
+          <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
             <StatBox label="Uptime" value={systemOverview.server.uptime ?? '—'} />
             <StatBox label="Node" value={systemOverview.server.node_version ?? '?'} />
@@ -374,8 +385,8 @@ export default function AdminGodModeTab() {
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
             {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0).map(([table, count]) => (
               <div key={table} className="bg-surface-sunken px-2 py-1 rounded-sm">
-                <div className="text-[9px] text-gray-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
-                <div className="text-[11px] font-mono text-white">{formatNumber(count)}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
+                <div className="text-[11px] font-mono text-rmpg-100">{formatNumber(count)}</div>
               </div>
             ))}
           </div>
@@ -385,7 +396,7 @@ export default function AdminGodModeTab() {
       {/* Database Maintenance */}
       {dbStats && (
         <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Database size={14} /> Database Maintenance</h3>
+          <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Database size={14} /> Database Maintenance</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
             <StatBox label="DB Size" value={`${dbStats.database_size_mb} MB`} />
             <StatBox label="Reclaimable" value={`${dbStats.freelist_mb} MB (${dbStats.reclaimable_percent}%)`} />
@@ -400,11 +411,11 @@ export default function AdminGodModeTab() {
           </div>
           {/* Top tables */}
           <div className="bg-surface-sunken rounded-sm p-2 max-h-40 overflow-y-auto">
-            <div className="text-[9px] text-gray-500 uppercase mb-1">Top Tables by Row Count</div>
+            <div className="text-[9px] text-rmpg-500 uppercase mb-1">Top Tables by Row Count</div>
             {asArray<{ name: string; row_count: number }>(dbStats.tables).slice(0, 15).map(t => (
               <div key={t.name} className="flex justify-between text-[11px] py-0.5 border-b border-border-subtle/50">
-                <span className="text-gray-300 font-mono">{t.name}</span>
-                <span className="text-white font-mono">{formatNumber(t.row_count)}</span>
+                <span className="text-rmpg-300 font-mono">{t.name}</span>
+                <span className="text-rmpg-100 font-mono">{formatNumber(t.row_count)}</span>
               </div>
             ))}
           </div>
@@ -413,16 +424,16 @@ export default function AdminGodModeTab() {
 
       {/* Backups */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Archive size={14} /> Database Backups</h3>
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Archive size={14} /> Database Backups</h3>
         {backups.length === 0 ? (
-          <div className="text-[11px] text-gray-500 italic">No backups found</div>
+          <div className="text-[11px] text-rmpg-500 italic">No backups found</div>
         ) : (
           <div className="space-y-1">
             {backups.map(b => (
               <div key={b.filename} className="flex items-center justify-between bg-surface-sunken px-2 py-1.5 rounded-sm" onContextMenu={(e) => openMenu(e, buildBackupMenu(b))}>
                 <div>
-                  <div className="text-[11px] font-mono text-gray-300">{b.filename}</div>
-                  <div className="text-[9px] text-gray-500">{b.size_mb} MB — {safeDateTimeStr(b.created_at)}</div>
+                  <div className="text-[11px] font-mono text-rmpg-300">{b.filename}</div>
+                  <div className="text-[9px] text-rmpg-500">{b.size_mb} MB — {safeDateTimeStr(b.created_at)}</div>
                 </div>
                 <button onClick={() => handleDeleteBackup(b.filename)} className="px-2 py-1 bg-red-900/40 hover:bg-red-800/60 text-red-400 text-[10px] rounded-sm"><Trash2 size={12} /></button>
               </div>
@@ -434,19 +445,19 @@ export default function AdminGodModeTab() {
       {/* User Impersonation */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
         <h3 className="text-xs font-bold text-yellow-400 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={14} /> User Impersonation</h3>
-        <p className="text-[10px] text-gray-500 mb-2">Generate a 30-minute token to act as another user. All actions are audit-logged under your admin account.</p>
+        <p className="text-[10px] text-rmpg-500 mb-2">Generate a 30-minute token to act as another user. All actions are audit-logged under your admin account.</p>
         <div className="flex items-center gap-2">
           <select id="ff-admingodmodetab-0"
             value={impersonateUserId}
             onChange={e => setImpersonateUserId(e.target.value)}
-            className="flex-1 bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
+            className="flex-1 bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100"
           >
             <option value="">Select user...</option>
             {users.filter((u: any) => u.role !== 'admin').map((u: any) => (
               <option key={u.id} value={u.id}>{u.full_name || u.username} ({u.role}) — {u.call_sign || u.badge_number || 'N/A'}</option>
             ))}
           </select>
-          <button onClick={handleImpersonate} disabled={!impersonateUserId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleImpersonate} disabled={!impersonateUserId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             <Eye size={12} /> Impersonate
           </button>
         </div>
@@ -454,26 +465,26 @@ export default function AdminGodModeTab() {
 
       {/* Notification Broadcast */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
         <div className="space-y-2">
           <input id="ff-admingodmodetab-1"
             type="text"
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
             placeholder="Notification title..."
-            className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
           />
           <RichTextArea
             value={broadcastMessage}
             onChange={e => setBroadcastMessage(e.target.value)}
             placeholder="Message body..."
             rows={3}
-            className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-none"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none"
           />
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-500">Target:</span>
+            <span className="text-[10px] text-rmpg-500">Target:</span>
             {['officer', 'dispatcher', 'supervisor', 'manager'].map(role => (
-              <label key={role} className="flex items-center gap-1 text-[10px] text-gray-400">
+              <label key={role} className="flex items-center gap-1 text-[10px] text-rmpg-400">
                 <input id="ff-admingodmodetab-2"
                   type="checkbox"
                   checked={broadcastRoles.includes(role)}
@@ -483,9 +494,9 @@ export default function AdminGodModeTab() {
                 {role}
               </label>
             ))}
-            <span className="text-[9px] text-gray-600">(none = all users)</span>
+            <span className="text-[9px] text-rmpg-500">(none = all users)</span>
           </div>
-          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleBroadcast} disabled={!broadcastTitle.trim() || !broadcastMessage.trim()} className="px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             <Bell size={12} /> Send Broadcast
           </button>
         </div>
@@ -496,27 +507,27 @@ export default function AdminGodModeTab() {
         <h3 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1.5"><Trash2 size={14} /> Data Purge Tools</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="bg-surface-sunken p-2 rounded-sm">
-            <div className="text-[10px] text-gray-400 mb-1">Activity Logs</div>
+            <div className="text-[10px] text-rmpg-400 mb-1">Activity Logs</div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-500">Keep</span>
-              <input id="ff-admingodmodetab-3" type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-surface-raised border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
-              <span className="text-[10px] text-gray-500">days</span>
+              <span className="text-[10px] text-rmpg-500">Keep</span>
+              <input id="ff-admingodmodetab-3" type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-surface-raised border border-border-default rounded-sm px-1.5 py-1 text-[11px] text-rmpg-100 text-center" />
+              <span className="text-[10px] text-rmpg-500">days</span>
               <button onClick={handlePurgeLogs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
           </div>
           <div className="bg-surface-sunken p-2 rounded-sm">
-            <div className="text-[10px] text-gray-400 mb-1">Read Notifications</div>
+            <div className="text-[10px] text-rmpg-400 mb-1">Read Notifications</div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-500">Keep</span>
-              <input id="ff-admingodmodetab-4" type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-surface-raised border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
-              <span className="text-[10px] text-gray-500">days</span>
+              <span className="text-[10px] text-rmpg-500">Keep</span>
+              <input id="ff-admingodmodetab-4" type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-surface-raised border border-border-default rounded-sm px-1.5 py-1 text-[11px] text-rmpg-100 text-center" />
+              <span className="text-[10px] text-rmpg-500">days</span>
               <button onClick={handlePurgeNotifs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
           </div>
           <div className="bg-surface-sunken p-2 rounded-sm">
-            <div className="text-[10px] text-gray-400 mb-1">Expired Sessions</div>
+            <div className="text-[10px] text-rmpg-400 mb-1">Expired Sessions</div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-500">Remove all expired tokens</span>
+              <span className="text-[10px] text-rmpg-500">Remove all expired tokens</span>
               <button onClick={handlePurgeSessions} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
           </div>
@@ -526,29 +537,29 @@ export default function AdminGodModeTab() {
       {/* User Presence */}
       {userPresence && (
         <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-          <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Users size={14} /> User Presence</h3>
+          <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Users size={14} /> User Presence</h3>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-surface-sunken px-2 py-1.5 rounded-sm text-center">
-              <div className="text-[9px] text-gray-500 uppercase">Online</div>
+              <div className="text-[9px] text-rmpg-500 uppercase">Online</div>
               <div className="text-[14px] font-mono font-bold text-green-400">{userPresence.online || 0}</div>
             </div>
             <div className="bg-surface-sunken px-2 py-1.5 rounded-sm text-center">
-              <div className="text-[9px] text-gray-500 uppercase">Idle</div>
+              <div className="text-[9px] text-rmpg-500 uppercase">Idle</div>
               <div className="text-[14px] font-mono font-bold text-yellow-400">{userPresence.idle || 0}</div>
             </div>
             <div className="bg-surface-sunken px-2 py-1.5 rounded-sm text-center">
-              <div className="text-[9px] text-gray-500 uppercase">Offline</div>
-              <div className="text-[14px] font-mono font-bold text-gray-500">{userPresence.offline || 0}</div>
+              <div className="text-[9px] text-rmpg-500 uppercase">Offline</div>
+              <div className="text-[14px] font-mono font-bold text-rmpg-500">{userPresence.offline || 0}</div>
             </div>
           </div>
           {userPresence.users && userPresence.users.length > 0 && (
             <div className="bg-surface-sunken rounded-sm p-2 max-h-40 overflow-y-auto">
               {userPresence.users.map((u: any, i: number) => (
                 <div key={i} className="flex items-center gap-2 py-0.5 border-b border-border-subtle/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
-                  <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-[#2b2b2b]'}`} />
-                  <span className="text-gray-300 font-mono">{u.username || u.full_name}</span>
-                  <span className="text-gray-600 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                  {u.last_seen && <span className="text-gray-600 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
+                  <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-rmpg-700'}`} />
+                  <span className="text-rmpg-300 font-mono">{u.username || u.full_name}</span>
+                  <span className="text-rmpg-500 text-[9px]">{toDisplayLabel(u.role || '')}</span>
+                  {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
                 </div>
               ))}
             </div>
@@ -558,29 +569,29 @@ export default function AdminGodModeTab() {
 
       {/* WebSocket Clients */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Radio size={14} /> WebSocket Clients</h3>
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Radio size={14} /> WebSocket Clients</h3>
         {wsClients.length === 0 ? (
-          <div className="text-[11px] text-gray-500 italic">No connected clients</div>
+          <div className="text-[11px] text-rmpg-500 italic">No connected clients</div>
         ) : (
           <div className="bg-surface-sunken rounded-sm overflow-x-auto">
             <table className="w-full text-[11px]">
               <thead>
                 <tr className="border-b border-border-subtle">
-                  <th className="text-left px-2 py-1 text-gray-500 font-normal">User ID</th>
-                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Username</th>
-                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Role</th>
-                  <th className="text-left px-2 py-1 text-gray-500 font-normal">IP</th>
-                  <th className="text-left px-2 py-1 text-gray-500 font-normal">Connected</th>
+                  <th className="text-left px-2 py-1 text-rmpg-500 font-normal">User ID</th>
+                  <th className="text-left px-2 py-1 text-rmpg-500 font-normal">Username</th>
+                  <th className="text-left px-2 py-1 text-rmpg-500 font-normal">Role</th>
+                  <th className="text-left px-2 py-1 text-rmpg-500 font-normal">IP</th>
+                  <th className="text-left px-2 py-1 text-rmpg-500 font-normal">Connected</th>
                 </tr>
               </thead>
               <tbody>
                 {wsClients.map((c: any, i: number) => (
                   <tr key={i} className="border-b border-border-subtle/50" onContextMenu={(e) => openMenu(e, buildWsClientMenu(c))}>
-                    <td className="px-2 py-1 font-mono text-gray-400">{c.userId}</td>
-                    <td className="px-2 py-1 text-white">{c.username}</td>
-                    <td className="px-2 py-1 text-gray-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
-                    <td className="px-2 py-1 font-mono text-gray-500">{c.ip}</td>
-                    <td className="px-2 py-1 text-gray-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
+                    <td className="px-2 py-1 font-mono text-rmpg-400">{c.userId}</td>
+                    <td className="px-2 py-1 text-rmpg-100">{c.username}</td>
+                    <td className="px-2 py-1 text-rmpg-400">{toDisplayLabel(c.role || '')}</td>
+                    <td className="px-2 py-1 font-mono text-rmpg-500">{c.ip}</td>
+                    <td className="px-2 py-1 text-rmpg-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -595,39 +606,41 @@ export default function AdminGodModeTab() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Bulk Reassign */}
           <div className="bg-surface-sunken p-2 rounded-sm space-y-2">
-            <div className="text-[10px] text-gray-400 font-bold uppercase">Bulk Reassign Calls</div>
+            <div className="text-[10px] text-rmpg-400 font-bold uppercase">Bulk Reassign Calls</div>
             <RichTextArea
               value={reassignCallIds}
               onChange={e => setReassignCallIds(e.target.value)}
               placeholder="Call IDs (comma-separated): 101, 102, 103"
               rows={2}
-              className="w-full bg-surface-raised border border-[#2a2a2a] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none font-mono"
             />
             <select id="ff-admingodmodetab-5"
               value={reassignTargetId}
               onChange={e => setReassignTargetId(e.target.value)}
-              className="w-full bg-surface-raised border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100"
             >
-              <option value="">Target officer...</option>
-              {users.filter((u: any) => ['officer', 'supervisor'].includes(u.role)).map((u: any) => (
-                <option key={u.id} value={u.id}>{u.full_name || u.username} ({u.call_sign || u.badge_number || 'N/A'})</option>
+              <option value="">Target unit...</option>
+              {units.map((u: any) => (
+                <option key={u.id} value={u.id}>
+                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${String(u.status).replace(/_/g, ' ')})` : ''}
+                </option>
               ))}
             </select>
-            <button onClick={handleBulkReassign} disabled={!reassignCallIds || !reassignTargetId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white">
+            <button onClick={handleBulkReassign} disabled={!reassignCallIds || !reassignTargetId} className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100">
               Reassign Calls
             </button>
           </div>
           {/* Force Close All */}
           <div className="bg-surface-sunken p-2 rounded-sm space-y-2">
-            <div className="text-[10px] text-gray-400 font-bold uppercase">Force Close All Open Calls</div>
+            <div className="text-[10px] text-rmpg-400 font-bold uppercase">Force Close All Open Calls</div>
             <input id="ff-admingodmodetab-6"
               type="text"
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
               placeholder="Disposition..."
-              className="w-full bg-surface-raised border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
-            <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-white">
+            <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-rmpg-100">
               Force Close ALL Open Calls
             </button>
           </div>
@@ -637,19 +650,19 @@ export default function AdminGodModeTab() {
       {/* SQL Query Console */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
         <h3 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1.5"><Terminal size={14} /> SQL Query Console</h3>
-        <p className="text-[9px] text-gray-500 mb-2">Direct database access. Use with caution — queries run against the live production database.</p>
+        <p className="text-[9px] text-rmpg-500 mb-2">Direct database access. Use with caution — queries run against the live production database.</p>
         <RichTextArea
           value={sqlQuery}
           onChange={e => setSqlQuery(e.target.value)}
           placeholder="SELECT * FROM users LIMIT 10;"
           rows={4}
-          className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 resize-y font-mono"
+          className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-y font-mono"
         />
         <div className="flex items-center gap-2 mt-2">
-          <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             {sqlRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Run Query
           </button>
-          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-surface-raised hover:bg-surface-overlay border border-[#2a2a2a] rounded-sm text-[11px] text-gray-300">
+          <button onClick={() => { setSqlQuery(''); setSqlResult(null); }} className="px-3 py-1.5 bg-surface-raised hover:bg-surface-overlay border border-border-default rounded-sm text-[11px] text-rmpg-300">
             Clear
           </button>
         </div>
@@ -662,7 +675,7 @@ export default function AdminGodModeTab() {
                 <thead>
                   <tr className="border-b border-border-subtle">
                     {sqlResult.columns?.map((col: string) => (
-                      <th key={col} className="text-left px-1.5 py-1 text-gray-500 font-normal whitespace-nowrap">{col}</th>
+                      <th key={col} className="text-left px-1.5 py-1 text-rmpg-500 font-normal whitespace-nowrap">{col}</th>
                     ))}
                   </tr>
                 </thead>
@@ -670,7 +683,7 @@ export default function AdminGodModeTab() {
                   {sqlResult.rows.map((row: any, i: number) => (
                     <tr key={i} className="border-b border-border-subtle/30">
                       {sqlResult.columns?.map((col: string) => (
-                        <td key={col} className="px-1.5 py-0.5 text-gray-300 whitespace-nowrap max-w-[200px] truncate">{String(row[col] ?? '')}</td>
+                        <td key={col} className="px-1.5 py-0.5 text-rmpg-300 whitespace-nowrap max-w-[200px] truncate">{String(row[col] ?? '')}</td>
                       ))}
                     </tr>
                   ))}
@@ -682,7 +695,7 @@ export default function AdminGodModeTab() {
               </div>
             )}
             {sqlResult.row_count !== undefined && (
-              <div className="text-[9px] text-gray-500 mt-1">{sqlResult.row_count} rows returned</div>
+              <div className="text-[9px] text-rmpg-500 mt-1">{sqlResult.row_count} rows returned</div>
             )}
           </div>
         )}
@@ -706,9 +719,9 @@ export default function AdminGodModeTab() {
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
               placeholder="Lockdown message..."
-              className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
-            <label className="flex items-center gap-2 text-[10px] text-gray-400">
+            <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
               <input id="ff-admingodmodetab-8"
                 type="checkbox"
                 checked={lockdownKickSessions}
@@ -719,37 +732,37 @@ export default function AdminGodModeTab() {
             </label>
           </div>
         )}
-        <button onClick={handleToggleLockdown} className={`px-4 py-1.5 rounded-sm text-[11px] font-bold text-white flex items-center gap-1 ${lockdownStatus?.active ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}>
+        <button onClick={handleToggleLockdown} className={`px-4 py-1.5 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1 ${lockdownStatus?.active ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500'}`}>
           {lockdownStatus?.active ? <><Unlock size={12} /> Disable Lockdown</> : <><Lock size={12} /> Enable Lockdown</>}
         </button>
       </div>
 
       {/* Merge Person Records */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Merge size={14} /> Merge Person Records</h3>
-        <p className="text-[9px] text-gray-500 mb-2">Merge duplicate person records. The "merge" record will be deleted and all associated records reassigned to the "keep" record.</p>
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Merge size={14} /> Merge Person Records</h3>
+        <p className="text-[9px] text-rmpg-500 mb-2">Merge duplicate person records. The "merge" record will be deleted and all associated records reassigned to the "keep" record.</p>
         <div className="flex items-center gap-2">
           <div className="flex-1">
-            <label className="text-[9px] text-gray-500 uppercase">Keep (Primary ID)</label>
+            <label htmlFor="ff-admingodmodetab-9" className="text-[9px] text-rmpg-500 uppercase">Keep (Primary ID)</label>
             <input id="ff-admingodmodetab-9"
               type="number"
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
               placeholder="ID to keep"
-              className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
           <div className="flex-1">
-            <label className="text-[9px] text-gray-500 uppercase">Merge (Duplicate ID)</label>
+            <label htmlFor="ff-admingodmodetab-10" className="text-[9px] text-rmpg-500 uppercase">Merge (Duplicate ID)</label>
             <input id="ff-admingodmodetab-10"
               type="number"
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}
               placeholder="ID to merge"
-              className="w-full bg-surface-sunken border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
-          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+          <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
             <Merge size={12} /> Merge
           </button>
         </div>
@@ -757,29 +770,29 @@ export default function AdminGodModeTab() {
 
       {/* Full System Export */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
-        <p className="text-[9px] text-gray-500 mb-2">Download a complete JSON export of all system data (users, calls, reports, persons, vehicles, etc.).</p>
-        <button onClick={handleFullExport} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-sm text-[11px] font-bold text-white flex items-center gap-1">
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Download size={14} /> Full System Export</h3>
+        <p className="text-[9px] text-rmpg-500 mb-2">Download a complete JSON export of all system data (users, calls, reports, persons, vehicles, etc.).</p>
+        <button onClick={handleFullExport} className="px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
           <Download size={12} /> Download Full Export
         </button>
       </div>
 
       {/* Live Activity Feed */}
       <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
-        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Clock size={14} /> Live Activity Feed</h3>
+        <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Clock size={14} /> Live Activity Feed</h3>
         {activityFeed.length === 0 ? (
-          <div className="text-[11px] text-gray-500 italic">No recent activity</div>
+          <div className="text-[11px] text-rmpg-500 italic">No recent activity</div>
         ) : (
           <div className="bg-surface-sunken rounded-sm p-2 max-h-60 overflow-y-auto space-y-0.5">
             {activityFeed.map((a: any, i: number) => (
               <div key={i} className="flex items-start gap-2 py-1 border-b border-border-subtle/50 text-[10px]" onContextMenu={(e) => openMenu(e, buildActivityMenu(a))}>
-                <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
+                <span className="text-rmpg-500 font-mono whitespace-nowrap min-w-[60px]">
                   {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
                 </span>
-                <span className="text-gray-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
+                <span className="text-rmpg-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
-                <span className="text-gray-500">{a.entity_type || ''}</span>
-                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
+                <span className="text-rmpg-500">{a.entity_type || ''}</span>
+                <span className="text-rmpg-500 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
               </div>
             ))}
           </div>
@@ -792,15 +805,15 @@ export default function AdminGodModeTab() {
 function StatBox({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="bg-surface-sunken px-2 py-1.5 rounded-sm">
-      <div className="text-[9px] text-gray-500 uppercase">{label}</div>
-      <div className={`text-[12px] font-mono font-bold ${color || 'text-white'}`}>{value}</div>
+      <div className="text-[9px] text-rmpg-500 uppercase">{label}</div>
+      <div className={`text-[12px] font-mono font-bold ${color || 'text-rmpg-100'}`}>{value}</div>
     </div>
   );
 }
 
 function ActionButton({ icon: Icon, label, onClick, color }: { icon: any; label: string; onClick: () => void; color: string }) {
   const colorMap: Record<string, string> = {
-    blue: 'bg-gray-900/40 hover:bg-gray-800/60 text-gray-300 border-gray-700/30',
+    blue: 'bg-surface-sunken/40 hover:bg-surface-raised/60 text-rmpg-300 border-border-default/30',
     green: 'bg-green-900/40 hover:bg-green-800/60 text-green-300 border-green-700/30',
     red: 'bg-red-900/40 hover:bg-red-800/60 text-red-300 border-red-700/30',
     yellow: 'bg-yellow-900/40 hover:bg-yellow-800/60 text-yellow-300 border-yellow-700/30',

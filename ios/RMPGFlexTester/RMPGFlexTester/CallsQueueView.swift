@@ -34,7 +34,7 @@ struct CallsQueueView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 30)
                 } else if calls.isEmpty {
-                    Text("No active calls.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "checkmark.circle", title: "No active calls", subtitle: "You're all caught up.")
                 } else {
                     ForEach(sortedCalls.indices, id: \.self) { i in callRow(sortedCalls[i]) }
                 }
@@ -89,8 +89,8 @@ struct CallsQueueView: View {
                 Spacer()
                 Text(FieldFormat.value("status", st)).font(.system(size: 10)).foregroundStyle(Theme.neutral)
             }
-            Text(type).font(.system(size: 13, weight: .semibold)).foregroundStyle(mine ? Theme.gold : .white)
-            if !addr.isEmpty { Text(addr).font(.system(size: 11)).foregroundStyle(Theme.textSecondary) }
+            Text(type).font(Theme.Typography.headline).foregroundStyle(mine ? Theme.gold : .white)
+            if !addr.isEmpty { Text(addr).font(Theme.Typography.body).foregroundStyle(Theme.textSecondary) }
 
             HStack(spacing: 6) {
                 if mine {
@@ -107,6 +107,7 @@ struct CallsQueueView: View {
                 Button { actionTarget = ActionTarget(id: id, number: callNo) } label: {
                     Image(systemName: "ellipsis.circle.fill")
                         .font(.system(size: 22)).foregroundStyle(Theme.gold)
+                        .minTouchTarget()
                 }
                 .accessibilityLabel("Call actions")
             }

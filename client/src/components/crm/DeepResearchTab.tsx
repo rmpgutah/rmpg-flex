@@ -9,6 +9,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
+import ConfirmDialog from '../ConfirmDialog';
 
 interface JobRow {
   id: string; subject: string; subject_type: string; status: string; progress: number;
@@ -49,6 +50,11 @@ export default function DeepResearchTab() {
   const [submitting, setSubmitting] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<JobDetail | null>(null);
+  // ConfirmDialog target — replaces the native window.confirm() that was
+  // escaping the theme, blocking the polling loop, and rendering outside
+  // the page's accessibility/focus contract.
+  const [jobToDelete, setJobToDelete] = useState<JobRow | null>(null);
+  const [deletingJob, setDeletingJob] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadJobs = useCallback(async () => {
@@ -130,11 +136,22 @@ export default function DeepResearchTab() {
     try { await apiFetch(`/deep-research/jobs/${id}/rerun`, { method: 'POST', body: JSON.stringify({}) }); setActiveId(id); addToast('Re-running', 'success'); }
     catch { addToast('Failed', 'error'); }
   };
-  const del = async (id: string) => {
-    if (!window.confirm('Delete this research job?')) return;
-    try { await apiFetch(`/deep-research/jobs/${id}`, { method: 'DELETE' }); if (activeId === id) { setActiveId(null); setDetail(null); } loadJobs(); }
-    catch { addToast('Failed', 'error'); }
-  };
+  const confirmDeleteJob = useCallback(async () => {
+    if (!jobToDelete) return;
+    setDeletingJob(true);
+    try {
+      const id = jobToDelete.id;
+      await apiFetch(`/deep-research/jobs/${id}`, { method: 'DELETE' });
+      if (activeId === id) { setActiveId(null); setDetail(null); }
+      loadJobs();
+      addToast('Research job deleted', 'success');
+      setJobToDelete(null);
+    } catch {
+      addToast('Failed to delete', 'error');
+    } finally {
+      setDeletingJob(false);
+    }
+  }, [jobToDelete, activeId, loadJobs, addToast]);
 
   return (
     <div className="p-4 space-y-4">
@@ -152,21 +169,21 @@ export default function DeepResearchTab() {
           <input
             id="dr-subject" value={subject} onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject (name, business, address, plate, topic…)"
-            className="flex-1 min-w-[220px] bg-surface-base border border-rmpg-700 text-white text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
+            className="flex-1 min-w-[220px] bg-surface-base border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
           <select value={subjectType} onChange={(e) => setSubjectType(e.target.value)}
-            className="bg-surface-base border border-rmpg-700 text-white text-xs px-2 py-1.5" style={{ borderRadius: '2px' }}>
+            className="bg-surface-base border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5" style={{ borderRadius: '2px' }}>
             {SUBJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <input value={context} onChange={(e) => setContext(e.target.value)} placeholder="Context / why you're researching (optional)"
-          className="w-full bg-surface-base border border-rmpg-700 text-white text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
+          className="w-full bg-surface-base border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
         <div className="flex gap-2 items-center flex-wrap">
           <input value={angleDraft} onChange={(e) => setAngleDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAngle(); } }}
-            placeholder="Add a seed angle (optional)" className="flex-1 min-w-[180px] bg-surface-base border border-rmpg-700 text-white text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
-          <button type="button" onClick={addAngle} aria-label="Add angle" className="text-rmpg-400 hover:text-white"><Plus className="w-4 h-4" /></button>
+            placeholder="Add a seed angle (optional)" className="flex-1 min-w-[180px] bg-surface-base border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5" style={{ borderRadius: '2px' }} />
+          <button type="button" onClick={addAngle} aria-label="Add angle" className="text-rmpg-400 hover:text-rmpg-100"><Plus className="w-4 h-4" /></button>
           <label className="text-[10px] text-rmpg-400 flex items-center gap-1">Monitor every
             <input type="number" min={1} value={monitorDays} onChange={(e) => setMonitorDays(e.target.value ? Number(e.target.value) : '')}
-              className="w-14 bg-surface-base border border-rmpg-700 text-white text-xs px-1 py-1 ml-1" style={{ borderRadius: '2px' }} /> days
+              className="w-14 bg-surface-base border border-rmpg-700 text-rmpg-100 text-xs px-1 py-1 ml-1" style={{ borderRadius: '2px' }} /> days
           </label>
         </div>
         {seedAngles.length > 0 && (
@@ -179,7 +196,7 @@ export default function DeepResearchTab() {
           </div>
         )}
         <button type="button" onClick={submit} disabled={submitting || configured === false}
-          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5" style={{ borderRadius: '2px' }}>
+          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-rmpg-100 text-xs font-semibold px-3 py-1.5" style={{ borderRadius: '2px' }}>
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Start Deep Research
         </button>
       </div>
@@ -193,15 +210,15 @@ export default function DeepResearchTab() {
             <div key={j.id} onClick={() => setActiveId(j.id)}
               className={`cursor-pointer border p-2 ${activeId === j.id ? 'border-brand-500 bg-surface-raised' : 'border-rmpg-700 bg-surface-base'}`} style={{ borderRadius: '2px' }}>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-white font-semibold truncate">{j.subject}</div>
+                <div className="text-xs text-rmpg-100 font-semibold truncate">{j.subject}</div>
                 <span className="text-[8px] text-rmpg-400 uppercase">{j.subject_type}</span>
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[9px] text-rmpg-400">{ACTIVE.has(j.status) ? `${j.stage_detail || j.status} (${j.progress}%)` : j.status}</span>
                 <div className="flex items-center gap-1">
-                  {j.monitor_interval_days ? <span className="text-[8px] text-blue-400 flex items-center gap-0.5"><Eye className="w-3 h-3" />{j.monitor_interval_days}d</span> : null}
-                  <button type="button" aria-label="Re-run" onClick={(e) => { e.stopPropagation(); rerun(j.id); }} className="text-rmpg-400 hover:text-white"><RefreshCw className="w-3 h-3" /></button>
-                  <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); del(j.id); }} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                  {j.monitor_interval_days ? <span className="text-[8px] text-rmpg-400 flex items-center gap-0.5"><Eye className="w-3 h-3" />{j.monitor_interval_days}d</span> : null}
+                  <button type="button" aria-label="Re-run" onClick={(e) => { e.stopPropagation(); rerun(j.id); }} className="text-rmpg-400 hover:text-rmpg-100"><RefreshCw className="w-3 h-3" /></button>
+                  <button type="button" aria-label="Delete" onClick={(e) => { e.stopPropagation(); setJobToDelete(j); }} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
             </div>
@@ -216,7 +233,7 @@ export default function DeepResearchTab() {
               <div className="bg-surface-raised border border-rmpg-700 p-2" style={{ borderRadius: '2px' }}>
                 <div className="flex items-center gap-2">
                   {ACTIVE.has(detail.job.status) && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
-                  <span className="text-xs text-white font-semibold">{detail.job.subject}</span>
+                  <span className="text-xs text-rmpg-100 font-semibold">{detail.job.subject}</span>
                   <span className="text-[9px] text-rmpg-400 ml-auto">{detail.job.stage_detail || detail.job.status} · {detail.job.progress}%</span>
                 </div>
                 {detail.job.error && <div className="text-[10px] text-red-400 mt-1">{detail.job.error}</div>}
@@ -231,8 +248,8 @@ export default function DeepResearchTab() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[8px] uppercase text-rmpg-500">{f.finding_type}</span>
                         <TrustBadge trust={f.trust} verdict={f.verdict} />
-                        {f.is_delta ? <span className="text-[8px] text-blue-400">NEW</span> : null}
-                        <span className="text-xs text-white font-semibold">{f.title}</span>
+                        {f.is_delta ? <span className="text-[8px] text-rmpg-400">NEW</span> : null}
+                        <span className="text-xs text-rmpg-100 font-semibold">{f.title}</span>
                         {f.status !== 'dismissed' && (
                           <span className="ml-auto flex items-center gap-1">
                             <button type="button" aria-label="Confirm finding" onClick={() => confirmFinding(f)} className="text-emerald-400 hover:text-emerald-300"><CheckCircle className="w-3.5 h-3.5" /></button>
@@ -261,7 +278,7 @@ export default function DeepResearchTab() {
                   <div className="text-[10px] font-semibold text-rmpg-400 uppercase">Sources ({detail.sources.length})</div>
                   {detail.sources.map((s, i) => (
                     <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300 truncate">
+                      className="flex items-center gap-1.5 text-[10px] text-rmpg-400 hover:text-rmpg-300 truncate">
                       <span className="text-rmpg-500">[{i + 1}]</span><ExternalLink className="w-3 h-3 shrink-0" />
                       <span className="truncate">{s.title || s.url}</span>
                     </a>
@@ -272,6 +289,24 @@ export default function DeepResearchTab() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={jobToDelete !== null}
+        onClose={() => { if (!deletingJob) setJobToDelete(null); }}
+        onConfirm={confirmDeleteJob}
+        title="Delete research job?"
+        message="This permanently removes the job and all of its findings, sources, and report. Confirmed findings linked to entities elsewhere remain on those records."
+        details={jobToDelete ? (
+          <div className="mt-2 text-[11px] text-rmpg-300">
+            <div><span className="text-rmpg-500">Subject:</span> {jobToDelete.subject}</div>
+            <div><span className="text-rmpg-500">Type:</span> {jobToDelete.subject_type}</div>
+            <div><span className="text-rmpg-500">Sources / Findings:</span> {jobToDelete.source_count} · {jobToDelete.finding_count}</div>
+          </div>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deletingJob}
+      />
     </div>
   );
 }

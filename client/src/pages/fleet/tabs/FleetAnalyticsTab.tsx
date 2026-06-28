@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { formatCostAbbrev } from '../../../utils/formatters';
+import { formatCostAbbrev, toDisplayLabel } from '../../../utils/formatters';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
@@ -52,7 +52,7 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-const ISSUE_BAR_COLORS = ['#888888', '#555555', '#666666', '#888888', '#d4a017'];
+const ISSUE_BAR_COLORS = ['#888888', '#555555', 'var(--rmpg-500)', '#888888', '#d4a017'];
 
 const STATUS_DOT_COLORS: Record<string, string> = {
   in_service: '#22c55e',
@@ -409,8 +409,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             onClick={() => handlePeriodChange(opt.value)}
             className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
               ${period === opt.value
-                ? 'bg-[#888888] border-[#888888] text-white'
-                : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-rmpg-600'
+                ? 'bg-[#888888] border-[#888888] text-rmpg-100'
+                : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-600'
               }`}
           >
             {opt.label}
@@ -427,7 +427,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Fleet Costs</span>
             <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
-          <div className="text-xl font-bold font-mono text-white tabular-nums">
+          <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
             {formatCostAbbrev(totalCosts)}
           </div>
           <div className="flex gap-3 mt-1 text-[8px] text-rmpg-400 font-mono tabular-nums">
@@ -443,7 +443,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Average MPG</span>
             <InfoTooltip text={KPI_TOOLTIPS.average_mpg} />
           </div>
-          <div className="text-xl font-bold font-mono text-white tabular-nums">
+          <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.avg_mpg != null ? fleet_summary.avg_mpg.toFixed(1) : '--'}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Fleet-wide fuel economy</div>
@@ -490,9 +490,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-                <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
-                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
                 <Bar dataKey="total_cost" fill="#888888" radius={[2, 2, 0, 0]} />
@@ -511,9 +511,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-                <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
-                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
                 <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />
@@ -546,12 +546,12 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <tbody>
                   {cost_per_mile_ranking.map((v) => (
                     <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
-                      <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
+                      <td className="py-1 pr-2 font-mono font-bold text-rmpg-100">{v.vehicle_number}</td>
                       <td className="py-1 pr-2 text-rmpg-400">{v.make} {v.model}</td>
                       <td className="py-1 pr-2 text-right font-mono tabular-nums text-green-400">
                         {v.cost_per_mile != null ? `$${v.cost_per_mile.toFixed(2)}` : '--'}
                       </td>
-                      <td className="py-1 text-right font-mono tabular-nums text-gray-400">
+                      <td className="py-1 text-right font-mono tabular-nums text-rmpg-400">
                         {formatCostAbbrev(v.total_cost)}
                       </td>
                     </tr>
@@ -582,8 +582,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <div key={`${alert.vehicle_id}-${alert.issue}-${i}`}
                     className={`flex items-center justify-between px-2 py-1.5 ${sev.bg} border ${sev.border} rounded-[2px] text-[10px]`}
                   >
-                    <span className="font-mono font-bold text-white">{alert.vehicle_number}</span>
-                    <span className={`${sev.text} truncate mx-2`}>{alert.issue}</span>
+                    <span className="font-mono font-bold text-rmpg-100">{alert.vehicle_number}</span>
+                    <span className={`min-w-0 ${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
                       {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
                     </span>
@@ -609,18 +609,18 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {dailyMileageRun.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={dailyMileageRun}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: '#666666', fontSize: 8 }}
+                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
                   tickLine={false}
-                  axisLine={{ stroke: '#222222' }}
+                  axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
                     const d = parseTimestamp(v);
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
-                <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <Tooltip
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any) => [`${value} mi`, 'Miles']}
@@ -668,7 +668,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <div key={s.status} className="flex items-center gap-2 text-[10px]">
                     <div className="w-2 h-2 rounded-[1px] shrink-0" style={{ backgroundColor: s.color }} />
                     <span className="text-rmpg-400">{STATUS_LABELS[s.status] || s.status}</span>
-                    <span className="ml-auto font-mono font-bold tabular-nums text-white">{s.count}</span>
+                    <span className="ml-auto font-mono font-bold tabular-nums text-rmpg-100">{s.count}</span>
                   </div>
                 ))}
                 {utilization && (
@@ -702,21 +702,21 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: '#666666', fontSize: 8 }}
+                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
                   tickLine={false}
-                  axisLine={{ stroke: '#222222' }}
+                  axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
                     const d = parseTimestamp(v);
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
                 <YAxis
-                  tick={{ fill: '#666666', fontSize: 9 }}
+                  tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }}
                   tickLine={false}
-                  axisLine={{ stroke: '#222222' }}
+                  axisLine={{ stroke: 'var(--border-subtle)' }}
                   allowDecimals={false}
                 />
                 <Tooltip
@@ -766,7 +766,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       : 'text-green-400';
                     return (
                       <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
-                        <td className="py-1 pr-2 font-mono font-bold text-white">{v.vehicle_number}</td>
+                        <td className="py-1 pr-2 font-mono font-bold text-rmpg-100">{v.vehicle_number}</td>
                         <td className="py-1 pr-2 text-right font-mono tabular-nums text-rmpg-300">
                           {v.current_mileage != null ? v.current_mileage.toLocaleString() : '--'}
                         </td>
@@ -796,7 +796,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Gauge className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Avg Daily Miles</span>
           </div>
-          <div className="text-lg font-bold font-mono text-white tabular-nums">
+          <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {avg_daily_miles != null && avg_daily_miles > 0 ? avg_daily_miles.toFixed(1) : '--'}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Fleet avg from fuel logs</div>
@@ -808,7 +808,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Car className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Vehicles</span>
           </div>
-          <div className="text-lg font-bold font-mono text-white tabular-nums">
+          <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.total_vehicles}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Registered in fleet</div>
@@ -820,7 +820,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Calendar className="w-3 h-3 text-[#d4a017]" />
             <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Oldest Vehicle</span>
           </div>
-          <div className="text-lg font-bold font-mono text-white tabular-nums">
+          <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {oldest_vehicle_year ?? '--'}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Model year (non-retired)</div>
@@ -872,9 +872,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-              <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
-              <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -910,9 +910,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-              <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
-              <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -963,7 +963,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return (
                     <tr key={i} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1 pr-2 text-rmpg-200 font-mono">{d.date?.slice(5)}</td>
-                      <td className="py-1 pr-2 text-white font-semibold">#{d.vehicle_number}</td>
+                      <td className="py-1 pr-2 text-rmpg-100 font-semibold">#{d.vehicle_number}</td>
                       <td className="py-1 pr-2 text-right text-[#22c55e] font-mono font-bold tabular-nums">{d.gps_miles?.toFixed(1)} mi</td>
                       <td className="py-1 pr-2 text-right text-rmpg-500 font-mono tabular-nums">{d.points_count}</td>
                       <td className="py-1 pr-2 text-rmpg-400 text-[9px]">{startTime}</td>
@@ -1046,15 +1046,15 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || '#666666' }} />
-                            <span className="font-mono font-bold text-white">{v.vehicle_number}</span>
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || 'var(--rmpg-500)' }} />
+                            <span className="font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
                           </div>
                         </td>
                         <td className="py-1 pr-1 text-right font-mono tabular-nums text-rmpg-300">{v.age_years}y</td>
                         <td className="py-1 pr-1 text-right font-mono tabular-nums text-rmpg-300">
                           {v.current_mileage > 0 ? `${(v.current_mileage / 1000).toFixed(0)}k` : '--'}
                         </td>
-                        <td className="py-1 pr-1 text-right font-mono tabular-nums text-gray-400">
+                        <td className="py-1 pr-1 text-right font-mono tabular-nums text-rmpg-400">
                           {formatCostAbbrev(v.cost_per_year)}
                         </td>
                         <td className={`py-1 text-right font-mono font-bold tabular-nums ${lifeColor}`}>
@@ -1103,8 +1103,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       onClick={() => toggleVehicleSelection(v.id)}
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
-                          ? 'bg-[#888888] border-[#888888] text-white'
-                          : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-white hover:border-rmpg-600'
+                          ? 'bg-[#888888] border-[#888888] text-rmpg-100'
+                          : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-600'
                         }`}
                     >
                       {v.vehicle_number}
@@ -1116,14 +1116,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <button
                   onClick={handleCompare}
                   disabled={selectedIds.length < 2 || selectedIds.length > 5 || compareLoading}
-                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#888888] text-white border border-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#888888] text-rmpg-100 border border-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
                 >
                   {compareLoading ? 'Loading...' : 'Compare'}
                 </button>
                 {selectedIds.length > 0 && (
                   <button
                     onClick={() => { setSelectedIds([]); setComparisonResults([]); }}
-                    className="px-2 py-1.5 text-[9px] text-rmpg-400 hover:text-white transition-colors duration-150"
+                    className="px-2 py-1.5 text-[9px] text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150"
                   >
                     <X className="w-3 h-3 inline mr-0.5" /> Clear
                   </button>
@@ -1139,7 +1139,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-rmpg-700">
                       <th className="text-left py-1.5 pr-3 font-bold">Metric</th>
                       {comparisonResults.map((v) => (
-                        <th key={v.id} className="text-right py-1.5 px-2 font-mono font-bold text-white">{v.vehicle_number}</th>
+                        <th key={v.id} className="text-right py-1.5 px-2 font-mono font-bold text-rmpg-100">{v.vehicle_number}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1254,7 +1254,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               const strokeDash = (v.health_score / 100) * circumference;
               const badgeColors: Record<string, string> = {
                 Excellent: 'text-green-400 bg-green-900/20 border-green-800/40',
-                Good: 'text-gray-400 bg-gray-900/20 border-gray-800/40',
+                Good: 'text-rmpg-400 bg-surface-sunken/20 border-border-subtle/40',
                 Fair: 'text-amber-400 bg-amber-900/20 border-amber-800/40',
                 Poor: 'text-orange-400 bg-orange-900/20 border-orange-800/40',
                 Critical: 'text-red-400 bg-red-900/20 border-red-800/40',
@@ -1272,12 +1272,12 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <div key={v.vehicle_id} className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2.5">
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <div className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</div>
+                      <div className="text-[11px] font-mono font-bold text-rmpg-100">{v.vehicle_number}</div>
                       <div className="text-[8px] text-rmpg-400">{v.make} {v.model}</div>
                     </div>
                     <div className="relative w-16 h-16 flex-shrink-0">
                       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="#222222" strokeWidth="4" />
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="var(--border-subtle)" strokeWidth="4" />
                         <circle
                           cx="32" cy="32" r="28" fill="none"
                           stroke={scoreColor} strokeWidth="4" strokeLinecap="round"
@@ -1350,14 +1350,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   const urgencyColors: Record<string, { dot: string; text: string }> = {
                     overdue: { dot: '#ef4444', text: 'text-red-400' },
                     critical: { dot: '#f59e0b', text: 'text-amber-400' },
-                    upcoming: { dot: '#888888', text: 'text-gray-400' },
+                    upcoming: { dot: '#888888', text: 'text-rmpg-400' },
                     ok: { dot: '#22c55e', text: 'text-green-400' },
                   };
                   const uc = urgencyColors[m.urgency] || urgencyColors.ok;
                   return (
                     <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
-                      <td className="py-1.5 pr-3 font-mono font-bold text-white">{m.vehicle_number}</td>
-                      <td className="py-1.5 pr-3 text-rmpg-300">{(m.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
+                      <td className="py-1.5 pr-3 font-mono font-bold text-rmpg-100">{m.vehicle_number}</td>
+                      <td className="py-1.5 pr-3 text-rmpg-300">{toDisplayLabel(m.service_type || '')}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         {m.due_date || '--'}
                       </td>
@@ -1412,7 +1412,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return (
                     <tr key={d.call_sign} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1.5 pr-3 text-rmpg-300 truncate max-w-[120px]">{d.officer_name}</td>
-                      <td className="py-1.5 pr-2 font-mono font-bold text-white">{d.call_sign}</td>
+                      <td className="py-1.5 pr-2 font-mono font-bold text-rmpg-100">{d.call_sign}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_miles != null ? d.total_miles.toLocaleString() : '-'}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_hours}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
@@ -1449,7 +1449,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {notifications.slice(0, 10).map((n: any, i: number) => (
               <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[10px] ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}>
                 <AlertTriangle className="w-3 h-3 shrink-0" />
-                <span className="truncate">{n.message}</span>
+                <span className="min-w-0 truncate">{n.message}</span>
               </div>
             ))}
           </div>
@@ -1464,9 +1464,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {serviceAlerts.slice(0, 8).map((a: any) => (
-              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-gray-900/20 border-gray-800/40 text-gray-400'}`}>
+              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
                 <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{(a.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                <span>{toDisplayLabel(a.service_type || '')}</span>
                 <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
               </div>
             ))}
@@ -1482,7 +1482,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <div className="grid grid-cols-4 gap-2 mb-2">
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-gray-400">{inspectionStats.total_inspections}</div>
+              <div className="text-sm font-bold font-mono text-rmpg-400">{inspectionStats.total_inspections}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
@@ -1513,7 +1513,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="text-[7px] text-rmpg-500 uppercase">Avg $/Mile</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-gray-400">${((costAnalytics.fleet_total_cost || 0) / 1000).toFixed(1)}k</div>
+              <div className="text-sm font-bold font-mono text-rmpg-400">${((costAnalytics.fleet_total_cost || 0) / 1000).toFixed(1)}k</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
@@ -1525,7 +1525,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
               {costAnalytics.vehicles.filter((v: any) => v.cost_per_mile != null).slice(0, 15).sort((a: any, b: any) => (b.cost_per_mile || 0) - (a.cost_per_mile || 0)).map((v: any) => (
                 <div key={v.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[10px]">
-                  <span className="font-mono text-white font-bold">{v.vehicle_number}</span>
+                  <span className="font-mono text-rmpg-100 font-bold">{v.vehicle_number}</span>
                   <span className="text-rmpg-400">{v.make} {v.model}</span>
                   <span className="font-mono text-green-400">${v.cost_per_mile?.toFixed(2)}/mi</span>
                 </div>
@@ -1544,7 +1544,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <div className="space-y-1 max-h-[150px] overflow-y-auto">
             {overdueInspections.slice(0, 10).map((a: any) => (
               <div key={a.id} className="flex items-center justify-between px-2 py-1.5 bg-red-900/20 rounded text-[10px] border border-red-800/30">
-                <span className="font-mono text-white font-bold">{a.vehicle_number}</span>
+                <span className="font-mono text-rmpg-100 font-bold">{a.vehicle_number}</span>
                 <span className="text-rmpg-400">{a.make} {a.model}</span>
                 <span className={`font-mono ${a.severity === 'critical' ? 'text-red-400' : a.severity === 'never_inspected' ? 'text-amber-400' : 'text-amber-400'}`}>
                   {a.days_since_inspection != null ? `${a.days_since_inspection}d ago` : 'Never inspected'}

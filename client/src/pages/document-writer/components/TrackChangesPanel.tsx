@@ -41,7 +41,7 @@ export default function TrackChangesPanel({
   };
 
   return (
-    <div className="w-60 sm:w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-60 sm:w-64 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <GitPullRequestArrow className="w-3 h-3" /> Track Changes
@@ -51,7 +51,7 @@ export default function TrackChangesPanel({
 
       <button type="button" onClick={onToggleMode}
         className={`w-full mb-2 px-2 py-1.5 text-[10px] rounded-[2px] border flex items-center justify-center gap-1.5 ${
-          suggestMode ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+          suggestMode ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
         }`}>
         <Pencil className="w-3 h-3" /> Suggestion mode: {suggestMode ? 'ON' : 'OFF'}
       </button>
@@ -62,11 +62,11 @@ export default function TrackChangesPanel({
       </p>
 
       <button type="button" onClick={markDeletion}
-        className="w-full mb-2 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+        className="w-full mb-2 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
         Mark selection as deletion
       </button>
 
-      <div className="text-[10px] text-rmpg-400 mb-1.5 border-t border-[#1a1a1a] pt-2">
+      <div className="text-[10px] text-rmpg-400 mb-1.5 border-t border-border-default pt-2">
         {pending === 0 ? 'No tracked changes pending.' : (
           <span>
             <span className="text-green-400">{counts.insertions} insertion{counts.insertions === 1 ? '' : 's'}</span>

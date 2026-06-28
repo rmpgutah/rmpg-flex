@@ -80,6 +80,57 @@ export interface CodeEntry {
 // ── Drawing Primitives ──────────────────────────────────────
 
 /**
+ * Fit a single line of text within `maxW` (mm). Keeps `baseFontSize` if the
+ * text already fits; otherwise shrinks the font proportionally toward
+ * `minFontSize`, and only if it STILL overflows at the floor does it
+ * tail-truncate with an ellipsis. Returns the text to draw and the font size
+ * to set before drawing.
+ *
+ * Why this exists: form cells have a FIXED height (one line). Passing a long
+ * value to jsPDF `doc.text(..., { maxWidth })` word-wraps it onto extra lines
+ * that flow downward past the cell and overprint the row below — the
+ * "overlapping text" defect seen in generated records (e.g. a long geocoded
+ * TARGET ADDRESS stacking over the LAT/LON/EGRESS rows). Shrinking to one line
+ * keeps every value inside its cell. Mirrors the measure-then-scale pattern
+ * already used by drawSideTab() and the NIBRS case-number header.
+ *
+ * NOTE: requires the caller to have already selected the font FAMILY/STYLE
+ * (via doc.setFont) so getTextWidth measures the right glyphs.
+ */
+export function fitTextToWidth(
+  doc: jsPDF,
+  text: string,
+  maxW: number,
+  baseFontSize: number,
+  minFontSize = 5,
+): { text: string; fontSize: number } {
+  if (!text || maxW <= 0) return { text, fontSize: baseFontSize };
+
+  doc.setFontSize(baseFontSize);
+  let width = doc.getTextWidth(text);
+  if (width <= maxW) return { text, fontSize: baseFontSize };
+
+  // Shrink proportionally toward the floor.
+  const fontSize = Math.max(minFontSize, baseFontSize * (maxW / width));
+  doc.setFontSize(fontSize);
+  width = doc.getTextWidth(text);
+  if (width <= maxW) return { text, fontSize };
+
+  // Still too wide at the floor — tail-truncate with an ellipsis ("..." rather
+  // than the Unicode "…" so it renders in jsPDF's standard fonts). Binary-search
+  // the longest prefix that fits.
+  const ELL = '...';
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (doc.getTextWidth(text.slice(0, mid) + ELL) <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return { text: `${text.slice(0, lo).trimEnd()}${ELL}`, fontSize };
+}
+
+/**
  * Draw a single form cell: bordered rectangle with tiny label
  * at top-left inside the cell, value text below.
  */
@@ -143,22 +194,31 @@ export function drawFormCell(
     }
   } else if (cell.value) {
     doc.setFont(PDF_VALUE_FONT, cell.valueBold ? 'bold' : 'normal');
-    doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
+    // Fit the value on ONE line within the cell. Previously this passed jsPDF
+    // `{ maxWidth }`, which word-wraps long values onto extra lines that spill
+    // past this fixed-height cell and overprint the row below (the overlapping-
+    // text defect in generated records). fitTextToWidth shrinks the font to fit
+    // and only ellipsis-truncates as a last resort, so the value never crosses
+    // the cell edge.
+    const baseFontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
+    const maxW = w - 2 * pad;
+    const { text: displayVal, fontSize } = fitTextToWidth(
+      doc, cell.value.toUpperCase(), maxW, baseFontSize,
+    );
+    doc.setFontSize(fontSize);
+
     // Center value text baseline in the value area
-    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
     const textH = fontSize * 0.35;  // Approximate cap height in mm
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
-    const maxW = w - 2 * pad;
 
-    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
-      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
+      doc.text(displayVal, x + w / 2, valueY, { align: 'center' });
     } else if (cell.align === 'right') {
-      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
+      doc.text(displayVal, x + w - pad, valueY, { align: 'right' });
     } else {
-      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
+      doc.text(displayVal, x + pad, valueY);
     }
   }
 }
@@ -644,7 +704,9 @@ export function drawNibrsHeader(
   const headTextColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const headSubColor: [number, number, number] = [200, 200, 200];
+  const headSubColor: [number, number, number] = [
+    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
+  ];
 
   const sealSize = LAYOUT.SEAL_SIZE;
   const sealX = margin + 3;
@@ -2106,7 +2168,7 @@ export function drawEnhancedNibrsHeader(
       const rY = caseBoxY + caseBoxH - 3;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_BADGE_LABEL);
-      doc.setTextColor(200, 200, 200);
+      doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED); // sub-heading on the dark header bar
       const parts: string[] = [];
       if (config.reportingOfficer) parts.push(config.reportingOfficer);
       if (config.reportingBadge) parts.push(`#${config.reportingBadge}`);

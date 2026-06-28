@@ -15,6 +15,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { normalizeClassification, validateManifest, evidenceNumber, shortHash } from '../utils/evidence';
 
 const evidence = new Hono<Env>();
@@ -41,15 +42,38 @@ async function ensureTable(db: ReturnType<typeof getDb>): Promise<void> {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_evidence_sha ON evidence_manifests(sha256)`);
 }
 
+// Role allow-list for filing a manifest. Audit 2026-06-21 caught that
+// ANY authenticated user could forge manifests with arbitrary sha256
+// + officer_name + badge + case_ref. Restricted to roles that can
+// legitimately be present at an evidence event.
+// 2026-06-22 softened: dispatcher is added — during an in-progress
+// CAD call, the dispatcher commonly files on-behalf-of when a unit's
+// iOS app is offline or the field officer is mid-pursuit. The
+// officer_id is still forced from the JWT (dispatchers can't claim to
+// BE the field officer), so a dispatcher manifest will carry
+// officer_id=<dispatcher's id> in the audit trail.
+const EVIDENCE_FILE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
 // POST / — file a manifest.
 evidence.post('/', async (c): Promise<Response> => {
+  // Role gate. Reject before reading the body — we don't want to even
+  // parse user-controlled payloads when the caller has no business
+  // filing custody entries.
+  const user = c.get('user') as { id?: number; role?: string } | undefined;
+  if (!user || !user.role || !EVIDENCE_FILE_ROLES.has(user.role)) {
+    return c.json({ error: 'Insufficient role to file an evidence manifest' }, 403);
+  }
+
   const db = getDb(c.env);
   await ensureTable(db);
   const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
   const check = validateManifest(body);
   if (!check.ok) return c.json({ error: check.error }, 400);
 
-  const userId = (c.get('userId') as number | undefined) ?? null;
+  // officer_id is ALWAYS the authenticated user — never the body. The
+  // previous version trusted body.officer_id which let a forged
+  // manifest claim any officer was at the scene.
+  const userId = (c.get('userId') as number | undefined) ?? user.id ?? null;
   const year = new Date().getFullYear();
   const countRow = await queryFirst<{ n: number }>(
     db,
@@ -80,6 +104,18 @@ evidence.post('/', async (c): Promise<Response> => {
     String((body as Record<string, unknown>).mime ?? 'image/jpeg'),
     String((body as Record<string, unknown>).captured_at ?? ''),
   );
+  // Analytics lakehouse: evidence-logged event (best-effort, fire-and-forget).
+  emitAnalytics(c, c.env.EVENTS, [flexEvent({
+    event_type: 'evidence_logged', occurred_at: new Date().toISOString(),
+    actor_id: userId, entity_type: 'evidence', entity_id: Number(res.meta?.last_row_id) || null,
+    lat: (body as Record<string, unknown>).gps_lat, lng: (body as Record<string, unknown>).gps_lng,
+    label: evNumber, category: 'evidence',
+    payload: {
+      classification: String((body as Record<string, unknown>).classification ?? ''),
+      case_ref: String((body as Record<string, unknown>).case_ref ?? ''),
+    },
+  })]);
+
   return c.json({
     data: { id: res.meta?.last_row_id, evidence_number: evNumber, sha256: sha, short_hash: shortHash(sha) },
   });

@@ -154,7 +154,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
 
       {/* Search */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Vehicle</label>
+        <label htmlFor="ff-linkvehiclemodal-0" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Vehicle</label>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input id="ff-linkvehiclemodal-0"
@@ -179,7 +179,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
                 className="w-full text-left px-3 py-2 hover:bg-rmpg-800 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-white font-medium">
+                  <span className="text-sm text-rmpg-100 font-medium">
                     {vehicle.plate_number ? `${vehicle.plate_number}${vehicle.state ? ` (${vehicle.state})` : ''}` : 'No Plate'}
                   </span>
                   {vehicle.color && (
@@ -216,7 +216,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {selectedVehicle && (
         <div className="px-3 py-2 bg-brand-900/20 border border-brand-700/40 flex items-center justify-between">
           <div>
-            <span className="text-sm text-white font-medium">
+            <span className="text-sm text-rmpg-100 font-medium">
               {selectedVehicle.plate_number || 'No Plate'}{selectedVehicle.state ? ` (${selectedVehicle.state})` : ''}
             </span>
             <div className="text-[11px] text-rmpg-400 mt-0.5">
@@ -227,7 +227,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
           <button
             type="button"
             onClick={() => { setSelectedVehicle(null); setSearchQuery(''); }}
-            className="text-xs text-rmpg-300 hover:text-white"
+            className="text-xs text-rmpg-300 hover:text-rmpg-100"
           >
             Change
           </button>
@@ -236,7 +236,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
 
       {/* Role */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
+        <label htmlFor="ff-linkvehiclemodal-1" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
         <select id="ff-linkvehiclemodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
           {options.vehicle_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>

@@ -4,13 +4,15 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
+import { notConfigured } from '../utils/notConfigured';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
 import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
 import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
-import { buildManifest, concatToR2 } from '../utils/footage/concat';
+import { buildManifest, concatToR2, buildPlayerManifest } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
 import { footageEvidenceNumber, isUnlockable, buildCourtManifest, manifestPayloadHash, logCustody, viewSessionKey } from '../utils/footage/evidence';
 import { signTriple } from '../utils/pdfSign';
+import { runQueueDrain } from '../utils/footage/queueDrainRunner';
 
 const flexcam = new Hono<Env>();
 
@@ -40,6 +42,27 @@ async function ensureEvidenceSchema(db: D1Database): Promise<void> {
   await execute(db, `CREATE TABLE IF NOT EXISTS footage_evidence_links (id INTEGER PRIMARY KEY AUTOINCREMENT, footage_request_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, linked_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
   await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_footage_evlink ON footage_evidence_links(footage_request_id, entity_type, entity_id)`).catch(() => {});
   evidenceSchemaReady = true;
+}
+
+// Mirrors ensureEvidenceSchema(): tolerates a live D1 that hasn't
+// yet had migration 0144 applied. Safe to call repeatedly — every
+// ALTER is guarded by columnExists().
+async function ensureRemuxSchema(db: D1Database): Promise<void> {
+  const adds: Array<[string, string]> = [
+    ['remux_state', 'TEXT'],
+    ['remux_started_at', 'INTEGER'],
+    ['remux_finished_at', 'INTEGER'],
+    ['remux_error', 'TEXT'],
+    ['remux_attempts', 'INTEGER DEFAULT 0'],
+    ['merged_sha256', 'TEXT'],
+  ];
+  for (const [col, ddl] of adds) {
+    const has = await columnExists(db, 'footage_requests', col).catch(() => false);
+    if (!has) {
+      await db.prepare(`ALTER TABLE footage_requests ADD COLUMN ${col} ${ddl}`)
+        .run().catch(() => {});
+    }
+  }
 }
 
 flexcam.get('/status', async (c): Promise<Response> => {
@@ -111,7 +134,7 @@ flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
   const obj = await c.env.UPLOADS.get(row.r2_key);
   if (!obj) return c.json({ error: 'Object missing' }, 404);
   await logCustody(db, { requestId: Number(c.req.param('id')), action: 'viewed', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), sessionKey: viewSessionKey(c.var.user?.id ?? null, new Date().toISOString()) }); // new-date-ok
-  return new Response(obj.body, { headers: { 'Content-Type': row.content_type || 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
+  return new Response(obj.body, { headers: { 'Content-Type': 'video/mp4', 'Cache-Control': 'private, max-age=3600' } });
 });
 
 flexcam.get('/footage/:id/continuous', async (c): Promise<Response> => {
@@ -127,16 +150,71 @@ flexcam.get('/footage/:id/continuous', async (c): Promise<Response> => {
   return c.json({ merged_status: req.merged_status ?? 'pending', hint: 'POST /render/:id (or client ffmpeg.wasm for MP4)' }, 202);
 });
 
+// Player-oriented trip manifest. Joins unit_trips × footage_chunks
+// (via footage_requests.trip_id) and composes buildPlayerManifest()
+// so the FlexCam page can scrub a multi-request trip on one timeline.
+// Mount-level auth (`/api/flexcam` is `auth: 'required'`) gates access.
+flexcam.get('/trips/:tripId/manifest', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const tripId = Number(c.req.param('tripId'));
+  if (!Number.isFinite(tripId)) return c.json({ error: 'Invalid tripId' }, 400);
+  const channel = c.req.query('channel') ?? 'outside';
+
+  const trip = await queryFirst<{ id: number; start_time: number; end_time: number | null }>(
+    db, 'SELECT id, start_time, end_time FROM unit_trips WHERE id = ?', tripId,
+  ).catch(() => null);
+  if (!trip) return c.json({ error: 'Trip not found' }, 404);
+
+  // Pull every chunk attached to any request whose trip_id matches.
+  const chunks = await query<{
+    id: number; request_id: number; seq: number; channel: string;
+    from_ts: number; to_ts: number; status: string; r2_key: string | null;
+    sha256: string | null; bytes: number;
+  }>(db,
+    `SELECT fc.id, fc.request_id, fc.seq, fc.channel, fc.from_ts, fc.to_ts,
+            fc.status, fc.r2_key, fc.sha256, fc.bytes
+       FROM footage_chunks fc
+       JOIN footage_requests fr ON fr.id = fc.request_id
+      WHERE fr.trip_id = ?
+      ORDER BY fc.from_ts`, tripId,
+  ).catch(() => []);
+
+  const manifest = buildPlayerManifest(
+    { id: trip.id, start_time: trip.start_time, end_time: trip.end_time },
+    channel,
+    chunks,
+  );
+  return c.json(manifest);
+});
+
 flexcam.post('/render/:id', async (c): Promise<Response> => {
   const db = getDb(c.env);
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
+  const body = await c.req.json<{ format?: 'mp4' | 'ts' | 'fmp4' }>().catch(() => ({} as { format?: 'mp4' | 'ts' | 'fmp4' }));
+  const format = body.format ?? 'mp4';
+
   const rows = await query<{ seq: number; from_ts: number; to_ts: number; status: string; r2_key: string | null; bytes: number }>(
-    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id).catch(() => []);
+    db, 'SELECT seq, from_ts, to_ts, status, r2_key, bytes FROM footage_chunks WHERE request_id=? ORDER BY seq', id,
+  ).catch(() => []);
   const manifest = buildManifest(id, rows);
   if (!manifest.chunks.length) return c.json({ error: 'No downloaded chunks' }, 409);
+
+  if (format === 'mp4') {
+    const stub = c.env.FLEXCAM_REMUX.get(c.env.FLEXCAM_REMUX.idFromName('rmx-' + id));
+    const resp = await stub.fetch('https://do/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: id }),
+    });
+    const result = await resp.json<{ state: string }>();
+    await execute(db, "UPDATE footage_requests SET merged_status='queued' WHERE id=?", id);
+    return c.json({ remux_state: result.state, merged_status: 'queued' }, 202);
+  }
+
+  // Existing ts / fmp4 path (unchanged)
   const mergedKey = `flexcam/trips/merged/${id}.mp4`;
-  // Format from the discovery spike; default 'mp4' (unsupported on Worker → client renders).
-  const result = await concatToR2(c.env, mergedKey, manifest.chunks, 'mp4');
+  const result = await concatToR2(c.env, mergedKey, manifest.chunks, format);
   await execute(db, 'UPDATE footage_requests SET merged_r2_key=?, merged_status=? WHERE id=?', result === 'ready' ? mergedKey : null, result, id);
   return c.json({ merged_status: result, merged_r2_key: result === 'ready' ? mergedKey : null });
 });
@@ -200,9 +278,19 @@ flexcam.get('/footage/:id/links', async (c): Promise<Response> => {
 
 flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureEvidenceSchema(db);
+  // Guards the SELECT against schema drift on a live D1 that hasn't had
+  // migration 0144 (merged_sha256 + remux_* columns) applied yet.
+  await ensureRemuxSchema(db);
   const id = Number(c.req.param('id'));
-  const req = await queryFirst<{ id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number }>(
-    db, 'SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  const req = await queryFirst<{
+    id: number; evidence_number: string | null; classification: string;
+    preserved_reason: string | null; from_ts: number; to_ts: number; evidence_locked: number;
+    merged_status: string | null; merged_r2_key: string | null; merged_sha256: string | null;
+  }>(
+    db,
+    `SELECT id, evidence_number, classification, preserved_reason, from_ts, to_ts, evidence_locked,
+            merged_status, merged_r2_key, merged_sha256
+       FROM footage_requests WHERE id=?`, id).catch(() => null);
   if (!req) return c.json({ error: 'Not found' }, 404);
   if (!req.evidence_locked) return c.json({ error: 'Lock this footage as evidence before generating a court package' }, 409);
   const chunks = await query<{ id: number; seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string; r2_key: string | null }>(
@@ -242,6 +330,57 @@ flexcam.delete('/footage/:id', async (c): Promise<Response> => {
   return c.json({ success: true });
 });
 
+// Drain the stuck queue: bail-out fulfilling/partial requests that haven't
+// progressed in N hours (default 6) so they stop eating the cron's per-tick
+// poll budget, and prune sibling chunks that downloaded byte-identical clips
+// off the same source URL. Admin-only; idempotent; supports dry_run.
+// Evidence-locked requests are never touched.
+flexcam.post('/queue/drain', requireRole('admin'), async (c): Promise<Response> => {
+  let body: { dry_run?: boolean; stale_hours?: number; limit?: number };
+  try { body = await c.req.json(); } catch { body = {}; }
+  const result = await runQueueDrain(c.env, {
+    dryRun: body.dry_run === true,
+    staleHours: typeof body.stale_hours === 'number' ? body.stale_hours : undefined,
+    limit: typeof body.limit === 'number' ? body.limit : undefined,
+  });
+  return c.json({ success: true, ...result });
+});
+
+// Repair a stuck/partial request: reset missing chunks → pending_request and
+// reopen the request → fulfilling so the next cron tick can retry them.
+// Evidence-locked requests are not affected.
+flexcam.post('/footage/:id/repair', async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const row = await queryFirst<{ status: string; evidence_locked: number }>(db,
+    'SELECT status, COALESCE(evidence_locked,0) AS evidence_locked FROM footage_requests WHERE id=?', id).catch(() => null);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.evidence_locked) return c.json({ error: 'Locked as evidence — cannot repair' }, 409);
+
+  // Count how many chunks are stuck in a non-retryable state.
+  const counts = await queryFirst<{ missing: number; pending: number }>(db,
+    `SELECT SUM(CASE WHEN status='missing' THEN 1 ELSE 0 END) AS missing,
+            SUM(CASE WHEN status IN ('pending_request','requested') THEN 1 ELSE 0 END) AS pending
+     FROM footage_chunks WHERE request_id=?`, id).catch(() => null);
+
+  const missing = counts?.missing ?? 0;
+  if (!missing && row.status !== 'partial' && row.status !== 'fulfilling') {
+    return c.json({ repaired: 0, message: 'Nothing to repair' });
+  }
+
+  // Reset missing chunks back to the request queue.
+  const r = await execute(db,
+    `UPDATE footage_chunks SET status='pending_request', attempts=0, updated_at=datetime('now')
+     WHERE request_id=? AND status='missing'`, id).catch(() => null);
+  const repaired = r?.meta.changes ?? 0;
+
+  // Reopen the request so the cron's close-query doesn't immediately re-close it.
+  await execute(db,
+    `UPDATE footage_requests SET status='fulfilling', updated_at=datetime('now') WHERE id=?`, id).catch(() => {});
+
+  return c.json({ repaired, message: `Reset ${repaired} chunk(s) to pending — cron will retry shortly` });
+});
+
 // Timeline markers for a request (event tags + turn pins). ?rebuild=1 re-derives
 // from the live ClearPath events + GPS track for the window.
 flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
@@ -262,7 +401,7 @@ flexcam.get('/footage/:id/markers', async (c): Promise<Response> => {
 flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => {
   const db = getDb(c.env);
   const client = await getApiConfig(db, c.env).catch(() => null);
-  if (!client) return c.json({ ok: false, error: 'ClearPath not configured (no refresh token)' }, 503);
+  if (!client) return notConfigured(c, 'clearpath_refresh_token_unset', { ok: false, error: 'ClearPath not configured (no refresh token)' });
   let body: { asset_id?: number; window_seconds?: number; lookback_minutes?: number };
   try { body = await c.req.json(); } catch { body = {}; }
 
@@ -287,41 +426,13 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
   const fromTs = toTs - winSec * 1000;
   report.window = { fromTs, toTs, winSec, lookbackMin };
 
-  // 3) Probe all plausible on-demand endpoint variants — report HTTP status per path.
-  //    404 = doesn't exist; 400/422 = exists, wrong payload; 200/202 = success.
-  const PROBE_PATHS = [
-    '/v2.0/media/request',
-    '/v1.0/media/request',
-    '/v2.0/dashcams/media-request',
-    '/v1.0/dashcams/media-request',
-    '/v2.0/media/clip',
-    '/v1.0/media/clip',
-    '/v2.0/recording/request',
-    '/v1.0/cameras/media-request',
-  ];
-  const token = await client.getToken().catch(() => null);
-  const probePayload = { assetId, startTime: fromTs, duration: winSec, cameras: ['road'] };
-  const probeResults: Array<{ path: string; status: number; body: string }> = [];
-  if (token) {
-    for (const path of PROBE_PATHS) {
-      try {
-        const r = await fetch(`https://api.clearpathgps.com${path}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(probePayload),
-          signal: AbortSignal.timeout(10_000),
-        });
-        const text = await r.text().catch(() => '');
-        probeResults.push({ path, status: r.status, body: text.slice(0, 200) });
-        if (r.ok) break; // stop on first success
-      } catch (e) { probeResults.push({ path, status: 0, body: (e as Error).message }); }
-    }
-  }
-  step('endpoint_probe', probeResults);
-  // Best successful path (status 2xx), if any
-  const winner = probeResults.find((p) => p.status >= 200 && p.status < 300);
-  if (winner) step('on_demand_request', { accepted: true, path: winner.path, body: winner.body });
-  else step('on_demand_request', { accepted: false, tried: probeResults.length });
+  // 3) On-demand request — confirmed endpoint (2026-06-15 HAR):
+  //    POST /v2.0/media/cameras/{cameraId}/request-media
+  const source = await getClearPathSource(db, c.env);
+  try {
+    const vendorId = source ? await source.requestChunk(assetId, fromTs, toTs, 'outside') : null;
+    step('on_demand_request', { accepted: vendorId != null, vendorId });
+  } catch (e) { step('on_demand_request_error', (e as Error).message); }
 
   // 4) What does media/data return for that window? (shapes only — strip URLs/base64)
   try {
@@ -335,6 +446,115 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
   } catch (e) { step('media_data_error', (e as Error).message); }
 
   return c.json({ ok: true, report });
+});
+
+// ── POST /backfill ────────────────────────────────────────────
+// Admin-triggered footage backfill: enqueue footage_requests for every
+// closed unit_trip that has no existing request, within the 120-day
+// ClearPath retention window. Paginated; admin presses Continue until
+// has_more is false.
+//
+// Returns skipped_units so the UI can surface which units lack a camera
+// mapping rather than silently burying them in the skipped count.
+// Batch size configurable via system_config 'reanalysis_footage_batch' (default 500).
+
+flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => {
+  const db = getDb(c.env);
+  await ensureFootageSchema(db);
+
+  const enabled = await queryFirst<{ config_value: string }>(db,
+    "SELECT config_value FROM system_config WHERE config_key='flexcam_enabled' AND category='integrations' AND is_active=1 LIMIT 1",
+  ).catch(() => null);
+  if (enabled?.config_value !== 'true') {
+    return notConfigured(c, 'flexcam_enabled_flag_off', { error: 'Footage backfill unavailable — set flexcam_enabled=true in system_config (integrations)' });
+  }
+
+  // Configurable batch size (default 500; spec conservative was 200)
+  const cfgRow = await queryFirst<{ config_value: string }>(db,
+    "SELECT config_value FROM system_config WHERE config_key='reanalysis_footage_batch' AND category='integrations' AND is_active=1 LIMIT 1",
+  ).catch(() => null);
+  const batchSize = (() => { const n = parseInt(cfgRow?.config_value ?? '', 10); return Number.isFinite(n) && n > 0 ? Math.min(n, 2000) : 500; })();
+
+  // Ensure job_runs table (same DDL as reanalysis route's schema guard)
+  await execute(db, `CREATE TABLE IF NOT EXISTS job_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', total INTEGER DEFAULT 0,
+    processed INTEGER DEFAULT 0, skipped INTEGER DEFAULT 0, errors INTEGER DEFAULT 0,
+    error_detail TEXT, skipped_detail TEXT, started_by INTEGER,
+    started_at TEXT DEFAULT (datetime('now')), finished_at TEXT
+  )`).catch(() => {});
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_job_runs_type ON job_runs(job_type, id DESC)`).catch(() => {});
+
+  const jr = await execute(db,
+    `INSERT INTO job_runs (job_type, status, started_by) VALUES ('footage_backfill','running',?)`,
+    c.var.user.id,
+  );
+  const jobId = Number(jr.meta.last_row_id);
+
+  // Fetch one extra row to detect has_more without a separate COUNT query
+  const trips = await query<{ id: number; unit_id: number; start_time: string; end_time: string }>(db,
+    `SELECT ut.id, ut.unit_id, ut.start_time, ut.end_time
+     FROM unit_trips ut
+     LEFT JOIN footage_requests fr ON fr.trip_id = CAST(ut.id AS TEXT)
+     WHERE ut.status = 'closed'
+       AND fr.id IS NULL
+       AND ut.start_time IS NOT NULL
+       AND ut.end_time IS NOT NULL
+       AND ut.end_time > datetime('now', '-120 days')
+     ORDER BY ut.id DESC
+     LIMIT ?`,
+    batchSize + 1,
+  ).catch(() => []);
+
+  const hasMore = trips.length > batchSize;
+  const batch   = trips.slice(0, batchSize);
+
+  let queued = 0, skipped = 0, errors = 0;
+  const skippedUnits: Array<{ unit_id: number; trip_id: number }> = [];
+
+  for (const trip of batch) {
+    const mapping = await queryFirst<{ asset_id: number; cpg_device_id: string }>(db,
+      `SELECT asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
+      trip.unit_id,
+    ).catch(() => null);
+
+    if (!mapping) {
+      skipped++;
+      skippedUnits.push({ unit_id: trip.unit_id, trip_id: trip.id });
+      continue;
+    }
+
+    const fromTs = new Date(trip.start_time).getTime();
+    const toTs   = new Date(trip.end_time).getTime();
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || toTs - fromTs < 80_000) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await enqueueFootage(c.env, {
+        assetId: mapping.asset_id,
+        unitId: trip.unit_id,
+        cpgDeviceId: mapping.cpg_device_id,
+        tripId: String(trip.id),
+        fromTs, toTs,
+        reason: 'trip_auto',
+        channels: ['outside'],
+      });
+      queued++;
+    } catch (e) {
+      errors++;
+      console.error('[flexcam-backfill] enqueue failed:', (e as Error).message);
+    }
+  }
+
+  const skippedDetail = skippedUnits.length ? JSON.stringify(skippedUnits) : null;
+  await execute(db,
+    `UPDATE job_runs SET status='complete', processed=?, skipped=?, errors=?, skipped_detail=?, finished_at=datetime('now') WHERE id=?`,
+    queued, skipped, errors, skippedDetail, jobId,
+  );
+
+  return c.json({ queued, skipped, errors, has_more: hasMore, skipped_units: skippedUnits, job_id: jobId });
 });
 
 export default flexcam;
