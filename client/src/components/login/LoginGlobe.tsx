@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 const SLC_LAT = 40.7608;
@@ -21,6 +21,7 @@ interface LoginGlobeProps {
 
 export default function LoginGlobe({ className }: LoginGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [webGLSupported, setWebGLSupported] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -276,6 +277,10 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
       }
     };
   }, []);
+
+  if (!webGLSupported) {
+    return <div className={className} aria-hidden="true" />;
+  }
 
   return <div ref={containerRef} className={className} aria-hidden="true" />;
 }

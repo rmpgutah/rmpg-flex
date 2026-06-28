@@ -69,7 +69,7 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
         {duplicates.slice(0, 3).map((d) => (
           <div key={d.id} className="flex items-center gap-2 text-[9px] text-rmpg-300 font-mono">
             <span className="text-amber-500 font-bold">{d.call_number}</span>
-            <span>{d.incident_type?.replace(/_/g, ' ')}</span>
+            <span>{d.incident_type?.replace(/_/g, ' ').toUpperCase()}</span>
             <span className="text-rmpg-500">({(d.status || '').toUpperCase()})</span>
             <span className="text-rmpg-500 flex items-center gap-0.5">
               <Clock style={{ width: 8, height: 8 }} />
