@@ -19,13 +19,18 @@ import {
   Fuel, DollarSign, Gauge, AlertTriangle, TrendingUp, TrendingDown,
   Users, CreditCard, MapPin, BarChart3, ArrowLeft, RefreshCw, FileText,
 } from 'lucide-react';
+import { Upload, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
+  FleetVehicle, FuelBudgetPeriod,
 } from '../../types';
 import { generateFleetFuelAnalyticsPdf } from './utils/fleetFuelAnalyticsPdf';
+import FuelImportModal from './modals/FuelImportModal';
+import FuelBudgetModal from './modals/FuelBudgetModal';
 
 const DEFAULT_WINDOW_DAYS = 90;
 const WINDOW_OPTIONS: { value: number; label: string }[] = [
@@ -45,6 +50,7 @@ function fmtNumber(n: number | null | undefined, digits = 0): string {
 }
 
 export default function FuelAnalyticsPage() {
+  const { addToast } = useToast();
   const [windowDays, setWindowDays] = useState(DEFAULT_WINDOW_DAYS);
   const [overview, setOverview] = useState<FuelAnalyticsOverview | null>(null);
   const [byOfficer, setByOfficer] = useState<FuelAnalyticsByOfficer[]>([]);
@@ -52,21 +58,68 @@ export default function FuelAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Bulk fuel CSV import + fleet-wide fuel budget — both back real handlers
+  // (POST /fleet/fuel/import/{preview,commit} and /fleet/budgets). Vehicles
+  // are loaded lazily so the import modal can resolve unit numbers → ids.
+  const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  const [showImport, setShowImport] = useState(false);
+  const [showBudget, setShowBudget] = useState(false);
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ data: FleetVehicle[] }>('/fleet?per_page=500')
+      .then((r) => setVehicles(r.data || []))
+      .catch(() => { /* vehicle picker degrades to manual entry */ });
+  }, []);
+
+  const handleSaveBudget = async (payload: {
+    vehicle_id: number | null; period_type: FuelBudgetPeriod; budget_amount: number;
+    alert_threshold_pct: number; effective_from: string; effective_to: string | null; notes: string | null;
+  }) => {
+    setSavingBudget(true);
+    try {
+      // The budgets handler keys on fiscal_year + category + allocated_amount;
+      // map the modal's period/amount shape onto it (category 'fuel').
+      await apiFetch('/fleet/budgets', { method: 'POST', body: JSON.stringify({
+        fiscal_year: payload.effective_from.slice(0, 4),
+        category: 'fuel',
+        allocated_amount: payload.budget_amount,
+        spent_amount: 0,
+        notes: [
+          `period:${payload.period_type}`,
+          `alert:${payload.alert_threshold_pct}%`,
+          payload.vehicle_id ? `vehicle:${payload.vehicle_id}` : 'fleet-wide',
+          payload.effective_to ? `through:${payload.effective_to}` : null,
+          payload.notes,
+        ].filter(Boolean).join(' | ') || null,
+      }) });
+      addToast('Fuel budget saved', 'success');
+      setShowBudget(false);
+      load(windowDays);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to save budget', 'error');
+    } finally { setSavingBudget(false); }
+  };
+
   const load = async (days: number) => {
     setLoading(true);
     setError('');
     try {
       const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
-      // Kick all three requests off in parallel — independent aggregates,
-      // no reason to serialize.
-      const [ov, officers, cards] = await Promise.all([
+      // Kick all three requests off in parallel — independent aggregates, no
+      // reason to serialize. Use allSettled (not all): these endpoints can fail
+      // independently, and a single rejection must NOT discard the other two
+      // datasets (the old Promise.all blanked the entire page when one 404'd).
+      const [ovR, offR, cardR] = await Promise.allSettled([
         apiFetch<FuelAnalyticsOverview>(`/fleet/fuel/analytics/overview?days=${days}`),
         apiFetch<{ data: FuelAnalyticsByOfficer[] }>(`/fleet/fuel/analytics/by-officer?since=${since}`),
         apiFetch<{ data: FuelAnalyticsByCard[] }>('/fleet/fuel/analytics/by-card'),
       ]);
-      setOverview(ov);
-      setByOfficer(officers.data || []);
-      setByCard(cards.data || []);
+      if (ovR.status === 'fulfilled') setOverview(ovR.value);
+      if (offR.status === 'fulfilled') setByOfficer(offR.value.data || []);
+      if (cardR.status === 'fulfilled') setByCard(cardR.value.data || []);
+      const failed = [ovR, offR, cardR].filter((r) => r.status === 'rejected').length;
+      if (failed) setError(`${failed} of 3 analytics sections failed to load`);
     } catch (e: any) {
       setError(e?.message || 'Failed to load analytics');
     } finally {
@@ -77,7 +130,7 @@ export default function FuelAnalyticsPage() {
   useEffect(() => { load(windowDays); /* eslint-disable-next-line */ }, [windowDays]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-base">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -89,13 +142,21 @@ export default function FuelAnalyticsPage() {
           </h1>
         </div>
         <div className="flex items-center gap-1.5">
-          <label className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
-          <select className="select-dark text-[10px] min-h-[28px] py-0.5"
+          <label htmlFor="ff-fuelanalyticspage-0" className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
+          <select id="ff-fuelanalyticspage-0" className="select-dark text-[10px] min-h-[28px] py-0.5"
             value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
             {WINDOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button type="button" className="toolbar-btn text-[10px]" onClick={() => load(windowDays)} disabled={loading}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => setShowImport(true)}
+            title="Import fuel transactions from a CSV (e.g. a fuel-card export)">
+            <Upload className="w-3 h-3" /> Import CSV
+          </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => setShowBudget(true)}
+            title="Set a fleet-wide fuel budget">
+            <Wallet className="w-3 h-3" /> New Budget
           </button>
           {/* Mirror of this dashboard, formatted for print/board review.
               Disabled until the three datasets have all loaded so the
@@ -120,11 +181,11 @@ export default function FuelAnalyticsPage() {
       {/* Totals strip */}
       {overview && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <Stat icon={Fuel} color="text-gray-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
-          <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
-          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={`${overview.totals.flag_rate.toFixed(1)}%`} />
+          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={overview.totals.flag_rate != null ? `${overview.totals.flag_rate.toFixed(1)}%` : '—'} />
         </div>
       )}
 
@@ -142,7 +203,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Vehicles by Cost" icon={Gauge} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Vehicle</th>
@@ -158,17 +219,17 @@ export default function FuelAnalyticsPage() {
                   <tr key={v.id} className="border-t border-rmpg-800">
                     <td className="px-2 py-1 text-rmpg-200">#{v.vehicle_number} {[v.year, v.make, v.model].filter(Boolean).join(' ')}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{v.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons != null ? v.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(v.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{v.avg_mpg != null ? v.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate != null ? `${v.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {(overview?.vehicles || []).filter(v => v.fill_count > 0).length === 0 && (
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No fills in this window</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -176,7 +237,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Top Stations" icon={MapPin} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Station</th>
@@ -198,7 +259,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={4} className="text-center text-[10px] text-rmpg-500 py-4">No stations recorded</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -206,7 +267,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Drivers" icon={Users} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Driver</th>
@@ -225,17 +286,17 @@ export default function FuelAnalyticsPage() {
                       {o.officer_id == null && <span className="ml-1 text-[8px] text-rmpg-600">(no driver recorded)</span>}
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums">{o.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons != null ? o.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(o.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {byOfficer.length === 0 && (
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No driver attribution recorded yet</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -243,7 +304,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Fuel Cards — Monthly Spend" icon={CreditCard} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Card</th>
@@ -280,7 +341,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={5} className="text-center text-[10px] text-rmpg-500 py-4">No fuel cards configured</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -302,6 +363,20 @@ export default function FuelAnalyticsPage() {
           </div>
         )}
       </div>
+
+      <FuelImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => { addToast('Fuel transactions imported', 'success'); load(windowDays); }}
+        vehicles={vehicles}
+      />
+      <FuelBudgetModal
+        isOpen={showBudget}
+        mode="create"
+        onSave={handleSaveBudget}
+        onClose={() => setShowBudget(false)}
+        saving={savingBudget}
+      />
     </div>
   );
 }
@@ -333,7 +408,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
           <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full gap-px"
             title={`${d.month}: ${d.gallons.toFixed(1)} gal, $${d.cost.toFixed(2)}, ${d.fills} fills`}>
             <div className="w-full flex items-end justify-center gap-0.5 h-full">
-              <div className="bg-gray-600/60 w-1/2 border-t border-gray-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
+              <div className="bg-rmpg-600/60 w-1/2 border-t border-rmpg-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
               <div className="bg-amber-600/60 w-1/2 border-t border-amber-400" style={{ height: `${(d.cost / maxCost) * 100}%`, minHeight: '1px' }} />
             </div>
           </div>
@@ -347,7 +422,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
         ))}
       </div>
       <div className="flex justify-center gap-3 mt-2 text-[8px] text-rmpg-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-gray-400"></span>Gallons</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-rmpg-400"></span>Gallons</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400"></span>Cost</span>
       </div>
     </div>

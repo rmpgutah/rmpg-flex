@@ -17,6 +17,9 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 interface Args {
   vehicle: FleetVehicle;
@@ -39,7 +42,7 @@ function formatLogDate(s: string | null | undefined): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(cleaned)) {
     return cleaned.slice(0, 16);
   }
-  const d = new Date(s);
+  const d = parseTimestamp(s);
   if (isNaN(d.getTime())) return s; // last-resort raw passthrough
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -53,6 +56,7 @@ function asciify(s: string): string {
 
 export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabel }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -97,6 +101,9 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
   const fmt = (n: number | null | undefined, digits = 2, prefix = '') =>
     n == null ? '-' : `${prefix}${n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 
+  const fullTankCount = (summary as { full_tank_count?: number } | null)?.full_tank_count
+    ?? fuelLogs.filter((l) => (l as { is_full_tank?: number | boolean }).is_full_tank !== 0
+      && (l as { is_full_tank?: number | boolean }).is_full_tank !== false).length;
   const cells = [
     ['Total Gallons', fmt(summary?.total_gallons, 3)],
     ['Total Cost',    fmt(summary?.total_cost, 2, '$')],
@@ -107,7 +114,7 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     ['Total Miles',   fmt(summary?.total_distance, 1)],
     ['$/Mile',        fmt(summary?.cost_per_mile, 3, '$')],
     ['$/Day',         fmt(summary?.fuel_cost_per_day, 2, '$')],
-    ['Log Count',     String(summary?.log_count ?? fuelLogs.length)],
+    ['Log Count',     `${summary?.log_count ?? fuelLogs.length} (${fullTankCount} full-tank)`],
   ];
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
@@ -124,6 +131,116 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
   }
   y += Math.ceil(cells.length / 2) * 16 + 10;
 
+  // ── Analytics breakdowns ──────────────────────────────────
+  // Aggregate the loaded rows into spend breakdowns. All client-side from
+  // the in-memory history — no extra round-trip. Helpers tolerate the
+  // sentinel/null values D1 text columns return (see fleetFormatters note).
+  const n = (v: unknown): number => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    if (typeof v === 'string') { const p = parseFloat(v); return Number.isFinite(p) ? p : 0; }
+    return 0;
+  };
+  type Agg = { gallons: number; cost: number; count: number };
+  const groupBy = (keyFn: (l: FleetFuelLog) => string): Map<string, Agg> => {
+    const m = new Map<string, Agg>();
+    for (const l of fuelLogs) {
+      const k = keyFn(l) || '(unspecified)';
+      const a = m.get(k) ?? { gallons: 0, cost: 0, count: 0 };
+      a.gallons += n(l.gallons); a.cost += n(l.total_cost); a.count += 1;
+      m.set(k, a);
+    }
+    return m;
+  };
+  const grandCost = fuelLogs.reduce((s, l) => s + n(l.total_cost), 0) || 1;
+
+  // Generic breakdown-table renderer. Adds a page when low on space.
+  const drawBreakdown = (
+    title: string,
+    rows: { label: string; gallons: number; cost: number; count: number }[],
+    opts: { showGallons?: boolean } = {},
+  ) => {
+    if (rows.length === 0) return;
+    if (y > pageH - 90) { doc.addPage(); y = 40; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(title, marginX, y);
+    y += 4;
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 13;
+    doc.setFontSize(8);
+    const cLabel = marginX, cGal = marginX + 200, cCost = marginX + 300, cPct = marginX + 400;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Category', cLabel, y);
+    if (opts.showGallons !== false) doc.text('Gallons', cGal, y);
+    doc.text('Cost', cCost, y);
+    doc.text('% of Spend', cPct, y);
+    doc.setFont('helvetica', 'normal');
+    y += 11;
+    for (const r of rows) {
+      if (y > pageH - 40) { doc.addPage(); y = 40; }
+      doc.text(truncate(r.label, 30), cLabel, y);
+      if (opts.showGallons !== false) doc.text(r.gallons.toFixed(2), cGal, y);
+      doc.text(`$${r.cost.toFixed(2)}`, cCost, y);
+      doc.text(`${((r.cost / grandCost) * 100).toFixed(1)}%`, cPct, y);
+      y += 11;
+    }
+    y += 8;
+  };
+
+  const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
+
+  // Fuel-type breakdown
+  drawBreakdown('FUEL TYPE BREAKDOWN',
+    [...groupBy((l) => (l.fuel_type || '').toString())]
+      .map(([label, a]) => ({ label: label.toUpperCase(), ...a }))
+      .sort((a, b) => b.cost - a.cost));
+
+  // Station breakdown (top 10 by spend)
+  drawBreakdown('TOP STATIONS BY SPEND',
+    [...groupBy((l) => (l.station || '').toString())]
+      .map(([label, a]) => ({ label, ...a }))
+      .sort((a, b) => b.cost - a.cost)
+      .slice(0, 10));
+
+  // Payment-method breakdown (only if any row carries one)
+  const payRows = [...groupBy((l) => ((l as { payment_method?: string }).payment_method || '').toString())]
+    .map(([label, a]) => ({ label: label === '(unspecified)' ? label : toDisplayLabel(label), ...a }))
+    .sort((a, b) => b.cost - a.cost);
+  if (payRows.some((r) => r.label !== '(unspecified)')) {
+    drawBreakdown('PAYMENT METHOD BREAKDOWN', payRows, { showGallons: false });
+  }
+
+  // Monthly spend + average price trend
+  const monthly = groupBy((l) => (l.fuel_date || '').toString().slice(0, 7));
+  const monthRows = [...monthly].filter(([k]) => /^\d{4}-\d{2}$/.test(k)).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  if (monthRows.length > 0) {
+    if (y > pageH - 90) { doc.addPage(); y = 40; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('MONTHLY SPEND & PRICE TREND', marginX, y);
+    y += 4;
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 13;
+    doc.setFontSize(8);
+    const mMonth = marginX, mGal = marginX + 120, mCost = marginX + 220, mPpg = marginX + 340, mFills = marginX + 440;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Month', mMonth, y); doc.text('Gallons', mGal, y); doc.text('Cost', mCost, y);
+    doc.text('Avg $/Gal', mPpg, y); doc.text('Fills', mFills, y);
+    doc.setFont('helvetica', 'normal');
+    y += 11;
+    for (const [month, a] of monthRows) {
+      if (y > pageH - 40) { doc.addPage(); y = 40; }
+      const ppg = a.gallons > 0 ? a.cost / a.gallons : 0;
+      doc.text(month, mMonth, y);
+      doc.text(a.gallons.toFixed(2), mGal, y);
+      doc.text(`$${a.cost.toFixed(2)}`, mCost, y);
+      doc.text(`$${ppg.toFixed(3)}`, mPpg, y);
+      doc.text(String(a.count), mFills, y);
+      y += 11;
+    }
+    y += 8;
+  }
+
   // ── Entry table ───────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -137,12 +254,13 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
   // "YYYY-MM-DD HH:MM" timestamp (16 chars at 7pt Helvetica ≈ 75pt) fits
   // with breathing room — fixes the long-standing date-cropped bug.
   const colDate    = marginX;
-  const colGal     = marginX + 110;
-  const colPpg     = marginX + 160;
-  const colTotal   = marginX + 210;
-  const colMpg     = marginX + 260;
-  const colStation = marginX + 305;
-  const colFlags   = marginX + 450;
+  const colGal     = marginX + 100;
+  const colPpg     = marginX + 148;
+  const colTotal   = marginX + 196;
+  const colMpg     = marginX + 244;
+  const colOdo     = marginX + 288;
+  const colStation = marginX + 344;
+  const colFlags   = marginX + 462;
 
   doc.setFontSize(8);
   const drawHeader = (yy: number) => {
@@ -152,14 +270,13 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     doc.text('$/Gal',   colPpg, yy);
     doc.text('Total',   colTotal, yy);
     doc.text('MPG',     colMpg, yy);
+    doc.text('Odometer', colOdo, yy);
     doc.text('Station', colStation, yy);
     doc.text('Flags',   colFlags, yy);
     doc.setFont('helvetica', 'normal');
   };
   drawHeader(y);
   y += 12;
-
-  const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 
   for (const log of fuelLogs) {
     if (y > pageH - 50) {
@@ -184,7 +301,15 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     doc.text(log.cost_per_gallon != null ? log.cost_per_gallon.toFixed(3) : '-', colPpg, y);
     doc.text(log.total_cost != null ? `$${log.total_cost.toFixed(2)}` : '-', colTotal, y);
     doc.text(log.mpg != null ? log.mpg.toFixed(1) : '-', colMpg, y);
-    doc.text(truncate(log.station || '', 24), colStation, y);
+    // Odometer reading per fill. The client type calls it `odometer_reading`
+    // but the API returns the raw DB column `odometer` — read both so the
+    // value actually renders (it was missing from the report entirely).
+    const odoRaw = log.odometer_reading ?? (log as { odometer?: number | string }).odometer;
+    const odoNum = typeof odoRaw === 'number'
+      ? odoRaw
+      : (odoRaw != null && odoRaw !== '' && !isNaN(Number(odoRaw)) ? Number(odoRaw) : null);
+    doc.text(odoNum != null ? Math.round(odoNum).toLocaleString() : '-', colOdo, y);
+    doc.text(truncate(log.station || '', 20), colStation, y);
     if (flagStr) {
       doc.setTextColor(200, 120, 0); // amber for flagged entries
       doc.text(flagStr, colFlags, y);

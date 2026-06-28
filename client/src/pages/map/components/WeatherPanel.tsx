@@ -5,6 +5,7 @@
 // officer safety: lighting, hazards, wind, visibility, alerts.
 // ============================================================
 
+import React from 'react';
 import {
   X,
   Sun,
@@ -59,7 +60,7 @@ function lightingConfig(lighting: WeatherPanelProps['lighting']) {
     case 'twilight':
       return { Icon: Sunset, label: 'TWILIGHT', color: 'text-amber-400', bg: 'bg-amber-400/10' };
     case 'darkness':
-      return { Icon: Moon, label: 'DARKNESS', color: 'text-gray-400', bg: 'bg-gray-400/10' };
+      return { Icon: Moon, label: 'DARKNESS', color: 'text-rmpg-400', bg: 'bg-gray-400/10' };
   }
 }
 
@@ -125,7 +126,7 @@ export default function WeatherPanel({
       style={{
         width: 320,
         background: '#0a0a0a',
-        border: '1px solid #282828',
+        border: '1px solid var(--border-subtle)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}
       role="complementary"
@@ -134,7 +135,7 @@ export default function WeatherPanel({
       {/* ── Header ──────────────────────────────────────── */}
       <div
         className="flex items-center gap-2 px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: '#050505', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <HeaderIcon size={14} className="text-white/60" />
         <span className="text-[10px] font-semibold tracking-widest text-white/80 uppercase flex-1">
@@ -143,7 +144,7 @@ export default function WeatherPanel({
         <button type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
+          className="p-1 rounded-sm text-white/40 hover:text-rmpg-100/80 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
           title="Refresh weather data"
           aria-label="Refresh weather data"
         >
@@ -155,7 +156,7 @@ export default function WeatherPanel({
         </button>
         <button type="button"
           onClick={onClose}
-          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-[#181818] transition-all duration-150 active:scale-[0.97]"
+          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97]"
           title="Close panel"
           aria-label="Close environment panel"
         >
@@ -163,13 +164,13 @@ export default function WeatherPanel({
         </button>
       </div>
 
-      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
+      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ maxHeight: 480 }}>
         {/* ── Section 1: Lighting ───────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #282828' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Lighting Conditions
           </div>
-          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #282828' }}>
+          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid var(--border-subtle)' }}>
             <div className={`p-2 rounded-sm ${lc.bg}`}>
               <lc.Icon size={20} className={`${lc.color} transition-all duration-200`} />
             </div>
@@ -198,7 +199,7 @@ export default function WeatherPanel({
                 {sunriseSunset.sunrise}
               </span>
               <span>
-                <Moon size={10} className="inline mr-1 text-gray-400/60" />
+                <Moon size={10} className="inline mr-1 text-rmpg-400/60" />
                 {sunriseSunset.sunset}
               </span>
             </div>
@@ -206,7 +207,7 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 2: Weather ────────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #282828' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Weather
           </div>
@@ -217,7 +218,7 @@ export default function WeatherPanel({
             <div className="flex flex-wrap gap-1.5">
               {/* #44: Hazard badges with rounded-sm for consistency */}
               {weatherHazards.freezing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-rmpg-500/30">
                   <Snowflake size={10} className="animate-[spin_4s_linear_infinite]" />
                   FREEZING
                 </span>
@@ -229,13 +230,13 @@ export default function WeatherPanel({
                 </span>
               )}
               {weatherHazards.rain && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-500/20 text-rmpg-300 border border-rmpg-500/30">
                   <CloudRain size={10} />
                   RAIN
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-gray-200 border border-gray-400/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-gray-400/20 text-rmpg-200 border border-rmpg-400/30">
                   <CloudSnow size={10} />
                   SNOW
                 </span>
@@ -250,12 +251,12 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 3: Wind ───────────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #282828' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Wind
           </div>
           {windCondition ? (
-            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid #282828', borderLeft: '2px solid #a8a8a8' }}>
+            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#050505', border: '1px solid var(--border-subtle)', borderLeft: '2px solid #a8a8a8' }}>
               <div className="flex items-baseline gap-1">
                 <span className="text-[20px] font-bold font-mono tabular-nums text-white/90">
                   {Math.round(windCondition.speed)}
@@ -284,7 +285,7 @@ export default function WeatherPanel({
                   <span className="absolute right-1 text-[6px] text-white/20">E</span>
                   <Navigation
                     size={14}
-                    className="text-gray-400 drop-shadow-[0_0_3px_rgba(34,211,238,0.5)]"
+                    className="text-rmpg-400 drop-shadow-[0_0_3px_rgba(34,211,238,0.5)]"
                     style={{
                       transform: `rotate(${windCondition.direction}deg)`,
                       transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -299,7 +300,7 @@ export default function WeatherPanel({
         </div>
 
         {/* ── Section 4: Visibility ─────────────────────── */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #282828' }}>
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Visibility
           </div>
@@ -333,13 +334,13 @@ export default function WeatherPanel({
             <div className="flex flex-col gap-1.5">
               {icyRoad && (
                 <div
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-gray-300"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-[10px] font-semibold text-rmpg-300"
                   style={{
                     background: 'rgba(136, 136, 136,0.08)',
                     borderLeft: '3px solid #888888',
                   }}
                 >
-                  <Snowflake size={12} className="text-gray-400" />
+                  <Snowflake size={12} className="text-rmpg-400" />
                   ICY ROADS
                 </div>
               )}

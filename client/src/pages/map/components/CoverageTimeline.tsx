@@ -5,7 +5,9 @@
 // (covered, slow/stationary, gap) with opacity by unit count.
 // ============================================================
 
+import React from 'react';
 import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface CoverageInterval {
   start: string;
@@ -21,7 +23,7 @@ interface CoverageTimelineProps {
 
 /** Format HH:MM from ISO timestamp */
 function fmtTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseTimestamp(iso);
   const h = d.getHours();
   const m = d.getMinutes();
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
@@ -125,7 +127,7 @@ export default function CoverageTimeline({ data, expanded, onToggle }: CoverageT
                   let tooltip: string;
 
                   if (!zone) {
-                    bgColor = '#1a1a1a';
+                    bgColor = 'var(--surface-raised)';
                     opacity = 0.3;
                     tooltip = `${beat.name} | ${fmtTime(iv.start)}-${fmtTime(iv.end)} | No coverage`;
                   } else if (zone.avg_speed !== null && zone.avg_speed < 5) {
@@ -169,7 +171,7 @@ export default function CoverageTimeline({ data, expanded, onToggle }: CoverageT
               <span className="text-[7px] font-mono text-rmpg-400">Slow/Stationary</span>
             </div>
             <div className="flex items-center gap-1">
-              <div style={{ width: 8, height: 8, backgroundColor: '#1a1a1a', borderRadius: 1, border: '1px solid #333' }} />
+              <div style={{ width: 8, height: 8, backgroundColor: 'var(--surface-raised)', borderRadius: 1, border: '1px solid #333' }} />
               <span className="text-[7px] font-mono text-rmpg-400">Gap</span>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
+import { Trash2, RotateCw, RotateCcw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop, Copy, Maximize2, Minimize2 } from 'lucide-react';
 import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
@@ -12,18 +12,32 @@ interface Props {
   onJumpTo: (visualIdx: number) => void;
   onMove: (visualIdx: number, direction: -1 | 1) => void;
   onRotate: (visualIdx: number) => void;
+  /** Rotate counter-clockwise (the built-in onRotate is clockwise). */
+  onRotateCcw?: (visualIdx: number) => void;
   onDelete: (visualIdx: number) => void;
   onInsertBlank: (afterVisualIdx: number) => void;
   onExtract?: (visualIdx: number) => void;
   onClearCrop?: (visualIdx: number) => void;
+  onDuplicate?: (visualIdx: number) => void;
   /** Reorder via drag-and-drop. Caller maintains the actual page-order state. */
   onReorder?: (fromIdx: number, toIdx: number) => void;
+  /** Rail size — 'large' widens thumbnails for detailed inspection. */
+  size?: 'small' | 'large';
+  onToggleSize?: () => void;
+  /** Batch-select set (visual indices). When provided, a checkbox overlay lets
+   *  the user pick pages for batch rotate / crop-all. */
+  selectedPages?: Set<number>;
+  onTogglePageSelect?: (visualIdx: number) => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onReorder }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onRotateCcw, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize, selectedPages, onTogglePageSelect }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const large = size === 'large';
+  // Render thumbnails at a higher scale when the rail is enlarged so the bigger
+  // canvas isn't just an upscaled blurry bitmap.
+  const thumbScale = large ? 0.34 : 0.18;
 
   useEffect(() => {
     if (!pdfBytes || pageOrder.length === 0) return;
@@ -50,7 +64,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
           if (!canvas) continue;
           try {
             const page = await pdf.getPage(original);
-            await page.render({ scale: 0.18, canvas });
+            await page.render({ scale: thumbScale, canvas });
           } catch (renderErr) {
             if (usingFallback) continue; // PDF.js already failed, give up on this thumb
             console.warn(`[thumbnails] native render failed on page ${original}, switching to PDF.js`, renderErr);
@@ -60,7 +74,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             // Retry just this page on the new backend.
             try {
               const page = await pdf.getPage(original);
-              await page.render({ scale: 0.18, canvas });
+              await page.render({ scale: thumbScale, canvas });
             } catch { /* PDF.js can't either */ }
           }
         }
@@ -69,17 +83,27 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
       }
     })();
     return () => { cancelled = true; };
-  }, [pdfBytes, pageOrder]);
+  }, [pdfBytes, pageOrder, thumbScale]);
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[140px] overflow-y-auto flex-shrink-0 p-1.5 space-y-2">
-      <div className="text-[9px] text-rmpg-500 uppercase tracking-wider px-1 pt-1">Pages</div>
+    <div className={`bg-surface-base border border-border-default rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
+      <div className="flex items-center justify-between px-1 pt-1">
+        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Pages</div>
+        {onToggleSize && (
+          <IconButton onClick={onToggleSize} aria-label={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
+            title={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
+            className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
+            {large ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+          </IconButton>
+        )}
+      </div>
       {pageOrder.map((_original, idx) => {
         const pageNumber = idx + 1;
         const meta = pages[idx];
         const active = pageNumber === activePage;
         const isDragSource = dragIdx === idx;
         const isDropTarget = dropIdx === idx && dragIdx !== idx;
+        const batchSelected = selectedPages?.has(idx) ?? false;
         return (
           <div key={`thumb-${idx}`}
             draggable={!!onReorder}
@@ -104,10 +128,20 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
               setDropIdx(null);
             }}
             onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-            className={`group rounded-sm border ${
+            className={`group relative rounded-sm border ${
               isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
-              active ? 'border-[#d4a017]' : 'border-[#222]'
+              batchSelected ? 'border-[#d4a017] ring-1 ring-[#d4a017]' :
+              active ? 'border-[#d4a017]' : 'border-border-default'
             } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+
+            {onTogglePageSelect && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onTogglePageSelect(idx); }}
+                aria-label={batchSelected ? `Deselect page ${pageNumber}` : `Select page ${pageNumber} for batch ops`}
+                title="Select for batch rotate / crop-all"
+                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-rmpg-600 text-transparent'}`}>
+                ✓
+              </button>
+            )}
 
             <button
               type="button"
@@ -118,7 +152,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             >
               <div className="bg-white aspect-[3/4] flex items-center justify-center overflow-hidden">
                 {pageOrder[idx] === 0 ? (
-                  <div className="text-[10px] text-gray-400">Blank</div>
+                  <div className="text-[10px] text-rmpg-400">Blank</div>
                 ) : (
                   <canvas
                     ref={(el) => { if (el) refs.current.set(idx, el); else refs.current.delete(idx); }}
@@ -130,20 +164,28 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             </button>
             <div className="flex items-center justify-between gap-0.5 mt-1 opacity-60 group-hover:opacity-100">
               <IconButton onClick={() => onMove(idx, -1)} aria-label="Move up" title="Move up" disabled={idx === 0}
-                className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowUp className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"><ArrowUp className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onMove(idx, 1)} aria-label="Move down" title="Move down" disabled={idx === pageOrder.length - 1}
-                className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowDown className="w-3 h-3" /></IconButton>
-              <IconButton onClick={() => onRotate(idx)} aria-label="Rotate 90°" title="Rotate 90°"
-                className="p-0.5 text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"><ArrowDown className="w-3 h-3" /></IconButton>
+              {onRotateCcw && (
+                <IconButton onClick={() => onRotateCcw(idx)} aria-label="Rotate 90° counter-clockwise" title="Rotate 90° counter-clockwise"
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><RotateCcw className="w-3 h-3" /></IconButton>
+              )}
+              <IconButton onClick={() => onRotate(idx)} aria-label="Rotate 90° clockwise" title="Rotate 90° clockwise"
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><RotateCw className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onInsertBlank(idx)} aria-label="Insert blank after" title="Insert blank after"
-                className="p-0.5 text-rmpg-400 hover:text-white"><FilePlus2 className="w-3 h-3" /></IconButton>
+                className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><FilePlus2 className="w-3 h-3" /></IconButton>
+              {onDuplicate && (
+                <IconButton onClick={() => onDuplicate(idx)} aria-label="Duplicate page" title="Duplicate this page"
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><Copy className="w-3 h-3" /></IconButton>
+              )}
               {onExtract && (
                 <IconButton onClick={() => onExtract(idx)} aria-label="Extract page" title="Extract page to new PDF"
-                  className="p-0.5 text-rmpg-400 hover:text-white"><FileOutput className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><FileOutput className="w-3 h-3" /></IconButton>
               )}
               {meta?.crop && onClearCrop && (
                 <IconButton onClick={() => onClearCrop(idx)} aria-label="Clear crop" title="Clear crop"
-                  className="p-0.5 text-[#d4a017] hover:text-white"><Crop className="w-3 h-3" /></IconButton>
+                  className="p-0.5 text-[#d4a017] hover:text-rmpg-100"><Crop className="w-3 h-3" /></IconButton>
               )}
               <IconButton onClick={() => onDelete(idx)} aria-label="Delete page" title="Delete page"
                 className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></IconButton>
