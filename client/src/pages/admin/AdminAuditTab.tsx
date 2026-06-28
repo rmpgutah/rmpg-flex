@@ -103,7 +103,7 @@ export default function AdminAuditTab({
   return (
     <div className="flex flex-col h-full">
       {/* Export toolbar */}
-      <div className="flex items-center gap-2 p-3 border-b border-[#242424] bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
+      <div className="flex items-center gap-2 p-3 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 panel-inset bg-surface-sunken relative">
           <Search className="w-3 h-3 text-rmpg-500 shrink-0" aria-hidden="true" />
           <input id="ff-adminaudittab-0"
@@ -111,7 +111,7 @@ export default function AdminAuditTab({
             placeholder="Search logs..." aria-label="Search audit logs"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[140px] focus-visible:outline-none"
+            className="bg-transparent border-none outline-none text-xs text-rmpg-100 placeholder-rmpg-500 w-[140px] focus-visible:outline-none"
             autoComplete="off"
             spellCheck={false}
           />
@@ -160,7 +160,7 @@ export default function AdminAuditTab({
       </div>
 
       <div className="flex-1 overflow-auto scrollbar-dark">
-        <table className="table-dark" aria-label="Audit log entries">
+        <div className="overflow-x-auto"><table className="table-dark" aria-label="Audit log entries">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="whitespace-nowrap" scope="col">Timestamp</th>
@@ -178,7 +178,7 @@ export default function AdminAuditTab({
                     {safeDateTimeStr(entry.timestamp)}
                   </div>
                 </td>
-                <td className="text-xs font-semibold text-white">{entry.user}</td>
+                <td className="text-xs font-semibold text-rmpg-100">{entry.user}</td>
                 <td className="text-xs text-brand-400 font-medium">{entry.action}</td>
                 <td className="text-xs text-rmpg-300 max-w-[300px] truncate" title={entry.details}>{entry.details}</td>
               </tr>
@@ -197,7 +197,7 @@ export default function AdminAuditTab({
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

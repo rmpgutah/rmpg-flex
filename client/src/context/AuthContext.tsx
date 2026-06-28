@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
+import { playStartupSound } from '../utils/startupSound';
 import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
 
 export type LoginStep =
@@ -37,6 +38,14 @@ interface AuthContextType {
   tempToken: string | null;
   cancel2FA: () => void;
   logout: () => void;
+  /**
+   * User-initiated sign-out from the top-bar / drawer. Strictly blocks while
+   * the officer is still on shift — payroll integrity wins over UX here per
+   * the workflow spec. Returns the on-shift state so the UI can route the
+   * officer to End Shift (which prompts ending mileage). For force-flows
+   * (password change, etc.) call `logout()` directly instead.
+   */
+  signOut: () => Promise<{ ok: true } | { ok: false; reason: 'on_shift'; message: string }>;
   refreshUser: () => Promise<void>;
   error: string | null;
   clearError: () => void;
@@ -49,7 +58,10 @@ interface AuthContextType {
   requiresPasswordChange: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Exported (v1047) so opt-in consumers like IntelProvider can read the
+// current user safely without requiring an AuthProvider wrapper in unit
+// tests. Most callers should still use the throwing `useAuth()` hook.
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
@@ -367,7 +379,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setToken(null);
             setUser(null);
           }
+        } else if (res.status >= 500) {
+          // Server error (502/503 during deploy or cellular blip) — keep the
+          // session alive and let scheduled refresh recover. Logging out on a
+          // transient 5xx drops officers mid-shift.
+          console.warn(`[Auth] /me returned ${res.status} — keeping session, will retry`);
+          if (user) scheduleRefresh(token);
         } else {
+          // 403 or other definitive rejection — clear auth
           clearTokens();
           setToken(null);
           setUser(null);
@@ -376,32 +395,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
-        // Background revalidation of an already-rendered (optimistic) user hit a
-        // network/timeout error — NOT a token rejection. Keep the user signed in;
-        // the scheduled refresh and the next authenticated data fetch will
-        // revalidate. A false logout here would punish flaky cellular, which is
-        // exactly when this path fires. The token is still enforced server-side
-        // on every request, so nothing unauthorized is exposed.
-        if (optimisticBoot) {
+        // Network/timeout error — NOT a token rejection. Keep the user signed
+        // in; the scheduled refresh will recover when connectivity returns.
+        // A false logout here would drop officers mid-shift on flaky cellular.
+        if (token && localStorage.getItem(TOKEN_KEY)) {
           scheduleRefresh(token);
           setIsLoading(false);
           return;
         }
 
-        // API not available — attempt offline auth via Electron local cache
-        const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
-        if (electron?.getCachedUser && lastUsername) {
-          try {
-            const cachedUser = await electron.getCachedUser(lastUsername);
-            if (cachedUser) {
-              setUser(cachedUser);
-              return; // loaded from local DB — skip mock
-            }
-          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
-        }
-
-        // Fallback mock user for pure-browser development ONLY
-        if (import.meta.env.DEV) {
+        // No token in storage — genuinely logged out
+        if (!import.meta.env.DEV) {
+          setToken(null);
+          setUser(null);
+        } else {
           setUser({
             id: 'dev-1',
             username: 'dispatcher',
@@ -414,11 +421,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-        } else {
-          // In production, clear auth state if server is unreachable
-          clearTokens();
-          setToken(null);
-          setUser(null);
         }
       } finally {
         if (gen === generationRef.current) {
@@ -504,6 +506,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
@@ -577,6 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await verifyRes.json().catch(() => ({}));
         const message = errData.error || 'Security key verification failed';
@@ -671,6 +675,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
 
         // Trigger offline sync to seed local DB (fire-and-forget)
         if (electron?.triggerSync) {
@@ -712,6 +717,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(mockToken);
         setIsLoading(false);
         setLoginStep('complete');
+        playStartupSound();
         return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
@@ -761,6 +767,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || 'Invalid backup code');
@@ -897,6 +904,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       scheduleRefresh(data.token);
       setLoginStep('complete');
+        playStartupSound();
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
@@ -938,6 +946,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     }
   }, []);
+
+  // User-facing sign-out — gated on shift state. If the officer is on duty,
+  // refuse to clear the session and return a typed reason so the UI can route
+  // them to the ShiftCard's End Shift (which prompts ending mileage). Network
+  // failure on the duty/me probe is treated as "unknown → safer to block" so
+  // a cellular dropout can't sidestep the gate.
+  const signOut = useCallback(async (): Promise<{ ok: true } | { ok: false; reason: 'on_shift'; message: string }> => {
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (!currentToken) { logout(); return { ok: true }; }
+    try {
+      const res = await fetchWithTimeout('/api/dispatch/duty/me', {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      if (res.ok) {
+        const state = await res.json().catch(() => null);
+        if (state && state.on_shift) {
+          return { ok: false, reason: 'on_shift', message: 'End your shift before signing out — open the SHIFT card and tap End Shift.' };
+        }
+      } else if (res.status !== 401 && res.status !== 404) {
+        // Treat any other server error as "unknown shift state" → block.
+        return { ok: false, reason: 'on_shift', message: 'Could not confirm shift state — end your shift, then sign out.' };
+      }
+    } catch (err) {
+      console.warn('[Auth] signOut shift check failed — blocking sign-out:', err);
+      return { ok: false, reason: 'on_shift', message: 'Offline — end your shift before signing out.' };
+    }
+    logout();
+    return { ok: true };
+  }, [logout]);
 
   // The avatar shown app-wide (topbar, mobile drawer) reads user.profile_image,
   // but /auth/me only returns avatar_url — the base64 avatar lives on a
@@ -1006,6 +1043,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tempToken,
     cancel2FA,
     logout,
+    signOut,
     refreshUser,
     error,
     clearError,
@@ -1015,7 +1053,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoginUsername,
     pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

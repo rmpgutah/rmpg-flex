@@ -86,7 +86,7 @@ export default function SupplementFormModal({
     >
       <div className="space-y-3">
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
+          <label htmlFor="ff-supplementformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
           <select id="ff-supplementformmodal-0"
             className="select-dark w-full text-[11px]"
             value={form.report_type}
@@ -98,7 +98,7 @@ export default function SupplementFormModal({
           </select>
         </div>
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
+          <label htmlFor="ff-supplementformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
           <input id="ff-supplementformmodal-1"
             className="input-dark w-full text-[11px]"
             value={form.subject}

@@ -1,69 +1,65 @@
 /**
- * Notification sound alerts using Web Audio API.
- * Mirrors the dispatchTones.ts pattern — OscillatorNode + GainNode with exponential decay.
- * Three priority tiers: critical (double-beep), high (triangle attention), normal (soft pip).
+ * Notification sound alerts — voiced from the Spillman Flex / Motorola
+ * console library in dispatchTones.ts (sampled WAV assets with synth
+ * fallback) so notifications speak the same CAD vocabulary as dispatch:
+ *   critical → three-cycle emergency warble
+ *   high     → P25 three-pip attention getter
+ *   normal   → MDT acknowledge pip
+ * Keeps its own enable toggle (rmpg_notification_sounds), independent
+ * of the dispatch master toggle the library checks internally.
+ *
+ * v1056: Per-user storage scoping — the legacy key was shared across
+ * every operator that logged into a given MDT (shared-device leak). The
+ * new key `rmpg_notification_sounds_<user-id>` is consulted first, and
+ * the legacy key is the fallback so existing operators don't have their
+ * "off" pref silently flipped back to "on". The per-user key is owned
+ * by the user-profile modal's sound switch.
  */
+import { playSound } from './dispatchTones';
 
-let audioCtx: AudioContext | null = null;
+const LEGACY_KEY = 'rmpg_notification_sounds';
 
-function getAudioContext(): AudioContext {
-  if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new AudioContext();
+function readCurrentUserId(): string | null {
+  try {
+    // AuthContext mirrors `user` to localStorage as `rmpg_cached_user`
+    // on login (see client/src/context/AuthContext.tsx CACHED_USER_KEY).
+    const raw = localStorage.getItem('rmpg_cached_user');
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return u?.id != null ? String(u.id) : null;
+  } catch {
+    return null;
   }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
-  return audioCtx;
+}
+
+function keyForUser(): string {
+  const id = readCurrentUserId();
+  return id ? `${LEGACY_KEY}_${id}` : LEGACY_KEY;
 }
 
 export function isNotificationSoundEnabled(): boolean {
-  return localStorage.getItem('rmpg_notification_sounds') !== 'false';
+  // Per-user override wins. Falls back to the legacy global key so an
+  // operator's existing "off" pref isn't forgotten on first login after
+  // the per-user rollout.
+  const scopedKey = keyForUser();
+  const scoped = localStorage.getItem(scopedKey);
+  if (scoped !== null) return scoped !== 'false';
+  return localStorage.getItem(LEGACY_KEY) !== 'false';
+}
+
+export function setNotificationSoundEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(keyForUser(), String(enabled));
+  } catch {
+    // localStorage quota / private-mode — silent.
+  }
 }
 
 export function playNotificationTone(priority?: string): void {
   if (!isNotificationSoundEnabled()) return;
   try {
-    const ctx = getAudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    if (priority === 'critical') {
-      // Urgent double-beep: 880Hz then 1100Hz square wave
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.6);
-      // Second pip
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.type = 'square';
-      osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
-      gain2.gain.setValueAtTime(0.12, ctx.currentTime + 0.15);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-      osc2.start(ctx.currentTime + 0.15);
-      osc2.stop(ctx.currentTime + 0.6);
-    } else if (priority === 'high') {
-      // Single attention tone: 660Hz triangle wave
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.4);
-    } else {
-      // Soft info pip: 440Hz sine, very short
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, ctx.currentTime);
-      gain.gain.setValueAtTime(0.06, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.15);
-    }
-  } catch { /* AudioContext not available */ }
+    if (priority === 'critical') playSound('emergency_three');
+    else if (priority === 'high') playSound('alert');
+    else playSound('info');
+  } catch { /* audio is a nicety */ }
 }

@@ -21,7 +21,8 @@ const statutes = new Hono<Env>();
 
 const COLS = `id, title, chapter, chapter_code, section, subsection, citation,
   short_title, description, offense_level, category, subcategory, part_name,
-  code_type, effective_date, source_url, citation_fine`;
+  code_type, effective_date, source_url, citation_fine,
+  plain_summary, plain_elements, summary_model`;
 
 // The StatuteLookup UI is multi-state aware but we only hold Utah law.
 function utahOnly(state?: string): boolean {
@@ -32,8 +33,51 @@ function utahOnly(state?: string): boolean {
 
 function shape(r: Record<string, unknown>) {
   // `state`/`state_name`/`definition` keep the legacy StatuteResult shape happy.
-  return { ...r, state: 'UT', state_name: 'Utah', definition: null };
+  // plain_elements is stored as a JSON array string — parse it so the client
+  // gets a real string[] (null/garbage degrades to []).
+  let plainElements: string[] = [];
+  if (typeof r.plain_elements === 'string' && r.plain_elements.trim()) {
+    try {
+      const parsed = JSON.parse(r.plain_elements);
+      if (Array.isArray(parsed)) plainElements = parsed.map((e) => String(e));
+    } catch { /* leave [] */ }
+  }
+  return { ...r, plain_elements: plainElements, state: 'UT', state_name: 'Utah', definition: null };
 }
+
+// GET / — paginated list for the Admin panel (limit/offset/q/category).
+statutes.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = (c.req.query('q') || '').trim();
+    const category = c.req.query('category');
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 100);
+    const offset = Math.max(parseInt(c.req.query('offset') || '0', 10) || 0, 0);
+
+    const where: string[] = ['is_active = 1'];
+    const binds: unknown[] = [];
+    if (q.length >= 2) {
+      where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
+      binds.push(`${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
+
+    const whereClause = where.join(' AND ');
+    const countRow = await queryFirst<{ cnt: number }>(db,
+      `SELECT COUNT(*) AS cnt FROM utah_statutes WHERE ${whereClause}`, ...binds);
+    const total = countRow?.cnt || 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT ${COLS} FROM utah_statutes WHERE ${whereClause}
+       ORDER BY title, chapter, CAST(section AS REAL), section LIMIT ? OFFSET ?`,
+      ...binds, limit, offset);
+    return c.json({ data: rows.map(shape), pagination: { total, totalPages, limit, offset } });
+  } catch (err) {
+    console.error('[statutes] list error', err);
+    return c.json({ data: [], pagination: { total: 0, totalPages: 1 } });
+  }
+});
 
 // GET /search — type-ahead + full-text over citation / title / body.
 statutes.get('/search', async (c) => {
@@ -44,12 +88,23 @@ statutes.get('/search', async (c) => {
     const level = c.req.query('level');
     const type = c.req.query('type'); // 'statute' | 'rule'
     const state = c.req.query('state');
+    const idParam = c.req.query('id');
     const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 50);
 
     if (!utahOnly(state)) return c.json({ data: [] });
 
     const where: string[] = ['is_active = 1'];
     const binds: unknown[] = [];
+    // Lookup by internal id — used by the law-book deep-link
+    // (/law-book?statute_id=…) to resolve a stable id back to its row when
+    // the caller doesn't have the citation. Short-circuits everything else.
+    if (idParam) {
+      const idNum = parseInt(idParam, 10);
+      if (Number.isFinite(idNum)) {
+        where.push('id = ?');
+        binds.push(idNum);
+      }
+    }
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
       binds.push(`${q}%`, `%${q}%`, `%${q}%`);
@@ -89,7 +144,8 @@ statutes.get('/toc', async (c) => {
               MIN(subcategory)  AS subcategory,
               MIN(code_type)    AS code_type,
               COUNT(*)          AS section_count,
-              SUM(CASE WHEN offense_level IS NOT NULL THEN 1 ELSE 0 END) AS offense_count
+              SUM(CASE WHEN offense_level IS NOT NULL THEN 1 ELSE 0 END) AS offense_count,
+              SUM(CASE WHEN plain_summary IS NOT NULL AND plain_summary != '' THEN 1 ELSE 0 END) AS summary_count
        FROM utah_statutes
        WHERE ${where.join(' AND ')}
        GROUP BY category, title, chapter_code

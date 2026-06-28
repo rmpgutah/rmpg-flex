@@ -6,7 +6,7 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
@@ -14,11 +14,11 @@ const { ConnectivityMonitor } = require('./connectivityMonitor');
 const { InternalGps, findGpsPort } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
-// Electron strips Chrome's bundled Google API key. Without it,
-// navigator.geolocation silently fails on desktop (no GPS hardware).
-// Chromium's Network Location Provider uses this key to resolve
-// WiFi/IP-based positions. This is a generic Geolocation API key.
-process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
+// Chromium's Network Location Provider requires a Google API key to resolve
+// WiFi/IP-based positions via navigator.geolocation. Set GOOGLE_API_KEY in
+// the environment before launching if WiFi geolocation is needed. GPS hardware
+// runs independently through InternalGps and is unaffected when this is unset.
+// (Key removed from source — set via environment variable instead.)
 
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
@@ -140,15 +140,19 @@ function getSplashLogoDataUri() {
           path.join(process.resourcesPath, 'rmpg flex.png'),
           path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
           path.join(process.resourcesPath, 'icon.png'),
+          // Last resort if extraResources were stripped (e.g. unpacked run)
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
         ];
     for (const p of candidates) {
       if (fs.existsSync(p)) {
         const ext = path.extname(p).slice(1).toLowerCase() || 'png';
         const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
         const b64 = fs.readFileSync(p).toString('base64');
+        console.log('[SPLASH] logo loaded from', p);
         return `data:${mime};base64,${b64}`;
       }
     }
+    console.warn('[SPLASH] no logo file found — using text fallback');
   } catch (err) {
     console.warn('[SPLASH] logo load failed:', err && err.message);
   }
@@ -622,6 +626,15 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Keep the renderer running at full rate when the window is minimized,
+      // occluded, or otherwise not focused. Chromium throttles background
+      // windows by default — setInterval clamped to ~1/min, rAF paused — which
+      // slowed the nav trip engine's 15s route-upload + 30s auto-end checks to
+      // a crawl whenever the officer switched away from the CAD. The GPS NMEA
+      // reader lives in the main process (never throttled), but the detection +
+      // upload logic runs here in the renderer, so it must not be throttled for
+      // navigation to keep calculating + recording movement off-screen.
+      backgroundThrottling: false,
     },
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -768,6 +781,50 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
+
+// ─── Crash-safe printing ─────────────────────────────────────
+// macOS 26's native print panel (NSPrintPanel → PrintingUI →
+// PJCSessionHasApplicationSetPrinter) segfaults when opened from
+// Electron 40 — window.print() hard-crashes the whole app
+// (EXC_BAD_ACCESS in CrBrowserMain). We never open the AppKit panel:
+// every print renders via Chromium's printToPDF (no AppKit) and the
+// PDF is handed to macOS Preview, whose print dialog is stable.
+const { webFrameMain } = require('electron');
+
+const PRINT_OVERRIDE_JS = `(() => {
+  if (window.__rmpgPrintPatched) return;
+  window.__rmpgPrintPatched = true;
+  window.print = () => {
+    try {
+      if (window.electron && window.electron.printToPdf) { window.electron.printToPdf(); return; }
+    } catch (e) {}
+    // Subframes (iframes / window.open) have no preload bridge —
+    // delegate to the top frame, which is patched and bridged.
+    try { window.top.print(); } catch (e) {}
+  };
+})();`;
+
+app.on('web-contents-created', (_event, wc) => {
+  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+    try {
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+    } catch (e) { /* frame may already be gone */ }
+  });
+});
+
+ipcMain.handle('print:to-pdf', async (event) => {
+  const fs = require('fs');
+  try {
+    const pdf = await event.sender.printToPDF({ printBackground: true });
+    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+    await fs.promises.writeFile(file, pdf);
+    const err = await shell.openPath(file); // opens in Preview; user prints from there
+    return { ok: !err, file, error: err || undefined };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
@@ -2198,16 +2255,26 @@ async function detectToughbook() {
     const mfgIsPanasonic = mfg.includes('panasonic');
     const modelLooksFz55 = mdlNorm.includes('fz55');
 
-    // Detect by HARDWARE PRESENCE, not just the model string: enumerate serial
-    // ports up front and treat any Panasonic machine exposing a u-blox/GNSS COM
-    // port as a GPS-equipped Toughbook even when its model code doesn't parse as
-    // FZ-55. A Panasonic CF-33 with no GPS module finds no port → still excluded
-    // (preserves the original intent of keeping non-GPS Panasonic gear on
-    // navigator.geolocation), so this only ever ADDS correctly-detected units.
-    const portPath = mfgIsPanasonic ? await findGpsPort() : null;
-    const isToughbook = mfgIsPanasonic && (modelLooksFz55 || portPath != null);
+    // Detect by HARDWARE PRESENCE, not just the model string. We ALWAYS
+    // enumerate serial ports — the WMI manufacturer string is unreliable (some
+    // FZ-55 SKUs report a blank or OEM manufacturer, and the PowerShell probe
+    // above can degrade), so gating port discovery on `mfgIsPanasonic` silently
+    // hid a present u-blox module and dropped the unit to WiFi triangulation.
+    //
+    // A u-blox VID (score 100) or a GNSS-named bridge (score 70) is hardware-
+    // definitive — no consumer non-GPS machine exposes one — so it qualifies on
+    // its own regardless of the manufacturer string. A weak name-only match
+    // (score 50, e.g. a bare USB-serial adapter with "gps" in its label) is
+    // trusted only on a confirmed Panasonic host, preserving the original intent
+    // of keeping unrelated serial ports on non-Panasonic gear from being grabbed.
+    const gpsPort = await findGpsPort();          // { path, score } | null
+    const portPath = gpsPort?.path ?? null;
+    const portIsDefinitive = (gpsPort?.score ?? 0) >= 70;
+    const isToughbook =
+      portIsDefinitive ||
+      (mfgIsPanasonic && (modelLooksFz55 || portPath != null));
 
-    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} -> toughbook=${isToughbook}`);
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} score=${gpsPort?.score ?? 0} definitive=${portIsDefinitive} -> toughbook=${isToughbook}`);
     return { isToughbook, manufacturer, model, portPath };
   } catch (err) {
     console.warn('[INTERNAL-GPS] Detection failed:', err.message);
@@ -2248,6 +2315,42 @@ ipcMain.handle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
+});
+
+// ─── Power management (keep navigation alive off-screen) ─────
+// While a vehicle trip is active, the renderer asks the main process to hold a
+// powerSaveBlocker so the Toughbook doesn't suspend mid-patrol. We use
+// 'prevent-app-suspension' (NOT 'prevent-display-sleep'): the display may turn
+// off to save power, but the system stays awake so the nav engine keeps
+// calculating + uploading breadcrumbs in the background. The blocker is
+// released the moment the trip ends (renderer calls power:allow-sleep) so a
+// parked/idle unit returns to normal power behavior. Idempotent: repeated
+// keep-awake calls reuse the single active blocker id.
+let powerBlockerId = null;
+ipcMain.handle('power:keep-awake', () => {
+  try {
+    if (powerBlockerId == null || !powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[POWER] prevent-app-suspension started (id', powerBlockerId + ') — active trip');
+    }
+    return { ok: true, blocking: true };
+  } catch (err) {
+    console.warn('[POWER] keep-awake failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+ipcMain.handle('power:allow-sleep', () => {
+  try {
+    if (powerBlockerId != null && powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerSaveBlocker.stop(powerBlockerId);
+      console.log('[POWER] prevent-app-suspension stopped — trip ended');
+    }
+    powerBlockerId = null;
+    return { ok: true, blocking: false };
+  } catch (err) {
+    console.warn('[POWER] allow-sleep failed:', err.message);
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── IP Geolocation Fallback ─────────────────────────────────

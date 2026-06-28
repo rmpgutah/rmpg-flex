@@ -103,6 +103,7 @@ export function useAddressAutofill() {
         .filter(Boolean).join(' ') || String(r.display_name || q).split(',')[0]?.trim() || '';
       return resolve({
         formatted: r.display_name || q,
+        text: street,
         street,
         city: a.city || a.town || a.village || a.hamlet || a.suburb || '',
         state: a.state || '',
