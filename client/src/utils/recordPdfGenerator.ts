@@ -66,6 +66,7 @@ import {
   drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
   type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
+import { toDisplayLabel } from './formatters';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -528,11 +529,20 @@ export type RecordPdfType =
   | 'fleet'
   | 'personnel'
   | 'property'
+  | 'business'
   | 'citation'
   | 'case'
   | 'field_interview'
   | 'court_event'
   | 'jail_booking';
+
+// ── Connection Profile (shared across Person / Vehicle / Property PDFs) ──
+
+export interface PdfConnectionProfile {
+  type: string;       // 'person' | 'vehicle' | 'property' | 'incident' | 'case' | etc.
+  label: string;      // human-readable label from getRecordLabel
+  relationship: string;
+}
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -570,6 +580,8 @@ export interface CallPdfData {
   case_id?: number;
   case_number?: string;
   incident_number?: string;
+  // Serve queue linkage — enables QR code on printout for mobile status update
+  serve_queue_id?: number | string;
   // Contract ID (for PSO Client Request incidents)
   contract_id?: string;
   latitude?: number;
@@ -661,6 +673,7 @@ export interface CallPdfData {
   onscene_at?: string;
   cleared_at?: string;
   closed_at?: string;
+  archived_at?: string;
   created_by?: string;
   // Notes / Narrative
   // Body arrives as `content` (this interface's original shape) OR `text`
@@ -805,6 +818,12 @@ export interface PersonPdfData {
   shoe_size?: string;
   scars_marks_tattoos?: string;
   clothing_description?: string;
+  // Detailed marks
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  identifying_marks_location?: string;
+  distinguishing_features?: string;
   // Contact
   phone?: string;
   phone_secondary?: string;
@@ -827,6 +846,15 @@ export interface PersonPdfData {
   id_state?: string;
   id_expiry?: string;
   ssn_last4?: string;
+  // Law Enforcement IDs
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  // Passport / Immigration
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
   // Employment / Demographics
   employer?: string;
   occupation?: string;
@@ -936,11 +964,12 @@ export interface VehiclePdfData {
   odometer?: string;
   // Owner
   owner_name?: string;
+  registered_owner?: string;
   owner_address?: string;
   owner_phone?: string;
   commercial_vehicle?: boolean;
   hazmat?: boolean;
-  // Insurance
+  // Insurance & Registration
   insurance_company?: string;
   insurance_policy?: string;
   insurance_expiry?: string;
@@ -998,6 +1027,7 @@ export interface VehiclePdfData {
 }
 
 export interface WarrantPdfData {
+  id?: number;
   warrant_number: string;
   type: string;
   status: string;
@@ -1242,6 +1272,9 @@ export interface PersonnelPdfData {
   rank?: string;
   role?: string;
   department?: string;
+  status?: string;
+  employment_status?: string;
+  assignment?: string;
   date_of_birth?: string;
   gender?: string;
   blood_type?: string;
@@ -1594,6 +1627,27 @@ function formatElapsed(ms: number): string {
 function titleCase(str: string): string {
   if (!str) return '';
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+/** Render a "Connected Profiles" table from the connections graph data.
+ *  Shared across person, vehicle, and property PDF generators. */
+function addConnectionsSection(
+  doc: jsPDF, connections: PdfConnectionProfile[] | undefined, y: number,
+  priority?: string,
+): number {
+  if (!connections || connections.length === 0) return y;
+  const lx = getLeftX();
+  y = checkPageBreak(doc, y, 25, priority);
+  { const sec = openAutoSection(doc, 'Connected Profiles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+  const rows = connections.map(c => [
+    titleCase(c.type.replace(/_/g, ' ')),
+    c.label || 'N/A',
+    titleCase(c.relationship.replace(/_/g, ' ')),
+  ]);
+  y = addTableWithShading(doc,
+    [{ label: 'TYPE', x: lx }, { label: 'NAME / IDENTIFIER', x: lx + 30 }, { label: 'RELATIONSHIP', x: lx + 130 }],
+    rows, y, [lx, lx + 30, lx + 130]);
+  return y;
 }
 
 // ── Call for Service Report ──────────────────────────────────
@@ -2133,7 +2187,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // parseTimestamp interprets naive server strings as UTC (the app standard);
       // Date.parse treated them as local, skewing the elapsed deltas ~6-7h.
       const t = s.iso ? parseTimestamp(s.iso).getTime() : NaN;
-      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' }) : undefined;
+      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
       const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
       // Status-aware state: done if timestamped, else active/future per the
       // lifecycle. Lets the strip render "PENDING" on the live edge + faint
@@ -2316,7 +2370,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'On Scene',   ts: data.onscene_at,    phase: 'response' },
       { label: 'Cleared',    ts: data.cleared_at,    phase: 'on-scene' },
       { label: 'Closed',     ts: data.closed_at },
-      { label: 'Archived',   ts: (data as any).archived_at },
+      { label: 'Archived',   ts: data.archived_at },
     ].filter(s => !!s.ts);
 
     if (steps.length > 0) {
@@ -2848,11 +2902,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Linked Persons — route through the shared addTableWithShading helper
   // so the table automatically redraws column headers + a
-  // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
+  // "LINKED INDIVIDUALS -- CONTINUED" sub-bar on any page break (no more
   // orphaned data rows on continuation pages).
   if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y);
+    const sec = openAutoSection(doc, 'LINKED INDIVIDUALS', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
     // CROSS-REF column added 2026-05-30: surfaces (1) a threat token derived
     // from the person's role (SUBJECT for suspect/wanted/offender roles) and
@@ -3489,6 +3543,29 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   y += 1; // ensure clear gap after Physical Description section border
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
 
+  // ── 3a. Detailed Marks Descriptions ───────────────────────
+  if (data.tattoo_description || data.scar_description || data.piercing_description || data.identifying_marks_location || data.distinguishing_features) {
+    y = checkPageBreak(doc, y, 18, prio);
+    { const sec = openAutoSection(doc, 'Identifying Marks Detail', y); y = sec.contentY;
+      if (data.tattoo_description) {
+        y = addFieldPair(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+      }
+      if (data.scar_description) {
+        y = addFieldPair(doc, 'Scar Description', data.scar_description, lx, y, ffw);
+      }
+      if (data.piercing_description) {
+        y = addFieldPair(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
+      }
+      if (data.identifying_marks_location) {
+        y = addFieldPair(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+      }
+      if (data.distinguishing_features) {
+        y = addFieldPair(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
   // ── 4. Clothing Description ───────────────────────────────
   y = addNarrativeSection(doc, 'Clothing Description', data.clothing_description || '', y, prio);
 
@@ -3687,6 +3764,36 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── 7a. Education & Military ──────────────────────────────
+  if (data.education_level || data.military_branch || data.military_status || data.tribal_affiliation) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Education & Military', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const em1 = addFieldPair(doc, 'Education Level', data.education_level || '', lx, y, quarterW);
+      const em2 = addFieldPair(doc, 'Military Branch', data.military_branch || '', lx + quarterW, y, quarterW);
+      const em3 = addFieldPair(doc, 'Military Status', data.military_status || '', lx + quarterW * 2, y, quarterW);
+      const em4 = addFieldPair(doc, 'Tribal Affiliation', data.tribal_affiliation || '', lx + quarterW * 3, y, quarterW);
+      y = Math.max(em1, em2, em3, em4);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── 7b. Health & Medical ──────────────────────────────────
+  if (data.disability_flags || data.mental_health_flags || data.substance_abuse || data.medication_notes) {
+    y = checkPageBreak(doc, y, 16, prio);
+    { const sec = openAutoSection(doc, 'Health & Medical', y); y = sec.contentY;
+      const thirdWh = ffw / 3;
+      const hm1 = addFieldPair(doc, 'Disabilities', data.disability_flags || '', lx, y, thirdWh);
+      const hm2 = addFieldPair(doc, 'Mental Health', data.mental_health_flags || '', lx + thirdWh, y, thirdWh);
+      const hm3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx + thirdWh * 2, y, thirdWh);
+      y = Math.max(hm1, hm2, hm3);
+      if (data.medication_notes) {
+        y = addFieldPair(doc, 'Medication Notes', data.medication_notes, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
   // ── 8. Flags & Warnings ───────────────────────────────────
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
@@ -3698,7 +3805,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
     y += 4;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
-    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
+    const gangAffiliation = getMeaningfulPersonStatus(data.gang_affiliation) || '';
+    const probationParoleStatus = getMeaningfulPersonStatus(data.probation_parole) || '';
+    const probParole = `${probationParoleStatus}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
     // Render gang_affiliation verbatim — explicit "None" from the dropdown
     // is a legitimate operator choice that should appear on the PDF, not be
@@ -3737,7 +3846,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
     // Clean up: replace underscores with spaces
-    flagList = flagList.map(f => f.replace(/_/g, ' '));
+    flagList = flagList.map(f => f.replace(/_/g, ' ').toUpperCase());
 
     // Dedup against the checkbox flags above.
     const alreadyShown = new Set<string>();
@@ -3807,8 +3916,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const warrantRows = activeWarrantsOnly.map(w => [
       w.warrant_number || 'N/A',
-      titleCase(w.type || ''),
-      titleCase(w.status || ''),
+      toDisplayLabel(w.type || ''),
+      toDisplayLabel(w.status || ''),
       w.charge_description || 'N/A',
       titleCase(w.offense_level || '') || 'N/A',
       fmtDate(w.date_issued || (w as any).issued_date) || 'N/A',
@@ -3836,9 +3945,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
-      titleCase((inc.incident_type || '').replace(/_/g, ' ')),
-      titleCase(inc.role || ''),
-      titleCase(inc.status || ''),
+      toDisplayLabel(inc.incident_type || ''),
+      toDisplayLabel(inc.role || ''),
+      toDisplayLabel(inc.status || ''),
       fmtDate(inc.created_at),
     ]);
     y = addTableWithShading(
@@ -3863,8 +3972,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
       c.citation_number || 'N/A',
-      titleCase(c.type || ''),
-      titleCase(c.status || ''),
+      toDisplayLabel(c.type || ''),
+      toDisplayLabel(c.status || ''),
       c.violation_description || c.statute_citation || 'N/A',
       fmtDate(c.violation_date),
     ]);
@@ -3919,7 +4028,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const crRows = data.criminal_records.map(r => [
       formatEnumValue(r.record_type),
       r.offense || 'N/A',
-      (r.offense_level || '').toUpperCase() || 'N/A',
+      toDisplayLabel(r.offense_level || '') || 'N/A',
       r.case_number || 'N/A',
       r.disposition || 'N/A',
       fmtDate(r.offense_date),
@@ -4524,8 +4633,8 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   // and never collides with form content regardless of how many
   // sections render above it.
   const qrUrl = data.qr_code_data_url ||
-    (typeof window !== 'undefined' && (data as any).id
-      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
+    (typeof window !== 'undefined' && data.id
+      ? await generateQrDataUrl(`${window.location.origin}/warrants/${data.id}`)
       : null);
   if (qrUrl) {
     const pageW = doc.internal.pageSize.getWidth();
@@ -4921,7 +5030,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.evidence_type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + fifthW * 4, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
     const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
@@ -5121,7 +5230,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
 function buildFleetCautionText(data: FleetPdfData, flags: string[]): string {
   const parts: string[] = [];
   if (flags.includes('OUT OF SERVICE') || flags.includes('IN REPAIR')) {
-    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ')} — not available for deployment.`);
+    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ').toUpperCase()} — not available for deployment.`);
   }
   if (flags.includes('REGISTRATION EXPIRED') || flags.includes('INSURANCE EXPIRED')) {
     parts.push('CRITICAL: Expired compliance documents — vehicle may not be legally operable on public roadways until renewed.');
@@ -5171,7 +5280,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: data.vehicle_number || 'NO UNIT',
-      secondary: [ymm, (data as any).license_plate].filter(Boolean).join(' · '),
+      secondary: [ymm, data.plate_number].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -5196,7 +5305,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Row 3: Plate Number, Plate State, Status (3 cols)
     const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
     const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
-    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + thirdW * 2, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + thirdW * 2, y, thirdW);
     y = Math.max(r3a, r3b, r3c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -5597,7 +5706,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   // Quick-reference banner — name + badge# + active pill
   {
     const name = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
-    const status = String((data as any).status || (data as any).employment_status || '').toLowerCase();
+    const status = String(data.status || data.employment_status || '').toLowerCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
       ? { label: 'ACTIVE', tone: 'standard' }
       : status === 'terminated' || status === 'separated' || status === 'inactive'
@@ -5607,7 +5716,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: name,
-      secondary: [`Badge ${data.badge_number || ''}`, (data as any).rank, (data as any).assignment].filter(Boolean).join(' · '),
+      secondary: [`Badge ${data.badge_number || ''}`, data.rank, data.assignment].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -6167,8 +6276,24 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // Post Orders
   y = addNarrativeSection(doc, 'Post Orders', data.post_orders || '', y);
 
+  // Site Details
+  if (data.parking_info) {
+    y = addNarrativeSection(doc, 'Parking Info', data.parking_info, y);
+  }
+  if (data.utility_shutoffs) {
+    y = addNarrativeSection(doc, 'Utility Shutoffs', data.utility_shutoffs, y);
+  }
+
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+  if (data.known_hazards) {
+    y = addNarrativeSection(doc, 'Known Hazards', data.known_hazards, y);
+  }
+
+  // Notes
+  if (data.notes) {
+    y = addNarrativeSection(doc, 'Notes', data.notes, y);
+  }
 
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
@@ -6191,6 +6316,239 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // Signature Block — officer + company seal
+  y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
+}
+
+// ── Business Record ──────────────────────────────────────────
+
+async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
+  setActiveCaseNumber(data.name || 'N/A');
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'BUSINESS RECORD',
+    formNumber: 'FORM PS-210',
+    caseNumber: data.name || 'N/A',
+    caseNumberLabel: 'BUSINESS NAME',
+  });
+
+  // Quick-reference banner — business name + address + status pill
+  {
+    const addr = [data.address, data.city, data.state].filter(Boolean).join(', ');
+    const statusLower = (data.status || 'active').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = statusLower === 'active'
+      ? { label: 'ACTIVE', tone: 'standard' }
+      : statusLower === 'closed'
+        ? { label: 'CLOSED', tone: 'inactive' }
+        : { label: (data.status || '').toUpperCase(), tone: 'elevated' };
+    y = addQuickReferenceBanner(doc, {
+      primary: (data.name || 'UNNAMED BUSINESS').toUpperCase(),
+      secondary: [data.dba_name ? `DBA: ${data.dba_name}` : '', addr].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  y = addLinkedRecordsStrip(doc, data, y);
+
+  // ── Business Identification ──
+  y = checkPageBreak(doc, y, 22);
+  { const sec = openAutoSection(doc, 'Business Identification', y); y = sec.contentY;
+    // Row 1: Name (half), DBA (half)
+    const r1a = addFieldPair(doc, 'Business Name', data.name || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'DBA / Trade Name', data.dba_name || '', rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    // Row 2: Type, Industry, EIN, License #
+    const qw = ffw / 4;
+    const r2a = addFieldPair(doc, 'Business Type', data.business_type || '', lx, y, qw);
+    const r2b = addFieldPair(doc, 'Industry', data.industry || '', lx + qw, y, qw);
+    const r2c = addFieldPair(doc, 'EIN', data.ein || '', lx + 2 * qw, y, qw);
+    const r2d = addFieldPair(doc, 'License #', data.license_number || '', lx + 3 * qw, y, qw);
+    y = Math.max(r2a, r2b, r2c, r2d);
+    // Row 3: Employee Count, Annual Revenue, Status, Record ID
+    const r3a = addFieldPair(doc, 'Employees', data.employee_count || '', lx, y, qw);
+    const r3b = addFieldPair(doc, 'Annual Revenue', data.annual_revenue || '', lx + qw, y, qw);
+    const r3c = addFieldPair(doc, 'Status', (data.status || 'active').toUpperCase(), lx + 2 * qw, y, qw);
+    const r3d = addFieldPair(doc, 'Record ID', data.id || '', lx + 3 * qw, y, qw);
+    y = Math.max(r3a, r3b, r3c, r3d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Location & Contact ──
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Location & Contact', y); y = sec.contentY;
+    // Row 1: Address (full)
+    const fullAddr = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
+    y = addFieldPair(doc, 'Address', fullAddr, lx, y, ffw);
+    // Row 2: Phone, Email, Website
+    const tw = ffw / 3;
+    const c1 = addFieldPair(doc, 'Phone', data.phone || '', lx, y, tw);
+    const c2 = addFieldPair(doc, 'Email', data.email || '', lx + tw, y, tw);
+    const c3 = addFieldPair(doc, 'Website', data.website || '', lx + 2 * tw, y, tw);
+    y = Math.max(c1, c2, c3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Owner & Management ──
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Owner & Management', y); y = sec.contentY;
+    // Row 1: Owner Name, Owner Phone
+    const o1 = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+    const o2 = addFieldPair(doc, 'Owner Phone', data.owner_phone || '', rx, y, hfw);
+    y = Math.max(o1, o2);
+    // Row 2: Contact Name, Contact Phone, Contact Email
+    const tw = ffw / 3;
+    const m1 = addFieldPair(doc, 'Contact Name', data.contact_name || '', lx, y, tw);
+    const m2 = addFieldPair(doc, 'Contact Phone', data.contact_phone || '', lx + tw, y, tw);
+    const m3 = addFieldPair(doc, 'Contact Email', data.contact_email || '', lx + 2 * tw, y, tw);
+    y = Math.max(m1, m2, m3);
+    // Row 3: After-Hours Contact
+    if (data.after_hours_contact_name || data.after_hours_contact_phone || data.loss_prevention_contact) {
+      const a1 = addFieldPair(doc, 'After-Hours Contact', data.after_hours_contact_name || '', lx, y, tw);
+      const a2 = addFieldPair(doc, 'After-Hours Phone', data.after_hours_contact_phone || '', lx + tw, y, tw);
+      const a3 = addFieldPair(doc, 'Loss Prevention', data.loss_prevention_contact || '', lx + 2 * tw, y, tw);
+      y = Math.max(a1, a2, a3);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Corporate Structure ──
+  if (data.parent_company || data.franchise_id) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Corporate Structure', y); y = sec.contentY;
+    const cp1 = addFieldPair(doc, 'Parent Company', data.parent_company || '', lx, y, hfw);
+    const cp2 = addFieldPair(doc, 'Franchise ID', data.franchise_id || '', rx, y, hfw);
+    y = Math.max(cp1, cp2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Security & Alarm ──
+  if (data.alarm_company || data.alarm_panel_code || data.alarm_passphrase) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Security & Alarm', y); y = sec.contentY;
+    const tw = ffw / 3;
+    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, tw);
+    const s2 = addFieldPair(doc, 'Panel Code', data.alarm_panel_code || '', lx + tw, y, tw);
+    const s3 = addFieldPair(doc, 'Passphrase', data.alarm_passphrase || '', lx + 2 * tw, y, tw);
+    y = Math.max(s1, s2, s3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Insurance ──
+  if (data.insurance_carrier || data.insurance_policy_number) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Insurance', y); y = sec.contentY;
+    const i1 = addFieldPair(doc, 'Insurance Carrier', data.insurance_carrier || '', lx, y, hfw);
+    const i2 = addFieldPair(doc, 'Policy Number', data.insurance_policy_number || '', rx, y, hfw);
+    y = Math.max(i1, i2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Hours of Operation ──
+  if (data.hours_of_operation) {
+    y = checkPageBreak(doc, y, 12);
+    y = addNarrativeSection(doc, 'Hours of Operation', data.hours_of_operation, y);
+  }
+
+  // ── Holiday Schedule ──
+  if (data.holiday_schedule) {
+    y = addNarrativeSection(doc, 'Holiday Schedule', data.holiday_schedule, y);
+  }
+
+  // ── Flags ──
+  if (data.flags && data.flags.length > 0) {
+    y = checkPageBreak(doc, y, 10);
+    const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+    y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Linked Persons ──
+  if (data.linked_persons && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Individuals', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const pRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      titleCase(p.role || 'linked'),
+      p.phone || '',
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'ROLE', x: lx + 70 }, { label: 'PHONE', x: lx + 130 }],
+      pRows, y, [lx, lx + 70, lx + 130]);
+  }
+
+  // ── Incident History ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      formatEnumValue(inc.incident_type),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Dispatch Call History ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      formatEnumValue(c.incident_type),
+      displayStatus(c.status || ''),
+      c.location || '',
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 27 }, { label: 'STATUS', x: lx + 69 }, { label: 'LOCATION', x: lx + 97 }, { label: 'DATE', x: lx + 152 }],
+      callRows, y, [lx, lx + 27, lx + 69, lx + 97, lx + 152]);
+  }
+
+  // ── Trespass Orders ──
+  if (data.trespass_orders && data.trespass_orders.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const toRows = data.trespass_orders.map(t => [
+      t.order_number || 'N/A',
+      t.subject_name || '',
+      titleCase(t.status || ''),
+      fmtDate(t.issued_date),
+      fmtDate(t.expires_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
+      toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
+  }
+
+  // ── Notes ──
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
+
+  // Attachments
+  if (data.attachment_images && data.attachment_images.length > 0) {
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
+  }
+
+  // Signature Block
   y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
 }
 
@@ -6223,7 +6581,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
 
   // Quick-reference banner — citation# + violation + status pill
   {
-    const violation = (data as any).violation_description || (data as any).statute_citation || '';
+    const violation = data.violation_description || data.statute_citation || '';
     const status = String(data.status || '').toLowerCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'paid'
       ? { label: 'PAID', tone: 'inactive' }
@@ -6259,7 +6617,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + quarterW * 2, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + quarterW * 3, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
@@ -6464,6 +6822,7 @@ type RecordDataMap = {
   fleet: FleetPdfData;
   personnel: PersonnelPdfData;
   property: PropertyPdfData;
+  business: BusinessPdfData;
   citation: CitationPdfData;
   case: CasePdfData;
   field_interview: FieldInterviewPdfData;
@@ -6536,6 +6895,9 @@ export async function generateRecordPdf<T extends RecordPdfType>(
       break;
     case 'property':
       await generatePropertyReport(doc, data as PropertyPdfData);
+      break;
+    case 'business':
+      await generateBusinessReport(doc, data as BusinessPdfData);
       break;
     case 'citation':
       await generateCitationReport(doc, data as CitationPdfData);
@@ -7163,9 +7525,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     topBanner: true,
     rows: [
       { cells: [
-        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
-        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
-        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+        { label: 'TOTAL SCANS', value: String(data.scanActivity?.totalScans ?? 0), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity?.totalFound ?? 0), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity?.totalCleared ?? 0), ratio: 1, align: 'center' },
       ]},
     ],
     y,

@@ -116,6 +116,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     if (!mapContainerRef.current) return;
 
     let cancelled = false;
+    injectMapboxStyles();
 
     function initPatrolMap() {
       if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
@@ -813,16 +814,26 @@ const PatrolPage: React.FC = () => {
     } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
   };
 
+  const patrolTabs = [
+    { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
+    { id: 'scans' as const, label: 'Scan Log', icon: Clock },
+    { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
+    { id: 'map' as const, label: 'Map', icon: MapIcon },
+    { id: 'summary' as const, label: 'Shift Summary', icon: CheckCircle },
+    { id: 'mileage' as const, label: 'Mileage Audit', icon: Wrench },
+    { id: 'pricing' as const, label: 'Pricing', icon: DollarSign },
+    { id: 'contracts' as const, label: 'Contracts', icon: FileText },
+    { id: 'billing' as const, label: 'Billing Review', icon: ClipboardCheck },
+  ];
+
   // ── Esc smart-cascade: dismiss innermost open layer first ──
-  // Priority: deleteConfirmId > QR modal > Checkpoint modal, then stop.
-  // Each branch calls e.stopPropagation() so the event doesn't bubble further.
+  // Priority: QR modal > Checkpoint modal, then stop. ConfirmDialog handles
+  // its own Esc internally, so we don't need to mirror deleteConfirmId here.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (deleteConfirmId !== null) { e.stopPropagation(); setDeleteConfirmId(null); return; }
-      if (showQrModal) { e.stopPropagation(); setShowQrModal(false); return; }
+      if (showQrModal) { setShowQrModal(false); return; }
       if (showCheckpointModal) {
-        e.stopPropagation();
         clearFormDraft();
         setShowCheckpointModal(false);
         return;
@@ -830,7 +841,7 @@ const PatrolPage: React.FC = () => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [deleteConfirmId, showQrModal, showCheckpointModal, clearFormDraft]);
+  }, [showQrModal, showCheckpointModal, clearFormDraft]);
 
   // ── N shortcut: open new Checkpoint form ──
   // Only active on the Checkpoints tab; suppressed while typing in a field
@@ -845,7 +856,6 @@ const PatrolPage: React.FC = () => {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (t.isContentEditable) return;
       }
-      if (!canCreate) return;
       if (activeTab !== 'checkpoints') return;
       if (showCheckpointModal || showQrModal || deleteConfirmId !== null) return;
       e.preventDefault();
@@ -854,7 +864,47 @@ const PatrolPage: React.FC = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canCreate, activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
+  }, [activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
+
+  // ── Esc smart-cascade: dismiss innermost open layer first ──
+  // Priority: QR modal > Checkpoint modal, then stop. ConfirmDialog handles
+  // its own Esc internally, so we don't need to mirror deleteConfirmId here.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showQrModal) { setShowQrModal(false); return; }
+      if (showCheckpointModal) {
+        clearFormDraft();
+        setShowCheckpointModal(false);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showQrModal, showCheckpointModal, clearFormDraft]);
+
+  // ── N shortcut: open new Checkpoint form ──
+  // Only active on the Checkpoints tab; suppressed while typing in a field
+  // or when any modal is already open.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (activeTab !== 'checkpoints') return;
+      if (showCheckpointModal || showQrModal || deleteConfirmId !== null) return;
+      e.preventDefault();
+      handleCreateCheckpoint();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -1307,12 +1357,8 @@ const PatrolPage: React.FC = () => {
               {checkpoints.length === 0 && (
                 <div className="text-center py-12 text-rmpg-400">
                   <QrCode className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <div className="text-sm text-rmpg-300 mb-1">No checkpoints configured</div>
-                  <div className="text-[11px] text-rmpg-500">
-                    {canCreate
-                      ? <>Press <kbd className="font-mono bg-rmpg-700 px-1 rounded-sm">N</kbd> or use <span className="text-brand-400">+ Add Checkpoint</span> to create your first checkpoint.</>
-                      : 'No checkpoints have been configured yet. Contact an admin or manager to add checkpoints.'}
-                  </div>
+                  <div className="text-sm text-rmpg-300 mb-1">No checkpoints yet</div>
+                  <div className="text-[11px] text-rmpg-500">Press <kbd className="font-mono bg-rmpg-700 px-1 rounded-sm">N</kbd> or use <span className="text-brand-400">+ Add Checkpoint</span> to create your first checkpoint.</div>
                 </div>
               )}
             </div>

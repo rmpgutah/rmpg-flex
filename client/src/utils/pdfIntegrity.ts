@@ -31,6 +31,7 @@ const NON_CANONICAL_FIELDS = new Set<string>([
   '_logoBase64',
   '_sealBase64',
   '_dossier', // appendix data fetched at print-time, not part of the source row
+  'connections', // connection graph profiles fetched at print-time
 ]);
 
 /**
