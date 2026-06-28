@@ -8,7 +8,7 @@
 // Audit Page 61 of the full-app frontend pass.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -32,7 +32,6 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-import { toDisplayLabel } from '../utils/formatters';
 import { safeDateTimeStr } from '../utils/dateUtils';
 import { openWebResearchReportPdf } from '../utils/webResearchReportPdf';
 
@@ -75,13 +74,6 @@ export default function WebResearchPage() {
                        // page rather than letting the cached value go stale.
   const { addToast } = useToast();
   const { user } = useAuth();
-
-  // Role gates — delete is admin|manager only; all other actions (search,
-  // scrape, save, link, notes, PDF) are available to every authenticated role.
-  const canDelete = useMemo(
-    () => user?.role === 'admin' || user?.role === 'manager',
-    [user?.role],
-  );
 
   // Firecrawl connection
   const [firecrawlConnected, setFirecrawlConnected] = useState(false);
@@ -918,16 +910,14 @@ export default function WebResearchPage() {
                       <Link2 className="w-3 h-3" />
                       Link
                     </button>
-                    {canDelete && (
-                      <button type="button"
-                        className="toolbar-btn flex items-center px-1.5 text-xs text-red-400 hover:text-red-300"
-                        title="Delete"
-                        aria-label="Delete saved result"
-                        onClick={() => setDeleteConfirm(result.id)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
+                    <button type="button"
+                      className="toolbar-btn flex items-center px-1.5 text-xs text-red-400 hover:text-red-300"
+                      title="Delete"
+                      aria-label="Delete saved result"
+                      onClick={() => setDeleteConfirm(result.id)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
 
