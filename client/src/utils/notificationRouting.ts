@@ -70,12 +70,19 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - email_message  → /communications?tab=messages&message_id=
  *  - alpr_capture   → /plate-log?capture_id= (best-effort fallback)
  *  - use_of_force   → /use-of-force?uof_id=
+ *  - arrest_record  → /arrest-records?arrest_id= (canonical)
+ *  - arrest         → /arrest-records?arrest_id= (legacy alias used by older
+ *                     server emitters — kept so notifications generated before
+ *                     the canonical name landed still route correctly)
+ *  - court_event    → /court-records?event_id= (historical disposition view;
+ *                     /court (Court Tracker) accepts the same param for the
+ *                     upcoming-dates view, so a notification deep-link works
+ *                     equivalently from either page)
  */
 const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
   warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
   case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
-  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
   person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
   vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
   bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,
@@ -88,18 +95,14 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
-  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  // Standalone task assignments — routes to the Tasks page deep-link
-  // (`?task_id=` highlights + opens the row in its edit modal, v1089+).
-  task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
-  task_assignment: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
-  // case_task is a task that originated from a case. The Tasks page is
-  // the canonical task surface (it surfaces all tasks regardless of
-  // origin), so route to it rather than the Cases page which doesn't
-  // accept a ?task_id= param. The original mapping to /cases?task_id=
-  // was a no-op because the Cases page only reads ?case_id=.
-  case_task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
+  // IA complaint / investigation — added v1070 alongside the IA page deep-link
+  // contract. Both land on /affairs?complaint_id= because the investigation
+  // is only viewable inside the parent complaint detail panel (the IA route
+  // exposes /affairs/complaints/:id/investigations but not a standalone
+  // investigation viewer). The investigation_id stays in the URL so the
+  // page can scroll/highlight the row inside the complaint detail.
+  ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
+  ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
 };
 
 /**
