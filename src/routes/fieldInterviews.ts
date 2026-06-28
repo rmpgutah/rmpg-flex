@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { geocodeAddress } from './geocode';
 
 const fi = new Hono<Env>();
 
@@ -241,6 +242,55 @@ fi.get('/by-location', async (c) => {
   }
 });
 
+// ── GET /repeat-check?name= — repeat-contact warning ────────
+// FieldInterviewsPage warns when a subject has been contacted 3+ times in 30
+// days. Declared before /:id so the static segment wins. Returns { count }.
+fi.get('/repeat-check', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const name = (c.req.query('name') ?? '').trim();
+    if (name.length < 2) return c.json({ count: 0 });
+    const row = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM field_interviews
+        WHERE subject_last_name LIKE ?
+          AND COALESCE(date, created_at) >= datetime('now', '-30 days')`,
+      `%${name}%`,
+    );
+    return c.json({ count: row?.n ?? 0 });
+  } catch (err) {
+    return c.json({ count: 0 });
+  }
+});
+
+// ── POST /:id/archive | /:id/unarchive — soft archive toggle ─
+// FieldInterviewsPage archives FI cards by toggling archived_at. The whole
+// /api/field-interviews prefix routes to the rewrite, so without these the
+// archive/unarchive buttons 404'd.
+fi.post('/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    await execute(db, "UPDATE field_interviews SET archived_at = datetime('now') WHERE id = ?", id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to archive field interview', code: 'ARCHIVE_FI_ERROR' }, 500);
+  }
+});
+
+fi.post('/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid field interview ID', code: 'INVALID_FI_ID' }, 400);
+    await execute(db, 'UPDATE field_interviews SET archived_at = NULL WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to unarchive field interview', code: 'UNARCHIVE_FI_ERROR' }, 500);
+  }
+});
+
 // ── GET /:id — single record ────────────────────────────────
 // Hono matches static segments first, so /stats, /by-person/*, etc
 // already won. This catches the parametric path.
@@ -343,6 +393,20 @@ fi.post('/', async (c) => {
       }
     }
 
+    // Backfill geocoded coordinates when a location/address is provided
+    // but latitude/longitude are not. Geocoded coords let field interviews
+    // plot on the Map UI and feed proximity-based queries.
+    if (body.latitude === undefined && body.longitude === undefined) {
+      const rawLocation = body.location ?? body.location_address ?? '';
+      if (typeof rawLocation === 'string' && rawLocation.trim().length >= 3) {
+        const coords = await geocodeAddress(c.env, rawLocation).catch(() => null);
+        if (coords) {
+          cols.push('latitude', 'longitude');
+          vals.push(coords.lat, coords.lng);
+        }
+      }
+    }
+
     const result = await execute(
       db,
       `INSERT INTO field_interviews (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
@@ -399,6 +463,18 @@ fi.put('/:id', async (c) => {
         setClauses.push(`${dbCol} = ?`);
         vals.push(body[bodyKey] ?? null);
         seen.add(dbCol);
+      }
+    }
+
+    // Backfill geocode when location changes but coords are not sent
+    if (body.latitude === undefined && body.longitude === undefined) {
+      const rawLocation = body.location ?? body.location_address ?? '';
+      if (typeof rawLocation === 'string' && rawLocation.trim().length >= 3) {
+        const coords = await geocodeAddress(c.env, rawLocation).catch(() => null);
+        if (coords) {
+          setClauses.push('latitude = ?', 'longitude = ?');
+          vals.push(coords.lat, coords.lng);
+        }
       }
     }
     if (setClauses.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
