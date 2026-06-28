@@ -50,6 +50,8 @@ export default function MobileHeader({
         background: 'var(--surface-raised)',
         borderBottom: '1px solid var(--border-default)',
         flexShrink: 0,
+        WebkitBackdropFilter: 'blur(8px)',
+        backdropFilter: 'blur(8px)',
       }}
     >
       {/* Gold accent at very top */}
@@ -106,7 +108,7 @@ export default function MobileHeader({
             />
           ) : (
             <div
-              className="w-8 h-8 flex items-center justify-center text-[10px] font-bold"
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
                 background: 'linear-gradient(135deg, #333333, #888888)',
                 color: '#fff',
