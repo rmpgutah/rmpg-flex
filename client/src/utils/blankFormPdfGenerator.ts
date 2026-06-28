@@ -50,7 +50,12 @@ export type BlankFormType =
   | 'fleet_damage'
   | 'fleet_fuel_voucher'
   | 'fleet_fuel_log'
-  | 'fleet_expense';
+  | 'fleet_expense'
+  | 'proof_of_service'
+  | 'supplemental_report'
+  | 'evidence_chain'
+  | 'arrest_report'
+  | 'use_of_force';
 
 export interface BlankFormConfig {
   type: BlankFormType;
@@ -74,6 +79,12 @@ export const BLANK_FORMS: BlankFormConfig[] = [
   { type: 'fleet_fuel_voucher', label: 'Fuel Voucher',          formNumber: 'FORM PS-206-FV',  formTitle: 'FLEET FUEL PURCHASE VOUCHER' },
   { type: 'fleet_fuel_log',     label: 'Fuel Log Sheet',        formNumber: 'FORM PS-206-FL',  formTitle: 'FLEET FUEL LOG SHEET' },
   { type: 'fleet_expense',      label: 'Expense Reimbursement', formNumber: 'FORM PS-206-EXP', formTitle: 'FLEET EXPENSE REIMBURSEMENT' },
+  // Police report standard forms
+  { type: 'proof_of_service',   label: 'Proof of Service',    formNumber: 'FORM PS-212-BLK', formTitle: 'AFFIDAVIT OF SERVICE' },
+  { type: 'supplemental_report', label: 'Supplemental Report', formNumber: 'FORM PS-213-BLK', formTitle: 'SUPPLEMENTAL REPORT' },
+  { type: 'evidence_chain',     label: 'Evidence Chain of Custody', formNumber: 'FORM PS-214-BLK', formTitle: 'EVIDENCE CHAIN OF CUSTODY' },
+  { type: 'arrest_report',      label: 'Arrest Report',       formNumber: 'FORM PS-215-BLK', formTitle: 'ARREST REPORT' },
+  { type: 'use_of_force',       label: 'Use of Force Report', formNumber: 'FORM PS-216-BLK', formTitle: 'USE OF FORCE REPORT' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────

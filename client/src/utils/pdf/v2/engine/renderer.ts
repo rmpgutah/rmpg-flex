@@ -5,7 +5,7 @@ import { Primitives } from './primitives';
 import { SPACING } from './style';
 import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
-import { makeRenderContext, drawSectionHeader, closeSection } from './context';
+import { makeRenderContext, drawSectionHeader, closeSection, resetSectionCounter } from './context';
 import { drawBlankFormWatermark, drawDraftWatermark } from './watermark';
 import { renderFixedLayoutSection } from './fixedLayout';
 import type {
@@ -39,6 +39,9 @@ export async function renderPdfV2<T>(
   // mm units so v1 helpers (drawNibrsHeader, etc.) render at their designed scale.
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   if (!options?.coreFontsOnly) registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+
+  // Reset section counter for numbered section headers (Police Report Format)
+  resetSectionCounter();
 
   // Watermark is drawn BEFORE the header so header text sits on top of it.
   if (schema.watermark) drawWatermarkIfAny(doc, schema.watermark);

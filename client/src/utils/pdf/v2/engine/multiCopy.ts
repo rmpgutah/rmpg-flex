@@ -3,7 +3,7 @@ import { Panel } from './panel';
 import { Primitives } from './primitives';
 import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
-import { makeRenderContext, drawSectionHeader, closeSection } from './context';
+import { makeRenderContext, drawSectionHeader, closeSection, resetSectionCounter } from './context';
 import { renderSectionFields } from './renderer';
 import { renderFixedLayoutSection } from './fixedLayout';
 import type { RenderOptions } from './renderer';
@@ -39,6 +39,9 @@ export async function renderMultiCopyPdfV2<T>(
 ): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   if (!options?.coreFontsOnly) registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+
+  // Reset section counter for numbered section headers (Police Report Format)
+  resetSectionCounter();
 
   copies.forEach((copy, i) => {
     if (i > 0) doc.addPage();

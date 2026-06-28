@@ -14,10 +14,10 @@ const PAGE_WIDTH = 215.9;  // letter, mm
 const TOP = 8;             // mm from page top to first rule
 
 /**
- * Spillman/Motorola-style page header.
+ * Spillman/Motorola-style page header — LOW INK DESIGN.
  *
  * Layout (top → bottom):
- *   ── thick rule (RULE_WEIGHTS.headerThick) ───────
+ *   ── thin rule (RULE_WEIGHTS.headerThick) ───────  (reduced from thick)
  *           ROCKY MOUNTAIN PROTECTIVE GROUP        (11pt bold, centered)
  *               SALT LAKE CITY, UTAH               (8pt regular, centered)
  *                    CITATION                       (14pt bold UPPERCASE, centered)
@@ -36,7 +36,7 @@ export function drawDefaultHeader(
   const right = PAGE_WIDTH - SPACING.pageMarginRight;
   const center = PAGE_WIDTH / 2;
 
-  // 1) Thick top rule
+  // 1) Top rule — thin (low ink, was thick)
   doc.setLineWidth(RULE_WEIGHTS.headerThick);
   doc.line(left, TOP, right, TOP);
 
@@ -64,6 +64,7 @@ export function drawDefaultHeader(
   doc.setFontSize(TYPOGRAPHY.formMeta.size);
   const parts = [`FORM ${meta.formNumber}`];
   if (ctx.caseNumber) parts.push(`${ctx.caseLabel || 'CASE'} ${ctx.caseNumber}`);
+  // Page X of Y always shown in header for multi-page awareness
   if (ctx.pageNumber && ctx.totalPages) parts.push(`PAGE ${ctx.pageNumber} OF ${ctx.totalPages}`);
   doc.text(parts.join('  ·  '), right, y, { align: 'right' });
 

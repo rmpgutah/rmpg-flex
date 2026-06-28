@@ -8,9 +8,21 @@ import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
 
 const SECTION_GAP = SPACING.sectionGap;
 
+// Section counter for numbered section headers (Police Report Format).
+// Reset per document via resetSectionCounter().
+let _sectionCounter = 0;
+
+/** Reset the section counter at the start of each document render. */
+export function resetSectionCounter(): void {
+  _sectionCounter = 0;
+}
+
 /**
- * Spillman/Motorola-style section header: plain bold UPPERCASE text at left,
- * a thin rule across the full content width directly below. No fill bar.
+ * Spillman/Motorola-style section header — POLICE REPORT FORMAT.
+ * Renders numbered section titles: "1. CLASSIFICATION", "2. DATE & TIME", etc.
+ * The number prefix aids cross-referencing in court filings and
+ * chain-of-custody documentation.
+ *
  * Doc must be in mm units.
  */
 export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: string): void {
@@ -21,12 +33,28 @@ export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: strin
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
+  // Section number prefix (Police Report Format standard)
+  _sectionCounter++;
+  const numStr = `${_sectionCounter}.`;
+
+  // Draw section number in bold
+  doc.setFont('helvetica', TYPOGRAPHY.sectionNumber.weight);
+  doc.setFontSize(TYPOGRAPHY.sectionNumber.size);
+  doc.setTextColor(0, 0, 0);
+  doc.text(numStr, layout.leftX, y);
+
+  // Measure number width and draw title after it
+  const numWidth = doc.getTextWidth(numStr);
   doc.setFont('helvetica', TYPOGRAPHY.sectionHeader.weight);
   doc.setFontSize(TYPOGRAPHY.sectionHeader.size);
-  doc.setTextColor(0, 0, 0);
-  doc.text(title.toUpperCase(), layout.leftX, y);
+  doc.text(title.toUpperCase(), layout.leftX + numWidth + 2, y);
 
+  // Draw a thin rule under the section header (low ink: outline-only, no fill bar)
   layout.advance(3);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(RULE_WEIGHTS.sectionRule);
+  doc.line(layout.leftX, layout.cursorY, layout.rightX, layout.cursorY);
+  layout.advance(2);
 }
 
 /** Called by renderer after a section's fields have been drawn. */

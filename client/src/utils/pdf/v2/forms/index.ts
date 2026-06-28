@@ -35,3 +35,18 @@ registerV2Schema('citation', citationSchema);
 
 import { tripLogSchema } from './tripLog';
 registerV2Schema('trip_log', tripLogSchema);
+
+import { proofOfServiceBlankSchema } from '../blankForms/proofOfServiceBlank';
+registerV2Schema('proof_of_service_blank', proofOfServiceBlankSchema);
+
+import { supplementalReportBlankSchema } from '../blankForms/supplementalReportBlank';
+registerV2Schema('supplemental_report_blank', supplementalReportBlankSchema);
+
+import { evidenceChainBlankSchema } from '../blankForms/evidenceChainBlank';
+registerV2Schema('evidence_chain_blank', evidenceChainBlankSchema);
+
+import { arrestReportBlankSchema } from '../blankForms/arrestReportBlank';
+registerV2Schema('arrest_report_blank', arrestReportBlankSchema);
+
+import { useOfForceBlankSchema } from '../blankForms/useOfForceBlank';
+registerV2Schema('use_of_force_blank', useOfForceBlankSchema);
