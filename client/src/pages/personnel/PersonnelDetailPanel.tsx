@@ -11,7 +11,7 @@ import type {
 } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
-import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
+import { ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 import { toDisplayLabel } from '../../utils/formatters';
