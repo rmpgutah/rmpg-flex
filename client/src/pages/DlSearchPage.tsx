@@ -62,6 +62,30 @@ function PhoneScanQr() {
   return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
 }
 
+// QR code that opens this scanner page on the officer's phone —
+// scans made there relay to this desktop session automatically.
+function PhoneScanQr() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import('bwip-js/browser').then(({ default: bwipjs }) => {
+      if (cancelled || !canvasRef.current) return;
+      try {
+        bwipjs.toCanvas(canvasRef.current, {
+          bcid: 'qrcode',
+          text: `${window.location.origin}/dl-search`,
+          scale: 2,
+          backgroundcolor: 'FFFFFF',
+          paddingwidth: 4,
+          paddingheight: 4,
+        });
+      } catch { /* QR render is decorative — page works without it */ }
+    }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, []);
+  return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
+}
+
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
   'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',

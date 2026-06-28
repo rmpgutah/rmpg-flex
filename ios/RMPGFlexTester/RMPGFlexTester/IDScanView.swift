@@ -113,6 +113,12 @@ struct IDScanView: View {
                                         .foregroundStyle(.white)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Theme.raised)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+
+                            analysisCard(DLFunctions.evaluateDL(result))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Theme.Spacing.lg)

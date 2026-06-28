@@ -93,6 +93,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
+import { loadSystemSettings } from '../utils/systemSettings';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -207,6 +208,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
   '/microbilt': 'MicroBilt',
+  '/navigation': 'Module Navigation',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -360,6 +362,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
+  { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
@@ -559,8 +562,8 @@ export default function Layout() {
   // scroll/resize so the panel follows the triggering button.
   const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
-  // Close dropdown on route change
-  useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
+  // Close dropdown on route change + Spillman MDT page-flip chirp
+  useEffect(() => { setOpenDropdown(null); playUiNavigate(); }, [location.pathname]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -715,6 +718,10 @@ export default function Layout() {
   // devices. Lives here so it runs for the whole authenticated session.
   useEffect(() => {
     if (!user) return;
+    // Pull org-wide system settings (Console Settings) and apply Display
+    // settings to the document root. Branding/localization/report values
+    // are read at their own call sites via getSystemSetting.
+    loadSystemSettings();
     return initSettingsSync();
   }, [user]);
 

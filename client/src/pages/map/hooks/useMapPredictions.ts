@@ -32,10 +32,7 @@ export function useMapPredictions(
   const sourceId = 'predictions';
 
   useEffect(() => {
-    if (!enabled) {
-      setHotspots([]);
-      return;
-    }
+    if (!enabled) { setHotspots([]); return; }
 
     let cancelled = false;
     setLoading(true);
@@ -115,6 +112,10 @@ export function useMapPredictions(
           ],
         },
       });
+      map.addLayer({ id: layerId, type: 'fill', source: sourceId, paint: { 'fill-color': color, 'fill-opacity': fillOpacity, 'fill-outline-color': color } });
+
+      layerIdsRef.current.push(layerId);
+      sourceIdsRef.current.push(sourceId);
 
       map.on('click', sourceId, (e) => {
         const feature = e.features?.[0];
@@ -140,9 +141,7 @@ export function useMapPredictions(
         }
         map.panTo(e.lngLat);
         const currentZoom = map.getZoom();
-        if (currentZoom != null && currentZoom < 14) {
-          map.setZoom(14);
-        }
+        if (currentZoom < 14) map.setZoom(14);
       });
     });
 
@@ -158,7 +157,11 @@ export function useMapPredictions(
         popupRef.current.remove();
         popupRef.current = null;
       }
+      layerIdsRef.current = [];
+      sourceIdsRef.current = [];
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { hotspots, loading };

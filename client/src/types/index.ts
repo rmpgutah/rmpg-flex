@@ -1521,6 +1521,7 @@ export interface FleetFuelLog {
   created_at: string;
   distance?: number;
   efficiency?: number;
+  partial_fill?: number;
   // Computed efficiency fields from backend
   mpg?: number | null;
   calc_distance?: number | null;
@@ -1959,6 +1960,11 @@ export type WSMessageType =
   // carries lifecycle (open/close). Feeds the board's current-trip badge.
   | 'trip_update'
   | 'premise_alert_for_unit'
+  | 'dispatch_assignment'
+  | 'call_status_for_officer'
+  | 'welfare_check'
+  | 'welfare_cleared'
+  | 'welfare_emergency'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
   | 'record_update'

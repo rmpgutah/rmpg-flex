@@ -6,6 +6,27 @@
 import type { CallForService, Unit, CallNote } from '../../../types';
 
 /**
+ * True when a backend response actually looks like a full calls_for_service
+ * row, as opposed to a bare acknowledgement body like {message, ...} or
+ * {error, ...}.
+ *
+ * WHY THIS EXISTS — every "replace the selected call with the server response"
+ * path runs the body through mapDbCall() and stuffs the result back into
+ * dispatch state. mapDbCall() defaults a row with no `id` to id:"undefined"
+ * and incident_type:"other", so feeding it a non-row body produces a blank
+ * 'Other' call that *wipes the real call out of the UI*. This has bitten us
+ * twice — the timeline-edit PUT ("editing time destructs the call") and the
+ * assign-unit endpoint ("attaching a unit destroys the dispatch"). Guard every
+ * replace-with-response path with this so a future partial/error response can
+ * never destroy a good call again.
+ */
+export function looksLikeCallRow(row: any): boolean {
+  return !!row && typeof row === 'object'
+    && row.id != null
+    && (row.incident_type != null || row.call_number != null);
+}
+
+/**
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
 /**
@@ -34,16 +55,27 @@ const fieldSourceMap: Record<string, string> = {
 };
 
 export function mapDbCall(row: any): CallForService {
-  // Notes: backend stores as single string; we parse or wrap
+  // Notes: backend stores as single string; we parse or wrap.
+  // Defensive: handle the case where row.notes is already an array (e.g. a
+  // pre-mapped call passed through mapDbCall again via a websocket re-map).
+  // Without this guard, JSON.parse(array) throws, the catch fallback puts the
+  // whole array into the `text` field, and the renderer eventually tries to
+  // render a CallNote object as a JSX child → React error #31.
   let notes: CallNote[] = [];
   if (row.notes) {
-    try {
-      const parsed = JSON.parse(row.notes);
-      if (Array.isArray(parsed)) notes = parsed;
-      else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
-    } catch {
-      notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+    if (Array.isArray(row.notes)) {
+      notes = row.notes as CallNote[];
+    } else if (typeof row.notes === 'string') {
+      try {
+        const parsed = JSON.parse(row.notes);
+        if (Array.isArray(parsed)) notes = parsed;
+        else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      } catch {
+        notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      }
     }
+    // Any other shape (object, number, etc.) is silently dropped — better an
+    // empty notes panel than a hard crash.
   }
 
   // assigned_unit_ids (JSON array of numeric unit IDs) -> assigned_units as
@@ -205,6 +237,23 @@ export function mapDbCall(row: any): CallForService {
     visit_history: row.visit_history || undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
+    // ── PDF-required fields (carried so PrintRecordButton spread sees them) ──
+    // These are user-entered values that previously dropped silently between
+    // the server row and the PDF generator because the mapper only copied
+    // explicitly-listed columns. Cast through `any` because CallForService
+    // doesn't (yet) declare them — PDF generator reads via spread and is
+    // tolerant of extras.
+    ...({
+      attorney_name: row.attorney_name || undefined,
+      jurisdiction: row.jurisdiction || undefined,
+      deadline: row.deadline || undefined,
+      time_window: row.time_window || undefined,
+      service_instructions: row.service_instructions || undefined,
+      pso_72hr_deadline: row.pso_72hr_deadline || undefined,
+      pso_72hr_notified: row.pso_72hr_notified || undefined,
+      dispatcher_name: row.dispatcher_name || undefined,
+      case_id: row.case_id ?? undefined,
+    } as any),
   };
 }
 

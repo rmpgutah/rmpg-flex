@@ -225,31 +225,52 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  // buildNotesNarrative defaults to 3 consolidated notes (briefing / case
-  // packet / dossier). When caseNarrativeText is supplied a 4th detailed
-  // narrative note slots between CASE PACKET and DOSSIER. Output is plain
-  // text without emoji or box-drawing characters.
-  it('produces 3 plain-text consolidated sections in order without narrative', () => {
+  // buildNotesNarrative now produces 4 consolidated notes:
+  //   [0] CASE SUMMARY  (top-of-file detailed narrative)
+  //   [1] OFFICER BRIEFING
+  //   [2] CASE PACKET
+  //   [3] SUBJECT & ADDRESS DOSSIER
+  // When caseNarrativeText is supplied, the standalone CASE NARRATIVE
+  // detail-drilldown slots between CASE PACKET and DOSSIER (index 3),
+  // pushing DOSSIER to index 4.
+  it('produces 4 plain-text consolidated sections in order without narrative', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes).toHaveLength(3);
-    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
-    expect(notes[1].text).toMatch(/^CASE PACKET/);
-    expect(notes[2].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+    expect(notes).toHaveLength(4);
+    expect(notes[0].text).toMatch(/CASE SUMMARY/);
+    expect(notes[1].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[2].text).toMatch(/^CASE PACKET/);
+    expect(notes[3].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
   });
 
-  it('inserts the 4th CASE NARRATIVE note when caseNarrativeText is supplied', () => {
+  it('inserts the standalone CASE NARRATIVE note when caseNarrativeText is supplied', () => {
     const narrativeText = 'CASE NARRATIVE - Detailed review of the Complaint\nWHO:\nPLAINTIFF: Capital One';
     const notes = buildNotesNarrative({ ...input, caseNarrativeText: narrativeText });
-    expect(notes).toHaveLength(4);
-    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
-    expect(notes[1].text).toMatch(/^CASE PACKET/);
-    expect(notes[2].text).toMatch(/^CASE NARRATIVE/);
-    expect(notes[3].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+    expect(notes).toHaveLength(5);
+    expect(notes[0].text).toMatch(/CASE SUMMARY/);
+    expect(notes[1].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[2].text).toMatch(/^CASE PACKET/);
+    expect(notes[3].text).toMatch(/^CASE NARRATIVE/);
+    expect(notes[4].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+  });
+
+  it('CASE SUMMARY embeds synopsis + narrative + bottom-line operational footer', () => {
+    const synopsis = 'Discover Bank is suing Daisy Doe to collect $14,500.';
+    const narrativeText = 'CASE NARRATIVE - Detailed review of the Complaint\nWHO:\nPLAINTIFF: Capital One';
+    const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis, caseNarrativeText: narrativeText });
+    const summary = notes[0].text;
+    expect(summary).toContain('CASE SUMMARY');
+    expect(summary).toContain('SYNOPSIS');
+    expect(summary).toContain('Discover Bank is suing Daisy Doe');
+    expect(summary).toContain('COMPLAINT REVIEW');
+    expect(summary).toContain('BOTTOM LINE');
+    expect(summary).toContain('SERVE:');
+    expect(summary).toContain('DEADLINE:');
+    expect(summary).toContain('RESPONSE WINDOW:');
   });
 
   it('OFFICER BRIEFING contains the 3-day diligence plan with door-approach guidance', () => {
     const notes = buildNotesNarrative(input);
-    const brief = notes[0].text;
+    const brief = notes[1].text;
     expect(brief).toContain('3-DAY DILIGENCE PLAN');
     expect(brief).toContain('ATTEMPT 1');
     expect(brief).toContain('ATTEMPT 2');
@@ -263,13 +284,13 @@ describe('buildNotesNarrative', () => {
   it('CASE PACKET embeds caseSynopsisText when supplied', () => {
     const synopsis = '📖 WHAT YOU ARE SERVING (auto-synopsis)\nDiscover Bank is suing Daisy Doe to collect $14,500.';
     const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis });
-    expect(notes[1].text).toContain('📖 WHAT YOU ARE SERVING');
-    expect(notes[1].text).toContain('Discover Bank is suing Daisy Doe');
+    expect(notes[2].text).toContain('📖 WHAT YOU ARE SERVING');
+    expect(notes[2].text).toContain('Discover Bank is suing Daisy Doe');
   });
 
   it('CASE PACKET section contains plaintiff, case #, documents, signed date, deadline', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[1].text;
+    const caseText = notes[2].text;
     expect(caseText).toContain('PLAINTIFF         : CAPITAL ONE');
     expect(caseText).toContain('CASE #            : 633570');
     expect(caseText).toContain('SUMMONS + COMPLAINT');
@@ -281,7 +302,7 @@ describe('buildNotesNarrative', () => {
 
   it('ATTORNEY block in CASE PACKET includes name, firm, bar #, address, phone, email', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[1].text;
+    const caseText = notes[2].text;
     expect(caseText).toContain('NAME              : HEATHER VALERGA');
     expect(caseText).toContain('FIRM              : GUGLIELMO & ASSOCIATES');
     expect(caseText).toContain('BAR #             : 14431');
@@ -293,7 +314,7 @@ describe('buildNotesNarrative', () => {
   it('DOSSIER folds in enrichmentText + verbatim instructions + job activity', () => {
     const enrichmentText = '🔍 INTAKE ENRICHMENT\n👤 SUBJECT HISTORY: 3 prior call(s)';
     const notes = buildNotesNarrative({ ...input, enrichmentText });
-    const dossier = notes[2].text;
+    const dossier = notes[3].text;
     expect(dossier).toContain('🔍 INTAKE ENRICHMENT');
     expect(dossier).toContain('SUBJECT HISTORY');
     expect(dossier).toContain('VERBATIM CLIENT INSTRUCTIONS');

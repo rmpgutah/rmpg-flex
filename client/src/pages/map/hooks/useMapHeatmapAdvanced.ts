@@ -141,10 +141,7 @@ export function useMapHeatmapAdvanced(
     p.set('days', String(options.days));
     p.set('mode', options.mode);
     p.set('resolution', options.resolution);
-
-    if (options.types.length > 0) {
-      p.set('types', options.types.join(','));
-    }
+    if (options.types.length > 0) p.set('types', options.types.join(','));
     if (options.hourRange[0] !== 0 || options.hourRange[1] !== 23) {
       p.set('hourStart', String(options.hourRange[0]));
       p.set('hourEnd', String(options.hourRange[1]));
@@ -152,27 +149,20 @@ export function useMapHeatmapAdvanced(
     if (options.dayFilter.length > 0 && options.dayFilter.length < 7) {
       p.set('dayFilter', options.dayFilter.join(','));
     }
-    if (options.mode === 'comparison') {
-      p.set('comparisonDays', String(options.comparisonDays));
-    }
-    if (options.mode === 'temporal' && hourOverride !== undefined) {
-      p.set('temporalHour', String(hourOverride));
-    }
+    if (options.mode === 'comparison') p.set('comparisonDays', String(options.comparisonDays));
+    if (options.mode === 'temporal' && hourOverride !== undefined) p.set('temporalHour', String(hourOverride));
     return `/dispatch/heatmap/advanced?${p.toString()}`;
   }, [options]);
 
   const fetchData = useCallback((hourOverride?: number) => {
     if (!options.enabled) return;
-
     const counter = ++fetchCounterRef.current;
     setLoading(true);
-
     const url = buildUrl(hourOverride);
     apiFetch<AdvancedHeatmapResponse>(url)
       .then((data) => {
         if (counter !== fetchCounterRef.current) return;
-        const pts = data?.points || [];
-        setPoints(pts);
+        setPoints(data?.points || []);
         setComparisonPoints(data?.comparisonPoints || []);
         setClusters(data?.clusters || []);
         setStats(data?.stats || null);
@@ -197,7 +187,6 @@ export function useMapHeatmapAdvanced(
       setStats(null);
       return;
     }
-
     if (options.mode === 'temporal') {
       fetchData(temporalHour);
     } else {
@@ -211,11 +200,8 @@ export function useMapHeatmapAdvanced(
       clearInterval(temporalIntervalRef.current);
       temporalIntervalRef.current = null;
     }
-
     if (!temporalPlaying || options.mode !== 'temporal' || !options.enabled) return;
-
     const delayMs = 2000 / temporalSpeed;
-
     temporalIntervalRef.current = setInterval(() => {
       setTemporalHour((prev) => {
         const next = (prev + 1) % 24;
@@ -225,7 +211,6 @@ export function useMapHeatmapAdvanced(
         return next;
       });
     }, delayMs);
-
     return () => {
       if (temporalIntervalRef.current) {
         clearInterval(temporalIntervalRef.current);
@@ -364,13 +349,13 @@ export function useMapHeatmapAdvanced(
         temporalIntervalRef.current = null;
       }
     }
-  }, [options.enabled]);
+  }, [options.enabled, map]);
 
   useEffect(() => {
     return () => {
       if (temporalIntervalRef.current) clearInterval(temporalIntervalRef.current);
     };
-  }, []);
+  }, [map]);
 
   return {
     loading,
