@@ -393,19 +393,11 @@ function drawDistrictBar(
   const accentW = BORDER.ACCENT_SECTION;
   const isLight = getActiveSectionStyle() === 'light';
 
-  // ── Backdrop ──────────────────────────────────────────────
-  // Gold accent strip + cream tint (light) or charcoal (dark) so the
-  // bar reads as part of the same banner family as section headers,
-  // not as a foreign black slab from a different visual era.
-  doc.setFillColor(...COLOR.ACCENT_GOLD);
-  doc.rect(LAYOUT.PAGE_MARGIN, barY, accentW, barH, 'F');
-  // Dark slate fill in BOTH modes (2026-05-05 darker-shading pass).
-  // Previously light mode used a cream tint with dark text; we now
-  // unify to a deep charcoal body with white text in both modes so
-  // the geography strip reads as a strong structural element rather
-  // than a faint header tint.
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
+  // ── Backdrop (outline only — low ink) ──────────────────────
+  doc.setDrawColor(...COLOR.BG_SECTION_HDR);
+  doc.setLineWidth(0.3);
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, accentW, barH);
+  doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH);
 
   // ── Field assembly ────────────────────────────────────────
   // Suppress the AREA column when no real area_name/area_id is set —
@@ -436,13 +428,9 @@ function drawDistrictBar(
   // labels render as muted-white and values as full-white regardless
   // of activeSectionStyle so the bar always reads as a unified
   // dark-slate strip with high text contrast.
-  const labelColor: [number, number, number] = [
-    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
-  ];
-  const valueColor: [number, number, number] = [
-    COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
-  ];
-  const sepColor: [number, number, number] = [80, 80, 80]; // neutralized 2026-05-30
+  const labelColor: [number, number, number] = [80, 80, 80];
+  const valueColor: [number, number, number] = [0, 0, 0];
+  const sepColor: [number, number, number] = [80, 80, 80];
 
   for (let i = 0; i < distFields.length; i++) {
     const f = distFields[i];
@@ -3202,11 +3190,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       officerSuffix: string,
       continued: boolean,
     ): number => {
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(lx, strip_y, ffw, headerH, 'F');
+      // Note entry header — outline only (low ink)
+      doc.setDrawColor(...COLOR.BG_SECTION_HDR);
+      doc.setLineWidth(0.3);
+      doc.rect(lx, strip_y, ffw, headerH);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setTextColor(0, 0, 0);
       const entryLead = continued
         ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
         : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
@@ -3215,9 +3205,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const tagW = doc.getTextWidth(entryType) + 3;
       const tagX = lx + ffw - tagW - 1.5;
       const tagY = strip_y + 1;
-      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
-      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4, 'F');
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      // Tag chip — outline only (low ink)
+      doc.setDrawColor(tagBg[0], tagBg[1], tagBg[2]);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4);
+      doc.setTextColor(0, 0, 0);
       doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
       if (officerSuffix && !continued) {
         doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -4615,9 +4607,11 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const chipH = 6;
     const chipX = pageW - 10 /* PAGE_MARGIN */ - chipW;
     const chipY = y + 1;
-    doc.setFillColor(bucket.color[0], bucket.color[1], bucket.color[2]);
-    doc.setTextColor(255, 255, 255);
-    doc.roundedRect(chipX, chipY, chipW, chipH, 1, 1, 'F');
+    // Priority chip — outline only (low ink)
+    doc.setDrawColor(bucket.color[0], bucket.color[1], bucket.color[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(chipX, chipY, chipW, chipH, 1, 1);
+    doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.text(`${bucket.label} ${data.priority_score}/100`, chipX + chipW / 2, chipY + chipH - 1.7, { align: 'center' });
@@ -7198,12 +7192,13 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
 
     const sectionStartY = y;
 
-    // Subject header bar
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(margin, y, contentW, 7, 'F');
+    // Subject header bar — outline only (low ink)
+    doc.setDrawColor(...COLOR.BG_SECTION_HDR);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, y, contentW, 7);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(0, 0, 0);
     doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
 
     // Severity badge on right
@@ -7275,9 +7270,13 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      // Table header
-      doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
-      doc.rect(margin + 2, y, contentW - 4, 5, 'F');
+      // Table header — outline only (low ink)
+      doc.setDrawColor(55, 55, 55);
+      doc.setLineWidth(0.3);
+      doc.rect(margin + 2, y, contentW - 4, 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(0, 0, 0);
       doc.text('WARRANT #', margin + 4, y + 3.5);
       doc.text('TYPE', margin + 40, y + 3.5);
       doc.text('CHARGE', margin + 60, y + 3.5);
@@ -7446,12 +7445,13 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text(title, x, ty + 3);
     ty += 5;
 
-    // Header row
-    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
-    doc.rect(x, ty, w, 5, 'F');
+    // Header row — outline only (low ink)
+    doc.setDrawColor(55, 55, 55);
+    doc.setLineWidth(0.3);
+    doc.rect(x, ty, w, 5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(0, 0, 0);
     doc.text('CATEGORY', x + 2, ty + 3.5);
     doc.text('COUNT', x + w - 2, ty + 3.5, { align: 'right' });
     ty += 6;
@@ -7498,11 +7498,12 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
-    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
-    doc.rect(margin, y, contentW, 5, 'F');
+    doc.setDrawColor(55, 55, 55);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, y, contentW, 5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(0, 0, 0);
     doc.text('COURT', margin + 2, y + 3.5);
     doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
     y += 6;
