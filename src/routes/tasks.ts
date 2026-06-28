@@ -25,6 +25,8 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 tasks.get('/', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='task_assignments'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('status')) { conditions.push('t.status = ?'); params.push(q('status')); }
@@ -50,6 +52,24 @@ tasks.get('/', async (c) => {
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
     return c.json({ error: 'Failed to list tasks' }, 500);
+  }
+});
+
+// NOTE: /stats MUST be registered before /:id — Hono matches in
+// registration order, so a literal /stats declared after the parametric
+// /:id is swallowed by it (parseInt('stats') = NaN → 400). That was the
+// live `/api/tasks/stats` 400 (sweep 2026-06-02).
+tasks.get('/stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const taskTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='task_assignments'");
+    if (!taskTable?.n) return c.json({ total: 0, by_status: [], by_priority: [], overdue: 0 });
+    const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM task_assignments'))?.count ?? 0;
+    const pending = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM task_assignments WHERE status IN ('pending','in_progress')"))?.count ?? 0;
+    const overdue = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM task_assignments WHERE due_date < date('now') AND status NOT IN ('completed','cancelled')"))?.count ?? 0;
+    return c.json({ total, pending, overdue });
+  } catch (err) {
+    return c.json({ error: 'Failed to load stats' }, 500);
   }
 });
 
@@ -164,18 +184,6 @@ tasks.post('/:id/comments', async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to add comment' }, 500);
-  }
-});
-
-tasks.get('/stats', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM task_assignments'))?.count ?? 0;
-    const pending = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM task_assignments WHERE status IN ('pending','in_progress')"))?.count ?? 0;
-    const overdue = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM task_assignments WHERE due_date < date('now') AND status NOT IN ('completed','cancelled')"))?.count ?? 0;
-    return c.json({ total, pending, overdue });
-  } catch (err) {
-    return c.json({ error: 'Failed to load stats' }, 500);
   }
 });
 

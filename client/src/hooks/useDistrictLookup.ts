@@ -38,6 +38,17 @@ export interface DistrictOption {
 }
 
 /**
+ * Normalize a sector_id for map lookups. Call rows can carry the id as a
+ * SQLite REAL ("28.0" / 28.0) while district rows key it as an integer string
+ * ("28") — without this every float-form id misses the lookup and the UI falls
+ * back to printing the raw "28.0".
+ */
+export function normalizeSectorId(v: string | number): string {
+  const s = String(v);
+  return /^\d+(\.0+)?$/.test(s) ? String(parseInt(s, 10)) : s;
+}
+
+/**
  * Fetch all 3Tier districts for dropdown population.
  * Returns deduplicated section/zone/beat lists.
  */
@@ -133,14 +144,14 @@ export function useDistrictOptions() {
   // raw id so the field is never blank (but the caller can detect the miss).
   const getSectionCode = useCallback(
     (sectorId: string | number | null | undefined) =>
-      sectorId == null ? '' : (sectionCodes.get(String(sectorId)) || ''),
+      sectorId == null ? '' : (sectionCodes.get(normalizeSectorId(sectorId)) || ''),
     [sectionCodes],
   );
 
   // Resolve the Area for a sector_id (number or string), or null when unknown.
   const getArea = useCallback(
     (sectorId: string | number | null | undefined) =>
-      sectorId == null ? null : (sectionAreas.get(String(sectorId)) || null),
+      sectorId == null ? null : (sectionAreas.get(normalizeSectorId(sectorId)) || null),
     [sectionAreas],
   );
 

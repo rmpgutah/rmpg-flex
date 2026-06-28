@@ -8,6 +8,7 @@ import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 import {
   VEHICLE_BODY_STYLE_OPTIONS, VEHICLE_COLOR_OPTIONS,
   VEHICLE_FUEL_OPTIONS, VEHICLE_TRANSMISSION_OPTIONS,
@@ -172,6 +173,7 @@ export default function VehicleFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<VehicleFormData>({
     storageKey: 'rmpg_vehicle_form',
@@ -253,18 +255,44 @@ export default function VehicleFormModal({
     } else {
       setForm((prev) => ({ ...prev, [name]: value }));
     }
+    // Editing year/vin clears the inline validation error for that field
+    // so the operator sees the error disappear as they correct the value.
+    if (name === 'year' || name === 'vin') {
+      setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
+
+  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
+  // Inline validation errors per field. Surface them on click — previously
+  // the handler silently `return`-ed on bad year/VIN with NO feedback,
+  // which read to the operator as "Create button is dead". Reported
+  // in-session 2026-06-21.
+  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate year if provided
+    const errs: { year?: string; vin?: string } = {};
     if (form.year) {
       const yearNum = parseInt(form.year, 10);
-      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) return;
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) {
+        errs.year = 'Year must be between 1900 and 2030.';
+      }
     }
-    // Validate VIN length if provided
-    if (form.vin && form.vin.length !== 17) return;
-    onSubmit(form);
+    if (form.vin && form.vin.length !== 17) {
+      errs.vin = `VIN must be exactly 17 characters (currently ${form.vin.length}).`;
+    }
+    if (errs.year || errs.vin) {
+      setFieldErrors(errs);
+      // Scroll the first invalid field into view + focus it.
+      const firstBadName = errs.year ? 'year' : 'vin';
+      const el = document.querySelector<HTMLElement>(`[name="${firstBadName}"], [id="${firstBadName}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (el as HTMLInputElement | null)?.focus?.();
+      return;
+    }
+    setFieldErrors({});
+    signalSaved();
+    onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 
   return (
@@ -288,6 +316,18 @@ export default function VehicleFormModal({
         </div>
       )}
 
+      {/* Inline validation errors (year, VIN). Surfaces the silent
+          handleSubmit returns the operator was previously hitting blind. */}
+      {(fieldErrors.year || fieldErrors.vin) && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          <div className="font-semibold mb-1">Please fix:</div>
+          <ul className="list-disc pl-4 space-y-0.5">
+            {fieldErrors.year ? <li><span className="font-mono">year</span> — {fieldErrors.year}</li> : null}
+            {fieldErrors.vin ? <li><span className="font-mono">vin</span> — {fieldErrors.vin}</li> : null}
+          </ul>
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {[
@@ -303,7 +343,7 @@ export default function VehicleFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -316,7 +356,7 @@ export default function VehicleFormModal({
           {/* Plate / State */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Plate Number">
-              <input name="plate_number" type="text" className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
+              <input name="plate_number" type="text" required className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
             </FormField>
             <FormField label="State">
               <select name="state" className="select-dark mt-1" value={form.state} onChange={handleChange}>
@@ -334,7 +374,7 @@ export default function VehicleFormModal({
               </select>
             </FormField>
             <FormField label="Model">
-              <input name="model" type="text" className="input-dark mt-1" value={form.model} onChange={handleChange} />
+              <input name="model" type="text" required className="input-dark mt-1" value={form.model} onChange={handleChange} />
             </FormField>
             <FormField label="Year">
               <input name="year" type="number" min="1900" max="2030" className="input-dark mt-1" placeholder="e.g. 2024" value={form.year} onChange={handleChange} />
@@ -374,7 +414,7 @@ export default function VehicleFormModal({
 
           {/* VIN */}
           <FormField label="VIN">
-            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
+            <input name="vin" type="text" required maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
           </FormField>
         </>
       )}
@@ -484,7 +524,7 @@ export default function VehicleFormModal({
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
+            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Owner Name">
                 <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />
@@ -495,17 +535,27 @@ export default function VehicleFormModal({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
               <FormField label="Owner Address">
-                <AddressAutocomplete
-                  name="owner_address"
-                  className="input-dark mt-1"
-                  placeholder="Owner address"
-                  value={form.owner_address}
-                  onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
-                  onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
-                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <AddressAutocomplete
+                      name="owner_address"
+                      className="input-dark mt-1"
+                      placeholder="Owner address"
+                      value={form.owner_address}
+                      onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
+                      onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
+                    />
+                  </div>
+                  <input
+                    id="ff-vehicleformmodal-addrunit" type="text"
+                    className="input-dark mt-1 w-20" value={ownerAddressUnit}
+                    onChange={(e) => setOwnerAddressUnit(e.target.value)}
+                    placeholder="Apt #" aria-label="Owner address apartment or unit"
+                  />
+                </div>
               </FormField>
               <FormField label="Owner Phone">
-                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
+                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" />
               </FormField>
               <FormField label="Owner Date of Birth">
                 <input name="owner_dob" type="date" className="input-dark mt-1" value={form.owner_dob} onChange={handleChange} />

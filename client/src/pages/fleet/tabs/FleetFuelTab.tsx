@@ -1,11 +1,12 @@
-import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle } from 'lucide-react';
+import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
   premium: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
-  diesel: { bg: 'bg-gray-900/30', text: 'text-gray-400', border: 'border-gray-700/40' },
+  diesel: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
 };
 
 function mpgColor(mpg: number | null | undefined): string {
@@ -94,6 +95,86 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
   );
 }
 
+/** Tiny SVG sparkline for $/gallon price trend (chronological, oldest→newest). */
+function PriceSparkline({ logs }: { logs: FleetFuelLog[] }) {
+  const withPrice = [...logs]
+    .filter(l => l.cost_per_gallon != null && l.cost_per_gallon! > 0)
+    .reverse()
+    .slice(-20);
+  if (withPrice.length < 2) return null;
+  const values = withPrice.map(l => l.cost_per_gallon!);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const w = 320, h = 40, padding = 2;
+  const usableH = h - padding * 2, usableW = w - padding * 2;
+  const points = values.map((v, i) => {
+    const x = padding + (i / (values.length - 1)) * usableW;
+    const y = padding + usableH - ((v - min) / range) * usableH;
+    return `${x},${y}`;
+  });
+  const avg = values.reduce((s, v) => s + v, 0) / values.length;
+  const avgY = padding + usableH - ((avg - min) / range) * usableH;
+  const last = values[values.length - 1];
+  const first = values[0];
+  const trendUp = last > first;
+  return (
+    <div className="panel-beveled bg-surface-sunken p-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">$/Gal Price Trend (Last {values.length} Fills)</span>
+        <div className="flex items-center gap-3 text-[8px] text-rmpg-500">
+          <span>Low: <span className="font-mono font-bold text-green-400">${min.toFixed(3)}</span></span>
+          <span>Avg: <span className="font-mono font-bold text-brand-400">${avg.toFixed(3)}</span></span>
+          <span>High: <span className="font-mono font-bold text-red-400">${max.toFixed(3)}</span></span>
+          <span className={trendUp ? 'text-red-400' : 'text-green-400'}>{trendUp ? '▲' : '▼'} ${last.toFixed(3)}</span>
+        </div>
+      </div>
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="overflow-visible">
+        <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgba(212,160,23,0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
+        <polyline points={points.join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        {values.map((v, i) => {
+          const x = padding + (i / (values.length - 1)) * usableW;
+          const y = padding + usableH - ((v - min) / range) * usableH;
+          return <circle key={i} cx={x} cy={y} r="2" fill="#d4a017" />;
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/** Monthly spend mini bar-chart (last 12 months with data). */
+function MonthlySpendBars({ logs }: { logs: FleetFuelLog[] }) {
+  const byMonth = new Map<string, { cost: number; gallons: number }>();
+  for (const l of logs) {
+    const m = (l.fuel_date || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(m)) continue;
+    const a = byMonth.get(m) ?? { cost: 0, gallons: 0 };
+    a.cost += typeof l.total_cost === 'number' ? l.total_cost : 0;
+    a.gallons += typeof l.gallons === 'number' ? l.gallons : 0;
+    byMonth.set(m, a);
+  }
+  const months = [...byMonth.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-12);
+  if (months.length < 2) return null;
+  const maxCost = Math.max(...months.map(([, a]) => a.cost)) || 1;
+  return (
+    <div className="panel-beveled bg-surface-sunken p-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Monthly Spend (Last {months.length} Months)</span>
+        <span className="text-[8px] text-rmpg-500">Total: <span className="font-mono font-bold text-green-400">${months.reduce((s, [, a]) => s + a.cost, 0).toFixed(2)}</span></span>
+      </div>
+      <div className="flex items-end gap-1 h-20">
+        {months.map(([month, a]) => (
+          <div key={month} className="flex-1 flex flex-col items-center justify-end gap-0.5 group" title={`${month}: $${a.cost.toFixed(2)} · ${a.gallons.toFixed(1)} gal`}>
+            <span className="text-[7px] text-rmpg-500 font-mono opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">${Math.round(a.cost)}</span>
+            <div className="w-full bg-green-700/60 hover:bg-green-500 transition-colors rounded-t-sm" style={{ height: `${Math.max(2, (a.cost / maxCost) * 100)}%` }} />
+            <span className="text-[6px] text-rmpg-600 font-mono">{month.slice(5)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   fuelLogs: FleetFuelLog[];
   summary: FleetFuelSummary | null;
@@ -115,12 +196,12 @@ export default function FleetFuelTab({
   // Count flagged entries so we can label the Audit button + gate visibility
   const flaggedCount = fuelLogs.filter((l: any) => !!l.flags).length;
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* Summary Stats — Top Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Fuel className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
+          <Fuel className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-rmpg-400">
             {summary?.total_gallons != null ? summary.total_gallons.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Gallons</div>
@@ -128,7 +209,7 @@ export default function FleetFuelTab({
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-green-400 mb-1" />
           <div className="text-sm font-bold font-mono tabular-nums text-green-400">
-            ${summary ? summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+            ${summary?.total_cost != null ? summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
@@ -151,8 +232,8 @@ export default function FleetFuelTab({
       {/* Summary Stats — Second Row (efficiency details) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <Route className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
-          <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
+          <Route className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono tabular-nums text-rmpg-400">
             {summary?.total_distance != null ? summary.total_distance.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Miles</div>
@@ -187,8 +268,12 @@ export default function FleetFuelTab({
         </div>
       </div>
 
-      {/* MPG Sparkline */}
-      <MpgSparkline logs={fuelLogs} />
+      {/* Trend charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <MpgSparkline logs={fuelLogs} />
+        <PriceSparkline logs={fuelLogs} />
+      </div>
+      <MonthlySpendBars logs={fuelLogs} />
 
       {/* Action Bar */}
       <div className="flex items-center justify-between">
@@ -216,7 +301,7 @@ export default function FleetFuelTab({
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-12 panel-beveled bg-surface-base">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: 'var(--surface-deep)' }}>
             <Fuel className="w-8 h-8 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>
@@ -234,8 +319,8 @@ export default function FleetFuelTab({
             const dist = log.calc_distance ?? log.distance ?? null;
             return (
               <div key={log.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
-                  <Fuel className="w-4 h-4 text-gray-400" />
+                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-surface-sunken/20 border border-border-default/40">
+                  <Fuel className="w-4 h-4 text-rmpg-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -262,9 +347,14 @@ export default function FleetFuelTab({
                     )}
                     {/* Distance */}
                     {dist != null && dist > 0 && (
-                      <span className="text-[9px] font-mono tabular-nums text-gray-400">
+                      <span className="text-[9px] font-mono tabular-nums text-rmpg-400">
                         {dist.toFixed(1)} mi
                       </span>
+                    )}
+                    {/* Partial-fill flag — full tanks are the norm, so only
+                        call out partials (they're excluded from MPG). */}
+                    {(log.is_full_tank === 0 || log.is_full_tank === false) && (
+                      <span className="px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30">Partial</span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
@@ -277,13 +367,22 @@ export default function FleetFuelTab({
                         <MapPin className="w-2.5 h-2.5" />{log.station}
                       </span>
                     )}
-                    {log.odometer_reading != null && (
+                    {(log.odometer_reading ?? log.odometer) != null && (
                       <span className="flex items-center gap-0.5">
-                        <Gauge className="w-2.5 h-2.5" />{log.odometer_reading.toLocaleString()} mi
+                        <Gauge className="w-2.5 h-2.5" />{(log.odometer_reading ?? log.odometer)!.toLocaleString()} mi
                       </span>
                     )}
                     {log.cost_per_gallon != null && (
                       <span>${log.cost_per_gallon.toFixed(3)}/gal</span>
+                    )}
+                    {log.driver_name && (
+                      <span className="flex items-center gap-0.5"><User className="w-2.5 h-2.5" />{log.driver_name}</span>
+                    )}
+                    {log.payment_method && (
+                      <span className="flex items-center gap-0.5"><CreditCard className="w-2.5 h-2.5" />{toDisplayLabel(log.payment_method)}</span>
+                    )}
+                    {log.location && (
+                      <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{log.location}</span>
                     )}
                   </div>
                   {log.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{log.notes}</p>}

@@ -1,0 +1,91 @@
+name: RMPGFlexConnect
+options:
+  bundleIdPrefix: us.rmpgutah
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "26.5"
+  projectFormat: xcode16_0
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: D3LYU7YCCN
+    SWIFT_VERSION: "6.0"
+    SDKROOT: iphoneos
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+targets:
+  RMPGFlexConnect:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - RMPGFlexConnect
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: us.rmpgutah.flexconnect
+        PRODUCT_NAME: "RMPG Flex Connect"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: D3LYU7YCCN
+        INFOPLIST_FILE: RMPGFlexConnect/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        OTHER_LDFLAGS:
+          - "-Wl,-weak_framework,DeveloperToolsSupport,-weak_framework,_MapKit_SwiftUI,-weak_framework,_Translation_SwiftUI,-weak_framework,SwiftData,-weak_framework,Symbols,-weak_framework,ActivityKit,-weak_framework,WidgetKit,-weak_framework,CoreImage,-weak_framework,Vision"
+    dependencies:
+      - package: CoreAPI
+      - package: CoreAuth
+      - package: DesignSystem
+      - package: FeatureShell
+      - package: FeatureQuickActions
+      - package: FeatureDuty
+      - package: FeatureCFS
+      - package: CoreOffline
+      - package: CoreLocationService
+      - package: CorePush
+      - package: CoreAudioService
+      - package: FeatureRunPlate
+      - package: FeatureRunID
+      - package: FeatureMap
+      - package: FeatureReports
+      - package: FeatureLiveActivity
+      - package: FeatureWidgets
+
+packages:
+  CoreAPI:
+    path: Packages/CoreAPI
+  CoreAuth:
+    path: Packages/CoreAuth
+  CoreOffline:
+    path: Packages/CoreOffline
+  CoreLocationService:
+    path: Packages/CoreLocationService
+  CorePush:
+    path: Packages/CorePush
+  CoreAudioService:
+    path: Packages/CoreAudioService
+  DesignSystem:
+    path: Packages/DesignSystem
+  FeatureShell:
+    path: Packages/FeatureShell
+  FeatureCFS:
+    path: Packages/FeatureCFS
+  FeatureDuty:
+    path: Packages/FeatureDuty
+  FeatureQuickActions:
+    path: Packages/FeatureQuickActions
+  FeatureReports:
+    path: Packages/FeatureReports
+  FeatureRunID:
+    path: Packages/FeatureRunID
+  FeatureRunPlate:
+    path: Packages/FeatureRunPlate
+  FeatureMap:
+    path: Packages/FeatureMap
+  FeatureLiveActivity:
+    path: Packages/FeatureLiveActivity
+  FeatureWidgets:
+    path: Packages/FeatureWidgets

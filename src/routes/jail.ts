@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 const jail = new Hono<Env>();
 
@@ -39,6 +40,8 @@ async function generateBookingNumber(db: ReturnType<typeof getDb>): Promise<stri
 jail.get('/inmates', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -92,6 +95,16 @@ jail.post('/inmates', async (c) => {
       b.bail_amount ?? null, b.bond_type ?? null, b.notes ?? null, userId,
     );
     const newId = Number(result.meta.last_row_id);
+
+    // Analytics lakehouse: booking event (best-effort, fire-and-forget).
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
+      event_type: 'jail_booking', occurred_at: new Date().toISOString(),
+      actor_id: userId, entity_type: 'inmate', entity_id: newId,
+      label: bookingNumber, status: 'booked', category: 'jail',
+      value: b.bail_amount,
+      payload: { arresting_agency: b.arresting_agency ?? 'RMPG', bond_type: b.bond_type ?? null },
+    })]);
+
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmates WHERE id = ?', newId);
     return c.json({ data: created, booking_number: bookingNumber }, 201);
   } catch (err) {
@@ -410,6 +423,8 @@ jail.put('/inmates/:id/transports/:transportId', async (c) => {
 jail.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const inmateTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
+    if (!inmateTable?.n) return c.json({ total_inmates: 0, active_inmates: 0, on_probation: 0, released_this_month: 0, booked_this_month: 0, by_gender: [], by_race: [] });
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM inmates'))?.count ?? 0;
     const housed = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'housed'"))?.count ?? 0;
     const booked = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'booked'"))?.count ?? 0;

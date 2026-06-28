@@ -21,12 +21,15 @@ import {
   ArrowUpDown,
   Filter,
   Users,
+  User,
   Gavel,
   Navigation,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp } from '../../utils/dateUtils';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -42,12 +45,14 @@ import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
 import RecordAvatar from '../../components/records/RecordAvatar';
-import { recordPosture } from '../../components/records/recordVisuals';
+import { recordPosture, recordCornerBadge } from '../../components/records/recordVisuals';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
 import AISearchButton from '../../components/AISearchButton';
 import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
+import { hasValue } from '../../utils/sentinel';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -93,6 +98,10 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     scars_marks_tattoos: row.scars_marks_tattoos ? String(row.scars_marks_tattoos) : undefined,
     clothing_description: row.clothing_description ? String(row.clothing_description) : undefined,
     address: row.address ? String(row.address) : undefined,
+    address_2: row.address_2 ? String(row.address_2) : undefined,
+    // suffix lives in persons_ext (merged by the detail GET); dropping it
+    // here made every edit→save wipe it (modal loaded '', PUT nulled it).
+    suffix: row.suffix ? String(row.suffix) : undefined,
     city: row.city ? String(row.city) : undefined,
     state: row.state ? String(row.state) : undefined,
     zip: row.zip ? String(row.zip) : undefined,
@@ -102,6 +111,9 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     dl_state: row.dl_state ? String(row.dl_state) : undefined,
     dl_expiry: row.dl_expiry ? String(row.dl_expiry) : undefined,
     dl_class: row.dl_class ? String(row.dl_class) : undefined,
+    dl_issue_date: row.dl_issue_date ? String(row.dl_issue_date) : undefined,
+    dl_restrictions: row.dl_restrictions ? String(row.dl_restrictions) : undefined,
+    dl_endorsements: row.dl_endorsements ? String(row.dl_endorsements) : undefined,
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
@@ -212,12 +224,15 @@ const FLAG_COLORS: Record<string, string> = {
 // Avatar rendering (name-hash colors + initials) now lives in the shared
 // RecordAvatar component; the list + hero both use it.
 
-// Some fields are stored verbatim and carry sentinel "no value" strings —
-// gang_affiliation is frequently the literal "None", which is truthy and was
-// firing a false GANG affiliation alert + badge. Treat these as absent.
-const ABSENT_SENTINELS = ['none', '0', 'n/a', 'na', ''];
-function hasValue(v?: string | null): boolean {
-  return !!v && !ABSENT_SENTINELS.includes(v.trim().toLowerCase());
+// Sentinel "no value" guard (gang_affiliation is frequently the literal
+// "None", which is truthy and once fired a false GANG alert + badge) now lives
+// in the shared ../../utils/sentinel module — see hasValue import above.
+
+// Import-provenance tags written into flags[] by DL-scan import flows.
+// They are data-lineage metadata, not officer-caution flags, and must be
+// excluded from badge rendering, warning counts, and posture computation.
+function isProvenanceFlag(flag: string): boolean {
+  return /_IMPORTED$/i.test(flag);
 }
 
 // Single source of truth for a person's posture-relevant flags. Shared by the
@@ -225,7 +240,7 @@ function hasValue(v?: string | null): boolean {
 // agree on severity (and all get the gang-"None" guard for free).
 function personPostureFlags(p: Person): Array<string | null | undefined> {
   return [
-    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)).filter(f => !isProvenanceFlag(f)),
     p.watchlist_match ? 'watchlist' : null,
     p.is_sex_offender ? 'sex offender' : null,
     hasValue(p.gang_affiliation) ? 'gang' : null,
@@ -252,8 +267,8 @@ export interface PersonsTabProps {
   setPersons: React.Dispatch<React.SetStateAction<Person[]>>;
   loadingPersons: boolean;
   setLoadingPersons: React.Dispatch<React.SetStateAction<boolean>>;
-  deleteTarget: { type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  deleteTarget: { type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;
@@ -464,15 +479,17 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   const openEditPerson = async (person: Person) => {
     setPersonSubmitError(null);
-    setEditingPerson(person); // Set immediately with list data so modal has context
-    setPersonModalOpen(true);
-    // Upgrade with full detail (list only returns limited columns)
+    // Fetch full detail before opening — prevents PersonFormModal's
+    // useEffect([isOpen, editingPerson]) from firing twice and wiping edits.
+    let fullPerson: Person = person;
     try {
       const full = await apiFetch<Record<string, unknown>>(`/records/persons/${person.id}`);
-      setEditingPerson(mapDbPerson(full as Record<string, unknown>));
+      fullPerson = mapDbPerson(full as Record<string, unknown>);
     } catch {
-      // Keep the list-level data already set
+      // Fall back to list-level data
     }
+    setEditingPerson(fullPerson);
+    setPersonModalOpen(true);
   };
   const openNewPerson = () => { setEditingPerson(undefined); setPersonSubmitError(null); setPersonModalOpen(true); };
   const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); setPersonSubmitError(null); };
@@ -499,7 +516,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       p.dl_number?.toLowerCase().includes(q) ||
       p.ssn_last4?.includes(q) ||
       p.phone?.includes(q) ||
-      p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
+      p.flags.some((f) => coded((typeof f === 'object' ? f.type : f), (v) => humanizeFlag(v ?? '')).includes(q))
     );
   });
 
@@ -528,6 +545,35 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     personModalOpen, editingPerson, personSubmitting, personSubmitError, handlePersonSubmit, closeModal,
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+
+  const buildPersonMenu = (person: Person): ContextMenuItem[] => {
+    const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim();
+    const addr = [person.address, person.city, person.state, person.zip].filter(Boolean).join(', ');
+    return [
+      m.action('Open record', () => { setSelectedPerson(person); setSSNRevealed(false); }, { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit person', () => openEditPerson(person), { icon: <Pencil size={12} /> })] : []),
+      m.action('Open in new window', () => openRecordWindow('person', person.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copyId(person.id),
+      ...(person.phone ? [m.copy('Copy phone', person.phone, <Phone size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      m.separator(),
+      m.go('Run NCIC query', `/ncic?type=person&q=${encodeURIComponent(fullName)}`, <Search size={12} />),
+      ...(addr ? [m.go('Dispatch to this address', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent('Re: ' + fullName)}`, <MapPin size={12} />)] : []),
+      m.go('Create BOLO', `/communications?newBolo=1&title=${encodeURIComponent('BOLO: ' + fullName)}&subject=${encodeURIComponent(fullName)}`, <AlertTriangle size={12} />),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('persons', person.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('persons', person.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'person', id: person.id, label: fullName }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
 
   // ── Local sort + filter state ──
   const [sortBy, setSortBy] = useState<'name' | 'dob' | 'newest'>('name');
@@ -573,7 +619,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-            <input
+            <input id="ff-personstab-0"
               type="text"
               className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
               placeholder="Search by name, address, DL#, phone, flags..." aria-label="Search by name, address, DL#, phone, flags..."
@@ -581,7 +627,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -606,7 +652,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
 
       {/* Stats Bar */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
-        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Records</span>
+        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-rmpg-100">{stats.total}</strong> Records</span>
         {stats.withWarrants > 0 && <span className="text-red-400 flex items-center gap-1"><Gavel className="w-3 h-3" /> <strong>{stats.withWarrants}</strong> Warrants</span>}
         {stats.sexOffenders > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.sexOffenders}</strong> RSO</span>}
         {stats.veterans > 0 && <span className="text-green-400 flex items-center gap-1"><Shield className="w-3 h-3" /> <strong>{stats.veterans}</strong> Veterans</span>}
@@ -647,9 +693,19 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No persons match your search.'
+                : showArchived
+                  ? 'No archived person records.'
+                  : 'No person records found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+              {searchQuery
+                ? 'Try broadening your search terms.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Person" to create a record.'}
             </p>
           </div>
         )}
@@ -660,6 +716,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
+            onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedPerson?.id === person.id
@@ -671,23 +728,24 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               {(() => {
-                // Threat-aware list avatar: posture ring (red/orange/amber) so
-                // danger reads from the list before a record is even opened.
-                const posture = recordPosture(personPostureFlags(person));
+                // No-photo persons get a uniform steel-blue person glyph; the
+                // must-not-miss condition (WARRANT / SOR / GANG / …) shows as a
+                // small corner tab instead of a full colored ring.
+                const cornerBadge = recordCornerBadge(personPostureFlags(person));
                 const photo = (person as any).photo || person.photo_url || person.id_image_url;
                 return (
                   <RecordAvatar
                     name={`${person.first_name || ''} ${person.last_name || ''}`}
                     photoUrl={photo ? authedImageUrl(photo) : undefined}
-                    tone={posture.level === 'clear' ? undefined : posture.tone}
-                    pulse={posture.pulse}
+                    icon={User}
+                    cornerBadge={cornerBadge}
                     size={36}
                   />
                 );
               })()}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-white truncate">
+                  <span className="text-sm font-semibold text-rmpg-100 truncate">
                     {person.last_name}, {person.first_name}
                     {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
                   </span>
@@ -702,7 +760,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   )}
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-rmpg-400">
                   {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = parseTimestamp(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
                   {person.gender && <span>{humanizeGender(person.gender)}</span>}
                   {person.race && <span>{humanizeRace(person.race)}</span>}
@@ -720,20 +778,36 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                {person.flags.length > 0 && (
-                  <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag, i) => {
-                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                      return (
-                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
-                      );
-                    })}
-                    {person.flags.length > 2 && (
-                      <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
-                    )}
-                  </div>
+                {(() => {
+                  const securityFlags = person.flags.filter(f => {
+                    const label = typeof f === 'object' ? (f.type || '') : f;
+                    return !isProvenanceFlag(label);
+                  });
+                  if (securityFlags.length === 0) return null;
+                  return (
+                    <div className="flex gap-1">
+                      {securityFlags.slice(0, 2).map((flag, i) => {
+                        const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                        return (
+                          <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
+                        );
+                      })}
+                      {securityFlags.length > 2 && (
+                        <span className="text-[9px] text-rmpg-400">+{securityFlags.length - 2}</span>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Phone: only the call action — the rest of the cluster would
+                    eat the whole row width at 44px touch size; row tap opens
+                    the detail panel and long-press has the full menu. */}
+                {person.phone && (
+                  <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+                    className="md:hidden flex items-center justify-center w-9 h-9 border border-rmpg-700 text-green-400" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+                    <Phone className="w-4 h-4" />
+                  </a>
                 )}
-                <div className="flex items-center gap-1">
+                <div className="hidden md:flex items-center gap-1">
                   {/* Quick actions */}
                   {person.phone && (
                     <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
@@ -819,10 +893,10 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       {duplicateWarning && duplicateWarning.length > 0 && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDuplicate}>
           <div className="absolute inset-0 bg-black/60" />
-          <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
+          <div className="relative w-full max-w-[95vw] md:max-w-md mx-4 max-h-[90vh] overflow-y-auto bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
               <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Possible Duplicates Found</h2>
+              <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Possible Duplicates Found</h2>
             </div>
             <div className="p-4 space-y-3">
               <p className="text-xs text-rmpg-300">The following existing records match the person you're creating:</p>
@@ -831,7 +905,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <div key={m.id} className="flex items-center gap-3 p-2 border border-rmpg-700 bg-surface-sunken text-xs">
                     <div className="w-2 h-2 bg-amber-400" style={{ borderRadius: '1px' }} />
                     <div className="flex-1">
-                      <div className="font-bold text-white">{m.first_name} {m.last_name}</div>
+                      <div className="font-bold text-rmpg-100">{m.first_name} {m.last_name}</div>
                       <div className="text-rmpg-400">
                         {m.dob && <span>DOB: {m.dob}</span>}
                         {m.address && <span className="ml-2">• {m.address}</span>}
@@ -889,8 +963,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
     !!selectedPerson.watchlist_match ||
     hasValue(selectedPerson.probation_parole);
 
-  const heroPhoto =
-    selectedPerson.photo_url ? authedImageUrl(selectedPerson.photo_url) : undefined;
+  // Same photo-source fallback chain the list row uses, so an attached
+  // mugshot / DL image populates the hero tile too (else the person glyph).
+  const heroPhotoSrc =
+    (selectedPerson as any).photo || selectedPerson.photo_url || selectedPerson.id_image_url;
+  const heroPhoto = heroPhotoSrc ? authedImageUrl(heroPhotoSrc) : undefined;
 
   const heroSubtitle = (
     <span className="flex items-center gap-3">
@@ -920,6 +997,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           name={heroName}
           subtitle={heroSubtitle}
           photoUrl={heroPhoto}
+          icon={User}
           flags={posturalFlags}
         >
           {hasSpecialFlags && (
@@ -967,13 +1045,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             <RecordField label="Language" value={selectedPerson.language} />
           </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
-            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="#fbbf24" /></div>
+            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
           )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
           {selectedPerson.alias_nickname && (
-            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="#e8b820" /></div>
+            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="rgb(var(--brand-gold-400-rgb))" /></div>
           )}
         </CollapsibleSection>
 
@@ -996,7 +1074,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
-          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
+          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url || selectedPerson.dl_restrictions || selectedPerson.dl_endorsements || selectedPerson.dl_issue_date) ? (
             <div className="flex gap-3">
               {/* ID Image */}
               {selectedPerson.id_image_url ? (
@@ -1006,12 +1084,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     title="Click to enlarge"
                   >
                     <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Eye className="w-4 h-4 text-white" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex items-center justify-center">
+                      <Eye className="w-4 h-4 text-rmpg-100" />
                     </div>
                   </div>
                   {selectedPerson.id_type && (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/40 text-center w-full">
+                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/40 text-center w-full">
                       {selectedPerson.id_type.replace(/_/g, ' ')}
                     </span>
                   )}
@@ -1024,12 +1102,31 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <FieldGrid cols={2}>
-                    <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
-                    <RecordField label="State" value={selectedPerson.dl_state} />
-                    <RecordField label="Class" value={selectedPerson.dl_class} />
-                    <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
-                  </FieldGrid>
+                  <>
+                    <FieldGrid cols={2}>
+                      <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
+                      <RecordField label="State" value={selectedPerson.dl_state} />
+                      <RecordField label="Class" value={selectedPerson.dl_class} />
+                      <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
+                      <RecordField label="Issue Date" value={selectedPerson.dl_issue_date ? safeDateDisplay(selectedPerson.dl_issue_date) : undefined} />
+                    </FieldGrid>
+                    {(selectedPerson.dl_restrictions || selectedPerson.dl_endorsements) && (
+                      <div className="mt-1.5 space-y-1">
+                        {selectedPerson.dl_restrictions && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Restrictions</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_restrictions}</p>
+                          </div>
+                        )}
+                        {selectedPerson.dl_endorsements && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Endorsements</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_endorsements}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
@@ -1054,8 +1151,8 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
-                            ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: '#999999', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            ? { color: 'var(--sev-critical-soft)', background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.4)' }
+                            : { color: 'rgb(var(--rmpg-400-rgb))', background: 'rgb(var(--rmpg-500-rgb) / 0.15)', borderColor: 'rgb(var(--rmpg-500-rgb) / 0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >
@@ -1099,14 +1196,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Officer Safety / Caution (conditional)  */}
         {selectedPerson.caution_flags && (
           <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle} accent="red">
-            <p className="text-xs text-red-200/90 leading-relaxed">{selectedPerson.caution_flags}</p>
+            <p className="text-xs text-red-200/90 leading-relaxed break-words">{selectedPerson.caution_flags}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedPerson.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedPerson.notes}</p>
           </CollapsibleSection>
         )}
 

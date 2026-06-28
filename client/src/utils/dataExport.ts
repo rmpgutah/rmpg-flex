@@ -12,7 +12,7 @@ export function logExportActivity(exportId:string,userId:string,fileSize:number)
 export interface BatchExport { batchId:string; exports:string[]; totalRecords:number; createdAt:string; }
 export function createBatchExport(exportIds:string[]): BatchExport { return{batchId:`batch-${Date.now()}`,exports:exportIds,totalRecords:exportIds.length,createdAt:new Date().toISOString()}; }
 export interface ComplianceExport { exportId:string; regulation:string; dataRetention:string; auditTrail:boolean; }
-export function ensureCompliance(export:ExportJob,regulations:string[]): ComplianceExport { return{exportId:export.id,regulation:regulations.join(', '),dataRetention:'30 days',auditTrail:true}; }
+export function ensureCompliance(exportJob:ExportJob,regulations:string[]): ComplianceExport { return{exportId:exportJob.id,regulation:regulations.join(', '),dataRetention:'30 days',auditTrail:true}; }
 export interface ExportRestriction { userId:string; allowedTypes:string[]; maxRecords:number; requiresApproval:boolean; }
 export function checkExportPermissions(userId:string,exportType:string,restrictions:ExportRestriction[]): {allowed:boolean;reason:string} { const user=restrictions.find(r=>r.userId===userId); if(!user)return{allowed:false,reason:'No export permissions'}; if(!user.allowedTypes.includes(exportType))return{allowed:false,reason:`Export type ${exportType} not allowed`}; return{allowed:true,reason:''}; }
 export interface ExportFormat { format:string; mimeType:string; extension:string; supportsLargeData:boolean; }

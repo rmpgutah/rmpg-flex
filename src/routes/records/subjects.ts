@@ -101,10 +101,8 @@ subjects.get('/search', async (c) => {
             activeWarrantCount = row?.count ?? 0;
           }
         } catch (err: unknown) {
-          // Warrants table absent or column shape differs — degrade silently.
-          // Reading the message gracefully tolerates either Error or unknown.
           if (!(err instanceof Error) || !err.message?.includes('no such table')) {
-            // Genuinely unexpected — still don't fail the whole search.
+            console.error('[subjects] warrants query error:', err);
           }
         }
 

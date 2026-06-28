@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler, TextCursorInput, SquareCheck, Shapes, ChevronDownSquare, CircleDot, CalendarClock } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -16,6 +16,8 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'hand', icon: Hand, label: 'Pan' },
   { id: 'text', icon: Type, label: 'Text' },
   { id: 'highlight', icon: Highlighter, label: 'Highlight' },
+  { id: 'underline', icon: Underline, label: 'Underline' },
+  { id: 'strikethrough', icon: Strikethrough, label: 'Strikethrough' },
   { id: 'redact', icon: EyeOff, label: 'Redact (visual)' },
   { id: 'rect', icon: Square, label: 'Rectangle' },
   { id: 'ellipse', icon: Circle, label: 'Ellipse' },
@@ -32,13 +34,25 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'datestamp', icon: Calendar, label: 'Date stamp (today)' },
   { id: 'polygon', icon: Pentagon, label: 'Polygon (click vertices, double-click to close)' },
   { id: 'polyline', icon: Spline, label: 'Polyline (click vertices, double-click or Esc to finish)' },
+  { id: 'cloud', icon: Cloud, label: 'Revision cloud (drag a rectangle)' },
+  { id: 'check', icon: Check, label: 'Checkmark (click to place)' },
+  { id: 'cross', icon: X, label: 'Cross / X (click to place)' },
+  { id: 'measure', icon: Ruler, label: 'Measure distance (drag two points)' },
+  { id: 'measureArea', icon: Shapes, label: 'Measure area (click vertices, double-click to close)' },
+  { id: 'formText', icon: TextCursorInput, label: 'Form field — fillable text box (drag)' },
+  { id: 'formCheck', icon: SquareCheck, label: 'Form field — checkbox (drag)' },
+  { id: 'formDropdown', icon: ChevronDownSquare, label: 'Form field — dropdown / combo box (drag)' },
+  { id: 'formRadio', icon: CircleDot, label: 'Form field — radio button group (drag)' },
+  { id: 'formDate', icon: CalendarClock, label: 'Form field — date field (drag)' },
 ];
 
-const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb', '#ffffff'];
+// Quick-pick annotation colors. Neutral grays + a few muted accents that read
+// well on white pages (no bright blue — Spillman palette rule).
+const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb', '#ffffff', '#d4a017', '#8a1c1c', '#1c5a2e'];
 
 export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth, onStrokeWidth }: Props) {
   return (
-    <div className="flex flex-col gap-1 bg-[#0d0d0d] border border-[#222222] rounded-[2px] p-1 w-[44px] flex-shrink-0">
+    <div className="flex flex-col gap-1 bg-surface-base border border-border-default rounded-[2px] p-1 w-[44px] flex-shrink-0">
       {TOOLS.map(t => {
         const Icon = t.icon;
         const active = tool === t.id;
@@ -48,22 +62,22 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
             onClick={() => onTool(t.id)}
             aria-label={t.label}
             title={t.label}
-            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'}`}
+            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
           >
             <Icon className="w-4 h-4" />
           </IconButton>
         );
       })}
 
-      <div className="h-px bg-[#222222] my-1" />
+      <div className="h-px bg-surface-raised my-1" />
 
       <div className="flex flex-col gap-1 items-center">
-        <input
+        <input id="ff-toolpalette-0"
           type="color"
           aria-label="Stroke color"
           value={color}
           onChange={e => onColor(e.target.value)}
-          className="w-7 h-7 bg-transparent border border-[#222222] rounded-sm cursor-pointer"
+          className="w-7 h-7 bg-transparent border border-border-default rounded-sm cursor-pointer"
           title="Stroke color"
         />
         <div className="flex flex-wrap gap-0.5 w-[36px]">
@@ -74,12 +88,12 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
               onClick={() => onColor(c)}
               aria-label={`Use color ${c}`}
               title={c}
-              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? 'border-[#d4a017]' : 'border-[#333]'}`}
+              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? 'border-[#d4a017]' : 'border-border-subtle'}`}
               style={{ background: c }}
             />
           ))}
         </div>
-        <input
+        <input id="ff-toolpalette-1"
           type="range"
           aria-label="Stroke width"
           min={1}

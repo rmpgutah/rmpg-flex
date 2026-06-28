@@ -5,6 +5,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface CheckpointRecord {
   id: number;
@@ -135,7 +136,7 @@ function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): s
       <table style="width:100%;font-size:11px;border-collapse:collapse">
         ${cp.property_name ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Property</td><td style="color:#e0e0e0">${cp.property_name}</td></tr>` : ''}
         <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Interval</td><td style="color:#e0e0e0">${cp.scan_required_interval_minutes} min</td></tr>
-        <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Last Scan</td><td style="color:${cp.last_scanned ? '#e0e0e0' : '#dc2626'}">${cp.last_scanned ? safeDateTimeStr(cp.last_scanned) : 'Never'}</td></tr>
+        <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Last Scan</td><td style="color:${cp.last_scanned ? 'var(--text-secondary)' : '#dc2626'}">${cp.last_scanned ? safeDateTimeStr(cp.last_scanned) : 'Never'}</td></tr>
         ${cp.scanned_by_name ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Scanned By</td><td style="color:#e0e0e0">${cp.scanned_by_name}</td></tr>` : ''}
         ${cp.scan_count != null ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Total Scans</td><td style="color:#e0e0e0">${cp.scan_count}</td></tr>` : ''}
         <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="color:${color}">${statusLabel}${hoursLabel}</td></tr>
@@ -162,10 +163,10 @@ export function useMapPatrolCheckpoints(
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
     if (map) {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
-      if (map.getLayer(routeSourceId)) map.removeLayer(routeSourceId);
-      if (map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
+      safeRemoveLayer(map, routeSourceId);
+      safeRemoveSource(map, routeSourceId);
     }
   }, [map]);
 

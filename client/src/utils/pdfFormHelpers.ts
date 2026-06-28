@@ -8,10 +8,11 @@
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGenerator';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
-  getGridStartX, getGridContentWidth,
+  getGridStartX, getGridContentWidth, getCapHeight,
   CLASSIFICATION,
   topHeaderY,
   type RGBColor,
@@ -79,6 +80,57 @@ export interface CodeEntry {
 // ── Drawing Primitives ──────────────────────────────────────
 
 /**
+ * Fit a single line of text within `maxW` (mm). Keeps `baseFontSize` if the
+ * text already fits; otherwise shrinks the font proportionally toward
+ * `minFontSize`, and only if it STILL overflows at the floor does it
+ * tail-truncate with an ellipsis. Returns the text to draw and the font size
+ * to set before drawing.
+ *
+ * Why this exists: form cells have a FIXED height (one line). Passing a long
+ * value to jsPDF `doc.text(..., { maxWidth })` word-wraps it onto extra lines
+ * that flow downward past the cell and overprint the row below — the
+ * "overlapping text" defect seen in generated records (e.g. a long geocoded
+ * TARGET ADDRESS stacking over the LAT/LON/EGRESS rows). Shrinking to one line
+ * keeps every value inside its cell. Mirrors the measure-then-scale pattern
+ * already used by drawSideTab() and the NIBRS case-number header.
+ *
+ * NOTE: requires the caller to have already selected the font FAMILY/STYLE
+ * (via doc.setFont) so getTextWidth measures the right glyphs.
+ */
+export function fitTextToWidth(
+  doc: jsPDF,
+  text: string,
+  maxW: number,
+  baseFontSize: number,
+  minFontSize = 5,
+): { text: string; fontSize: number } {
+  if (!text || maxW <= 0) return { text, fontSize: baseFontSize };
+
+  doc.setFontSize(baseFontSize);
+  let width = doc.getTextWidth(text);
+  if (width <= maxW) return { text, fontSize: baseFontSize };
+
+  // Shrink proportionally toward the floor.
+  const fontSize = Math.max(minFontSize, baseFontSize * (maxW / width));
+  doc.setFontSize(fontSize);
+  width = doc.getTextWidth(text);
+  if (width <= maxW) return { text, fontSize };
+
+  // Still too wide at the floor — tail-truncate with an ellipsis ("..." rather
+  // than the Unicode "…" so it renders in jsPDF's standard fonts). Binary-search
+  // the longest prefix that fits.
+  const ELL = '...';
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (doc.getTextWidth(text.slice(0, mid) + ELL) <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return { text: `${text.slice(0, lo).trimEnd()}${ELL}`, fontSize };
+}
+
+/**
  * Draw a single form cell: bordered rectangle with tiny label
  * at top-left inside the cell, value text below.
  */
@@ -142,22 +194,31 @@ export function drawFormCell(
     }
   } else if (cell.value) {
     doc.setFont(PDF_VALUE_FONT, cell.valueBold ? 'bold' : 'normal');
-    doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
+    // Fit the value on ONE line within the cell. Previously this passed jsPDF
+    // `{ maxWidth }`, which word-wraps long values onto extra lines that spill
+    // past this fixed-height cell and overprint the row below (the overlapping-
+    // text defect in generated records). fitTextToWidth shrinks the font to fit
+    // and only ellipsis-truncates as a last resort, so the value never crosses
+    // the cell edge.
+    const baseFontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
+    const maxW = w - 2 * pad;
+    const { text: displayVal, fontSize } = fitTextToWidth(
+      doc, cell.value.toUpperCase(), maxW, baseFontSize,
+    );
+    doc.setFontSize(fontSize);
+
     // Center value text baseline in the value area
-    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
     const textH = fontSize * 0.35;  // Approximate cap height in mm
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
-    const maxW = w - 2 * pad;
 
-    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
-      doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
+      doc.text(displayVal, x + w / 2, valueY, { align: 'center' });
     } else if (cell.align === 'right') {
-      doc.text(displayVal, x + w - pad, valueY, { align: 'right', maxWidth: maxW });
+      doc.text(displayVal, x + w - pad, valueY, { align: 'right' });
     } else {
-      doc.text(displayVal, x + pad, valueY, { maxWidth: maxW });
+      doc.text(displayVal, x + pad, valueY);
     }
   }
 }
@@ -444,22 +505,18 @@ export function drawFormSection(
   const sectionStartY = curY;
 
   if (useBanner) {
-    // ── Draw horizontal banner (matches openAutoSection header style) ──
-    // Dark fill (#2e2e2e equivalent) matching CFS section headers
-    const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
-    doc.setFillColor(...bgColor);
-    doc.rect(gridX, curY, gridW, bannerH, 'F');
-    // Clean border around header
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, curY, gridW, bannerH);
-    // White text, vertically centered
+    // ── Flat section banner (matches openAutoSection flat style) ──
+    // Black title + thin full-width rule below — no dark fill bar.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-    const textY = curY + (bannerH + bannerCapH) / 2;
-    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const textY = curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET, textY);
+    const bannerRuleY = curY + bannerH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(gridX, bannerRuleY, gridX + gridW, bannerRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
   }
 
@@ -521,162 +578,202 @@ export function drawNibrsHeader(
   const isLight = getActiveSectionStyle() === 'light';
   const accentW = BORDER.ACCENT_SECTION;
 
-  // ── Top header bar ───────────────────
-  // Dark slate fill in BOTH modes (2026-05-05 darker-shading pass).
-  // The light-mode cream tint was making the agency name read faint;
-  // unifying to a deep charcoal with a left accent strip gives the
-  // agency identity the visual weight of a real PD letterhead.
+  // Embed + use the literal Arial-compatible font (Liberation Sans) for the
+  // header. registerArialFont is idempotent and per-document.
+  const FONT_FAMILY = registerArialFont(doc);
+  const AGENCY_LOCATION = 'SALT LAKE CITY, UTAH';
+
+  if (isLight) {
+    // ── Classic government / police-report letterhead (black on white) ──
+    // Redesigned 2026-06-11 (was a solid-black banner): seal at left, an
+    // agency identity stack (state · name · ORI), a boxed metadata grid at
+    // the right (FORM / DATE / SUBJECT-or-CASE), a heavy separating rule,
+    // then a gray report-type band. Reads like a real LE records form.
+    const sealSize = LAYOUT.SEAL_SIZE;
+    const hasSeal = !!config.sealBase64;
+    if (hasSeal) {
+      try { doc.addImage(config.sealBase64!, 'PNG', margin, y + 1, sealSize, sealSize); }
+      catch { /* skip if image fails */ }
+    }
+    const textX = margin + (hasSeal ? sealSize + 4 : 0);
+
+    // Right metadata box rows (only those with data).
+    const boxW = 62;
+    const boxX = margin + contentW - boxW;
+    const rows: { label: string; value: string }[] = [];
+    // Strip a redundant leading "FORM " so the "FORM" label + value don't read
+    // as "FORM FORM PS-202".
+    if (config.formNumber) rows.push({ label: 'FORM', value: config.formNumber.replace(/^form\s+/i, '') });
+    if (config.reportDate) rows.push({ label: 'DATE', value: sanitizePdfText(config.reportDate) });
+    if (config.caseNumber) rows.push({ label: config.caseNumberLabel || 'CASE NUMBER', value: sanitizePdfText(config.caseNumber) });
+    const rowH = 5.2;
+    const boxH = Math.max(rows.length * rowH, 15.6);
+
+    // Agency identity stack (left).
+    doc.setFont(FONT_FAMILY, 'normal');
+    doc.setFontSize(FONT.SIZE_SUBHEADER);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text((config.stateIdentifier || '').toUpperCase(), textX, y + 3.4);
+
+    doc.setFont(FONT_FAMILY, 'bold');
+    const nameMaxW = boxX - textX - 4;
+    let nameSize: number = FONT.SIZE_HEADER_TITLE;
+    doc.setFontSize(nameSize);
+    const nameText = (config.agencyName || '').toUpperCase();
+    const nameW = doc.getTextWidth(nameText);
+    if (nameW > nameMaxW && nameW > 0) {
+      nameSize = Math.max(9, nameSize * (nameMaxW / nameW));
+      doc.setFontSize(nameSize);
+    }
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(nameText, textX, y + 8.6);
+
+    doc.setFont(FONT_FAMILY, 'normal');
+    doc.setFontSize(FONT.SIZE_SUBHEADER);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(AGENCY_LOCATION, textX, y + 12.6);
+
+    // Metadata box: bordered grid with gray label column.
+    if (rows.length) {
+      // Auto-fit the gray label column to the widest label. The old fixed
+      // 20mm column let long labels ("CALL FOR SERVICE") run under the
+      // value text (caught 2026-06-11 on PS-201's CFS header box).
+      doc.setFont(FONT_FAMILY, 'bold');
+      doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+      const maxLabelTextW = Math.max(...rows.map((r) => doc.getTextWidth(r.label)));
+      const labelW = Math.min(34, Math.max(20, maxLabelTextW + 3.5));
+      doc.setDrawColor(...COLOR.RULE_STRONG);
+      doc.setLineWidth(0.3);
+      doc.rect(boxX, y, boxW, boxH);
+      rows.forEach((row, i) => {
+        const ry = y + i * rowH;
+        if (i > 0) doc.line(boxX, ry, boxX + boxW, ry);
+        doc.setFillColor(238, 238, 238);
+        doc.rect(boxX, ry, labelW, rowH, 'F');
+        doc.setFont(FONT_FAMILY, 'bold');
+        doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text(row.label, boxX + 1.5, ry + rowH - 1.7);
+        doc.setFont(FONT_FAMILY, 'bold');
+        let vSize: number = FONT.SIZE_FIELD_VALUE;
+        doc.setFontSize(vSize);
+        const valAvail = boxW - labelW - 3;
+        const valW = doc.getTextWidth(row.value);
+        if (valW > valAvail && valW > 0) {
+          vSize = Math.max(5, vSize * (valAvail / valW));
+          doc.setFontSize(vSize);
+        }
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        doc.text(row.value, boxX + labelW + 1.5, ry + rowH - 1.7);
+      });
+      doc.line(boxX + labelW, y, boxX + labelW, y + boxH);
+    }
+
+    const topZoneH = Math.max(hasSeal ? sealSize + 1 : 14, boxH, 14);
+    y += topZoneH + 1.5;
+
+    // Heavy rule under the identity zone.
+    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setLineWidth(0.6);
+    doc.line(margin, y, margin + contentW, y);
+
+    // Report-type band — gray fill, centered bold report type.
+    const bandH = 6.4;
+    doc.setFillColor(235, 235, 235);
+    doc.rect(margin, y, contentW, bandH, 'F');
+    doc.setFont(FONT_FAMILY, 'bold');
+    doc.setFontSize(FONT.SIZE_REPORT_TYPE + 4);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text((config.formTitle || '').toUpperCase(), margin + contentW / 2, y + bandH - 1.9, { align: 'center' });
+    y += bandH;
+
+    // Thin closing rule.
+    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, margin + contentW, y);
+
+    return y;
+  }
+
+  // ── Dark mode (legacy) — solid bar + left text + case-number box ──
   doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
   doc.rect(margin, y, accentW, LAYOUT.HEADER_HEIGHT, 'F');
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT, 'F');
 
-  // Header text is white in both modes now that the fill is unified
-  // dark. Sub-text (state identifier / address line) renders as a
-  // muted light-gray so it sits a tier below the agency name.
   const headTextColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const headSubColor: [number, number, number] = [200, 200, 200];
+  const headSubColor: [number, number, number] = [
+    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
+  ];
 
-  // Seal image — left side on dark mode (legacy), small left-of-center
-  // on light mode so the centered title can breathe.
   const sealSize = LAYOUT.SEAL_SIZE;
-  const sealX = margin + (isLight ? accentW + 4 : 3);
+  const sealX = margin + 3;
   if (config.sealBase64) {
-    try {
-      doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize);
-    } catch { /* skip if image fails */ }
+    try { doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize); }
+    catch { /* skip if image fails */ }
   }
-
   const headerH = LAYOUT.HEADER_HEIGHT;
-  const midY = y + headerH / 2; // vertical center of header bar
+  const midY = y + headerH / 2;
+  const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
 
-  if (isLight) {
-    // ── Light mode — POLICE-DEPARTMENT CENTERED LAYOUT ──
-    // Agency name centered like a real PD letterhead, with state
-    // identifier above and form title below. The case-number /
-    // subject-name box is INTENTIONALLY OMITTED on light mode because
-    // the quick-reference banner directly below already shows the
-    // identifier in larger type — repeating it in the upper-right made
-    // every Person/Call report show the subject name twice (visible in
-    // 2026-05-04 user feedback).
-    //
-    // Formal letterhead detail (agency address, ORI, classification)
-    // lives in the meta sub-row below the gold accent strip rather
-    // than inside the header bar — the bar's 16mm vertical budget can
-    // only carry 3 stacked text elements before glyph ascenders punch
-    // above the top edge.
-    const centerX = margin + contentW / 2;
+  if (config.stateIdentifier) {
+    doc.setFont(FONT_FAMILY, 'normal');
+    doc.setFontSize(FONT.SIZE_SUBHEADER);
+    doc.setTextColor(...headSubColor);
+    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
+  }
+  doc.setFont(FONT_FAMILY, 'bold');
+  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+  doc.setTextColor(...headTextColor);
+  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+  doc.setFont(FONT_FAMILY, 'bold');
+  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+  doc.setTextColor(...headTextColor);
+  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
 
-    if (config.stateIdentifier) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_SUBHEADER);
-      doc.setTextColor(...headSubColor);
-      doc.text(config.stateIdentifier.toUpperCase(), centerX, midY - 5, { align: 'center' });
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-    doc.setTextColor(...headTextColor);
-    doc.text((config.agencyName || '').toUpperCase(), centerX, midY + 0.5, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-    doc.setTextColor(...headTextColor);
-    doc.text((config.formTitle || '').toUpperCase(), centerX, midY + 5.5, { align: 'center' });
-  } else {
-    // ── Dark mode (legacy) — left-aligned text + case-number box right ──
-    const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
-
-    if (config.stateIdentifier) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_SUBHEADER);
-      doc.setTextColor(...headSubColor);
-      doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-    doc.setTextColor(...headTextColor);
-    doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-    doc.setTextColor(...headTextColor);
-    doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
-
-    // Case-number box — only on dark mode; light mode banner below
-    // shows the identifier already.
-    if (config.caseNumber) {
-      const caseBoxW = LAYOUT.CASE_BOX_W;
-      const caseBoxH = headerH - 6;
-      const caseBoxX = margin + contentW - caseBoxW - 2;
-      const caseBoxY = y + 3;
-
-      doc.setDrawColor(...headTextColor);
-      doc.setLineWidth(0.5);
-      doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-      doc.setTextColor(...headSubColor);
-      doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
-
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      const caseNumberText = sanitizePdfText(config.caseNumber);
-      const availW = caseBoxW - 3;
-      let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
+  if (config.caseNumber) {
+    const caseBoxW = LAYOUT.CASE_BOX_W;
+    const caseBoxH = headerH - 6;
+    const caseBoxX = margin + contentW - caseBoxW - 2;
+    const caseBoxY = y + 3;
+    doc.setDrawColor(...headTextColor);
+    doc.setLineWidth(0.5);
+    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
+    doc.setFont(FONT_FAMILY, 'normal');
+    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+    doc.setTextColor(...headSubColor);
+    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+    doc.setFont(FONT_FAMILY, 'bold');
+    const caseNumberText = sanitizePdfText(config.caseNumber);
+    const availW = caseBoxW - 3;
+    let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
+    doc.setFontSize(caseFontSize);
+    const measuredW = doc.getTextWidth(caseNumberText);
+    if (measuredW > availW && measuredW > 0) {
+      caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
       doc.setFontSize(caseFontSize);
-      let measuredW = doc.getTextWidth(caseNumberText);
-      if (measuredW > availW && measuredW > 0) {
-        caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
-        doc.setFontSize(caseFontSize);
-      }
-      doc.setTextColor(...headTextColor);
-      doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
     }
+    doc.setTextColor(...headTextColor);
+    doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;
 
-  // Accent strip below header — gray (matches the agency-header
-  // gray-charcoal accent strip token). Was gold/slate previously.
   doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
   doc.rect(margin, y, contentW, LAYOUT.ACCENT_STRIP_H, 'F');
   y += LAYOUT.ACCENT_STRIP_H;
 
-  // Sub-header row: Form number (left) + Agency letterhead meta
-  // (centered) + Report date (right). Now a DARK-FILLED sub-bar
-  // with white text in both modes (2026-05-05 darker-shading pass)
-  // so the agency letterhead reads as a continuous strong banner
-  // beneath the agency name rather than a faint gray meta row.
-  const hasMeta = !!(config.formNumber || config.reportDate || isLight);
-  if (hasMeta) {
-    const metaH = 6;  // mm — slightly taller than original 5mm so the bar reads as a deliberate banner
+  if (config.formNumber || config.reportDate) {
+    const metaH = 6;
     doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(margin, y, contentW, metaH, 'F');
-    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFont(FONT_FAMILY, 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    if (config.formNumber) {
-      doc.text(config.formNumber, margin + 2, y + 4);
-    }
-    if (isLight) {
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(220, 220, 220);
-      doc.text(
-        'OFFICIAL DOCUMENT OF ROCKY MOUNTAIN PROTECTIVE GROUP  ·  SALT LAKE CITY, UTAH  ·  UT0180100',
-        margin + contentW / 2,
-        y + 4,
-        { align: 'center' },
-      );
-      doc.setFont(PDF_VALUE_FONT, 'bold');
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-    }
-    if (config.reportDate) {
-      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 4, { align: 'right' });
-    }
+    if (config.formNumber) doc.text(config.formNumber, margin + 2, y + 4);
+    if (config.reportDate) doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 4, { align: 'right' });
     y += metaH;
   }
 
@@ -753,8 +850,8 @@ export function drawGeographyStrip(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const val = String(values[i]).toUpperCase();
     // Truncate to fit cell
-    const maxChars = Math.floor((cellW - 3) / 1.5);
-    const displayVal = val.length > maxChars ? val.slice(0, maxChars - 1) + '…' : val;
+    const maxChars = Math.max(1, Math.floor((cellW - 3) / 1.5)); // clamp: narrow cells gave a negative slice
+    const displayVal = val.length > maxChars ? val.slice(0, Math.max(1, maxChars - 1)) + '…' : val;
     doc.text(displayVal, cellX + 1.5, y + 5.5);
   }
 
@@ -1285,15 +1382,18 @@ export function drawChainOfCustodyTable(
   let curY = y;
   if (opts?.itemNumber || opts?.itemDescription) {
     const stripH = 4;
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(x, curY, w, stripH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lbl = `CHAIN OF CUSTODY` +
       (opts.itemNumber ? `  |  ITEM #${sanitizePdfText(opts.itemNumber)}` : '') +
       (opts.itemDescription ? `  |  ${sanitizePdfText(opts.itemDescription).toUpperCase()}` : '');
-    doc.text(lbl, x + 1.5, curY + 2.8);
+    doc.text(lbl, x + SPACING.CONTENT_INSET, curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+    const cocRuleY = curY + stripH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(x, cocRuleY, x + w, cocRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += stripH;
   }
 
@@ -1431,14 +1531,16 @@ export function drawOfficerCertificationBlock(
     'knowledge and was prepared in the regular course of law enforcement duties. ' +
     'Falsification of this report is a Class A misdemeanor.';
 
-  // Heading bar
+  // Flat heading: black title + thin rule below.
   const headH = 4;
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(x, y, w, headH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(heading, x + 1.5, y + headH - 1.3);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(heading, x + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+  const certRuleY = y + headH - 0.6;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(x, certRuleY, x + w, certRuleY);
   let curY = y + headH;
 
   // Certification paragraph box
@@ -2066,7 +2168,7 @@ export function drawEnhancedNibrsHeader(
       const rY = caseBoxY + caseBoxH - 3;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_BADGE_LABEL);
-      doc.setTextColor(200, 200, 200);
+      doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED); // sub-heading on the dark header bar
       const parts: string[] = [];
       if (config.reportingOfficer) parts.push(config.reportingOfficer);
       if (config.reportingBadge) parts.push(`#${config.reportingBadge}`);
@@ -2216,8 +2318,8 @@ export function drawDistributionFooter(
   const lineY = y + 3.2;
 
   // Left: distribution checkboxes
-  const dist = data.distribution || ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
-  const checked = new Set((data.checked || []).map((s) => s.toUpperCase()));
+  const dist = Array.isArray(data.distribution) ? data.distribution : ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
+  const checked = new Set((Array.isArray(data.checked) ? data.checked : []).map((s) => s.toUpperCase()));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);

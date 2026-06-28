@@ -10,6 +10,25 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { apiFetch } from './useApi';
 
+/** Persistent failure log written to localStorage when a welfare network
+ *  call (check-in or auto-escalate) cannot reach the server. Reviewed by
+ *  the supervisor surface so a silent network outage during a welfare
+ *  window can be reconstructed after the fact — the worst-case scenario
+ *  is dispatch THINKS the officer checked in when they didn't.
+ *  Storage key kept short + prefixed so the dispatcher console memory
+ *  pressure stays minimal even on a long shift. */
+const WELFARE_FAILURE_LOG_KEY = 'rmpg_welfare_failures';
+function appendFailureLog(entry: { kind: 'checkin' | 'escalate'; unitId: string | null; callId: string | null; reason: string; at: string }) {
+  try {
+    const raw = localStorage.getItem(WELFARE_FAILURE_LOG_KEY);
+    const list: typeof entry[] = raw ? JSON.parse(raw) : [];
+    list.push(entry);
+    // Trim to most recent 200 so an offline-night doesn't blow out localStorage.
+    while (list.length > 200) list.shift();
+    localStorage.setItem(WELFARE_FAILURE_LOG_KEY, JSON.stringify(list));
+  } catch { /* localStorage full / disabled — best-effort log */ }
+}
+
 /* ── FEATURE 11: Welfare Check Auto-Scheduling ─────────────
    Spillman Flex automatically prompts welfare checks at
    configurable intervals when an officer is on a call. */
@@ -34,6 +53,10 @@ export interface WelfareState {
   escalated: boolean;
   callId: string | null;
   unitId: string | null;
+  /** Most recent welfare API failure: surfaces a visible "CHECK-IN
+   *  FAILED — RETRY" pill on the officer's UI so they don't go on
+   *  thinking dispatch heard them. Cleared on the next success. */
+  lastFailure: { kind: 'checkin' | 'escalate'; reason: string; at: Date } | null;
 }
 
 export function useWelfareCheck() {
@@ -45,12 +68,13 @@ export function useWelfareCheck() {
     escalated: false,
     callId: null,
     unitId: null,
+    lastFailure: null,
   });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const startWelfare = useCallback((unitId: string, callId: string) => {
-    setState(prev => ({ ...prev, active: true, unitId, callId, lastCheckin: new Date(), missedCount: 0, escalated: false }));
+    setState(prev => ({ ...prev, active: true, unitId, callId, lastCheckin: new Date(), missedCount: 0, escalated: false, lastFailure: null }));
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(async () => {
       setState(prev => {
@@ -61,22 +85,66 @@ export function useWelfareCheck() {
         const escalated = newMissed >= config.missedThreshold;
         return { ...prev, missedCount: newMissed, escalated };
       });
-      // Auto-escalate if threshold exceeded
+      // Auto-escalate when the threshold is crossed. The previous version of
+      // this code used .catch(() => {}) which silently swallowed network /
+      // server failures — meaning if the dispatcher console couldn't reach
+      // the worker (radio dead spot, brief 5xx, transient DNS issue), the
+      // supervisor was NEVER paged. WelfareWatchDO existed precisely to
+      // prevent that class of officer-down scenarios. We now await the POST,
+      // log every failure to localStorage AND set a visible lastFailure
+      // state so the in-cab UI shows a persistent "ESCALATE FAILED — RETRY"
+      // banner until the supervisor surface confirms receipt.
       setState(prev => {
-        if (prev.escalated && config.escalateAfterMissed) {
-          apiFetch('/dispatch/welfare/escalate', { method: 'POST', body: { unitId: prev.unitId, callId: prev.callId } }).catch(() => {});
-        }
+        if (!prev.escalated || !config.escalateAfterMissed) return prev;
+        const unitId = prev.unitId;
+        const callId = prev.callId;
+        if (!unitId) return prev;
+        // Fire-and-record so the state-updater stays synchronous; the
+        // async result is captured in a follow-on setState.
+        apiFetch('/dispatch/welfare/escalate', { method: 'POST', body: JSON.stringify({ unitId, callId }) })
+          .then(() => {
+            setState(s => (s.lastFailure?.kind === 'escalate' ? { ...s, lastFailure: null } : s));
+          })
+          .catch((err) => {
+            const reason = err?.message || 'network';
+            appendFailureLog({ kind: 'escalate', unitId, callId, reason, at: new Date().toISOString() });
+            setState(s => ({ ...s, lastFailure: { kind: 'escalate', reason, at: new Date() } }));
+          });
         return prev;
       });
     }, config.intervalSeconds * 1000);
   }, [config]);
 
-  const checkin = useCallback(async () => {
-    setState(prev => ({ ...prev, lastCheckin: new Date(), missedCount: 0 }));
-    if (state.unitId) {
-      await apiFetch(`/dispatch/welfare/checkin/${state.unitId}`, { method: 'POST' }).catch(() => {});
+  /** Officer-initiated welfare check-in. Returns true on success, false on
+   *  failure so the calling UI can show an inline retry CTA. The optimistic
+   *  state flip (lastCheckin = now, missedCount = 0) is REVERTED on
+   *  failure so the dispatcher console doesn't see a green ✓ for a check
+   *  the worker never received. */
+  const checkin = useCallback(async (): Promise<boolean> => {
+    const unitId = state.unitId;
+    if (!unitId) return false;
+    const prevCheckin = state.lastCheckin;
+    const prevMissed = state.missedCount;
+    // Optimistic flip — keeps the UI snappy in the common-case success.
+    setState(prev => ({ ...prev, lastCheckin: new Date(), missedCount: 0, lastFailure: null }));
+    try {
+      await apiFetch(`/dispatch/welfare/checkin/${unitId}`, { method: 'POST' });
+      return true;
+    } catch (err: any) {
+      const reason = err?.message || 'network';
+      appendFailureLog({ kind: 'checkin', unitId, callId: state.callId, reason, at: new Date().toISOString() });
+      // Roll back the optimistic flip — DON'T let the officer believe they
+      // checked in when dispatch heard nothing. lastFailure is surfaced as
+      // a "CHECK-IN FAILED — RETRY" pill on the calling UI.
+      setState(prev => ({
+        ...prev,
+        lastCheckin: prevCheckin,
+        missedCount: prevMissed,
+        lastFailure: { kind: 'checkin', reason, at: new Date() },
+      }));
+      return false;
     }
-  }, [state.unitId]);
+  }, [state.unitId, state.lastCheckin, state.missedCount, state.callId]);
 
   const stopWelfare = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }

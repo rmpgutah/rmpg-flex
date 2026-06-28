@@ -8,7 +8,7 @@
 
 /* FEATURE 41: Victim Notification */
 export interface VictimNotification { id:string; caseNumber:string; victimName:string; victimContact:string; notificationType:'arrest'|'release'|'court_date'|'case_disposition'|'appeal'|'parole_hearing'; notificationDate:string|null; notificationMethod:'phone'|'mail'|'email'|'in_person'; status:'pending'|'sent'|'delivered'|'failed'; notes:string; }
-export function checkNotificationCompliance(notifications:VictimNotification[], requiredTypes:string[]): { compliant:boolean; missingTypes:string[]; overdue:VictimNotification[] } {
+export function checkNotificationCompliance(notifications:VictimNotification[], requiredTypes:VictimNotification['notificationType'][]): { compliant:boolean; missingTypes:string[]; overdue:VictimNotification[] } {
   const sent = notifications.filter(n=>n.status==='sent'||n.status==='delivered');
   const sentTypes = new Set(sent.map(n=>n.notificationType));
   const missing = requiredTypes.filter(t=>!sentTypes.has(t));

@@ -13,7 +13,7 @@ import { apiFetch } from './useApi';
 export interface Certification { id: string; officerId: string; name: string; issuingAuthority: string; issuedDate: string; expirationDate: string; status: 'active'|'expiring'|'expired'; renewalRequired: boolean; renewalHours: number; }
 export function useCertificationTracking(officerId?: string) {
   const [certs, setCerts] = useState<Certification[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const q = officerId ? `?officerId=${officerId}` : ''; const r = await apiFetch<Certification[]>(`/personnel/certifications${q}`); if (r) setCerts(r); } catch {} setLoading(false); }, [officerId]);
+  const load = useCallback(async () => { setLoading(true); try { const q = officerId ? `?officerId=${officerId}` : ''; const r = await apiFetch<Certification[]>(`/personnel/certifications${q}`); if (r) setCerts(r); } catch (err) { console.warn('[useCertificationTracking] load failed:', err); } setLoading(false); }, [officerId]);
   const expiring = useMemo(() => certs.filter(c => c.status === 'expiring'), [certs]);
   const expired = useMemo(() => certs.filter(c => c.status === 'expired'), [certs]);
   return { certs, loading, load, expiring, expired };
@@ -38,7 +38,7 @@ export function generateExpiryAlerts(quals: Array<{officerId:string;officerName:
 export interface LessonPlan { id: string; title: string; category: string; durationMinutes: number; instructorLevel: string; materials: string[]; objectives: string[]; assessmentMethod: string; lastUpdated: string; version: number; }
 export function useLessonPlanLibrary() {
   const [plans, setPlans] = useState<LessonPlan[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<LessonPlan[]>('/personnel/training/lesson-plans'); if (r) setPlans(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<LessonPlan[]>('/personnel/training/lesson-plans'); if (r) setPlans(r); } catch (err) { console.warn("[useTrainingRecords] load failed:", err); } setLoading(false); }, []);
   const byCategory = useMemo(() => { const m = new Map<string,LessonPlan[]>(); for (const p of plans) { if (!m.has(p.category)) m.set(p.category, []); m.get(p.category)!.push(p); } return m; }, [plans]);
   return { plans, loading, load, byCategory };
 }
@@ -53,7 +53,7 @@ export function matchInstructorToCourse(course: {category:string;level:string}, 
 export interface TrainingCompliance { department: { requiredAnnualHours:number; avgCompleted:number; complianceRate:number; overdueOfficers:number; }; byDivision: Array<{ division:string; officers:number; compliant:number; rate:number }>; criticalDeficits: Array<{ qualification:string; officersMissing:number; deadline: string }>; }
 export function useTrainingCompliance() {
   const [compliance, setCompliance] = useState<TrainingCompliance|null>(null); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<TrainingCompliance>('/personnel/training/compliance'); if (r) setCompliance(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<TrainingCompliance>('/personnel/training/compliance'); if (r) setCompliance(r); } catch (err) { console.warn("[useTrainingRecords] load failed:", err); } setLoading(false); }, []);
   return { compliance, loading, load };
 }
 
@@ -70,7 +70,7 @@ export function analyzeSkillGaps(matrix: SkillMatrix): { criticalGaps: string[];
 export interface AcademyClass { id: string; name: string; startDate: string; endDate: string; totalRecruits: number; activeRecruits: number; graduated: number; dropped: number; curriculum: Array<{ phase: string; weeks: number; status: string }>; }
 export function useAcademyTracking() {
   const [classes, setClasses] = useState<AcademyClass[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<AcademyClass[]>('/personnel/training/academy'); if (r) setClasses(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<AcademyClass[]>('/personnel/training/academy'); if (r) setClasses(r); } catch (err) { console.warn("[useTrainingRecords] load failed:", err); } setLoading(false); }, []);
   const active = useMemo(() => classes.filter(c => new Date(c.endDate) > new Date()), [classes]);
   return { classes, loading, load, active };
 }

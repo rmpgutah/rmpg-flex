@@ -1,3 +1,4 @@
+import React from "react";
 import { type LucideIcon } from 'lucide-react';
 
 interface EmptyStateProps {
@@ -11,7 +12,7 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export default function EmptyState({ icon: Icon, title, description, action, className = '' }: EmptyStateProps) {
+function EmptyState({ icon: Icon, title, description, action, className = '' }: EmptyStateProps) {
   return (
     <div className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`} role="status" aria-label={title}>
       <div
@@ -24,9 +25,9 @@ export default function EmptyState({ icon: Icon, title, description, action, cla
       >
         <Icon size={24} color="#d4a017" style={{ opacity: 0.5 }} />
       </div>
-      <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#666666] mb-1.5">{title}</h3>
+      <h3 className="text-[10px] font-bold uppercase tracking-wider text-rmpg-500 mb-1.5">{title}</h3>
       {description && (
-        <p className="text-[10px] text-[#555555] max-w-xs leading-relaxed">{description}</p>
+        <p className="text-[10px] text-rmpg-500 max-w-xs leading-relaxed">{description}</p>
       )}
       {action && (
         <button
@@ -40,3 +41,5 @@ export default function EmptyState({ icon: Icon, title, description, action, cla
     </div>
   );
 }
+
+export default React.memo(EmptyState);

@@ -38,6 +38,8 @@ async function generateTipNumber(db: ReturnType<typeof getDb>): Promise<string> 
 community.get('/events', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='community_events'");
+    if (!tableCheck?.n) return c.json({ data: [] });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
@@ -89,6 +91,21 @@ community.put('/events/:id', async (c) => {
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update event' }, 500);
+  }
+});
+
+community.delete('/events/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const result = await execute(db, 'DELETE FROM community_events WHERE id = ?', id);
+    if (result.meta.changes === 0) return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete event', code: 'DELETE_ERROR' }, 500);
   }
 });
 
@@ -235,6 +252,8 @@ community.post('/alerts', async (c) => {
 community.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const eventTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='community_events'");
+    if (!eventTable?.n) return c.json({ total_events: 0, upcoming_events: 0, total_tips: 0, active_tips: 0, watch_groups: 0, active_alerts: 0 });
     const events = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM community_events'))?.count ?? 0;
     const tips = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM public_tips'))?.count ?? 0;
     const groups = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM neighborhood_watch_groups'))?.count ?? 0;

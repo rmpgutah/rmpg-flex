@@ -22,7 +22,7 @@ interface TabBarProps {
   spillman?: boolean;
 }
 
-export default function TabBar({
+function TabBar({
   tabs,
   activeTab,
   onTabChange,
@@ -103,3 +103,5 @@ export default function TabBar({
     </div>
   );
 }
+
+export default React.memo(TabBar);

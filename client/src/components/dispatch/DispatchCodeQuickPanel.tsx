@@ -36,12 +36,12 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
   isFavorite: boolean;
   onToggleFav: (id: number) => void;
 }) {
-  const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-gray-500';
+  const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-rmpg-500';
   return (
     <button
       type="button"
       onClick={() => onApply(code.code)}
-      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-[#ffffff08] transition-colors border-b border-[#1a1a1a]/50"
+      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-[#ffffff08] transition-colors border-b border-border-default/50"
       title={`${code.code} — ${code.description}\nCategory: ${code.category} · Priority: ${code.priority}${code.notes ? `\nNotes: ${code.notes}` : ''}`}
     >
       <button
@@ -54,7 +54,7 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
         <Star className={`w-2.5 h-2.5 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-rmpg-600 hover:text-rmpg-400'}`} />
       </button>
       <div className={`flex-shrink-0 w-1 h-1 rounded-full ${priDot}`} />
-      <span className="font-bold text-white shrink-0">{code.code}</span>
+      <span className="font-bold text-rmpg-100 shrink-0">{code.code}</span>
       <span className="text-rmpg-400 truncate flex-1 min-w-0">{code.description}</span>
       <div className="flex items-center gap-0.5 shrink-0 ml-auto">
         {code.requires_backup ? <Shield className="w-2.5 h-2.5 text-amber-400" /> : null}
@@ -128,28 +128,28 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
   };
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: '#1a1a1a' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: 'var(--surface-overlay)', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: '#1a1a1a', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: 'var(--surface-overlay)' }}>
         <div className="flex items-center gap-1.5">
           <Hash className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>
         </div>
         <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close codes panel">
-          <X className="w-3.5 h-3.5 text-[#6b7280]" />
+          <X className="w-3.5 h-3.5 text-rmpg-500" />
         </button>
       </div>
 
       {/* Search */}
-      <div className="px-2 py-1.5 border-b" style={{ borderColor: '#1a1a1a' }}>
+      <div className="px-2 py-1.5 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
         <div className="relative">
-          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#545454] pointer-events-none" />
-          <input
+          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          <input id="ff-dispatchcodequickpanel-0"
             type="text"
             placeholder="Search codes or descriptions…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-[#0a0a0a] border border-[#2b2b2b] rounded-sm text-[10px] text-white pl-6 pr-2 py-1 placeholder-[#545454] focus:outline-none focus:border-brand-700/50"
+            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-100 pl-6 pr-2 py-1 placeholder-rmpg-600 focus:outline-none focus:border-brand-700/50"
           />
         </div>
         <div className="flex items-center gap-1 mt-1">
@@ -163,11 +163,11 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Code list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-[10px] text-rmpg-500">Loading codes…</div>
         ) : grouped.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-[#545454]">
+          <div className="flex flex-col items-center justify-center py-8 text-rmpg-500">
             <Hash className="w-6 h-6 mb-2 opacity-30" />
             <p className="text-[10px]">{searchQuery ? 'No codes match your search' : 'No codes found'}</p>
           </div>
@@ -176,7 +176,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
             {/* Favorites section — only when not searching */}
             {!searchQuery && favoriteCodes.length > 0 && (
               <div>
-                <div className="flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-yellow-500 border-b border-[#1a1a1a]" style={{ background: '#0a0a0a' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-yellow-500 border-b border-border-default" style={{ background:"var(--surface-sunken)" }}>
                   <Star className="w-2.5 h-2.5 fill-yellow-500/60 text-yellow-500" />
                   Favorites <span className="text-rmpg-600 font-normal">({favoriteCodes.length})</span>
                 </div>
@@ -190,7 +190,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
                   />
                 ))}
                 {/* Separator */}
-                <div className="h-[1px] bg-[#2b2b2b] mx-2 my-1" />
+                <div className="h-[1px] bg-rmpg-700 mx-2 my-1" />
               </div>
             )}
 
@@ -203,8 +203,8 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
                   <button
                     type="button"
                     onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-white border-b border-[#1a1a1a] hover:bg-[#ffffff08] transition-colors"
-                    style={{ background: '#0a0a0a' }}
+                    className="w-full flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-rmpg-100 border-b border-border-default hover:bg-[#ffffff08] transition-colors"
+                    style={{ background:"var(--surface-sunken)" }}
                   >
                     <CatIcon className="w-2.5 h-2.5" />
                     {category} <span className="text-rmpg-600 font-normal">({items.length})</span>
@@ -227,7 +227,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Footer with quick stats */}
-      <div className="px-2 py-1 border-t text-[7px] text-rmpg-500 flex items-center justify-between" style={{ borderColor: '#1a1a1a', background: '#0a0a0a' }}>
+      <div className="px-2 py-1 border-t text-[7px] text-rmpg-500 flex items-center justify-between" style={{ borderColor: 'var(--surface-raised)', background:"var(--surface-sunken)" }}>
         <span>Click ★ to favorite</span>
         <span>{codes.filter(c => c.priority === 'P1').length} P1 · {codes.filter(c => c.priority === 'P2').length} P2</span>
       </div>

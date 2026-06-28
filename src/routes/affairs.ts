@@ -9,6 +9,11 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+// IA edits are court-record material — every mutation must be auditable.
+// recordAudit() is the canonical seam (writes audit_log + mirrors to
+// flex_events). Wired into create/update/delete + investigation upsert as
+// part of the Page 52 IA upgrade.
+import { recordAudit } from '../utils/auditLog';
 
 const affairs = new Hono<Env>();
 
@@ -39,6 +44,8 @@ async function generateComplaintNumber(db: ReturnType<typeof getDb>): Promise<st
 affairs.get('/complaints', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -93,6 +100,18 @@ affairs.post('/complaints', async (c) => {
     );
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_complaints WHERE id = ?', newId);
+    await recordAudit(c, {
+      action: 'IA_COMPLAINT_FILED',
+      entityType: 'ia_complaint',
+      entityId: newId,
+      details: {
+        complaint_number: complaintNumber,
+        complaint_type: b.complaint_type ?? 'other',
+        subject_officer_id: b.subject_officer_id ?? null,
+        // Do NOT log the description / complainant contact — the row
+        // itself is the source of truth; audit_log is the index.
+      },
+    });
     return c.json({ data: created, complaint_number: complaintNumber }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create complaint', detail: err instanceof Error ? err.message : String(err) }, 500);
@@ -123,6 +142,20 @@ affairs.put('/complaints/:id', async (c) => {
     sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
     await execute(db, `UPDATE ia_complaints SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_complaints WHERE id = ?', id);
+    // Capture which fields actually changed (status / disposition transitions
+    // are the legally-load-bearing edits — finding/discipline are court input).
+    const changedFields = Object.keys(b).filter((k) => COMPLAINT_UPDATABLE.has(k));
+    await recordAudit(c, {
+      action: 'IA_COMPLAINT_UPDATED',
+      entityType: 'ia_complaint',
+      entityId: id,
+      details: {
+        changed_fields: changedFields,
+        new_status: typeof b.status === 'string' ? b.status : undefined,
+        new_finding: typeof b.finding === 'string' && b.finding ? 'set' : undefined,
+        new_discipline: typeof b.discipline === 'string' && b.discipline ? 'set' : undefined,
+      },
+    });
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update complaint' }, 500);
@@ -135,9 +168,24 @@ affairs.delete('/complaints/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
+    // Capture the row identity BEFORE cascading the delete — the audit
+    // entry needs the complaint_number, not just the integer id, because
+    // the row will be gone by the time auditors read this back.
+    const doomed = await queryFirst<{ complaint_number: string; subject_officer_id: number | null }>(
+      db, 'SELECT complaint_number, subject_officer_id FROM ia_complaints WHERE id = ?', id);
     await execute(db, 'DELETE FROM ia_investigations WHERE complaint_id = ?', id);
     const result = await execute(db, 'DELETE FROM ia_complaints WHERE id = ?', id);
     if (result.meta.changes === 0) return c.json({ error: 'Complaint not found' }, 404);
+    await recordAudit(c, {
+      action: 'IA_COMPLAINT_DELETED',
+      entityType: 'ia_complaint',
+      entityId: id,
+      details: {
+        complaint_number: doomed?.complaint_number ?? null,
+        subject_officer_id: doomed?.subject_officer_id ?? null,
+        cascade: 'investigations',
+      },
+    });
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete complaint' }, 500);
@@ -174,6 +222,16 @@ affairs.post('/complaints/:id/investigations', async (c) => {
     );
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_investigations WHERE id = ?', newId);
+    await recordAudit(c, {
+      action: 'IA_INVESTIGATION_OPENED',
+      entityType: 'ia_investigation',
+      entityId: newId,
+      details: {
+        complaint_id: id,
+        investigator_id: b.investigator_id ?? null,
+        status: b.status ?? 'open',
+      },
+    });
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create investigation' }, 500);
@@ -192,10 +250,24 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now','localtime'))"); }
+    // Mirror the auto-stamp for 'reviewed' — without this, a reviewer-only
+    // transition (completed → reviewed) leaves reviewed_at unset unless the
+    // client explicitly passes it, which they don't today.
+    if (b.status === 'reviewed') { sets.push("reviewed_at = COALESCE(reviewed_at, datetime('now','localtime'))"); }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
     vals.push(iid, cid);
     await execute(db, `UPDATE ia_investigations SET ${sets.join(', ')} WHERE id = ? AND complaint_id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_investigations WHERE id = ?', iid);
+    await recordAudit(c, {
+      action: 'IA_INVESTIGATION_UPDATED',
+      entityType: 'ia_investigation',
+      entityId: iid,
+      details: {
+        complaint_id: cid,
+        changed_fields: Object.keys(b).filter((k) => updatable.has(k)),
+        new_status: typeof b.status === 'string' ? b.status : undefined,
+      },
+    });
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update investigation' }, 500);
@@ -240,6 +312,17 @@ affairs.post('/flags', async (c) => {
     );
     const newId = Number(result.meta.last_row_id);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM early_intervention_flags WHERE id = ?', newId);
+    await recordAudit(c, {
+      action: 'IA_FLAG_RAISED',
+      entityType: 'ia_flag',
+      entityId: newId,
+      details: {
+        officer_id: b.officer_id,
+        flag_type: b.flag_type ?? 'other',
+        trigger_value: b.trigger_value ?? null,
+        threshold: b.threshold ?? null,
+      },
+    });
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create flag' }, 500);
@@ -260,6 +343,15 @@ affairs.put('/flags/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE early_intervention_flags SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM early_intervention_flags WHERE id = ?', id);
+    await recordAudit(c, {
+      action: typeof b.resolved_at === 'string' && b.resolved_at ? 'IA_FLAG_RESOLVED' : 'IA_FLAG_UPDATED',
+      entityType: 'ia_flag',
+      entityId: id,
+      details: {
+        resolution: typeof b.resolution === 'string' ? 'set' : undefined,
+        resolved_at_set: typeof b.resolved_at === 'string' && !!b.resolved_at,
+      },
+    });
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to resolve flag' }, 500);
@@ -269,6 +361,8 @@ affairs.put('/flags/:id', async (c) => {
 affairs.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const complaintTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
+    if (!complaintTable?.n) return c.json({ total_complaints: 0, open_complaints: 0, active_investigations: 0, sustained: 0, total_flags: 0, active_flags: 0 });
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM ia_complaints'))?.count ?? 0;
     const open = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM ia_complaints WHERE status NOT IN ('closed','sustained','not_sustained','exonerated','unfounded')"))?.count ?? 0;
     const flags = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM early_intervention_flags WHERE resolved_at IS NULL'))?.count ?? 0;

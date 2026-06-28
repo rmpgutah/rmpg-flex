@@ -38,7 +38,7 @@ interface UseMapCorridorReturn {
 }
 
 function riskColor(score: number): string {
-  if (!Number.isFinite(score)) return '#666666';
+  if (!Number.isFinite(score)) return 'var(--rmpg-500)';
   if (score <= 3) return '#22c55e';
   if (score <= 6) return '#f59e0b';
   return '#ef4444';

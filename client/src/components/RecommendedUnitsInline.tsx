@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Navigation, Clock, MapPin, RefreshCw, Loader2, Satellite } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import { useWebSocket } from '../context/WebSocketContext';
 
 export interface RecommendedUnit {
@@ -131,7 +132,7 @@ export default function RecommendedUnitsInline({
   return (
     <div
       className="border p-1.5 space-y-1"
-      style={{ background: '#0a0a0a', borderColor: '#222', borderRadius: 2 }}
+      style={{ background:"var(--surface-sunken)", borderColor: 'var(--border-subtle)', borderRadius: 2 }}
       data-testid="recommended-units-inline"
     >
       <div className="flex items-center justify-between">
@@ -145,7 +146,7 @@ export default function RecommendedUnitsInline({
           type="button"
           onClick={fetchRecommendations}
           aria-label="Refresh recommended units"
-          className="text-rmpg-400 hover:text-white"
+          className="text-rmpg-400 hover:text-rmpg-100"
           title="Refresh"
         >
           {loading ? (
@@ -179,12 +180,12 @@ export default function RecommendedUnitsInline({
               key={u.callSign}
               type="button"
               onClick={() => onAssign?.(u.callSign)}
-              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-[#1a1a1a] transition-colors"
+              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-surface-raised transition-colors"
               style={{ borderLeft: `2px solid ${statusColor(u.status)}`, borderRadius: 2 }}
               disabled={!onAssign}
               title={onAssign ? `Attach ${u.callSign} to this call` : undefined}
             >
-              <span className="text-[10px] font-bold text-white font-mono w-12">
+              <span className="text-[10px] font-bold text-rmpg-100 font-mono w-12">
                 {u.callSign}
               </span>
               <span className="text-[9px] text-rmpg-300 flex items-center gap-0.5">
@@ -204,7 +205,7 @@ export default function RecommendedUnitsInline({
                 {gpsAgeLabel(u.gpsAgeSeconds)}
               </span>
               {u.officerName && (
-                <span className="text-[9px] text-rmpg-400 truncate flex-1">
+                <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1">
                   {u.badgeNumber ? `#${u.badgeNumber} ` : ''}{u.officerName}
                 </span>
               )}
@@ -212,7 +213,7 @@ export default function RecommendedUnitsInline({
                 className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5"
                 style={{ background: statusColor(u.status), color: '#0a0a0a', borderRadius: 2 }}
               >
-                {u.status.replace('_', ' ')}
+                {toDisplayLabel(u.status)}
               </span>
             </button>
           ))}

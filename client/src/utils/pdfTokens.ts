@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+export { formatEnumValue } from './formatters';
 
 // ── Color Tokens (RGB tuples) ────────────────────────────────
 
@@ -15,7 +16,8 @@ export const COLOR = {
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
   TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
-  TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
+  TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
+  TEXT_SUBHEAD_INVERTED: [184, 184, 184] as const,  // #b8b8b8 light-medium grey — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
@@ -48,8 +50,8 @@ export const COLOR = {
   // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
-  BG_SECTION_HDR: [0, 0, 0]       as const,  // Section header fill — solid black (Spillman convention, 2026-05-30)
-  BG_TABLE_HDR:    [0, 0, 0]       as const,  // Table column header — solid black band (Spillman convention, 2026-05-30)
+  BG_SECTION_HDR: [51, 51, 51]    as const,  // #333 dark grey — section/hero header bars. Softened from solid black 2026-06-16 (white titles stay legible; sub-headings use TEXT_SUBHEAD_INVERTED)
+  BG_TABLE_HDR:    [51, 51, 51]    as const,  // #333 dark grey — table column-header band. Matched to BG_SECTION_HDR 2026-06-16 for a uniform dark-grey header treatment
   BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
@@ -229,7 +231,7 @@ export const BORDER = {
   SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
   ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
   ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
-  ACCENT_SECTION:   2.0,   // Section header left-accent strip (was 1.5 — bolder anchor)
+  ACCENT_SECTION:   0,     // Section header left-accent strip REMOVED 2026-05-30 (was 2.0). Zero-width = no left highlight anywhere; section-header bars span full width and titles start at the left margin across all PDF generators.
   FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
@@ -262,16 +264,15 @@ export const SPACING = {
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
-  SECTION_GAP:        1.0,   // Gap between sections (compact but visible)
+  SECTION_GAP:        0.6,   // Gap between sections (condensed 2026-05-31: 1.0 → 0.6)
   // Breathing room between section header bar and first content row.
-  // 2mm gives the first label space to sit below the bar without hugging —
-  // e.g. "INCIDENT OVERVIEW" bar → ~2mm gap → "INCIDENT NUMBER" label.
-  // Small enough that form height doesn't balloon across multi-section forms.
-  SECTION_CONTENT_PAD: 2,
+  // 1.2mm keeps the first label clear of the bar without hugging while
+  // keeping multi-section forms compact (condensed 2026-05-31: 2 → 1.2).
+  SECTION_CONTENT_PAD: 1.2,
   SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
-  FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
+  FIELD_ROW_HEIGHT:   2.0,   // Value area height (condensed 2026-05-31: 2.8 → 2.0)
+  FIELD_ROW_ADVANCE:  2.0,   // Y-advance after field row (condensed 2026-05-31: 2.8 → 2.0)
 
   SIGNATURE_BOX_H:    20,    // Signature block total height (compact)
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
@@ -415,31 +416,6 @@ export function getLineHeight(fontSizePt: number): number {
  *  Cap height is typically ~70% of font size in points, converted to mm. */
 export function getCapHeight(fontSizePt: number): number {
   return fontSizePt * 0.3528 * 0.7;
-}
-
-/**
- * Normalize an enum-like value for display.
- *
- * Database stores enum values as snake_case lowercase tokens
- * (`pso_client_request`, `in_progress`, `not_filed`). The PDF/UI
- * surface expects them rendered as "PSO CLIENT REQUEST", "IN PROGRESS",
- * etc. — readable, professional, and consistent across the system.
- *
- * Free-form text (names, addresses, narratives) passes through
- * untouched so we don't accidentally uppercase user-entered names
- * like "Christopher Zamora" into "CHRISTOPHER ZAMORA". The heuristic:
- * a value is enum-like if it's a single token of lowercase letters /
- * digits / underscores, OR if it contains an underscore at all.
- *
- * Returns '' for null/undefined/empty so callers can chain it with
- * `|| ''` fallbacks.
- */
-export function formatEnumValue(s: string | null | undefined): string {
-  if (s == null) return '';
-  const trimmed = String(s).trim();
-  if (!trimmed) return '';
-  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
-  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
 }
 
 /** Generate proportional column X positions from ratio array */

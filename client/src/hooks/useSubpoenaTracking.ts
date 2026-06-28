@@ -52,13 +52,13 @@ export function useSubpoenaTracking() {
   }, []);
 
   const create = useCallback(async (data: Partial<Subpoena>) => {
-    const result = await apiFetch<Subpoena>('/court/subpoenas', { method: 'POST', body: data });
+    const result = await apiFetch<Subpoena>('/court/subpoenas', { method: 'POST', body: JSON.stringify(data) });
     if (result) setSubpoenas(prev => [...prev, result]);
     return result;
   }, []);
 
   const update = useCallback(async (id: string, data: Partial<Subpoena>) => {
-    const result = await apiFetch<Subpoena>(`/court/subpoenas/${id}`, { method: 'PUT', body: data });
+    const result = await apiFetch<Subpoena>(`/court/subpoenas/${id}`, { method: 'PUT', body: JSON.stringify(data) });
     if (result) setSubpoenas(prev => prev.map(s => s.id === id ? result : s));
     return result;
   }, []);
