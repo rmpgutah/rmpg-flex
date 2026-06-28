@@ -387,7 +387,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {(inv.status || '').replace(/_/g, ' ')}
+                      {(inv.status || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-1.5 text-right font-mono text-rmpg-100">{formatCurrency(inv.total)}</td>

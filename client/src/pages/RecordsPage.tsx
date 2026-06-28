@@ -475,7 +475,7 @@ export default function RecordsPage() {
   // ── Derived ──────────────────────────────────────────
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
-    { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
+    { id: 'persons', label: 'Individuals', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
     { id: 'businesses', label: 'Business', icon: Briefcase, count: businessState.businesses.length },
@@ -538,6 +538,10 @@ export default function RecordsPage() {
     if (activeTab === 'properties' && propertiesState.selectedProperty) {
       const p = propertiesState.selectedProperty;
       return { recordType: 'property' as const, recordData: p, identifier: p.name, entityType: 'property' as const, entityId: p.id };
+    }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      const b = businessState.selectedBusiness;
+      return { recordType: 'business' as const, recordData: b, identifier: b.name, entityType: 'business' as const, entityId: b.id };
     }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       const e = evidenceState.selectedEvidence;

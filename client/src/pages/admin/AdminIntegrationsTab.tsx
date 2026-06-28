@@ -84,6 +84,13 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
   { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
 
+const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
+  { key: 'mapbox_api_key', label: 'Mapbox Access Token', desc: 'Primary client-side map rendering engine for Map page, dispatch overlays, and beat polygons', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Tokens' },
+  { key: 'mapbox_username', label: 'Mapbox Username', desc: 'Your Mapbox account username — used for account-specific style access', secret: false },
+  { key: 'mapbox_password', label: 'Mapbox Password', desc: 'Mapbox account password — stored encrypted, used for direct account authentication' },
+  { key: 'mapbox_style_url', label: 'Mapbox Style URL', desc: 'Custom map style link — e.g. mapbox://styles/username/styleid or full URL from Mapbox Studio → Share', secret: false, formatHint: 'mapbox://styles/... or https://api.mapbox.com/styles/v1/...' },
+];
+
 const AI_ML_KEYS: ApiKeyConfig[] = [
   { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4o / 4o-mini — narrative generation, report writing, evidence analysis. Used as fallback below Claude in the callAi() chain across Deep Research, OCR, Intel AI. Test sends a minimal Chat Completions ping.', pattern: /^sk-(?:proj-)?[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk- or sk-proj-', testable: true },
   { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks. Deep Research & OCR silently fall back to free Workers AI when this is invalid or out of credit — use Test to confirm it actually works.', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-', testable: true },
@@ -300,6 +307,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
       });
       setConfigured(prev => ({ ...prev, [configKey]: true }));
       setValues(prev => ({ ...prev, [configKey]: '' }));
+      // Invalidate client-side Mapbox token cache so the map page
+      // picks up the new token without a full page reload.
+      if (configKey.startsWith('mapbox_')) {
+        getMapboxToken(true);
+      }
     } catch { /* silent */ }
     setSaving(null);
   };

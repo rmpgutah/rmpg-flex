@@ -33,7 +33,7 @@ function priorityToNumber(p?: string): number | undefined {
 
 function humanizeType(t?: string): string | undefined {
   if (!t) return undefined;
-  return t.replace(/_/g, ' ');
+  return t.replace(/_/g, ' ').toUpperCase();
 }
 
 function toCallSlots(call: {
@@ -946,10 +946,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
     enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
     enqueuePhrases([{
-      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ')}.` : ''}`
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` : ''}`
     }]);
   } else {
-    const status = newStatus.replace(/_/g, ' ');
+    const status = newStatus.replace(/_/g, ' ').toUpperCase();
     enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
   }
 }
@@ -1055,11 +1055,13 @@ export async function announceBackupRequest(data: { officer_name?: string; locat
   const dedupKey = `backup:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('warning');
+
+  await playToneAsync('backup_request');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
-  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
-  enqueuePhrases(phrases);
+
+  enqueuePhrases([
+    { text: `Backup requested for call ${callNum} at ${loc} by ${unit}. Available units respond.` },
+  ]);
 }
 
 /** Announce pursuit */
@@ -1245,7 +1247,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
     { text: `Call ${callNumber} archived.` },
   ];
   if (disposition) {
-    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` });
   }
   if (responseTimeMin != null && responseTimeMin > 0) {
     phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
@@ -1338,10 +1340,10 @@ export async function announceServeComplete(name: string, address: string, docTy
   await delay(200);
 
   const phrases: VoicePhrase[] = [
-    { text: `Service complete. ${result.replace(/_/g, ' ')} on ${name}${address ? ` at ${address}` : ''}.` },
+    { text: `Service complete. ${result.replace(/_/g, ' ').toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
   ];
   if (docType) {
-    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ').toUpperCase()}.` });
   }
   phrases.push({ text: `Attempt ${attempt}.` });
   enqueuePhrases(phrases);
@@ -1744,5 +1746,47 @@ export async function announceBeatBreach(unit?: string, expected?: string, actua
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ── Upgrade: Shift Handoff Alert ──
+export function announceShiftHandoff(
+  outgoingName: string,
+  incomingName: string,
+  activeCalls: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const phrases = [
+    `Shift handoff initiated. ${outgoingName} transferring to ${incomingName}. ${activeCalls} active calls in queue.`,
+    `Attention all units, shift change in progress. ${activeCalls} calls remain active.`,
+  ];
+  const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+  enqueuePhrases([{ text: phrase }]);
+}
+
+// ── Upgrade: Mutual Aid Alert ──
+export function announceMutualAid(
+  agency: string,
+  type: 'requested' | 'approved' | 'denied',
+  unitsCount?: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const messages: Record<string, string> = {
+    requested: `Mutual aid requested from ${agency}. ${unitsCount || 1} units requested. Standing by for response.`,
+    approved: `Mutual aid approved. ${agency} providing ${unitsCount || 1} units. Coordinate on tactical channel.`,
+    denied: `Mutual aid request to ${agency} has been denied. Evaluate alternate resources.`,
+  };
+  enqueuePhrases([{ text: messages[type] || `Mutual aid update from ${agency}.` }]);
+}
+
+// ── Upgrade: Narrative Update Alert ──
+export function announceNarrativeUpdate(
+  callNumber: string,
+  editorName: string,
+  version: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (version > 1) {
+    enqueuePhrases([{ text: `Narrative updated for call ${callNumber} by ${editorName}. Version ${version}.` }]);
+  }
 }
 

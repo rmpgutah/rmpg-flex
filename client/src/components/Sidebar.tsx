@@ -33,8 +33,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
-      { path: '/geography', icon: Map, label: 'Geography' },
-      { path: '/geo-data', icon: Layers, label: 'Geo Data Viewer' },
+      { path: '/route-builder', icon: Route, label: 'Route Builder' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -52,7 +51,10 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
       { path: '/evidence', icon: Package, label: 'Evidence' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
-      { path: '/use-of-force', icon: ShieldAlert, label: 'Use of Force' },
+      { path: '/crash-reports', icon: FileSearch, label: 'Crash Reports' },
+      { path: '/pawn-tracking', icon: Store, label: 'Pawn Tracking' },
+      { path: '/animal-control', icon: PawPrint, label: 'Animal Control' },
+      { path: '/impound', icon: Warehouse, label: 'Impound Lot' },
     ],
   },
   {
@@ -106,6 +108,8 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+      { path: '/community-reports', icon: Building2, label: 'Community Reports' },
+      { path: '/tips', icon: MessageCircleQuestion, label: 'Anonymous Tips' },
     ],
   },
   {

@@ -165,9 +165,6 @@ export default function DlSearchPage() {
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
   // Ref for the first search field — used by the N shortcut to focus it
   const firstFieldRef = useRef<HTMLInputElement>(null);
-  // Set to true when an auto-search is triggered by a deep-link so that
-  // handleSearch can fire a toast when the query returns no results.
-  const fromDeepLinkRef = useRef(false);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();

@@ -60,7 +60,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
-import { fetchEntityImages } from '../utils/pdfImageHelpers';
+import { fetchEntityImages, fetchStaticMapImage } from '../utils/pdfImageHelpers';
 import DocumentViewer from '../components/DocumentViewer';
 import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
@@ -1273,15 +1273,20 @@ export default function IncidentsPage() {
   // Build incident data object for PDF generation (used by both download and preview)
   // Async: fetches attachment images for embedding in the PDF
   const buildIncidentPdfData = async () => {
-    // Fetch attachment images in parallel with building the data object
-    let attachmentImages: any[] = [];
-    try {
-      attachmentImages = await fetchEntityImages('incident', selectedIncident!.id);
-    } catch {
-      // Graceful degradation — proceed without images
-    }
-
+    // Fetch attachment images and static map in parallel
     const inc = selectedIncident as any;
+    const [attachmentImagesResult, mapImageResult] = await Promise.allSettled([
+      fetchEntityImages('incident', selectedIncident!.id),
+      (inc?.latitude != null && inc?.longitude != null)
+        ? fetchStaticMapImage(Number(inc.latitude), Number(inc.longitude), {
+            zoom: 15, width: 600, height: 300,
+            markers: [{ lng: Number(inc.longitude), lat: Number(inc.latitude), color: 'd4a017' }],
+          })
+        : Promise.resolve(null),
+    ]);
+    const attachmentImages = attachmentImagesResult.status === 'fulfilled' ? (attachmentImagesResult.value || []) : [];
+    const mapImage = mapImageResult.status === 'fulfilled' ? mapImageResult.value : null;
+
     const pdfData = {
       // Core fields
       incident_number: selectedIncident!.incident_number,
@@ -1402,6 +1407,7 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      _mapImage: mapImage || undefined,
       // Geo coordinates
       latitude: inc?.latitude,
       longitude: inc?.longitude,
@@ -1869,7 +1875,7 @@ export default function IncidentsPage() {
 
         {/* Persons Involved */}
         <CollapsibleSection
-          title="Persons Involved"
+          title="Individuals Involved"
           icon={UserPlus}
           count={detailPersons.length}
           defaultOpen
@@ -2340,7 +2346,7 @@ export default function IncidentsPage() {
                           <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
-                              {(sup.report_type || sup.type || '').replace(/_/g, ' ')}
+                              {(sup.report_type || sup.type || '').replace(/_/g, ' ').toUpperCase()}
                             </span>
                           )}
                           {sup.status && (

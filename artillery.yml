@@ -1,0 +1,80 @@
+# ============================================================
+# RMPG Flex — Load Testing Configuration (Artillery)
+# ============================================================
+# Simulates concurrent dispatch operations to find performance
+# bottlenecks before they affect real 911 dispatch operations.
+#
+# Run: npx artillery run artillery.yml
+# Report: npx artillery run artillery.yml --output report.json
+# ============================================================
+
+config:
+  target: "http://localhost:3001"
+  phases:
+    # Warm-up: 5 users/sec for 30s
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm-up"
+    # Ramp-up: 5 → 50 users/sec over 60s
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 50
+      name: "Ramp-up"
+    # Sustained: 50 users/sec for 60s
+    - duration: 60
+      arrivalRate: 50
+      name: "Sustained Load"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  # WebSocket testing
+  ws:
+    subprotocol: "json"
+
+scenarios:
+  # ── Health Check (baseline) ──────────────────────────────
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/health"
+          expect:
+            - statusCode: 200
+
+  # ── System Status ────────────────────────────────────────
+  - name: "System Status"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/system-status"
+          expect:
+            - statusCode: 200
+
+  # ── Weather Proxy ────────────────────────────────────────
+  - name: "Weather Check"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/weather"
+
+  # ── API Docs ─────────────────────────────────────────────
+  - name: "API Documentation"
+    weight: 3
+    flow:
+      - get:
+          url: "/api/docs/spec.json"
+          expect:
+            - statusCode: 200
+
+  # ── Authentication Flow ──────────────────────────────────
+  - name: "Auth Attempt (will fail — no credentials)"
+    weight: 2
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "loadtest"
+            password: "loadtest"
+          # Expect 401 — testing auth endpoint performance, not success
+          expect:
+            - statusCode: 401

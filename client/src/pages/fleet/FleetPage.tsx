@@ -1678,7 +1678,7 @@ export default function FleetPage() {
         onClose={() => setDeletingMaintenance(null)}
         onConfirm={handleDeleteMaintenance}
         title="Delete Maintenance Record"
-        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ') || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
+        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ').toUpperCase() || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

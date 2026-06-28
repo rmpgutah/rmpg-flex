@@ -1060,7 +1060,7 @@ export default function CitationsPage() {
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-                  {c.status.replace(/_/g, ' ')}
+                  {c.status.replace(/_/g, ' ').toUpperCase()}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
                   {toDisplayLabel(c.type)}
@@ -1109,7 +1109,7 @@ export default function CitationsPage() {
           <Hash size={14} className="text-rmpg-400" />
           <h2 className="text-sm font-mono font-bold text-rmpg-100">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-            {c.status.replace(/_/g, ' ')}
+            {c.status.replace(/_/g, ' ').toUpperCase()}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
             {toDisplayLabel(c.type)}
