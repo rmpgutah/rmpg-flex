@@ -12,10 +12,9 @@
 // doesn't re-trigger the scroll. Section IDs:
 //   voice | alerts | tones | ptt | display | map | overlays | gps | markers
 //
-// Keyboard shortcuts (v1230):
-//   N          — admin/manager: trigger "Save as org default";
-//                other users: focus the dispatcher voice selector
-//   Escape     — cascade: close ConfirmDialogs → cancel key capture
+// Keyboard shortcuts (v1135):
+//   N          — admin/manager: trigger "Save as org default"
+//   Escape     — cascade: close ConfirmDialog → cancel key capture
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
@@ -413,7 +412,7 @@ export default function SettingsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts:
-  //   N          — admin/manager: publish org defaults; other users: focus voice selector.
+  //   N          — admin/manager only: publish org defaults (same role check as the button).
   //   Escape     — smart cascade: close ConfirmDialogs first, then cancel key capture.
   const isTypingTarget = (el: EventTarget | null): boolean => {
     if (!(el instanceof HTMLElement)) return false;
@@ -429,21 +428,16 @@ export default function SettingsPage() {
         return;
       }
       if ((e.key === 'n' || e.key === 'N')
+          && isAdmin
           && !e.ctrlKey && !e.metaKey && !e.altKey
           && !isTypingTarget(e.target)) {
         e.preventDefault();
-        if (isAdmin) {
-          // Admin/manager: publish current settings as org defaults.
-          publishOrgDefaults();
-        } else {
-          // All other users: focus the primary editable field (voice selector).
-          voiceSelectRef.current?.focus();
-        }
+        publishOrgDefaults();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey, voiceSelectRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const femaleVoices = VOICE_CATALOG.filter((v) => v.gender === 'female');
   const maleVoices = VOICE_CATALOG.filter((v) => v.gender === 'male');

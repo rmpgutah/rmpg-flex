@@ -745,7 +745,7 @@ router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -812,7 +812,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
