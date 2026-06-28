@@ -3,7 +3,7 @@
 // Shared hooks for responsive layout and Android detection
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 // ─── Viewport-based mobile detection ─────────────────────────
 // Mirrors the CSS breakpoint at 768px used throughout the app.
@@ -17,7 +17,15 @@ export function useIsMobile(breakpoint = 768) {
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < breakpoint);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    // iOS Safari / standalone PWA does not always fire `resize` on rotation and
+    // can report a stale innerWidth mid-rotate, so also re-check on
+    // orientationchange (deferred a tick so innerWidth settles).
+    const handleOrientation = () => setTimeout(handleResize, 50);
+    window.addEventListener('orientationchange', handleOrientation);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleOrientation);
+    };
   }, [breakpoint]);
 
   return isMobile;

@@ -1,0 +1,12 @@
+-- Structured PS disposition code on each attempt log.
+-- See client/src/constants/processServiceCodes.ts for the canonical
+-- code library (PS/00..PS/45 in 5-increment buckets, with .01/.05/.10
+-- sub-codes). The legacy `result` enum column stays for back-compat
+-- — every code maps to one of the 9 enum values via codeToLegacyResult.
+--
+-- D1 does NOT support `IF NOT EXISTS` on `ADD COLUMN`. Re-applying this
+-- against a database that already has the column raises "duplicate
+-- column name", which the deploy step swallows (continue-on-error per
+-- CLAUDE.md). After merging, also apply this DDL directly to live D1
+-- 785de7ae and verify with `pragma_table_info('serve_attempts')`.
+ALTER TABLE serve_attempts ADD COLUMN disposition_code TEXT;

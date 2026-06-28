@@ -1,0 +1,687 @@
+// ============================================================
+// RMPG Flex — Body Cameras + Bodycam Videos (read + camera CRUD)
+// ============================================================
+// Two sibling sub-routers, mounted into the personnel router:
+//   personnel.route('/body-cameras',     bodyCamerasRouter);
+//   personnel.route('/bodycam-videos',   bodycamVideosRouter);
+//
+// Live D1 schema (confirmed 2026-05-27):
+//   body_cameras    — 16 cols (PK id, FK officer_id → users.id,
+//                     UNIQUE camera_id [hardware serial],
+//                     make, model, firmware_version,
+//                     storage_capacity_gb, status, condition,
+//                     assigned_at, returned_at, notes,
+//                     created_by, created_at, updated_at)
+//
+//   bodycam_videos  — 17 cols (PK id, FK camera_id → body_cameras.id,
+//                     FK officer_id → users.id, title, file_path,
+//                     file_size, duration_seconds, mime_type,
+//                     recorded_at, case_number, classification,
+//                     retention_status, notes, uploaded_by,
+//                     created_at, updated_at)
+//
+// Both well under the D1 100-col-per-result cap, so SELECT * + JOIN
+// columns is safe here (no LIST_VIEW_COLUMNS narrowing required).
+//
+// PR 1 scope: list, detail, and CRUD for body_cameras; list + the
+// three placeholder reads (reviews/pending, redaction-requests,
+// retention/report) for bodycam_videos. R2 chunked-upload + signed
+// playback streaming land in PR 2.
+// ============================================================
+
+import { Hono } from 'hono';
+import type { Env } from '../../types';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { EVIDENCE_HOLD_VALUES, isEvidenceLocked } from '../../utils/evidenceLock';
+import { recordAudit } from '../../utils/auditLog';
+
+// Roles that can see every officer's cameras/videos. Officers (and any
+// other role not in this set) are scoped to officer_id = self. The
+// supervisor split (read-all but not write) mirrors the spec: gear
+// inventory mutations are an admin/manager action only.
+const READ_ALL_ROLES = new Set(['admin', 'manager', 'supervisor']);
+const WRITE_ROLES    = new Set(['admin', 'manager']);
+
+// Columns a writer may set on a body_cameras row. Intentionally
+// excludes id, created_by, created_at, updated_at — those are
+// server-managed.
+const CAMERA_EDITABLE: readonly string[] = [
+  'officer_id', 'camera_id', 'make', 'model', 'firmware_version',
+  'storage_capacity_gb', 'status', 'condition',
+  'assigned_at', 'returned_at', 'notes',
+];
+
+type Actor = { id: number; role: string; full_name?: string };
+function getActor(c: { get: (k: string) => unknown }): Actor | null {
+  const u = c.get('user') as Actor | undefined;
+  return u && typeof u.id === 'number' ? u : null;
+}
+
+// ────────────────────────────────────────────────────────────
+// /body-cameras
+// ────────────────────────────────────────────────────────────
+const bodyCamerasRouter = new Hono<Env>();
+
+bodyCamerasRouter.get('/', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const db = getDb(c.env);
+    const sql = `
+      SELECT bc.*, u.full_name AS officer_name
+        FROM body_cameras bc
+        LEFT JOIN users u ON u.id = bc.officer_id
+       ${READ_ALL_ROLES.has(actor.role) ? '' : 'WHERE bc.officer_id = ?'}
+       ORDER BY bc.camera_id`;
+    const rows = READ_ALL_ROLES.has(actor.role)
+      ? await query<Record<string, unknown>>(db, sql)
+      : await query<Record<string, unknown>>(db, sql, actor.id);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/body-cameras failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+bodyCamerasRouter.get('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT bc.*, u.full_name AS officer_name
+         FROM body_cameras bc
+         LEFT JOIN users u ON u.id = bc.officer_id
+        WHERE bc.id = ?`,
+      id
+    );
+    if (!row) return c.json({ error: 'Body camera not found' }, 404);
+
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    return c.json(row);
+  } catch (err) {
+    console.error('GET /personnel/body-cameras/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+bodyCamerasRouter.post('/', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const officerId = Number(body.officer_id);
+    const cameraId  = typeof body.camera_id === 'string' ? body.camera_id.trim() : '';
+    if (!Number.isInteger(officerId) || officerId <= 0) {
+      return c.json({ error: 'officer_id is required' }, 400);
+    }
+    if (!cameraId) {
+      return c.json({ error: 'camera_id (hardware serial) is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    // 409 instead of opaque SQLite UNIQUE failure — matches the
+    // username-dedup pattern in personnel.ts POST.
+    const dup = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM body_cameras WHERE camera_id = ?', cameraId
+    );
+    if (dup) {
+      return c.json({ error: 'camera_id already in use', existing_id: dup.id }, 409);
+    }
+
+    const cols: string[] = ['created_by'];
+    const vals: unknown[] = [actor.full_name || String(actor.id)];
+
+    for (const key of CAMERA_EDITABLE) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        cols.push(key);
+        const raw = body[key];
+        vals.push(raw === '' ? null : raw);
+      }
+    }
+
+    const placeholders = cols.map(() => '?').join(', ');
+    const result = await execute(
+      db,
+      `INSERT INTO body_cameras (${cols.join(', ')}) VALUES (${placeholders})`,
+      ...vals
+    );
+    const newId = result.meta?.last_row_id;
+    if (!newId) return c.json({ error: 'Insert succeeded but no id returned' }, 500);
+
+    const created = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT bc.*, u.full_name AS officer_name
+         FROM body_cameras bc
+         LEFT JOIN users u ON u.id = bc.officer_id
+        WHERE bc.id = ?`,
+      newId
+    );
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('POST /personnel/body-cameras failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+bodyCamerasRouter.put('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number; camera_id: string }>(
+      db, 'SELECT id, camera_id FROM body_cameras WHERE id = ?', id
+    );
+    if (!existing) return c.json({ error: 'Body camera not found' }, 404);
+
+    // If camera_id is changing, defend the UNIQUE constraint with a 409.
+    if (typeof body.camera_id === 'string' && body.camera_id.trim() !== existing.camera_id) {
+      const dup = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM body_cameras WHERE camera_id = ? AND id != ?',
+        body.camera_id.trim(), id
+      );
+      if (dup) {
+        return c.json({ error: 'camera_id already in use', existing_id: dup.id }, 409);
+      }
+    }
+
+    const setCols: string[] = [];
+    const bindings: unknown[] = [];
+    for (const key of CAMERA_EDITABLE) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        setCols.push(`${key} = ?`);
+        const raw = body[key];
+        bindings.push(raw === '' ? null : raw);
+      }
+    }
+    if (setCols.length === 0) {
+      return c.json({ error: 'No editable fields provided' }, 400);
+    }
+    setCols.push('updated_at = CURRENT_TIMESTAMP');
+
+    const sql = `UPDATE body_cameras SET ${setCols.join(', ')} WHERE id = ?`;
+    bindings.push(id);
+    await execute(db, sql, ...bindings);
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT bc.*, u.full_name AS officer_name
+         FROM body_cameras bc
+         LEFT JOIN users u ON u.id = bc.officer_id
+        WHERE bc.id = ?`,
+      id
+    );
+    return c.json(updated);
+  } catch (err) {
+    console.error('PUT /personnel/body-cameras/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE — hard delete. The schema declares FK bodycam_videos.camera_id
+// → body_cameras.id without ON DELETE CASCADE, and D1 enforces FKs by
+// default, so a naked DELETE on a camera with videos raises a foreign-
+// key error. The client UI confirm reads "and all associated videos" —
+// honor that expectation by deleting referencing videos in the same
+// batch. (Hard delete here, not soft, because there's no `status` row
+// to flip to 'terminated' and no audit table referencing this row.)
+bodyCamerasRouter.delete('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM body_cameras WHERE id = ?', id
+    );
+    if (!existing) return c.json({ error: 'Body camera not found' }, 404);
+
+    // Cascade hold check — block destruction of held evidence via
+    // the camera-delete path. ADMIN can opt out with ?force=true; the
+    // override is recorded in audit_log so the chain-of-custody story
+    // is "admin <id> force-deleted N held video(s) at <ts>", not
+    // "evidence disappeared." Non-admin roles cannot override.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
+    const holdList = Array.from(EVIDENCE_HOLD_VALUES);
+    const placeholders = holdList.map(() => '?').join(',');
+    const held = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM bodycam_videos WHERE camera_id = ? AND retention_status IN (${placeholders})`,
+      id, ...holdList,
+    );
+    const heldCount = held?.n || 0;
+    if (heldCount > 0 && !canForce) {
+      return c.json({
+        error: 'Camera has video on hold',
+        detail: `${heldCount} video(s) under legal/IA/court hold. Release the hold before retiring this camera, OR pass ?force=true as admin to override.`,
+        canOverride: actor.role === 'admin',
+        heldCount,
+      }, 409);
+    }
+
+    // Snapshot every assigned video BEFORE the cascade. The 2026-06-21
+    // safety pass caught that the previous version wrote ONE parent-
+    // camera audit row carrying only heldCount (an integer) — so a
+    // subpoena later asking "what happened to video #N tied to case Y"
+    // had no per-video trail. Now we record a row per destroyed video
+    // with the same shape as the per-video DELETE handler at line 538,
+    // so the chain-of-custody story is recoverable regardless of which
+    // path destroyed the row.
+    const assigned = await query<{ id: number; case_number: string | null; retention_status: string | null; classification: string | null }>(
+      db,
+      'SELECT id, case_number, retention_status, classification FROM bodycam_videos WHERE camera_id = ?',
+      id,
+    );
+
+    await db.batch([
+      db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').bind(id),
+      db.prepare('DELETE FROM body_cameras WHERE id = ?').bind(id),
+    ]);
+
+    // Per-video audit rows first — these are the SUBPOENA-CRITICAL
+    // ones. recordAudit never throws (best-effort by design), so a
+    // single failure doesn't break the loop.
+    for (const v of assigned) {
+      const wasHeld = isEvidenceLocked(v.retention_status);
+      try {
+        await recordAudit(c, {
+          action: wasHeld && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
+          entityType: 'bodycam_video',
+          entityId: v.id,
+          details: wasHeld && canForce
+            ? `ADMIN OVERRIDE via parent camera ${id}: held video destroyed (retention=${v.retention_status}; classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'})`
+            : `Cascade delete via parent camera ${id} (classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'}; retention=${v.retention_status ?? 'n/a'})`,
+          actorId: actor.id,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Parent camera audit row last — gives the "operation" envelope.
+    try {
+      await recordAudit(c, {
+        action: canForce && heldCount > 0 ? 'body_camera_force_deleted' : 'body_camera_deleted',
+        entityType: 'body_camera',
+        entityId: id,
+        details: canForce && heldCount > 0
+          ? `ADMIN OVERRIDE: body camera ${id} destroyed despite ${heldCount} held video(s) — ${assigned.length} total video(s) destroyed in cascade`
+          : `Body camera ${id} destroyed; ${assigned.length} assigned video(s) cascaded`,
+        actorId: actor.id,
+      });
+    } catch { /* audit best-effort, don't 500 a successful destruction */ }
+
+    return c.json({ ok: true, id, videos_destroyed: assigned.length });
+  } catch (err) {
+    console.error('DELETE /personnel/body-cameras/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// /bodycam-videos
+// ────────────────────────────────────────────────────────────
+const bodycamVideosRouter = new Hono<Env>();
+
+// Literal sub-paths MUST come before parametric /:id. Hono matches in
+// registration order, so /reviews/pending would otherwise be parsed
+// as id='reviews' and fall through to the :id handler.
+
+bodycamVideosRouter.get('/reviews/pending', async (c) => {
+  // PR 1 stub. A real review queue (assigned reviewers, due dates,
+  // escalation) is PR 3+. The client reads `rev.count` — return a
+  // shape that lets the badge logic resolve to 0 without throwing.
+  return c.json({ count: 0, items: [] });
+});
+
+bodycamVideosRouter.get('/redaction-requests', async (c) => {
+  // PR 1 stub. The client filters `red.data.filter(r => r.status === 'pending')`,
+  // so the shape MUST include a top-level `data` array.
+  return c.json({ data: [] });
+});
+
+bodycamVideosRouter.get('/retention/report', async (c) => {
+  // Counts-only report computed live from bodycam_videos. The client
+  // reads `total_expired` and `total_storage_gb`; the other fields
+  // give the dashboard headroom to surface inventory totals without
+  // a follow-up endpoint.
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{
+      total: number;
+      retained: number;
+      total_expired: number;
+      purged_this_month: number;
+      total_bytes: number;
+    }>(db, `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN retention_status = 'active'  THEN 1 ELSE 0 END) AS retained,
+        SUM(CASE WHEN retention_status = 'expired' THEN 1 ELSE 0 END) AS total_expired,
+        SUM(CASE
+              WHEN retention_status = 'purged'
+               AND updated_at >= strftime('%Y-%m-01', 'now')
+              THEN 1 ELSE 0 END) AS purged_this_month,
+        COALESCE(SUM(file_size), 0) AS total_bytes
+      FROM bodycam_videos
+    `);
+    const totalBytes = Number(row?.total_bytes ?? 0);
+    return c.json({
+      total: Number(row?.total ?? 0),
+      retained: Number(row?.retained ?? 0),
+      total_expired: Number(row?.total_expired ?? 0),
+      eligible_for_purge: Number(row?.total_expired ?? 0),
+      purged_this_month: Number(row?.purged_this_month ?? 0),
+      total_storage_gb: Math.round((totalBytes / 1e9) * 100) / 100,
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/retention/report failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+bodycamVideosRouter.get('/', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const { case_number } = c.req.query();
+    const db = getDb(c.env);
+    const where: string[] = [];
+    const bindings: unknown[] = [];
+
+    if (!READ_ALL_ROLES.has(actor.role)) {
+      where.push('v.officer_id = ?');
+      bindings.push(actor.id);
+    }
+    if (case_number) {
+      where.push('v.case_number = ?');
+      bindings.push(case_number);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT v.*,
+             u.full_name AS officer_name,
+             c.camera_id AS camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u        ON u.id = v.officer_id
+        LEFT JOIN body_cameras c ON c.id = v.camera_id
+       ${whereSql}
+       ORDER BY v.recorded_at DESC, v.id DESC`;
+    const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ───── Stream + upload endpoints registered separately below ─────
+// (See bodyCameraUploads.ts for handler bodies — split out so this
+// file stays readable and the edit surface stays small for review.)
+
+// GET /:id/custody — chain-of-custody timeline for a bodycam video.
+// Backed by audit_log entries with entity_type='bodycam_video' (writes
+// already emit there via recordAudit; see DELETE handler below). Same
+// shape the EvidenceItem PDF / chain-of-custody UIs consume:
+//   { at, action, by, by_name, location?, notes? }[]
+//
+// Registered BEFORE the bare /:id GET so Hono matches the longer pattern.
+// Reverse the order and /:id swallows /:id/custody as id='123/custody' → 400.
+bodycamVideosRouter.get('/:id/custody', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number }>(
+      db,
+      'SELECT officer_id FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // audit_log carries entity_id as TEXT, so cast both sides.
+    const entries = await query<{
+      created_at: string;
+      action: string;
+      details: string | null;
+      user_id: number | null;
+      actor_name: string | null;
+    }>(db, `
+      SELECT a.created_at, a.action, a.details, a.user_id,
+             u.full_name AS actor_name
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.entity_type = 'bodycam_video' AND CAST(a.entity_id AS INTEGER) = ?
+       ORDER BY a.created_at ASC, a.id ASC
+    `, id);
+
+    return c.json({
+      entries: entries.map(e => ({
+        at: e.created_at,
+        action: e.action,
+        by: e.user_id != null ? String(e.user_id) : '',
+        by_name: e.actor_name || '',
+        notes: e.details || '',
+      })),
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id/custody failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /:id/view-event — log a viewing event for chain-of-custody.
+// BWC footage access is PII-sensitive and statutory court-record
+// material; recording WHO opened the player and WHEN is required to
+// reconstruct the chain even when no metadata change occurred. The
+// client fires this when VideoPlayer mounts a stream.
+bodycamVideosRouter.post('/:id/view-event', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT officer_id, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // Best-effort audit; never block the view on the audit row.
+    try {
+      await recordAudit(c, {
+        action: 'bodycam_video_viewed',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort */ }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/view-event failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+bodycamVideosRouter.get('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT v.*,
+              u.full_name AS officer_name,
+              c.camera_id AS camera_serial
+         FROM bodycam_videos v
+         LEFT JOIN users u        ON u.id = v.officer_id
+         LEFT JOIN body_cameras c ON c.id = v.camera_id
+        WHERE v.id = ?`,
+      id
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    return c.json(row);
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// PUT /:id — edit / reclassify video metadata. The proxy routes the whole
+// /api/personnel/bodycam-videos prefix to the rewrite, so without this handler
+// metadata edits 404'd silently.
+bodycamVideosRouter.put('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at'];
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of editable) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }
+    }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    setCols.push("updated_at = datetime('now')");
+    bindings.push(id);
+    await execute(db, `UPDATE bodycam_videos SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM bodycam_videos WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('PUT /personnel/bodycam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /:id — remove the R2 object (best-effort) then the metadata row.
+bodycamVideosRouter.delete('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb(c.env);
+    const row = await queryFirst<{ id: number; file_path: string | null; retention_status: string | null; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Server-side evidence-lock with admin override. Non-admin roles
+    // (manager/supervisor/officer) still get 409; only admin can
+    // ?force=true past a hold, and the override is loud in audit_log.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
+    const locked = isEvidenceLocked(row.retention_status);
+    if (locked && !canForce) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${row.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: actor.role === 'admin',
+        retention_status: row.retention_status,
+      }, 409);
+    }
+
+    // Storage failure must not block the metadata delete.
+    if (row.file_path && (c.env as { UPLOADS?: R2Bucket }).UPLOADS) {
+      try { await (c.env as { UPLOADS: R2Bucket }).UPLOADS.delete(row.file_path); }
+      catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
+    }
+    await execute(db, 'DELETE FROM bodycam_videos WHERE id = ?', id);
+
+    try {
+      await recordAudit(c, {
+        action: locked && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${row.retention_status}; classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'})`
+          : `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}; retention=${row.retention_status ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort audit */ }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /personnel/bodycam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+export { bodyCamerasRouter, bodycamVideosRouter, READ_ALL_ROLES, WRITE_ROLES, getActor };

@@ -3,10 +3,12 @@
 // Generates a printable shift transition report for officers
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import StatusBadge from './StatusBadge';
+import { safeDateTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Printer, Radio, AlertTriangle, StickyNote,
   MapPin, BarChart3, Plus, Clock, Car,
@@ -119,20 +121,20 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       <div className="flex items-center gap-3 flex-wrap print:hidden">
         <label className="text-rmpg-300 text-xs font-mono">
           Shift Start
-          <input
+          <input id="ff-shifthandoffreport-0"
             type="datetime-local"
             value={shiftStart}
             onChange={e => setShiftStart(e.target.value)}
-            className="ml-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
+            className="ml-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
           />
         </label>
         <label className="text-rmpg-300 text-xs font-mono">
           Shift End
-          <input
+          <input id="ff-shifthandoffreport-1"
             type="datetime-local"
             value={shiftEnd}
             onChange={e => setShiftEnd(e.target.value)}
-            className="ml-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
+            className="ml-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1 rounded-[2px] font-mono"
           />
         </label>
         <button onClick={fetchReport} className="toolbar-btn text-xs" disabled={loading}>
@@ -150,7 +152,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       )}
 
       {/* ── Report Header ── */}
-      <div className="panel-beveled bg-[#141414] p-3 print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base p-3 print:border print:border-rmpg-400">
         <h1 className="text-brand-400 text-sm font-bold tracking-wider uppercase flex items-center gap-2 mb-2">
           <FileText size={16} /> Shift Handoff Report
         </h1>
@@ -173,13 +175,13 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Open Calls ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Open Calls" icon={Radio} />
         <div className="p-2">
           {!data?.open_calls.length ? (
             <p className="text-rmpg-400 text-xs font-mono py-2 text-center">No open calls</p>
           ) : (
-            <table className="w-full text-xs font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-xs font-mono">
               <thead>
                 <tr className="text-rmpg-400 text-left border-b border-rmpg-600/40">
                   <th className="pb-1 pr-2">Call #</th>
@@ -200,13 +202,13 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
 
       {/* ── Active BOLOs ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Active BOLOs" icon={AlertTriangle} />
         <div className="p-2">
           {!data?.active_bolos.length ? (
@@ -214,11 +216,11 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           ) : (
             <div className="space-y-2">
               {data.active_bolos.map(b => (
-                <div key={b.id} className="bg-[#050505] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
+                <div key={b.id} className="bg-surface-overlay border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-brand-400 font-bold uppercase">{b.type}</span>
                     <StatusBadge status={b.priority} type="priority" size="sm" />
-                    <span className="text-rmpg-400 ml-auto">{new Date(b.issued_at).toLocaleString()}</span>
+                    <span className="text-rmpg-400 ml-auto">{safeDateTimeStr(b.issued_at)}</span>
                   </div>
                   <p className="text-rmpg-200">{b.description}</p>
                 </div>
@@ -229,39 +231,39 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Shift Notes ── */}
-      <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Shift Notes" icon={StickyNote} />
         <div className="p-2 space-y-2">
           {data?.shift_notes.map(n => (
-            <div key={n.id} className="bg-[#050505] border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
+            <div key={n.id} className="bg-surface-overlay border border-rmpg-700/40 rounded-[2px] p-2 text-xs font-mono">
               <div className="flex items-center gap-2 text-rmpg-400 mb-1">
                 <span className="bg-brand-900/40 text-brand-400 px-1.5 py-0.5 rounded-[2px] text-[10px] uppercase font-bold">
                   {n.category}
                 </span>
-                <span className="ml-auto">{new Date(n.created_at).toLocaleString()}</span>
+                <span className="ml-auto">{safeDateTimeStr(n.created_at)}</span>
               </div>
               <p className="text-rmpg-200">{n.content}</p>
             </div>
           ))}
           {/* Add note form — hidden in print */}
           <div className="flex gap-2 items-end print:hidden">
-            <select
+            <select id="ff-shifthandoffreport-2"
               value={noteCategory}
               onChange={e => setNoteCategory(e.target.value)}
-              className="bg-[#050505] border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
+              className="bg-surface-overlay border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
             >
               <option value="general">General</option>
               <option value="safety">Safety</option>
               <option value="followup">Follow-Up</option>
               <option value="equipment">Equipment</option>
             </select>
-            <input
+            <input id="ff-shifthandoffreport-3"
               type="text"
               placeholder="Add shift note..."
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addNote()}
-              className="flex-1 bg-[#050505] border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-rmpg-500"
+              className="flex-1 bg-surface-overlay border border-rmpg-600 text-rmpg-100 text-xs px-2 py-1.5 rounded-[2px] font-mono placeholder:text-rmpg-500"
             />
             <button onClick={addNote} disabled={submitting || !noteText.trim()} className="toolbar-btn text-xs">
               <Plus size={13} className="mr-1 inline" />{submitting ? 'Saving...' : 'Add'}
@@ -272,7 +274,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
 
       {/* ── GPS Summary & Shift Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
           <PanelTitleBar title="GPS Summary" icon={MapPin} />
           <div className="p-3 text-center">
             <Car size={28} className="mx-auto text-brand-400 mb-2" />
@@ -283,7 +285,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           </div>
         </div>
 
-        <div className="panel-beveled bg-[#141414] print:border print:border-gray-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
           <PanelTitleBar title="Shift Stats" icon={BarChart3} />
           <div className="p-3 space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
@@ -296,7 +298,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               .filter(([k]) => k !== 'avg_response_time')
               .map(([key, val]) => (
                 <div key={key} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-rmpg-300">{key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(key)}</span>
                   <span className="text-rmpg-100 font-bold">{typeof val === 'number' ? val.toFixed(1) : val}</span>
                 </div>
               ))}

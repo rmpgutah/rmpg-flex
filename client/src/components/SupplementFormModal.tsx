@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { FileText } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { SupplementalReportType } from '../types';
 
+import RichTextArea from './RichTextArea';
 export interface SupplementFormData {
   report_type: SupplementalReportType;
   subject: string;
@@ -39,13 +40,23 @@ export default function SupplementFormModal({
   isSubmitting,
   incidentNumber,
 }: SupplementFormModalProps) {
-  const [form, setForm] = useState<SupplementFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<SupplementFormData>({
+    storageKey: 'rmpg_supplement_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
 
   React.useEffect(() => {
     if (isOpen) {
       setForm(EMPTY_FORM);
-      snapshot(EMPTY_FORM);
+      snapshot();
     }
   }, [isOpen, snapshot]);
 
@@ -53,7 +64,7 @@ export default function SupplementFormModal({
     e.preventDefault();
     try {
       await onSubmit(form);
-      setForm(EMPTY_FORM);
+      clearDraft();
     } catch {
       // Keep form data on failure so user can retry
     }
@@ -70,11 +81,13 @@ export default function SupplementFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       <div className="space-y-3">
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
-          <select
+          <label htmlFor="ff-supplementformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
+          <select id="ff-supplementformmodal-0"
             className="select-dark w-full text-[11px]"
             value={form.report_type}
             onChange={(e) => setForm((prev) => ({ ...prev, report_type: e.target.value as SupplementalReportType }))}
@@ -85,8 +98,8 @@ export default function SupplementFormModal({
           </select>
         </div>
         <div>
-          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
-          <input
+          <label htmlFor="ff-supplementformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
+          <input id="ff-supplementformmodal-1"
             className="input-dark w-full text-[11px]"
             value={form.subject}
             onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
@@ -98,7 +111,7 @@ export default function SupplementFormModal({
         </div>
         <div>
           <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Narrative *</label>
-          <textarea
+          <RichTextArea
             className="textarea-dark w-full text-[11px]"
             rows={10}
             value={form.narrative}
