@@ -129,12 +129,20 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
           try {
             const secret = new TextEncoder().encode(env.JWT_SECRET);
             const { payload } = await jwtVerify(msg.token, secret);
-            const jwtPayload = payload as unknown as { user_id: number; username: string; role: string; full_name?: string };
+            // Accept both `user_id` (rewrite-issued) and `userId` (legacy-issued).
+            // See [[feedback-jwt-claim-naming-mismatch]] memory + commit ce153cd5.
+            const jwtPayload = payload as unknown as { user_id?: number; userId?: number; username: string; role: string };
+            const claimedUserId = jwtPayload.user_id ?? jwtPayload.userId;
+            if (claimedUserId == null) {
+              safeSend(JSON.stringify({ type: 'error', code: 'AUTH_FAILED', message: 'Token missing user id claim' }));
+              closeWithError(4002, 'Authentication failed');
+              return;
+            }
 
             const db = getDb(env);
             const user = await queryFirst<{
               id: number; username: string; role: string; full_name: string; status: string;
-            }>(db, 'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?', jwtPayload.user_id, 'active');
+            }>(db, 'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?', claimedUserId, 'active');
 
             if (!user) {
               safeSend(JSON.stringify({ type: 'error', code: 'AUTH_FAILED', message: 'User not found or inactive' }));

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { safeDateTimeStr } from '../../../utils/dateUtils';
+import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface FleetVehicle {
   id: number;
@@ -30,19 +34,19 @@ interface UseMapFleetVehiclesReturn {
 
 function getVehicleColor(status: string, gpsReportedAt: string | null): string {
   if (gpsReportedAt) {
-    const reportedTime = new Date(gpsReportedAt).getTime();
-    if (isNaN(reportedTime)) return '#666666';
+    const reportedTime = parseTimestamp(gpsReportedAt).getTime();
+    if (isNaN(reportedTime)) return 'var(--rmpg-500)';
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    if (reportedTime < oneHourAgo) return '#666666';
+    if (reportedTime < oneHourAgo) return 'var(--rmpg-500)';
   } else {
-    return '#666666';
+    return 'var(--rmpg-500)';
   }
 
   switch (status) {
     case 'in_service': return '#22c55e';
     case 'maintenance': return '#f59e0b';
     case 'out_of_service': return '#dc2626';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -60,7 +64,7 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): string {
         ${vehicle.current_mileage != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Mileage</td><td style="color:#e0e0e0">${vehicle.current_mileage.toLocaleString()} mi</td></tr>` : ''}
         ${vehicle.next_service_due ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Next Service</td><td style="color:#e0e0e0">${vehicle.next_service_due}</td></tr>` : ''}
         ${vehicle.assigned_call_sign ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Assigned Unit</td><td style="color:#e0e0e0">${vehicle.assigned_call_sign}</td></tr>` : ''}
-        ${vehicle.gps_reported_at ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">GPS Time</td><td style="color:#e0e0e0">${new Date(vehicle.gps_reported_at).toLocaleString()}</td></tr>` : ''}
+        ${vehicle.gps_reported_at ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">GPS Time</td><td style="color:#e0e0e0">${safeDateTimeStr(vehicle.gps_reported_at)}</td></tr>` : ''}
         ${vehicle.gps_speed != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${Math.round(vehicle.gps_speed)} mph</td></tr>` : ''}
       </table>
     </div>
@@ -82,8 +86,8 @@ export function useMapFleetVehicles(
 
   const clearMarkers = useCallback(() => {
     if (map) {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
     }
   }, [map]);
 
@@ -108,33 +112,35 @@ export function useMapFleetVehicles(
       properties: { id: vehicle.id, vehicle_number: vehicle.vehicle_number, status: vehicle.status, gps_reported_at: vehicle.gps_reported_at },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'status'], 'in_service'], '#22c55e',
-          ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
-          ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
-          '#666666',
-        ],
-        'circle-radius': 12,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'status'], 'in_service'], '#22c55e',
+            ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
+            ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
+            'var(--rmpg-500)',
+          ],
+          'circle-radius': 12,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const vehicle = withCoords.find(v => v.id === feature.properties?.id);
-      if (!vehicle) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildVehicleInfoContent(vehicle)).addTo(map);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const vehicle = withCoords.find(v => v.id === feature.properties?.id);
+        if (!vehicle) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildVehicleInfoContent(vehicle)).addTo(map);
+        }
+      });
     });
   }, [map, clearMarkers]);
 

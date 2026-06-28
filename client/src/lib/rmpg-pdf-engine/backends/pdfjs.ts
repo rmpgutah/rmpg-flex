@@ -61,6 +61,11 @@ class PdfJsPage implements RmpgPdfPage {
         const it = raw as { str?: string; transform: number[]; width: number; height: number };
         if (typeof it.str !== 'string' || it.str.length === 0) continue;
         const t = it.transform;
+        // Defensive: a malformed/short transform (rare XFA + odd producers)
+        // would make t[...] undefined and poison downstream coord math in the
+        // editor's text layer. Valid items always carry a length-6 matrix, so
+        // this only skips genuinely broken items.
+        if (!Array.isArray(t) || t.length < 6) continue;
         items.push({
           str: it.str,
           transform: [t[0], t[1], t[2], t[3], t[4], t[5]],
@@ -80,6 +85,7 @@ class PdfJsDocument implements RmpgPdfDocument {
   readonly backend = 'pdfjs' as const;
   constructor(
     private inner: pdfjs.PDFDocumentProxy,
+    private loadingTask: pdfjs.PDFDocumentLoadingTask,
     public backendReason: string,
   ) {}
 
@@ -91,7 +97,10 @@ class PdfJsDocument implements RmpgPdfDocument {
   }
 
   async destroy(): Promise<void> {
-    try { await this.inner.destroy(); } catch { /* ignore */ }
+    // pdfjs v6 removed PDFDocumentProxy.destroy() — the document lifecycle is
+    // owned by the loading task. loadingTask.destroy() tears down the document
+    // and its worker port (also valid on v5, so this is version-agnostic).
+    try { await this.loadingTask.destroy(); } catch { /* ignore */ }
   }
 }
 
@@ -107,7 +116,7 @@ export class PdfJsBackend implements RmpgPdfBackend {
       // throws on every PDF that references those fonts without embedding.
       // The assets are copied into client/public/pdfjs/ at build time by
       // scripts/copy-pdfjs-assets.mjs.
-      const inner = await pdfjs.getDocument({
+      const loadingTask = pdfjs.getDocument({
         data: bytes.slice(),
         standardFontDataUrl: '/pdfjs/standard_fonts/',
         cMapUrl: '/pdfjs/cmaps/',
@@ -124,8 +133,9 @@ export class PdfJsBackend implements RmpgPdfBackend {
         // Surface PDF.js warnings/errors at console level so they make
         // it into the diagnostic logs.
         verbosity: 1,
-      }).promise;
-      return new PdfJsDocument(inner, 'pdfjs backend (Mozilla, Apache 2.0)');
+      });
+      const inner = await loadingTask.promise;
+      return new PdfJsDocument(inner, loadingTask, 'pdfjs backend (Mozilla, Apache 2.0)');
     } catch (err) {
       throw new RmpgPdfError(`PDF.js failed to open document: ${err instanceof Error ? err.message : String(err)}`, err);
     }

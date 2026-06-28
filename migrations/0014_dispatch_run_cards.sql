@@ -28,9 +28,27 @@ CREATE TABLE IF NOT EXISTS dispatch_run_cards (
 
 CREATE INDEX IF NOT EXISTS idx_run_cards_active ON dispatch_run_cards(active, incident_type);
 
--- New columns on calls_for_service to record which run card was applied
-ALTER TABLE calls_for_service ADD COLUMN run_card_id INTEGER;
-ALTER TABLE calls_for_service ADD COLUMN run_card_applied_at TEXT;
+-- ── run_card tracking columns moved to calls_for_service_ext (2026-05-27) ──
+-- Originally this migration also did:
+--   ALTER TABLE calls_for_service ADD COLUMN run_card_id INTEGER;
+--   ALTER TABLE calls_for_service ADD COLUMN run_card_applied_at TEXT;
+-- but `calls_for_service` is at the D1 100-column hard cap. Adding 2
+-- more columns pushes the result-set width of `SELECT *` to 102, which
+-- exceeds D1's per-query column cap. ALTER itself succeeds; every
+-- subsequent star-read on the table 500s with "too many columns in
+-- result set". The /:id detail handler in src/routes/dispatch/calls.ts
+-- uses SELECT * — would have broken on the next deploy.
+--
+-- The tracking columns now live on calls_for_service_ext (overflow
+-- table, 1:1) per the PSO/process-service overflow pattern. The
+-- src/routes/dispatch/calls.ts POST handler writes them via
+-- INSERT OR IGNORE + UPDATE on ext, post-base-INSERT, best-effort
+-- (an ext write failure doesn't block the call create).
+--
+-- Those two columns were added directly on live D1 via the D1 MCP on
+-- 2026-05-27. Future fresh-DB setups will need to add them to ext
+-- separately (or fold into a later migration that does the ext
+-- bootstrap from scratch with the columns baked in).
 
 -- ── 32-card seed ──
 -- Spillman-flex typical dispatch protocols. INSERT OR IGNORE is

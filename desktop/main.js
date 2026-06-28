@@ -6,18 +6,19 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
 const { ConnectivityMonitor } = require('./connectivityMonitor');
+const { InternalGps, findGpsPort } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
-// Electron strips Chrome's bundled Google API key. Without it,
-// navigator.geolocation silently fails on desktop (no GPS hardware).
-// Chromium's Network Location Provider uses this key to resolve
-// WiFi/IP-based positions. This is a generic Geolocation API key.
-process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
+// Chromium's Network Location Provider requires a Google API key to resolve
+// WiFi/IP-based positions via navigator.geolocation. Set GOOGLE_API_KEY in
+// the environment before launching if WiFi geolocation is needed. GPS hardware
+// runs independently through InternalGps and is unaffected when this is unset.
+// (Key removed from source — set via environment variable instead.)
 
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
@@ -139,15 +140,19 @@ function getSplashLogoDataUri() {
           path.join(process.resourcesPath, 'rmpg flex.png'),
           path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
           path.join(process.resourcesPath, 'icon.png'),
+          // Last resort if extraResources were stripped (e.g. unpacked run)
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
         ];
     for (const p of candidates) {
       if (fs.existsSync(p)) {
         const ext = path.extname(p).slice(1).toLowerCase() || 'png';
         const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
         const b64 = fs.readFileSync(p).toString('base64');
+        console.log('[SPLASH] logo loaded from', p);
         return `data:${mime};base64,${b64}`;
       }
     }
+    console.warn('[SPLASH] no logo file found — using text fallback');
   } catch (err) {
     console.warn('[SPLASH] logo load failed:', err && err.message);
   }
@@ -621,6 +626,15 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Keep the renderer running at full rate when the window is minimized,
+      // occluded, or otherwise not focused. Chromium throttles background
+      // windows by default — setInterval clamped to ~1/min, rAF paused — which
+      // slowed the nav trip engine's 15s route-upload + 30s auto-end checks to
+      // a crawl whenever the officer switched away from the CAD. The GPS NMEA
+      // reader lives in the main process (never throttled), but the detection +
+      // upload logic runs here in the renderer, so it must not be throttled for
+      // navigation to keep calculating + recording movement off-screen.
+      backgroundThrottling: false,
     },
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -671,9 +685,55 @@ async function createMainWindow() {
     mainWindow.focus();
   });
 
-  // Handle page load failures (server down, network error)
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+  // Handle page load failures (server down, network error).
+  //
+  // IMPORTANT: did-fail-load fires for a LOT of false positives:
+  //   - errorCode -3 (ERR_ABORTED) every time a JS-driven navigation
+  //     replaces an in-flight one. Cloudflare's challenge page does
+  //     exactly this when it solves and redirects. Treating -3 as
+  //     "server unreachable" makes the desktop app unusable any time
+  //     CF re-issues a challenge.
+  //   - Sub-frame failures (e.g., a failed iframe widget). The desktop
+  //     shell should only react to MAIN-frame nav failures.
+  //
+  // Policy: only show the offline page for KNOWN-fatal main-frame failures.
+  // Chromium net::Error codes:
+  //   -2   FAILED                       (generic; treat as fatal)
+  //   -100 CONNECTION_CLOSED
+  //   -101 CONNECTION_RESET
+  //   -102 CONNECTION_REFUSED
+  //   -103 CONNECTION_ABORTED           (NOT -3; this is a real socket abort)
+  //   -105 NAME_NOT_RESOLVED            (DNS)
+  //   -106 INTERNET_DISCONNECTED
+  //   -109 ADDRESS_UNREACHABLE
+  //   -118 CONNECTION_TIMED_OUT
+  //   -130 PROXY_CONNECTION_FAILED
+  //   -137 NAME_RESOLUTION_FAILED
+  //   -201 CERT_DATE_INVALID            (TLS clock/cert problems are fatal here)
+  //   -202 CERT_AUTHORITY_INVALID
+  //   -203 CERT_CONTAINS_ERRORS
+  //   -207 CERT_REVOKED
+  //   -208 CERT_INVALID
+  // Deliberately excluded:
+  //   -3   ABORTED          — fires every time a JS-driven nav replaces an
+  //                           in-flight one (Cloudflare challenge solving,
+  //                           OAuth redirects, etc.). Source of false positives.
+  //   -21  NETWORK_CHANGED  — transient on roaming/VPN reconnects; the next
+  //                           nav usually succeeds without showing offline UI.
+  const FATAL_NET_ERRORS = new Set([
+    -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
+    -201, -202, -203, -207, -208,
+  ]);
+  function isFatalNavFailure(errorCode, isMainFrame /* , validatedURL */) {
+    return isMainFrame === true && FATAL_NET_ERRORS.has(errorCode);
+  }
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(`[APP] did-fail-load: ${errorDescription} (code ${errorCode}, mainFrame=${isMainFrame}, url=${validatedURL})`);
+    if (!isFatalNavFailure(errorCode, isMainFrame, validatedURL)) {
+      console.log('[APP] did-fail-load: non-fatal, ignoring');
+      return;
+    }
     // Show the offline page with a retry button
     mainWindow.loadURL(getOfflineHTML()).catch((err) => {
       console.warn('[APP] Offline page loadURL failed:', err && err.message);
@@ -721,6 +781,50 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
+
+// ─── Crash-safe printing ─────────────────────────────────────
+// macOS 26's native print panel (NSPrintPanel → PrintingUI →
+// PJCSessionHasApplicationSetPrinter) segfaults when opened from
+// Electron 40 — window.print() hard-crashes the whole app
+// (EXC_BAD_ACCESS in CrBrowserMain). We never open the AppKit panel:
+// every print renders via Chromium's printToPDF (no AppKit) and the
+// PDF is handed to macOS Preview, whose print dialog is stable.
+const { webFrameMain } = require('electron');
+
+const PRINT_OVERRIDE_JS = `(() => {
+  if (window.__rmpgPrintPatched) return;
+  window.__rmpgPrintPatched = true;
+  window.print = () => {
+    try {
+      if (window.electron && window.electron.printToPdf) { window.electron.printToPdf(); return; }
+    } catch (e) {}
+    // Subframes (iframes / window.open) have no preload bridge —
+    // delegate to the top frame, which is patched and bridged.
+    try { window.top.print(); } catch (e) {}
+  };
+})();`;
+
+app.on('web-contents-created', (_event, wc) => {
+  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+    try {
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+    } catch (e) { /* frame may already be gone */ }
+  });
+});
+
+ipcMain.handle('print:to-pdf', async (event) => {
+  const fs = require('fs');
+  try {
+    const pdf = await event.sender.printToPDF({ printBackground: true });
+    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+    await fs.promises.writeFile(file, pdf);
+    const err = await shell.openPath(file); // opens in Preview; user prints from there
+    return { ok: !err, file, error: err || undefined };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
@@ -2077,6 +2181,176 @@ ipcMain.handle('app:force-refresh', async () => {
     mainWindow.webContents.reload();
   }
   return { success: true };
+});
+
+// ─── Internal GPS (Panasonic Toughbook) ──────────────────────
+// On Toughbooks, the internal u-blox GPS module is exposed as a
+// virtual COM port. We read raw NMEA sentences instead of relying
+// on Chromium's geolocation (which falls back to WiFi triangulation
+// and gives ~100-500m accuracy in moving vehicles).
+//
+// Lifecycle:
+//   renderer → geo:internal-gps-detect → { isToughbook, portPath } | null
+//   renderer → geo:internal-gps-start → boolean (started?)
+//   renderer ← geo:internal-gps-update (event with { latitude, ... })
+//   renderer → geo:internal-gps-stop  → void
+
+let internalGpsReader = null;
+
+/**
+ * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
+ *
+ * This function is CALLED ONCE on app startup. The decision drives whether
+ * useGpsTracking.ts replaces navigator.geolocation entirely (per the team
+ * decision 2026-05-27).
+ *
+ * Returns: { isToughbook: boolean, manufacturer: string, model: string, portPath: string | null }
+ *
+ * TODO: Christopher — fill in the manufacturer/model predicate below.
+ * What you know that I don't:
+ *   - Which Toughbook models RMPG actually deploys (CF-33? FZ-55? FZ-G2?)
+ *   - Whether the manufacturer string is "Panasonic Corporation",
+ *     "Matsushita Electric", "Panasonic" alone, or something else
+ *   - Whether any non-Toughbook Panasonic gear should also qualify
+ *     (e.g., Lenovo ThinkPad with aftermarket u-blox dongle — same code path)
+ */
+async function detectToughbook() {
+  if (process.platform !== 'win32') {
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+  try {
+    const { execFile } = require('child_process');
+    const wmi = await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-Command', 'Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model | ConvertTo-Json'],
+        { timeout: 8000 },
+        (err, stdout) => {
+          if (err) return resolve(null);
+          try { resolve(JSON.parse(stdout)); } catch { resolve(null); }
+        }
+      );
+    });
+    const manufacturer = (wmi?.Manufacturer || '').trim();
+    const model = (wmi?.Model || '').trim();
+
+    // ─── Toughbook detection (RMPG fleet: FZ-55 only) ───
+    // Only the Panasonic Toughbook FZ-55 ships internal GPS in the
+    // RMPG fleet. CF-33s and other Panasonic gear (including consumer
+    // Lumix laptops) should fall back to navigator.geolocation.
+    // 'Matsushita' (Panasonic's pre-2008 name) is intentionally NOT
+    // matched — no live RMPG hardware predates the 2008 rename.
+    const mfg = manufacturer.toLowerCase();
+    const mdl = model.toLowerCase();
+
+    // Normalize the model so hyphen / spacing / case / SKU-suffix variants of
+    // the order code all match. WMI reports the FZ-55 inconsistently across
+    // BIOS/SKUs: "FZ-55", "FZ55", "FZ-55C", "FZ-55F MK2", "Toughbook FZ-55", …
+    // The old exact `mdl.includes('fz-55')` (hyphen, lowercase) missed every
+    // variant that lacked that precise hyphen → isToughbook=false → the unit
+    // silently fell back to navigator.geolocation (WiFi/IP).
+    //   ▶ Confirmed live 2026-06-02: an in-fleet FZ-55 was recording
+    //     gps_source='browser_desktop' (the IP fallback) for exactly this reason.
+    const mdlNorm = mdl.replace(/[^a-z0-9]/g, '');     // "FZ-55C" → "fz55c"
+    const mfgIsPanasonic = mfg.includes('panasonic');
+    const modelLooksFz55 = mdlNorm.includes('fz55');
+
+    // Detect by HARDWARE PRESENCE, not just the model string. We ALWAYS
+    // enumerate serial ports — the WMI manufacturer string is unreliable (some
+    // FZ-55 SKUs report a blank or OEM manufacturer, and the PowerShell probe
+    // above can degrade), so gating port discovery on `mfgIsPanasonic` silently
+    // hid a present u-blox module and dropped the unit to WiFi triangulation.
+    //
+    // A u-blox VID (score 100) or a GNSS-named bridge (score 70) is hardware-
+    // definitive — no consumer non-GPS machine exposes one — so it qualifies on
+    // its own regardless of the manufacturer string. A weak name-only match
+    // (score 50, e.g. a bare USB-serial adapter with "gps" in its label) is
+    // trusted only on a confirmed Panasonic host, preserving the original intent
+    // of keeping unrelated serial ports on non-Panasonic gear from being grabbed.
+    const gpsPort = await findGpsPort();          // { path, score } | null
+    const portPath = gpsPort?.path ?? null;
+    const portIsDefinitive = (gpsPort?.score ?? 0) >= 70;
+    const isToughbook =
+      portIsDefinitive ||
+      (mfgIsPanasonic && (modelLooksFz55 || portPath != null));
+
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} score=${gpsPort?.score ?? 0} definitive=${portIsDefinitive} -> toughbook=${isToughbook}`);
+    return { isToughbook, manufacturer, model, portPath };
+  } catch (err) {
+    console.warn('[INTERNAL-GPS] Detection failed:', err.message);
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+}
+
+ipcMain.handle('geo:internal-gps-detect', detectToughbook);
+
+ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+  if (internalGpsReader) return { ok: true, alreadyRunning: true };
+  if (!portPath) {
+    const detected = await detectToughbook();
+    if (!detected.portPath) return { ok: false, error: 'No GPS COM port found' };
+    portPath = detected.portPath;
+  }
+  internalGpsReader = new InternalGps();
+  internalGpsReader.on('position', (pos) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-update', pos);
+    }
+  });
+  internalGpsReader.on('error', (err) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-error', { message: err.message });
+    }
+  });
+  // No baud default here — let InternalGps probe its 9600-first ladder
+  // (u-blox NEO-M8 ships at 9600; the old 4800 default never locked).
+  const ok = await internalGpsReader.start(portPath, baudRate);
+  return { ok, portPath };
+});
+
+ipcMain.handle('geo:internal-gps-stop', async () => {
+  if (internalGpsReader) {
+    internalGpsReader.stop();
+    internalGpsReader.removeAllListeners();
+    internalGpsReader = null;
+  }
+  return { ok: true };
+});
+
+// ─── Power management (keep navigation alive off-screen) ─────
+// While a vehicle trip is active, the renderer asks the main process to hold a
+// powerSaveBlocker so the Toughbook doesn't suspend mid-patrol. We use
+// 'prevent-app-suspension' (NOT 'prevent-display-sleep'): the display may turn
+// off to save power, but the system stays awake so the nav engine keeps
+// calculating + uploading breadcrumbs in the background. The blocker is
+// released the moment the trip ends (renderer calls power:allow-sleep) so a
+// parked/idle unit returns to normal power behavior. Idempotent: repeated
+// keep-awake calls reuse the single active blocker id.
+let powerBlockerId = null;
+ipcMain.handle('power:keep-awake', () => {
+  try {
+    if (powerBlockerId == null || !powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[POWER] prevent-app-suspension started (id', powerBlockerId + ') — active trip');
+    }
+    return { ok: true, blocking: true };
+  } catch (err) {
+    console.warn('[POWER] keep-awake failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+ipcMain.handle('power:allow-sleep', () => {
+  try {
+    if (powerBlockerId != null && powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerSaveBlocker.stop(powerBlockerId);
+      console.log('[POWER] prevent-app-suspension stopped — trip ended');
+    }
+    powerBlockerId = null;
+    return { ok: true, blocking: false };
+  } catch (err) {
+    console.warn('[POWER] allow-sleep failed:', err.message);
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── IP Geolocation Fallback ─────────────────────────────────

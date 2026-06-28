@@ -27,6 +27,7 @@ describe('citationSchema layout', () => {
   it('uses ≤2 columns in every typed section', () => {
     for (const s of citationSchema.sections) {
       if (typeof s === 'function') continue;
+      if (s.kind !== 'section') continue;
       expect(s.columns ?? 1).toBeLessThanOrEqual(2);
     }
   });
@@ -34,7 +35,9 @@ describe('citationSchema layout', () => {
   it('OFFICER NOTES appears before SIGNATURES', () => {
     const titles: string[] = [];
     for (const s of citationSchema.sections) {
-      if (typeof s !== 'function') titles.push(s.title);
+      if (typeof s === 'function') continue;
+      if (s.kind !== 'section') continue;
+      titles.push(s.title);
     }
     const notesIdx = titles.indexOf('OFFICER NOTES');
     const sigIdx = titles.indexOf('SIGNATURES');
