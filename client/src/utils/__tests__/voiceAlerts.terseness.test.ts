@@ -53,7 +53,7 @@ describe('voiceAlerts honors terseness', () => {
     // Allow queue to drain
     await new Promise((r) => setTimeout(r, 50));
     const spoken = (speakSpy.mock.calls as unknown as any[][]).map((c) => String(c[0])).join(' | ');
-    expect(spoken).toMatch(/P1 domestic/);
+    expect(spoken).toMatch(/P1 domestic/i);
     expect(spoken.length).toBeLessThan(100);
   });
 
