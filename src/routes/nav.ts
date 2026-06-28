@@ -363,6 +363,51 @@ nav.put('/trip/:id/cancel', async (c) => {
   }
 });
 
+// ── DELETE /nav/trip/:id — remove a falsely-detected trip record.
+// Auto-detection can log spurious trips (GPS jumps before movement was real).
+// Owner or a privileged role may delete; never an active trip (end it first).
+// Deletion is audited so the dispatch Audit tab keeps a trace.
+const NAV_TRIP_DELETE_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']);
+
+nav.delete('/trip/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string; start_time: string }>(db,
+      'SELECT id, officer_id, status, start_time FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+
+    const isPrivileged = user?.role != null && NAV_TRIP_DELETE_ROLES.has(user.role);
+    if (trip.officer_id !== userId && !isPrivileged) {
+      return c.json({ error: 'Not authorized' }, 403);
+    }
+    if (trip.status === 'active') {
+      return c.json({ error: 'Cannot delete an active trip — end it first' }, 409);
+    }
+
+    await execute(db, 'DELETE FROM nav_trip_log WHERE id = ?', tripId);
+
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        userId, 'DELETE', 'nav_trip', tripId,
+        `Deleted nav trip #${tripId} (start ${trip.start_time}) as false record`);
+    } catch (auditErr) {
+      console.warn('[nav] audit_log insert failed for trip delete:', auditErr);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[nav] DELETE /trip/:id failed:', err);
+    return c.json({ error: 'Failed to delete trip' }, 500);
+  }
+});
+
 // ── GET /nav/trip/history — trip history for this user
 nav.get('/trip/history', async (c) => {
   try {
