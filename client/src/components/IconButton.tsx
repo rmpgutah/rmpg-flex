@@ -1,4 +1,4 @@
-import { forwardRef, ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, ButtonHTMLAttributes, ReactNode, memo } from 'react';
 
 // Icon-only button wrapper. `aria-label` is required at the type level so any
 // consumer that forgets a label fails `tsc --noEmit` (enforced by the deploy
@@ -13,13 +13,13 @@ type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label
   children: ReactNode;
 };
 
-const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
+const IconButton = memo(forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ children, type, ...rest }, ref) => (
     <button ref={ref} type={type ?? 'button'} {...rest}>
       <span aria-hidden="true" style={{ display: 'contents' }}>{children}</span>
     </button>
   )
-);
+));
 
 IconButton.displayName = 'IconButton';
 

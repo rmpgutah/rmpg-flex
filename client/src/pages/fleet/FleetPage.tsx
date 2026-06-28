@@ -1,22 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
-  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
-  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
+  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
-import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
+import FloatingSaveBar from '../../components/FloatingSaveBar';
+import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
 import GaugeRing from './components/GaugeRing';
-import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
+import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetailPanel';
+import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -25,9 +34,9 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
-  FleetVehicle, FleetMaintenance, FleetVehicleStatus,
-  FleetFuelLog, FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
-  FleetPersonnelData,
+  FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
+  FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
+  FleetPersonnelData, FuelType,
 } from '../../types';
 
 // ============================================================
@@ -55,7 +64,7 @@ const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  const exp = new Date(dateStr);
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -70,25 +79,15 @@ function parseEquipment(eq: unknown): string[] {
   return [];
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function FleetPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -98,13 +97,48 @@ export default function FleetPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
+  const vehicleNumberById = useMemo(() => {
+    const m = new Map<string | number, string>();
+    for (const v of vehicles) {
+      m.set(v.id, v.vehicle_number || `#${v.id}`);
+    }
+    return m;
+  }, [vehicles]);
+
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
+  // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis'>('dashboard');
   const [modal, setModal] = useState<ModalMode>('none');
-  const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
-  const [maintForm, setMaintForm] = useState<MaintenanceFormState>(EMPTY_MAINT_FORM);
-  const [fuelForm, setFuelForm] = useState<FuelFormState>(EMPTY_FUEL_FORM);
-  const [inspectionForm, setInspectionForm] = useState<InspectionFormState>(EMPTY_INSPECTION_FORM);
+  const v = useFormDraft<VehicleFormState>({
+    storageKey: 'rmpg_fleet_vehicle_form',
+    defaultValue: EMPTY_VEHICLE_FORM,
+    isActive: modal === 'new_vehicle' || modal === 'edit_vehicle',
+  });
+  const m = useFormDraft<MaintenanceFormState>({
+    storageKey: 'rmpg_fleet_maintenance_form',
+    defaultValue: EMPTY_MAINT_FORM,
+    isActive: modal === 'log_maintenance' || modal === 'edit_maintenance',
+  });
+  const f = useFormDraft<FuelFormState>({
+    storageKey: 'rmpg_fleet_fuel_log_form',
+    defaultValue: EMPTY_FUEL_FORM,
+    isActive: modal === 'log_fuel' || modal === 'edit_fuel',
+  });
+  const i = useFormDraft<InspectionFormState>({
+    storageKey: 'rmpg_fleet_inspection_form',
+    defaultValue: EMPTY_INSPECTION_FORM,
+    isActive: modal === 'new_inspection' || modal === 'edit_inspection',
+  });
+  const vehicleForm = v.form;
+  const setVehicleForm = v.setForm;
+  const maintForm = m.form;
+  const setMaintForm = m.setForm;
+  const fuelForm = f.form;
+  const setFuelForm = f.setForm;
+  const inspectionForm = i.form;
+  const setInspectionForm = i.setForm;
   const [saving, setSaving] = useState(false);
 
   // New feature data
@@ -138,6 +172,55 @@ export default function FleetPage() {
 
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
+
+  // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
+  const [gpsMileage, setGpsMileage] = useState<any>(null);
+  const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
+
+  const fetchGpsMileage = useCallback(async (days = 30) => {
+    if (!selectedId) return;
+    setGpsMileageLoading(true);
+    try {
+      const data = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage?days=${days}`);
+      setGpsMileage(data);
+    } catch (err: any) {
+      if (err?.code !== 'NO_UNIT_ASSIGNED') {
+        addToast('Failed to compute GPS mileage', 'error');
+      }
+    } finally { setGpsMileageLoading(false); }
+  }, [selectedId, addToast]);
+
+  const handleSyncGpsMileage = async () => {
+    if (!selectedId || !gpsMileage?.total_miles) return;
+    setGpsMileageLoading(true);
+    try {
+      const resp = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage`, {
+        method: 'PUT',
+        body: JSON.stringify({ miles_delta: gpsMileage.total_miles }),
+      });
+      addToast(`Odometer updated: ${resp.previous_mileage?.toLocaleString()} → ${resp.new_mileage?.toLocaleString()}`, 'success');
+      if (selectedId) fetchDetail(selectedId);
+      setGpsMileage(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to sync mileage', 'error');
+    } finally { setGpsMileageLoading(false); }
+  };
+
+  // ── Cost-of-ownership state (Costs tab) ──────────────────────
+  const [loans, setLoans] = useState<FleetLoan[]>([]);
+  const [insurancePolicies, setInsurancePolicies] = useState<FleetInsurancePolicy[]>([]);
+  const [accessories, setAccessories] = useState<FleetAccessory[]>([]);
+  const [utilities, setUtilities] = useState<FleetUtilityCost[]>([]);
+  const [otherCosts, setOtherCosts] = useState<FleetOtherCost[]>([]);
+  const [costSubTab, setCostSubTab] = useState<CostSubTab>('loan');
+  const [costModalOpen, setCostModalOpen] = useState(false);
+  const [costCategory, setCostCategory] = useState<CostCategory>('loan');
+  const [costMode, setCostMode] = useState<'create' | 'edit'>('create');
+  const [costInitial, setCostInitial] = useState<CostFormState | null>(null);
+  const [editingCostId, setEditingCostId] = useState<string | number | null>(null);
+  const [savingCost, setSavingCost] = useState(false);
+  const [deletingCost, setDeletingCost] = useState<{ category: CostCategory; record: any } | null>(null);
+  const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
   const [pretripHistory, setPretripHistory] = useState<any[]>([]);
   const [showPretripModal, setShowPretripModal] = useState(false);
   const [pretripForm, setPretripForm] = useState({
@@ -170,7 +253,13 @@ export default function FleetPage() {
     finally { setPretripSaving(false); }
   }, [detail, pretripForm, addToast]);
 
-  useUnsavedChanges(modal !== 'none');
+  // Snapshot form as clean baseline after modal opens and form is populated
+  useEffect(() => {
+    if (modal === 'new_vehicle' || modal === 'edit_vehicle') v.snapshot();
+  }, [modal]);
+
+  // Combined dirty state for any open form
+  const isDirtyAny = v.isDirty || m.isDirty || f.isDirty || i.isDirty;
 
   // ----------------------------------------------------------
   // Data fetching
@@ -215,16 +304,25 @@ export default function FleetPage() {
     setAssignments([]);
     setAnalytics(null);
     setPersonnelData(null);
+    setLoans([]);
+    setInsurancePolicies([]);
+    setAccessories([]);
+    setUtilities([]);
+    setOtherCosts([]);
+    setCostSummary(null);
+    setGpsMileage(null);
   }, [selectedId]);
 
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
+    if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();
-    if (activeTab === 'personnel') fetchPersonnel(selectedId);
+    // Personnel tab renders the shared `assignments` state too — fetch both.
+    if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, activeTab]);
 
@@ -250,15 +348,17 @@ export default function FleetPage() {
 
   const fetchInspections = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetInspection[] }>(`/fleet/${id}/inspections`);
-      setInspections(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetInspection[] | { data: FleetInspection[] }>(`/fleet/${id}/inspections`);
+      setInspections(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load inspections', 'error'); }
   };
 
   const fetchAssignments = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
-      setAssignments(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetAssignment[] | { data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
+      setAssignments(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
@@ -285,7 +385,7 @@ export default function FleetPage() {
     try {
       const q = period ? `?period=${period}` : '';
       const data = await apiFetch<FleetAnalytics>(`/fleet/analytics${q}`);
-      setFleetAnalytics(data);
+      if (data && typeof data === 'object') setFleetAnalytics(data);
     } catch { /* silent - fleet analytics is optional */ }
     finally { setFleetAnalyticsLoading(false); }
   };
@@ -318,12 +418,12 @@ export default function FleetPage() {
 
   const needsService = vehicles.filter(v => {
     if (!v.next_service_due) return false;
-    return new Date(v.next_service_due) <= new Date();
+    return parseTimestamp(v.next_service_due) <= new Date();
   }).length;
 
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
-    const exp = new Date(v.registration_expiry);
+    const exp = parseTimestamp(v.registration_expiry);
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
     return exp <= thirtyDays;
@@ -331,7 +431,7 @@ export default function FleetPage() {
 
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
-    const exp = new Date(v.insurance_expiry);
+    const exp = parseTimestamp(v.insurance_expiry);
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
     return exp <= thirtyDays;
@@ -373,6 +473,7 @@ export default function FleetPage() {
         addToast('Vehicle updated successfully', 'success');
         fetchDetail(selectedId);
       }
+      v.clearDraft();
       setModal('none');
       fetchVehicles({ silent: true });
     } catch (err) {
@@ -390,10 +491,14 @@ export default function FleetPage() {
         description: maintForm.description.trim(),
         mileage_at_service: maintForm.mileage_at_service ? parseInt(maintForm.mileage_at_service, 10) : null,
         cost: maintForm.cost ? parseFloat(maintForm.cost) : null,
+        labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
         performed_at: maintForm.performed_at || nowLocalISO(),
         next_due_date: maintForm.next_due_date || null,
+        next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
+        service_tasks: maintForm.service_tasks.trim() || null,
+        notes: maintForm.notes.trim() || null,
       };
       if (modal === 'edit_maintenance' && editingMaintenanceId) {
         await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -402,6 +507,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/maintenance`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Maintenance logged successfully', 'success');
       }
+      m.clearDraft();
       setModal('none');
       setEditingMaintenanceId(null);
       fetchDetail(selectedId);
@@ -424,6 +530,10 @@ export default function FleetPage() {
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
+        is_full_tank: fuelForm.is_full_tank ? 1 : 0,
+        payment_method: fuelForm.payment_method.trim() || null,
+        driver_name: fuelForm.driver_name.trim() || null,
+        location: fuelForm.location.trim() || null,
       };
       if (modal === 'edit_fuel' && editingFuelId) {
         await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -432,6 +542,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Fuel entry logged successfully', 'success');
       }
+      f.clearDraft();
       setModal('none');
       setEditingFuelId(null);
       fetchFuelLogs(selectedId);
@@ -442,13 +553,13 @@ export default function FleetPage() {
   };
 
   const handleSaveInspection = async () => {
-    if (!inspectionForm.inspector_name.trim()) { addToast('Inspector name is required', 'warning'); return; }
+    if (!(inspectionForm.inspector_name || '').trim()) { addToast('Inspector name is required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);
     try {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
-        inspector_name: inspectionForm.inspector_name.trim(),
+        inspector_name: (inspectionForm.inspector_name || '').trim(),
         inspection_date: inspectionForm.inspection_date,
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
@@ -462,6 +573,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/inspections`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Inspection submitted successfully', 'success');
       }
+      i.clearDraft();
       setModal('none');
       setEditingInspectionId(null);
       fetchInspections(selectedId);
@@ -507,7 +619,9 @@ export default function FleetPage() {
       const officerName = personnelData?.officer?.full_name;
       await apiFetch(`/fleet/${selectedId}/personnel-notes`, {
         method: 'POST',
-        body: JSON.stringify({ note, officer_id: officerId || null, officer_name: officerName || null }),
+        // Handler INSERTs `content`; send both so the note text persists
+        // (live fleet_personnel_notes has both `content` and `note` columns).
+        body: JSON.stringify({ content: note, note, officer_id: officerId || null, officer_name: officerName || null }),
       });
       addToast('Note added', 'success');
       fetchPersonnel(selectedId);
@@ -600,10 +714,20 @@ export default function FleetPage() {
     setModal('log_maintenance');
   };
   const openLogFuel = () => {
+    // Carry over context (station / payment / driver / fuel type / location)
+    // from the most recent fill — amounts & odometer stay fresh per entry.
+    const last: any = Array.isArray(fuelLogs) && fuelLogs.length ? fuelLogs[0] : null;
     setFuelForm({
       ...EMPTY_FUEL_FORM,
       fuel_date: nowLocalISO(),
       odometer_reading: detail?.current_mileage ? String(detail.current_mileage) : '',
+      ...(last ? {
+        fuel_type: (last.fuel_type as FuelType) || 'regular',
+        station: last.station ?? '',
+        payment_method: last.payment_method ?? '',
+        driver_name: last.driver_name ?? '',
+        location: last.location ?? '',
+      } : {}),
     });
     setModal('log_fuel');
   };
@@ -617,16 +741,267 @@ export default function FleetPage() {
   };
 
   // ── Edit openers (pre-populate form with existing record data) ──
+  // ── Cost-of-ownership (Costs tab) data + handlers ────────────
+  // Endpoint suffix per category. Insurance pre-existed; loans/accessories/
+  // utilities were added this pass. GET returns a bare array per category.
+  const COST_PATH: Record<CostCategory, string> = {
+    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities', other: 'other-costs',
+  };
+
+  // Recompute the cost-of-ownership summary client-side from the four lists
+  // plus the fuel/maintenance totals we already have, so the TCO header
+  // reflects live edits without a dedicated summary endpoint.
+  const recomputeCostSummary = useCallback((
+    ln: FleetLoan[], ins: FleetInsurancePolicy[], acc: FleetAccessory[], util: FleetUtilityCost[],
+    others: FleetOtherCost[], budgets: FleetCostBudget[],
+    monthlyAverages?: { fuel_monthly?: unknown; maintenance_monthly?: unknown } | null,
+  ) => {
+    const num = (v: unknown): number => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+      if (typeof v === 'string') { const p = parseFloat(v); return Number.isFinite(p) ? p : 0; }
+      return 0;
+    };
+    // Normalize a recurring cost to a monthly figure for the commitment stats.
+    // one_time → 0 (excluded from run-rate); unknown frequency → monthly.
+    const perMonth = (amount: number, freq: unknown): number => {
+      switch (String(freq)) {
+        case 'annual': return amount / 12;
+        case 'semi_annual': return amount / 6;
+        case 'quarterly': return amount / 3;
+        case 'one_time': return 0;
+        default: return amount; // monthly
+      }
+    };
+    const fuelTotal = num(fuelSummary?.total_cost);
+    const maintTotal = maintenance.reduce((s, m) => s + num((m as any).cost), 0);
+    const loanTotal = ln.reduce((s, l) => s + num((l as any).original_amount), 0);
+    const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? (p as any).premium_amount), 0);
+    const accTotal = acc.reduce((s, a) => s + num((a as any).cost), 0);
+    const utilTotal = util.reduce((s, u) => s + num((u as any).cost_amount), 0);
+    const otherTotal = others.reduce((s, o) => s + num((o as any).amount), 0);
+    const monthlyLoan = ln.filter((l) => String((l as any).status ?? 'active') === 'active').reduce((s, l) => s + num((l as any).monthly_payment), 0);
+    const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? (p as any).premium_amount), (p as any).premium_frequency), 0);
+    const monthlyUtil = util.reduce((s, u) => s + perMonth(num((u as any).cost_amount), (u as any).cost_frequency), 0);
+    const monthlyOther = others
+      .filter((o) => String((o as any).status ?? 'active') !== 'cancelled' && String((o as any).status ?? 'active') !== 'inactive')
+      .reduce((s, o) => s + perMonth(num((o as any).amount), (o as any).frequency), 0);
+    const monthlyTotal = monthlyLoan + monthlyIns + monthlyUtil + monthlyOther;
+    const totalMiles = num(costPerMile?.total_miles);
+    const lifetime = fuelTotal + maintTotal + loanTotal + insTotal + accTotal + utilTotal + otherTotal;
+
+    // Monthly "actual" per budgetable category. Recurring categories use their
+    // normalized monthly figure. Fuel/maintenance use a TRUE trailing-period
+    // monthly average from the /monthly-cost-averages endpoint (total ÷ months
+    // actually spanned), falling back to 0 when that fetch failed — never a
+    // misleading lifetime/12. Accessories are one-off purchases (lifetime).
+    // Every value is coerced through num() so a sentinel "None" can't crash it.
+    const actualByCat: Record<string, number> = {
+      loan: monthlyLoan,
+      insurance: monthlyIns,
+      utility: monthlyUtil,
+      other: monthlyOther,
+      accessory: accTotal,
+      fuel: num(monthlyAverages?.fuel_monthly),
+      maintenance: num(monthlyAverages?.maintenance_monthly),
+    };
+    const budgetMap: Record<string, { budget: number; actual: number; over: boolean }> = {};
+    for (const b of budgets) {
+      const cat = String((b as any).category ?? '');
+      const budget = num((b as any).monthly_budget);
+      const actual = Math.round((actualByCat[cat] || 0) * 100) / 100;
+      budgetMap[cat] = { budget, actual, over: actual > budget && budget > 0 };
+    }
+
+    setCostSummary({
+      total_lifetime: Math.round(lifetime * 100) / 100,
+      cost_per_mile: totalMiles > 0 ? Math.round((lifetime / totalMiles) * 1000) / 1000 : null,
+      monthly_commitment: {
+        loan: Math.round(monthlyLoan * 100) / 100,
+        insurance: Math.round(monthlyIns * 100) / 100,
+        utility: Math.round(monthlyUtil * 100) / 100,
+        other: Math.round(monthlyOther * 100) / 100,
+        total: Math.round(monthlyTotal * 100) / 100,
+      },
+      projected_annual: Math.round(monthlyTotal * 12 * 100) / 100,
+      categories: {
+        fuel: Math.round(fuelTotal * 100) / 100,
+        maintenance: Math.round(maintTotal * 100) / 100,
+        loans: Math.round(loanTotal * 100) / 100,
+        insurance: Math.round(insTotal * 100) / 100,
+        accessories: Math.round(accTotal * 100) / 100,
+        utilities: Math.round(utilTotal * 100) / 100,
+        other: Math.round(otherTotal * 100) / 100,
+      },
+      budgets: budgetMap,
+    } as FleetCostSummary);
+  }, [fuelSummary, maintenance, costPerMile]);
+
+  const fetchCosts = useCallback(async (id: string | number) => {
+    try {
+      const [ln, ins, acc, util, others, budgets, monthlyAvgs] = await Promise.all([
+        apiFetch<FleetLoan[]>(`/fleet/${id}/loans`).catch(() => []),
+        apiFetch<FleetInsurancePolicy[]>(`/fleet/${id}/insurance`).catch(() => []),
+        apiFetch<FleetAccessory[]>(`/fleet/${id}/accessories`).catch(() => []),
+        apiFetch<FleetUtilityCost[]>(`/fleet/${id}/utilities`).catch(() => []),
+        apiFetch<FleetOtherCost[]>(`/fleet/${id}/other-costs`).catch(() => []),
+        apiFetch<FleetCostBudget[]>(`/fleet/${id}/cost-budgets`).catch(() => []),
+        // True trailing-period fuel/maintenance monthly averages for Budget vs.
+        // Actual. Null on failure → recompute falls back to 0 actuals.
+        apiFetch<{ fuel_monthly?: number; maintenance_monthly?: number }>(`/fleet/${id}/monthly-cost-averages`).catch(() => null),
+      ]);
+      const lnA = Array.isArray(ln) ? ln : [];
+      const insA = Array.isArray(ins) ? ins : [];
+      const accA = Array.isArray(acc) ? acc : [];
+      const utilA = Array.isArray(util) ? util : [];
+      const otherA = Array.isArray(others) ? others : [];
+      const budgetA = Array.isArray(budgets) ? budgets : [];
+      const monthlyAvgsObj = (monthlyAvgs && typeof monthlyAvgs === 'object') ? monthlyAvgs : null;
+      setLoans(lnA); setInsurancePolicies(insA); setAccessories(accA); setUtilities(utilA);
+      setOtherCosts(otherA);
+      recomputeCostSummary(lnA, insA, accA, utilA, otherA, budgetA, monthlyAvgsObj);
+      // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
+      if (!costPerMile) loadCostPerMile(id);
+    } catch (err) {
+      console.error('Failed to fetch cost data:', err);
+    }
+  }, [recomputeCostSummary, costPerMile]);
+
+  // Map a saved DB record back into the modal's CostFormState for editing.
+  const costRecordToForm = (category: CostCategory, r: any): CostFormState => {
+    const s = (v: unknown) => (v == null ? '' : String(v));
+    const base = { ...EMPTY_COST_FORM, notes: s(r.notes) };
+    switch (category) {
+      case 'loan': return { ...base,
+        lender: s(r.lender), original_amount: s(r.original_amount), current_balance: s(r.current_balance),
+        monthly_payment: s(r.monthly_payment), interest_rate: s(r.interest_rate), term_months: s(r.term_months),
+        start_date: s(r.start_date), payoff_date: s(r.payoff_date), loan_status: (r.status || 'active') };
+      case 'insurance': return { ...base,
+        carrier: s(r.carrier), policy_number: s(r.policy_number), coverage_type: s(r.coverage_type),
+        premium_amount: s(r.premium ?? r.premium_amount), premium_frequency: (r.premium_frequency || 'monthly'),
+        effective_from: s(r.effective_date ?? r.effective_from), expires_at: s(r.expiry_date ?? r.expires_at),
+        deductible: s(r.deductible), liability_limit: s(r.liability_limit ?? r.coverage_amount),
+        insurance_status: (r.status || 'active') };
+      case 'accessory': return { ...base,
+        name: s(r.name), accessory_category: s(r.category), installed_date: s(r.installed_date),
+        removed_date: s(r.removed_date), cost: s(r.cost), vendor: s(r.vendor),
+        warranty_until: s(r.warranty_expiry ?? r.warranty_until), serial_number: s(r.serial_number),
+        accessory_status: (r.status || 'installed') };
+      case 'utility': return { ...base,
+        utility_category: s(r.category), provider: s(r.provider), cost_amount: s(r.cost_amount),
+        cost_frequency: (r.cost_frequency || 'monthly'), period_start: s(r.period_start), period_end: s(r.period_end) };
+      case 'other': return { ...base,
+        other_cost_type: s(r.cost_type), other_provider: s(r.provider), other_amount: s(r.amount),
+        other_frequency: (r.frequency || 'one_time'), other_incurred_date: s(r.incurred_date),
+        other_period_end: s(r.period_end), other_status: (r.status || 'active') };
+    }
+  };
+
+  // Auto-fill: seed a NEW cost entry with the "context" fields (who/how — not
+  // amounts or dates) from the most recent entry of that category, so logging
+  // a recurring cost doesn't mean re-typing the lender/carrier/provider every
+  // time. Returns null when there's no prior record (→ empty form).
+  const buildCostCarryOver = (category: CostCategory): CostFormState | null => {
+    const s = (v: unknown) => (v == null ? '' : String(v));
+    const latest = (arr: any[]): any | null => (Array.isArray(arr) && arr.length ? arr[0] : null);
+    switch (category) {
+      case 'loan': {
+        const r = latest(loans); if (!r) return null;
+        return { ...EMPTY_COST_FORM, lender: s(r.lender) };
+      }
+      case 'insurance': {
+        const r = latest(insurancePolicies); if (!r) return null;
+        return { ...EMPTY_COST_FORM, carrier: s(r.carrier), coverage_type: s(r.coverage_type),
+          premium_frequency: (r.premium_frequency || 'monthly') };
+      }
+      case 'accessory': {
+        const r = latest(accessories); if (!r) return null;
+        return { ...EMPTY_COST_FORM, accessory_category: s(r.category), vendor: s(r.vendor) };
+      }
+      case 'utility': {
+        const r = latest(utilities); if (!r) return null;
+        return { ...EMPTY_COST_FORM, utility_category: s(r.category), provider: s(r.provider),
+          cost_frequency: (r.cost_frequency || 'monthly') };
+      }
+      case 'other': {
+        const r = latest(otherCosts); if (!r) return null;
+        return { ...EMPTY_COST_FORM, other_provider: s(r.provider),
+          other_frequency: (r.frequency || 'one_time') };
+      }
+    }
+    return null;
+  };
+
+  const handleSaveBudgets = async (rows: { category: string; monthly_budget: number }[]) => {
+    if (selectedId == null) return;
+    try {
+      await apiFetch(`/fleet/${selectedId}/cost-budgets`, { method: 'PUT', body: JSON.stringify({ budgets: rows }) });
+      addToast('Budgets saved', 'success');
+      fetchCosts(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save budgets', 'error');
+    }
+  };
+
+  const handleAddCost = (category: CostCategory) => {
+    setCostCategory(category); setCostMode('create'); setCostInitial(buildCostCarryOver(category));
+    setEditingCostId(null); setCostModalOpen(true);
+  };
+  const handleEditCost = (category: CostCategory, record: any) => {
+    setCostCategory(category); setCostMode('edit'); setCostInitial(costRecordToForm(category, record));
+    setEditingCostId(record.id); setCostModalOpen(true);
+  };
+  const handleDeleteCost = (category: CostCategory, record: any) => {
+    setDeletingCost({ category, record });
+  };
+  const confirmDeleteCost = async () => {
+    if (!deletingCost || selectedId == null) return;
+    const { category, record } = deletingCost;
+    try {
+      await apiFetch(`/fleet/${COST_PATH[category]}/${record.id}`, { method: 'DELETE' });
+      addToast('Entry deleted', 'success');
+      setDeletingCost(null);
+      fetchCosts(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete entry', 'error');
+    }
+  };
+  const handleSaveCost = async (payload: Record<string, any>) => {
+    if (selectedId == null) return;
+    setSavingCost(true);
+    try {
+      if (costMode === 'edit' && editingCostId != null) {
+        await apiFetch(`/fleet/${COST_PATH[costCategory]}/${editingCostId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Entry updated', 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/${COST_PATH[costCategory]}`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Entry added', 'success');
+      }
+      setCostModalOpen(false);
+      setEditingCostId(null);
+      fetchCosts(selectedId);
+    } catch (err) {
+      // Re-throw so the modal surfaces the error inline (its submit() catches).
+      throw err instanceof Error ? err : new Error('Save failed');
+    } finally { setSavingCost(false); }
+  };
+
   const openEditFuel = (log: FleetFuelLog) => {
     setFuelForm({
       fuel_date: toDatetimeLocal(log.fuel_date),
-      gallons: String(log.gallons),
+      gallons: log.gallons != null ? String(log.gallons) : '',
       cost_per_gallon: log.cost_per_gallon != null ? String(log.cost_per_gallon) : '',
       total_cost: log.total_cost != null ? String(log.total_cost) : '',
-      odometer_reading: log.odometer_reading != null ? String(log.odometer_reading) : '',
+      odometer_reading: (log as any).odometer != null ? String((log as any).odometer)
+        : (log.odometer_reading != null ? String(log.odometer_reading) : ''),
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
+      // Enhanced fields — legacy rows predate these; default full tank so
+      // their MPG still counts, blanks for the rest.
+      is_full_tank: (log as any).is_full_tank == null ? true : !!(log as any).is_full_tank,
+      payment_method: (log as any).payment_method || '',
+      driver_name: (log as any).driver_name || '',
+      location: (log as any).location || '',
     });
     setEditingFuelId(log.id);
     setModal('edit_fuel');
@@ -634,27 +1009,41 @@ export default function FleetPage() {
 
   const openEditMaintenance = (record: FleetMaintenance) => {
     setMaintForm({
-      type: record.type,
-      description: record.description,
+      type: record.type || '',
+      description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
+      labor_cost: (record as any).labor_cost != null ? String((record as any).labor_cost) : '',
       vendor: record.vendor || '',
       performed_by: record.performed_by || '',
       performed_at: toDatetimeLocal(record.performed_at),
       next_due_date: record.next_due_date ? toDatetimeLocal(record.next_due_date) : '',
+      next_due_mileage: (record as any).next_due_mileage != null ? String((record as any).next_due_mileage) : '',
+      service_tasks: (record as any).service_tasks || '',
+      notes: (record as any).notes || '',
     });
     setEditingMaintenanceId(record.id);
     setModal('edit_maintenance');
   };
 
   const openEditInspection = (inspection: FleetInspection) => {
+    // Defensive: mobile/field-app inspections may have a null inspector and a
+    // simplified checklist shape ({item,result,note}) — normalize both so the
+    // form never renders against null (was a page-crashing TypeError).
+    const rawItems = Array.isArray(inspection.items) ? inspection.items : [];
+    const items = rawItems.map((i: any) => ({
+      category: i.category ?? 'FIELD',
+      item: i.item ?? i.label ?? '',
+      status: i.status ?? (i.result === 'fail' ? 'fail' : 'pass'),
+      notes: i.notes ?? i.note ?? '',
+    }));
     setInspectionForm({
-      inspection_type: inspection.inspection_type,
-      inspector_name: inspection.inspector_name,
+      inspection_type: inspection.inspection_type ?? 'pre_trip',
+      inspector_name: inspection.inspector_name ?? '',
       inspection_date: toDatetimeLocal(inspection.inspection_date),
       mileage: inspection.mileage != null ? String(inspection.mileage) : '',
-      overall_result: inspection.overall_result,
-      items: inspection.items.map(i => ({ ...i })),
+      overall_result: inspection.overall_result ?? 'pass',
+      items,
       notes: inspection.notes || '',
     });
     setEditingInspectionId(inspection.id);
@@ -712,14 +1101,46 @@ export default function FleetPage() {
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowPretripModal(false); setEditingMaintenanceId(null); }
+      if (e.key === 'Escape') { setShowPretripModal(false); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Active save/cancel for FloatingSaveBar
+  const activeSaveHandler = () => {
+    if (modal === 'new_vehicle' || modal === 'edit_vehicle') handleSaveVehicle();
+    else if (modal === 'log_maintenance' || modal === 'edit_maintenance') handleSaveMaintenance();
+    else if (modal === 'log_fuel' || modal === 'edit_fuel') handleSaveFuel();
+    else if (modal === 'new_inspection' || modal === 'edit_inspection') handleSaveInspection();
+  };
+
+  const activeCancelHandler = () => {
+    v.clearDraft(); m.clearDraft(); f.clearDraft(); i.clearDraft();
+    setModal('none');
+  };
+
+  // Right-click menu for a vehicle list row. Acts on the right-clicked row,
+  // not the current selection (Open selects it; Delete opens the confirm).
+  const buildVehicleMenu = (vehicle: FleetVehicle): ContextMenuItem[] => {
+    const label = `${vehicle.vehicle_number}${[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).length ? ' — ' + [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : ''}`;
+    return [
+      cm.action('Open vehicle', () => setSelectedId(vehicle.id), { icon: <Eye size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit #', vehicle.vehicle_number),
+      ...(vehicle.plate_number ? [cm.copy('Copy plate', vehicle.plate_number, <Tag size={12} />)] : []),
+      ...(vehicle.vin ? [cm.copy('Copy VIN', vehicle.vin)] : []),
+      cm.copyId(vehicle.id),
+      ...(isAdmin && !showArchived
+        ? [cm.separator(), cm.action('Delete', () => setDeletingVehicleId(vehicle.id), { danger: true, icon: <Trash2 size={12} /> })]
+        : []),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
+      <UnsavedChangesGuard hasUnsavedChanges={isDirtyAny} />
+      <FloatingSaveBar visible={isDirtyAny} onSave={activeSaveHandler} onCancel={activeCancelHandler} isSaving={saving} saveLabel="Save" />
 
       {/* ====== FLEET STATS DASHBOARD ====== */}
       <div className="flex-shrink-0 border-b border-rmpg-700 bg-surface-sunken">
@@ -728,7 +1149,7 @@ export default function FleetPage() {
           <span className="toolbar-separator" />
           <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3">
             <Car className="w-3 h-3" />
-            <span>Total: <strong className="text-white">{vehicles.length}</strong></span>
+            <span>Total: <strong className="text-rmpg-100">{vehicles.length}</strong></span>
             <span className="text-rmpg-600">|</span>
             <span>Assigned: <strong className="text-amber-400">{assignedVehicles}</strong></span>
           </div>
@@ -762,9 +1183,9 @@ export default function FleetPage() {
         </PanelTitleBar>
 
         {/* Stats Bar — compact inline row */}
-        <div className="px-4 py-2 flex items-center gap-4" role="group" aria-label="Fleet statistics">
+        <div className={`py-2 flex items-center gap-4 ${isMobile ? 'px-2 overflow-x-auto scrollbar-dark' : 'px-4'}`} role="group" aria-label="Fleet statistics">
           {/* Status Gauges */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {VEHICLE_STATUSES.map(({ value, label }) => (
               <button type="button"
                 key={value}
@@ -814,10 +1235,10 @@ export default function FleetPage() {
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
             <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
-              <DollarSign className="w-3.5 h-3.5 text-gray-400" />
+              <DollarSign className="w-3.5 h-3.5 text-rmpg-400" />
               <span className="text-rmpg-400">Costs:</span>
-              <span className="font-bold text-gray-400">
-                {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
+              <span className="font-bold text-rmpg-400">
+                {fleetAnalytics?.fleet_summary ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>
             <div className="flex items-center gap-1.5" title="Inspections Failing">
@@ -861,9 +1282,9 @@ export default function FleetPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- LEFT PANEL: Vehicle List ---- */}
-        <div className={`flex flex-col bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
+        <div className={`flex flex-col min-h-0 bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
-            <select
+            <select id="ff-fleetpage-0"
               className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -875,7 +1296,7 @@ export default function FleetPage() {
             </select>
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-              <input
+              <input id="ff-fleetpage-1"
                 className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
                 placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
@@ -884,7 +1305,7 @@ export default function FleetPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Fleet vehicles">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Fleet vehicles">
             {filtered.length === 0 && (
               <div className="text-center py-12">
                 <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
@@ -912,6 +1333,7 @@ export default function FleetPage() {
                   }`}
                   style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
+                  onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
                   aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2.5">
@@ -924,12 +1346,12 @@ export default function FleetPage() {
                       <Car className="w-4 h-4" style={{ color: statusColor }} />
                       {hasAlert && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                       {!hasAlert && hasWarning && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                     </div>
@@ -980,7 +1402,7 @@ export default function FleetPage() {
                       {insStatus === 'expiring' && <span className="text-[8px] text-amber-400">INS SOON</span>}
                       {/* Maintenance due alert with days count */}
                       {v.next_service_due && (() => {
-                        const daysUntil = Math.ceil((new Date(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const daysUntil = Math.ceil((parseTimestamp(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
                         if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
                         return null;
@@ -1018,27 +1440,62 @@ export default function FleetPage() {
         {/* ---- RIGHT PANEL ---- */}
         <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden bg-surface-raised`}>
           {selectedId == null || !detail ? (
-            // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
-            <div className="flex-1 overflow-y-auto">
-              <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
-              {fleetAnalytics ? (
-                <div className="px-3 pb-3">
-                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center">
-                    <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-                    <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
-                    <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
-                  </div>
-                </div>
-              )}
+            // Fleet-wide: view mode toggle (dashboard vs analysis forms)
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div className="flex border-b border-subtle bg-surface-sunken flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('dashboard')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'dashboard' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'dashboard' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('analysis')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1"
+                  style={{
+                    color: viewMode === 'analysis' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'analysis' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  <FileText size={10} /> Analysis Reports
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                {viewMode === 'dashboard' ? (
+                  <>
+                    <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
+                    {fleetAnalytics ? (
+                      <div className="px-3 pb-3">
+                        <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="text-center">
+                          <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                          <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
+                          <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <FleetAnalysisFormsTab
+                    vehicles={vehicles}
+                    vehicleNumberById={vehicleNumberById}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <>
             {isMobile && (
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1055,6 +1512,18 @@ export default function FleetPage() {
               personnelLoading={personnelLoading}
               activeTab={activeTab}
               onTabChange={setActiveTab}
+              loans={loans}
+              insurancePolicies={insurancePolicies}
+              accessories={accessories}
+              utilities={utilities}
+              otherCosts={otherCosts}
+              costSummary={costSummary}
+              costSubTab={costSubTab}
+              onCostSubTabChange={setCostSubTab}
+              onAddCost={handleAddCost}
+              onEditCost={handleEditCost}
+              onDeleteCost={handleDeleteCost}
+              onSaveBudgets={handleSaveBudgets}
               onEditVehicle={openEditVehicle}
               onLogMaintenance={openLogMaintenance}
               onLogFuel={openLogFuel}
@@ -1074,6 +1543,10 @@ export default function FleetPage() {
               onUnarchiveVehicle={handleUnarchiveVehicle}
               onDeleteVehicle={() => setDeletingVehicleId(selectedId)}
               isArchived={showArchived}
+              gpsMileage={gpsMileage}
+              gpsMileageLoading={gpsMileageLoading}
+              onFetchGpsMileage={fetchGpsMileage}
+              onSyncGpsMileage={handleSyncGpsMileage}
               onClose={() => { setSelectedId(null); setDetail(null); }}
             />
             </>
@@ -1088,8 +1561,11 @@ export default function FleetPage() {
         form={vehicleForm}
         onChange={setVehicleForm}
         onSave={handleSaveVehicle}
-        onClose={() => setModal('none')}
+        onClose={() => { v.clearDraft(); setModal('none'); }}
         saving={saving}
+        isDirty={v.isDirty}
+        draftRestored={v.wasRestored}
+        onDiscardDraft={v.clearDraft}
       />
       <MaintenanceFormModal
         isOpen={modal === 'log_maintenance' || modal === 'edit_maintenance'}
@@ -1097,8 +1573,11 @@ export default function FleetPage() {
         form={maintForm}
         onChange={setMaintForm}
         onSave={handleSaveMaintenance}
-        onClose={() => { setModal('none'); setEditingMaintenanceId(null); }}
+        onClose={() => { m.clearDraft(); setModal('none'); setEditingMaintenanceId(null); }}
         saving={saving}
+        isDirty={m.isDirty}
+        draftRestored={m.wasRestored}
+        onDiscardDraft={m.clearDraft}
       />
       <FuelLogModal
         isOpen={modal === 'log_fuel' || modal === 'edit_fuel'}
@@ -1106,8 +1585,11 @@ export default function FleetPage() {
         form={fuelForm}
         onChange={setFuelForm}
         onSave={handleSaveFuel}
-        onClose={() => { setModal('none'); setEditingFuelId(null); }}
+        onClose={() => { f.clearDraft(); setModal('none'); setEditingFuelId(null); }}
         saving={saving}
+        isDirty={f.isDirty}
+        draftRestored={f.wasRestored}
+        onDiscardDraft={f.clearDraft}
       />
       <InspectionFormModal
         isOpen={modal === 'new_inspection' || modal === 'edit_inspection'}
@@ -1115,8 +1597,34 @@ export default function FleetPage() {
         form={inspectionForm}
         onChange={setInspectionForm}
         onSave={handleSaveInspection}
-        onClose={() => { setModal('none'); setEditingInspectionId(null); }}
+        onClose={() => { i.clearDraft(); setModal('none'); setEditingInspectionId(null); }}
         saving={saving}
+        isDirty={i.isDirty}
+        draftRestored={i.wasRestored}
+        onDiscardDraft={i.clearDraft}
+      />
+
+      {/* Cost-of-ownership form modal */}
+      <FleetCostFormModal
+        isOpen={costModalOpen}
+        category={costCategory}
+        mode={costMode}
+        initial={costInitial}
+        onSave={handleSaveCost}
+        onClose={() => { setCostModalOpen(false); setEditingCostId(null); }}
+        saving={savingCost}
+      />
+
+      {/* Delete Cost Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingCost !== null}
+        onClose={() => setDeletingCost(null)}
+        onConfirm={confirmDeleteCost}
+        title="Delete Cost Entry"
+        message={`Delete this ${deletingCost?.category} entry? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Vehicle Confirmation */}
@@ -1136,7 +1644,7 @@ export default function FleetPage() {
         onClose={() => setDeletingFuel(null)}
         onConfirm={handleDeleteFuel}
         title="Delete Fuel Log"
-        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? new Date(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1158,7 +1666,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? new Date(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1166,11 +1674,11 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+              <h3 className="text-sm font-bold text-rmpg-100">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
+              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
               {[
@@ -1185,8 +1693,8 @@ export default function FleetPage() {
                 { key: 'interior_ok', label: 'Interior Condition' },
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
-                <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input
+                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                  <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}
                     onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
@@ -1196,7 +1704,7 @@ export default function FleetPage() {
                   <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
                 </label>
               ))}
-              <textarea
+              <RichTextArea
                 value={pretripForm.notes}
                 onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
                 className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"
@@ -1215,19 +1723,19 @@ export default function FleetPage() {
 
       {/* Feature 20: Cost Per Mile Display */}
       {costPerMile && (
-        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+        <div className="fixed bottom-16 right-4 left-4 md:left-auto z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-auto md:w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
-            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+            <h4 className="text-sm font-bold text-rmpg-100">Cost Analysis: {costPerMile.vehicle_number}</h4>
+            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-rmpg-100">&times;</button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <div className="text-rmpg-400">Fuel Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Maint Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Total Cost</div>

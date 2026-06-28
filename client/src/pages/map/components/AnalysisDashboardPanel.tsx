@@ -67,7 +67,7 @@ function shiftColor(shift: string): string {
   if (s.includes('day')) return '#d4a017';
   if (s.includes('swing')) return '#888888';
   if (s.includes('night') || s.includes('grave')) return '#a855f7';
-  return '#666666';
+  return 'var(--rmpg-500)';
 }
 
 function shiftBg(shift: string): string {
@@ -102,13 +102,13 @@ export default function AnalysisDashboardPanel({
         width: 320,
         maxHeight: 'calc(100dvh - 160px)',
         background: '#0a0a0a',
-        border: '1px solid #282828',
+        border: '1px solid var(--border-subtle)',
       }}
     >
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -122,7 +122,7 @@ export default function AnalysisDashboardPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="p-1 rounded hover:bg-[#181818] transition-colors duration-150"
+            className="p-1 rounded hover:bg-surface-raised transition-colors duration-150"
             title="Refresh analysis"
             aria-label="Refresh analysis data"
           >
@@ -133,7 +133,7 @@ export default function AnalysisDashboardPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-[#181818] transition-colors duration-150"
+            className="p-1 rounded hover:bg-surface-raised transition-colors duration-150"
             title="Close panel"
             aria-label="Close analysis dashboard"
           >
@@ -143,7 +143,7 @@ export default function AnalysisDashboardPanel({
       </div>
 
       {/* ── Scrollable body ────────────────────────────────── */}
-      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {loading && !data ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={18} className="animate-spin text-purple-400" />
@@ -166,7 +166,7 @@ export default function AnalysisDashboardPanel({
             </div>
 
             {/* ── Section 2: Overlap Zones ─────────────────── */}
-            {data.overlapZones.count > 0 && (
+            {(data.overlapZones?.count ?? 0) > 0 && (
               <SectionBlock
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
@@ -175,13 +175,13 @@ export default function AnalysisDashboardPanel({
                   Locations flagged as both safety zones and prediction hotspots
                 </p>
                 <div className="space-y-1">
-                  {data.overlapZones.locations.map((loc, i) => (
+                  {(data.overlapZones?.locations ?? []).map((loc, i) => (
                     <button type="button"
                       key={i}
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-surface-raised/50 transition-all duration-150 active:scale-[0.97] group"
                       style={{
-                        background: '#050505',
+                        background: 'var(--surface-overlay)',
                         borderLeft: `2px solid ${loc.safetyRisk === 'high' ? '#ef4444' : '#f59e0b'}`,
                       }}
                     >
@@ -199,7 +199,7 @@ export default function AnalysisDashboardPanel({
                           >
                             {loc.safetyRisk}
                           </span>
-                          <span className="text-[9px] text-gray-400 font-mono">
+                          <span className="text-[9px] text-rmpg-400 font-mono">
                             Score: {loc.predictionScore}%
                           </span>
                         </div>
@@ -217,7 +217,7 @@ export default function AnalysisDashboardPanel({
               </SectionBlock>
             )}
 
-            {data.overlapZones.count === 0 && (
+            {(data.overlapZones?.count ?? 0) === 0 && (
               <SectionBlock
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
@@ -229,17 +229,17 @@ export default function AnalysisDashboardPanel({
             )}
 
             {/* ── Section 3: Repeat Addresses ─────────────── */}
-            {data.repeatInRiskZones.count > 0 ? (
+            {(data.repeatInRiskZones?.count ?? 0) > 0 ? (
               <SectionBlock
                 icon={<MapPin size={10} className="text-orange-400" />}
                 title="Chronic Locations in Risk Zones"
               >
                 <div className="space-y-1">
-                  {data.repeatInRiskZones.addresses.map((addr, i) => (
+                  {(data.repeatInRiskZones?.addresses ?? []).map((addr, i) => (
                     <div
                       key={i}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-sm"
-                      style={{ background: '#050505' }}
+                      style={{ background: 'var(--surface-overlay)' }}
                     >
                       <div className="flex-1 min-w-0">
                         <span
@@ -290,7 +290,7 @@ export default function AnalysisDashboardPanel({
               <div className="space-y-1.5">
                 <div
                   className="w-full h-3 rounded-sm overflow-hidden"
-                  style={{ background: '#050505' }}
+                  style={{ background: 'var(--surface-overlay)' }}
                 >
                   <div
                     className="h-full rounded-sm transition-all duration-500"
@@ -338,19 +338,38 @@ export default function AnalysisDashboardPanel({
                 <div className="flex items-center gap-3">
                   <div>
                     <span className="text-[8px] text-rmpg-500 font-mono uppercase block">This week</span>
-                    <span className="text-[11px] text-white font-mono font-bold tabular-nums">
+                    <span className="text-[11px] text-rmpg-100 font-mono font-bold tabular-nums">
                       {data.shiftTrend.currentPeriodCalls}
                     </span>
                     <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                   <div>
                     <span className="text-[8px] text-rmpg-500 font-mono uppercase block">Last week</span>
-                    <span className="text-[11px] text-white font-mono font-bold tabular-nums">
+                    <span className="text-[11px] text-rmpg-100 font-mono font-bold tabular-nums">
                       {data.shiftTrend.previousPeriodCalls}
                     </span>
                     <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                 </div>
+                {/* Mini comparison bars — this week (gold) vs last week (gray). */}
+                {(() => {
+                  const cur = data.shiftTrend.currentPeriodCalls;
+                  const prev = data.shiftTrend.previousPeriodCalls;
+                  const max = Math.max(cur, prev, 1);
+                  const Bar = ({ v, color }: { v: number; color: string }) => (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 flex-1 rounded-sm overflow-hidden" style={{ background: 'var(--surface-base)' }}>
+                        <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${Math.round((v / max) * 100)}%`, background: color }} />
+                      </div>
+                    </div>
+                  );
+                  return (
+                    <div className="space-y-1 pt-0.5">
+                      <Bar v={cur} color="#d4a017" />
+                      <Bar v={prev} color="#555555" />
+                    </div>
+                  );
+                })()}
                 <div className="flex items-center gap-1">
                   {data.shiftTrend.changePercent > 0 ? (
                     <>
@@ -395,7 +414,7 @@ function MetricCell({
   return (
     <div
       className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
-      style={{ background: '#050505', border: '1px solid #282828' }}
+      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
     >
       {/* #52: Metric cell value with text shadow glow */}
       <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color, textShadow: `0 0 8px ${color}30` }}>
@@ -420,11 +439,11 @@ function SectionBlock({
   return (
     <div
       className="rounded-sm p-2 panel-inset"
-      style={{ background: '#0a0a0a', border: '1px solid #282828' }}
+      style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
     >
-      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #282828, #3c3c3c, #282828) 1' }}>
+      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, var(--border-subtle), #3c3c3c, var(--border-subtle)) 1' }}>
         {icon}
-        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-rmpg-400">
           {title}
         </span>
       </div>

@@ -6,18 +6,19 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
 const { ConnectivityMonitor } = require('./connectivityMonitor');
+const { InternalGps, findGpsPort } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
-// Electron strips Chrome's bundled Google API key. Without it,
-// navigator.geolocation silently fails on desktop (no GPS hardware).
-// Provide the same key used for Google Maps so Chromium's Network
-// Location Provider can resolve WiFi/IP-based positions.
-process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
+// Chromium's Network Location Provider requires a Google API key to resolve
+// WiFi/IP-based positions via navigator.geolocation. Set GOOGLE_API_KEY in
+// the environment before launching if WiFi geolocation is needed. GPS hardware
+// runs independently through InternalGps and is unaffected when this is unset.
+// (Key removed from source — set via environment variable instead.)
 
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
@@ -38,6 +39,61 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// ─── Last-resort error guards ────────────────────────────────
+// Without these, an unhandled rejection (e.g. loadURL rejecting
+// with net::ERR_CONNECTION_CLOSED when nginx RSTs an in-flight
+// connection during a `systemctl restart rmpg-flex`) crashes the
+// whole desktop app and shows the Electron error dialog.
+//
+// TODO(you): implement isTransientNetworkError() below. Decide:
+//   - swallow `net::*` codes (most are transient — server restart,
+//     flaky WiFi, captive portal redirects) so dispatchers stay up
+//   - re-throw everything else so real bugs (null deref, type
+//     errors) still surface in dev/staging instead of rotting
+// Reference: Chromium net error list — net::ERR_CONNECTION_CLOSED,
+// net::ERR_NETWORK_CHANGED, net::ERR_INTERNET_DISCONNECTED, etc.
+// All have message strings starting with "net::ERR_".
+// Chromium net errors that indicate a real misconfiguration or
+// active threat — dispatchers MUST be told about these, never swallow.
+// (Expired/invalid certs could be a MITM; auth failures suggest the
+// VPS is misconfigured after a deploy.)
+const NON_TRANSIENT_NET_CODES = [
+  'CERT_',           // any cert error: AUTHORITY_INVALID, DATE_INVALID, COMMON_NAME_INVALID, REVOKED, etc.
+  'SSL_',            // SSL_PROTOCOL_ERROR, SSL_VERSION_OR_CIPHER_MISMATCH
+  'BAD_SSL_',
+  'INSECURE_RESPONSE',
+  'BLOCKED_BY_',     // BLOCKED_BY_CLIENT (extension/firewall) — surface so operator knows
+];
+
+function isTransientNetworkError(err) {
+  const msg = err && (err.message || String(err)) || '';
+  if (!msg.includes('net::ERR_')) return false;
+  for (const bad of NON_TRANSIENT_NET_CODES) {
+    if (msg.includes(`net::ERR_${bad}`)) return false;
+  }
+  return true;
+}
+
+process.on('unhandledRejection', (reason) => {
+  if (isTransientNetworkError(reason)) {
+    console.warn('[APP] Swallowed transient network error:', reason && reason.message);
+    return;
+  }
+  console.error('[APP] Unhandled rejection:', reason);
+  throw reason;
+});
+
+process.on('uncaughtException', (err) => {
+  if (isTransientNetworkError(err)) {
+    console.warn('[APP] Swallowed transient network error:', err && err.message);
+    return;
+  }
+  console.error('[APP] Uncaught exception:', err);
+  // Re-throw on next tick so Electron's default crash dialog still
+  // fires for real bugs, but our log line lands first.
+  setImmediate(() => { throw err; });
+});
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
 
@@ -71,11 +127,43 @@ function getIconPath() {
 }
 
 // ─── Splash Screen ──────────────────────────────────────────
+function getSplashLogoDataUri() {
+  try {
+    const fs = require('fs');
+    const candidates = DEV_MODE
+      ? [
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
+          path.join(__dirname, '..', 'client', 'public', 'RMPG Logo Dark.png'),
+          path.join(__dirname, '..', 'client', 'public', 'rmpg-logo.png'),
+        ]
+      : [
+          path.join(process.resourcesPath, 'rmpg flex.png'),
+          path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
+          path.join(process.resourcesPath, 'icon.png'),
+          // Last resort if extraResources were stripped (e.g. unpacked run)
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
+        ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        const ext = path.extname(p).slice(1).toLowerCase() || 'png';
+        const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const b64 = fs.readFileSync(p).toString('base64');
+        console.log('[SPLASH] logo loaded from', p);
+        return `data:${mime};base64,${b64}`;
+      }
+    }
+    console.warn('[SPLASH] no logo file found — using text fallback');
+  } catch (err) {
+    console.warn('[SPLASH] logo load failed:', err && err.message);
+  }
+  return ''; // Fall back to text logo if image unavailable
+}
+
 function createSplashWindow() {
   if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
   splashWindow = new BrowserWindow({
-    width: 420,
-    height: 320,
+    width: 480,
+    height: 380,
     frame: false,
     transparent: true,
     resizable: false,
@@ -88,6 +176,11 @@ function createSplashWindow() {
     },
   });
 
+  const logoUri = getSplashLogoDataUri();
+  const logoMarkup = logoUri
+    ? `<img src="${logoUri}" alt="RMPG Flex" class="logo-img" draggable="false" />`
+    : `<div class="logo-fallback"><span>RMPG</span></div>`;
+
   const splashHTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
     <!DOCTYPE html>
     <html>
@@ -96,77 +189,296 @@ function createSplashWindow() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #000000;
-          color: #fff;
+          color: #e6e6e6;
+          height: 100vh;
+          overflow: hidden;
+          -webkit-app-region: drag;
+          position: relative;
+          /* Two-layer background: soft gold radial + charcoal base, framed */
+          background:
+            radial-gradient(ellipse at center, rgba(212,160,23,0.10) 0%, rgba(0,0,0,0) 65%),
+            linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+          border: 1px solid #1a1a1a;
+          border-radius: 6px;
+          box-shadow:
+            inset 0 0 0 1px rgba(212,160,23,0.18),
+            0 0 0 1px rgba(0,0,0,0.5),
+            0 18px 40px rgba(0,0,0,0.6);
+        }
+        /* Subtle drifting grid */
+        body::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px,
+            linear-gradient(90deg, rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px;
+          mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          pointer-events: none;
+          animation: grid-drift 22s linear infinite;
+        }
+        @keyframes grid-drift {
+          0%   { background-position: 0 0, 0 0; }
+          100% { background-position: 32px 32px, 32px 32px; }
+        }
+        /* HUD corner brackets */
+        .corner {
+          position: absolute;
+          width: 18px;
+          height: 18px;
+          pointer-events: none;
+          opacity: 0.85;
+          animation: corner-pulse 3.6s ease-in-out infinite;
+        }
+        .corner::before, .corner::after {
+          content: '';
+          position: absolute;
+          background: #d4a017;
+          box-shadow: 0 0 6px rgba(212,160,23,0.5);
+        }
+        .corner::before { top: 0; left: 0; width: 12px; height: 1.5px; }
+        .corner::after  { top: 0; left: 0; width: 1.5px; height: 12px; }
+        .corner.tl { top: 10px; left: 10px; }
+        .corner.tr { top: 10px; right: 10px; transform: scaleX(-1); }
+        .corner.bl { bottom: 10px; left: 10px; transform: scaleY(-1); }
+        .corner.br { bottom: 10px; right: 10px; transform: scale(-1); }
+        @keyframes corner-pulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+        /* Layout */
+        .stage {
+          position: relative;
+          z-index: 1;
+          height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          height: 100vh;
-          border: 1px solid #333;
-          border-radius: 12px;
-          overflow: hidden;
-          -webkit-app-region: drag;
+          padding: 28px 24px 20px;
         }
-        .logo {
-          width: 100px;
-          height: 100px;
-          border: 3px solid #5a5a5a;
+        /* Logo block with rotating ring + pulse aura */
+        .logo-wrap {
+          position: relative;
+          width: 132px;
+          height: 132px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 18px;
+        }
+        .logo-wrap::before {
+          /* Pulse aura behind logo */
+          content: '';
+          position: absolute;
+          inset: -8px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(212,160,23,0.35) 0%, rgba(212,160,23,0) 65%);
+          filter: blur(4px);
+          animation: aura-pulse 2.6s ease-in-out infinite;
+        }
+        .logo-wrap::after {
+          /* Rotating gold arc ring */
+          content: '';
+          position: absolute;
+          inset: -2px;
+          border-radius: 50%;
+          background: conic-gradient(from 0deg,
+            rgba(212,160,23,0) 0deg,
+            rgba(212,160,23,0.05) 30deg,
+            rgba(212,160,23,0.95) 70deg,
+            rgba(212,160,23,0.05) 110deg,
+            rgba(212,160,23,0) 140deg,
+            rgba(212,160,23,0) 360deg);
+          mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          -webkit-mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          animation: ring-spin 2.8s linear infinite;
+        }
+        @keyframes aura-pulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.95); }
+          50%      { opacity: 1;   transform: scale(1.08); }
+        }
+        @keyframes ring-spin {
+          to { transform: rotate(360deg); }
+        }
+        .logo-img {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          object-fit: contain;
+          filter: drop-shadow(0 0 12px rgba(212,160,23,0.45));
+          animation: logo-float 6s ease-in-out infinite;
+        }
+        .logo-fallback {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          border: 2px solid #d4a017;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 20px;
         }
-        .logo-text {
-          font-size: 28px;
+        .logo-fallback span {
+          font-size: 26px;
           font-weight: 900;
-          color: #d7d7d7;
           letter-spacing: 2px;
+          color: #d4a017;
         }
+        @keyframes logo-float {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-3px); }
+        }
+        /* Title block */
         h1 {
-          font-size: 20px;
-          font-weight: 700;
-          letter-spacing: 3px;
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 6px;
           text-transform: uppercase;
-          margin-bottom: 6px;
+          color: #f0f0f0;
+          margin-bottom: 5px;
+          text-shadow: 0 0 12px rgba(212,160,23,0.25);
         }
         .subtitle {
-          font-size: 11px;
+          font-size: 9px;
           color: #888;
           text-transform: uppercase;
-          letter-spacing: 2px;
-          margin-bottom: 30px;
+          letter-spacing: 4px;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
-        .spinner {
-          width: 28px;
-          height: 28px;
-          border: 3px solid #333;
-          border-top: 3px solid #d7d7d7;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin-bottom: 12px;
+        .subtitle::before, .subtitle::after {
+          content: '';
+          height: 1px;
+          width: 22px;
+          background: linear-gradient(90deg, transparent, #d4a017, transparent);
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Indeterminate progress bar */
+        .progress-track {
+          position: relative;
+          width: 240px;
+          height: 3px;
+          background: rgba(212,160,23,0.10);
+          border-radius: 1px;
+          overflow: hidden;
+          margin-bottom: 14px;
+          box-shadow: inset 0 0 0 1px rgba(212,160,23,0.18);
+        }
+        .progress-bar {
+          position: absolute;
+          top: 0;
+          left: -40%;
+          width: 40%;
+          height: 100%;
+          background: linear-gradient(90deg,
+            rgba(212,160,23,0) 0%,
+            rgba(212,160,23,0.5) 35%,
+            rgba(212,160,23,1) 50%,
+            rgba(212,160,23,0.5) 65%,
+            rgba(212,160,23,0) 100%);
+          box-shadow: 0 0 8px rgba(212,160,23,0.6);
+          animation: progress-slide 1.6s ease-in-out infinite;
+        }
+        @keyframes progress-slide {
+          0%   { left: -40%; }
+          100% { left: 100%; }
+        }
+        /* Status line */
         .status {
-          font-size: 10px;
-          color: #666;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 9px;
+          color: #b8924a;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 2.5px;
+        }
+        .status .dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #d4a017;
+          box-shadow: 0 0 6px #d4a017;
+          animation: status-blink 1.6s ease-in-out infinite;
+        }
+        @keyframes status-blink {
+          0%, 100% { opacity: 0.3; }
+          50%      { opacity: 1; }
+        }
+        .status .ellipsis::after {
+          content: '';
+          display: inline-block;
+          width: 12px;
+          text-align: left;
+          animation: ellipsis 1.4s steps(4, end) infinite;
+        }
+        @keyframes ellipsis {
+          0%   { content: ''; }
+          25%  { content: '.'; }
+          50%  { content: '..'; }
+          75%  { content: '...'; }
+          100% { content: ''; }
+        }
+        /* Version badge bottom */
+        .version {
+          position: absolute;
+          bottom: 12px;
+          right: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(212,160,23,0.55);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .build-tag {
+          position: absolute;
+          bottom: 12px;
+          left: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(255,255,255,0.25);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
       </style>
     </head>
     <body>
-      <div class="logo"><span class="logo-text">RMPG</span></div>
-      <h1>RMPG Flex</h1>
-      <p class="subtitle">CAD / RMS Dispatch System</p>
-      <div class="spinner"></div>
-      <p class="status">Connecting to server...</p>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+
+      <div class="stage">
+        <div class="logo-wrap">
+          ${logoMarkup}
+        </div>
+        <h1>RMPG Flex</h1>
+        <p class="subtitle">CAD &middot; RMS Dispatch System</p>
+
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+
+        <div class="status">
+          <span class="dot"></span>
+          <span>Establishing Secure Uplink<span class="ellipsis"></span></span>
+        </div>
+      </div>
+
+      <div class="build-tag">RMPG-PRIMARY</div>
+      <div class="version">v${app.getVersion ? app.getVersion() : '5.8.2'}</div>
     </body>
     </html>
   `)}`;
 
-  splashWindow.loadURL(splashHTML);
+  splashWindow.loadURL(splashHTML).catch((err) => {
+    console.warn('[SPLASH] loadURL failed:', err && err.message);
+  });
 }
 
 function closeSplash() {
@@ -314,6 +626,15 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Keep the renderer running at full rate when the window is minimized,
+      // occluded, or otherwise not focused. Chromium throttles background
+      // windows by default — setInterval clamped to ~1/min, rAF paused — which
+      // slowed the nav trip engine's 15s route-upload + 30s auto-end checks to
+      // a crawl whenever the officer switched away from the CAD. The GPS NMEA
+      // reader lives in the main process (never throttled), but the detection +
+      // upload logic runs here in the renderer, so it must not be throttled for
+      // navigation to keep calculating + recording movement off-screen.
+      backgroundThrottling: false,
     },
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -350,7 +671,12 @@ async function createMainWindow() {
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
-  mainWindow.loadURL(REMOTE_SERVER_URL);
+  // Promise rejection here is handled by the did-fail-load listener
+  // below, which shows the offline page. Catch so the rejection
+  // doesn't escape to the global unhandledRejection guard.
+  mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+    console.warn('[APP] loadURL failed (did-fail-load will recover):', err && err.message);
+  });
 
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
@@ -359,11 +685,59 @@ async function createMainWindow() {
     mainWindow.focus();
   });
 
-  // Handle page load failures (server down, network error)
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+  // Handle page load failures (server down, network error).
+  //
+  // IMPORTANT: did-fail-load fires for a LOT of false positives:
+  //   - errorCode -3 (ERR_ABORTED) every time a JS-driven navigation
+  //     replaces an in-flight one. Cloudflare's challenge page does
+  //     exactly this when it solves and redirects. Treating -3 as
+  //     "server unreachable" makes the desktop app unusable any time
+  //     CF re-issues a challenge.
+  //   - Sub-frame failures (e.g., a failed iframe widget). The desktop
+  //     shell should only react to MAIN-frame nav failures.
+  //
+  // Policy: only show the offline page for KNOWN-fatal main-frame failures.
+  // Chromium net::Error codes:
+  //   -2   FAILED                       (generic; treat as fatal)
+  //   -100 CONNECTION_CLOSED
+  //   -101 CONNECTION_RESET
+  //   -102 CONNECTION_REFUSED
+  //   -103 CONNECTION_ABORTED           (NOT -3; this is a real socket abort)
+  //   -105 NAME_NOT_RESOLVED            (DNS)
+  //   -106 INTERNET_DISCONNECTED
+  //   -109 ADDRESS_UNREACHABLE
+  //   -118 CONNECTION_TIMED_OUT
+  //   -130 PROXY_CONNECTION_FAILED
+  //   -137 NAME_RESOLUTION_FAILED
+  //   -201 CERT_DATE_INVALID            (TLS clock/cert problems are fatal here)
+  //   -202 CERT_AUTHORITY_INVALID
+  //   -203 CERT_CONTAINS_ERRORS
+  //   -207 CERT_REVOKED
+  //   -208 CERT_INVALID
+  // Deliberately excluded:
+  //   -3   ABORTED          — fires every time a JS-driven nav replaces an
+  //                           in-flight one (Cloudflare challenge solving,
+  //                           OAuth redirects, etc.). Source of false positives.
+  //   -21  NETWORK_CHANGED  — transient on roaming/VPN reconnects; the next
+  //                           nav usually succeeds without showing offline UI.
+  const FATAL_NET_ERRORS = new Set([
+    -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
+    -201, -202, -203, -207, -208,
+  ]);
+  function isFatalNavFailure(errorCode, isMainFrame /* , validatedURL */) {
+    return isMainFrame === true && FATAL_NET_ERRORS.has(errorCode);
+  }
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(`[APP] did-fail-load: ${errorDescription} (code ${errorCode}, mainFrame=${isMainFrame}, url=${validatedURL})`);
+    if (!isFatalNavFailure(errorCode, isMainFrame, validatedURL)) {
+      console.log('[APP] did-fail-load: non-fatal, ignoring');
+      return;
+    }
     // Show the offline page with a retry button
-    mainWindow.loadURL(getOfflineHTML());
+    mainWindow.loadURL(getOfflineHTML()).catch((err) => {
+      console.warn('[APP] Offline page loadURL failed:', err && err.message);
+    });
   });
 
   // Extract the server's hostname for link filtering
@@ -408,6 +782,50 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
 
+// ─── Crash-safe printing ─────────────────────────────────────
+// macOS 26's native print panel (NSPrintPanel → PrintingUI →
+// PJCSessionHasApplicationSetPrinter) segfaults when opened from
+// Electron 40 — window.print() hard-crashes the whole app
+// (EXC_BAD_ACCESS in CrBrowserMain). We never open the AppKit panel:
+// every print renders via Chromium's printToPDF (no AppKit) and the
+// PDF is handed to macOS Preview, whose print dialog is stable.
+const { webFrameMain } = require('electron');
+
+const PRINT_OVERRIDE_JS = `(() => {
+  if (window.__rmpgPrintPatched) return;
+  window.__rmpgPrintPatched = true;
+  window.print = () => {
+    try {
+      if (window.electron && window.electron.printToPdf) { window.electron.printToPdf(); return; }
+    } catch (e) {}
+    // Subframes (iframes / window.open) have no preload bridge —
+    // delegate to the top frame, which is patched and bridged.
+    try { window.top.print(); } catch (e) {}
+  };
+})();`;
+
+app.on('web-contents-created', (_event, wc) => {
+  wc.on('did-frame-finish-load', (_ev, _isMainFrame, frameProcessId, frameRoutingId) => {
+    try {
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (frame) frame.executeJavaScript(PRINT_OVERRIDE_JS).catch(() => {});
+    } catch (e) { /* frame may already be gone */ }
+  });
+});
+
+ipcMain.handle('print:to-pdf', async (event) => {
+  const fs = require('fs');
+  try {
+    const pdf = await event.sender.printToPDF({ printBackground: true });
+    const file = path.join(app.getPath('temp'), `rmpg-print-${Date.now()}.pdf`);
+    await fs.promises.writeFile(file, pdf);
+    const err = await shell.openPath(file); // opens in Preview; user prints from there
+    return { ok: !err, file, error: err || undefined };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ─── Recon Connect launcher ───────────────────────────────
 // Spawns the locally-installed toolkit in a detached terminal window. The
 // Python CLI lives outside Flex; we only hand off — no stdio piping, no
@@ -434,7 +852,11 @@ ipcMain.handle('recon:launch', async () => {
         return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
       }
       const cmd = `cd "${dir}" && source venv/bin/activate && python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
-      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`;
+      // Escape backslashes BEFORE double quotes so a literal '\' in the
+      // input cannot pair with the escape we add (e.g. an attacker-supplied
+      // `\` would otherwise turn our `\"` into `\\"`, re-opening the
+      // AppleScript string). Single-pass callback handles both characters.
+      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -549,13 +971,27 @@ echo "==================================================="
     return { shell: 'hackingtool', args: [] };
   }
   if (platform === 'darwin') {
+    const fs = require('fs');
     const dir = path.join(home, 'recon-connect');
-    const script = `cd "${dir}" && source venv/bin/activate && exec python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
+    // Probe on the Node side so we never pass the wrong filename through
+    // shell quoting. Both candidate names are literal — no user input.
+    const entry = ['hackingtool.py', 'recon connect.py'].find((f) => fs.existsSync(path.join(dir, f)));
+    if (!entry) {
+      // Bail with a clear shell-side message instead of silently crashing
+      const script = `echo "error: no hackingtool.py or 'recon connect.py' in ${dir}. Reinstall via the Install button."; exit 1`;
+      return { shell: 'bash', args: ['-c', script] };
+    }
+    // Single-quote the filename so spaces (in 'recon connect.py') survive bash parsing
+    const entryQuoted = `'${entry.replace(/'/g, "'\\''")}'`;
+    const script = `cd "${dir}" && source venv/bin/activate && exec python3 ${entryQuoted}`;
     return { shell: 'bash', args: ['-c', script] };
   }
   if (platform === 'win32') {
+    const fs = require('fs');
     const dir = path.join(home, 'recon-connect');
-    const script = `cd /d "${dir}" && call venv\\Scripts\\activate && (if exist hackingtool.py (python hackingtool.py) else (python "recon connect.py"))`;
+    const entry = ['hackingtool.py', 'recon connect.py'].find((f) => fs.existsSync(path.join(dir, f)));
+    if (!entry) return { shell: 'cmd.exe', args: ['/c', `echo No Python entry file in ${dir} & exit /b 1`] };
+    const script = `cd /d "${dir}" && call venv\\Scripts\\activate && python "${entry}"`;
     return { shell: 'cmd.exe', args: ['/c', script] };
   }
   return null;
@@ -806,14 +1242,34 @@ const RECON_TOOLS = {
       // Single-quote both inside the bash command to defend against any
       // character the regex somehow let through.
       const safeUrl = url.replace(/'/g, "'\\''");
-      const probeUrl = `${url.replace(/\/+$/, '')}/nonexistent-$(date +%s)-$RANDOM`;
+      // Auto-fallback: if user typed https:// but the host only serves HTTP,
+      // swap to http:// for both the probe and gobuster.
+      const httpUrl = url.replace(/^https:\/\//i, 'http://');
+      const safeHttpUrl = httpUrl.replace(/'/g, "'\\''");
+      const probePath = '/nonexistent-gobuster-probe-12345';
       return ['-c',
-        `WC_LEN=$(curl -skL -o /dev/null -w '%{size_download}' '${probeUrl.replace(/'/g, "'\\''")}') ; ` +
-        `echo "[pre-probe] wildcard response length: $WC_LEN bytes" ; ` +
-        `if [ -n "$WC_LEN" ] && [ "$WC_LEN" != "0" ]; then ` +
-          `gobuster dir -u '${safeUrl}' -w '${wordlist}' --no-color -t 20 --timeout 10s --exclude-length "$WC_LEN" ; ` +
+        `URL='${safeUrl}' ; HTTP_URL='${safeHttpUrl}' ; ` +
+        // Probe with TLS; if it gives TLS errors or 0 bytes, retry with HTTP
+        `PROBE=$(curl -sk -o /dev/null -w '%{http_code} %{size_download}' --connect-timeout 5 --max-time 10 "\${URL%/}${probePath}" 2>/dev/null) ; ` +
+        `echo "[pre-probe HTTPS] $PROBE" ; ` +
+        `WC_LEN=$(echo "$PROBE" | awk '{print $2}') ; ` +
+        `HTTP_CODE=$(echo "$PROBE" | awk '{print $1}') ; ` +
+        `if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "0" ] || [ -z "$HTTP_CODE" ]; then ` +
+          `PROBE2=$(curl -sk -o /dev/null -w '%{http_code} %{size_download}' --connect-timeout 5 --max-time 10 "\${HTTP_URL%/}${probePath}" 2>/dev/null) ; ` +
+          `echo "[pre-probe HTTP fallback] $PROBE2" ; ` +
+          `WC_LEN=$(echo "$PROBE2" | awk '{print $2}') ; ` +
+          `HTTP_CODE=$(echo "$PROBE2" | awk '{print $1}') ; ` +
+          `URL="$HTTP_URL" ; ` +
+        `fi ; ` +
+        `if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "0" ] || [ -z "$HTTP_CODE" ]; then ` +
+          `echo "[error] Could not reach target via HTTPS or HTTP. Check URL, network, or try a full URL with port." ; ` +
+          `exit 1 ; ` +
+        `fi ; ` +
+        `echo "[ok] Scanning $URL (wildcard response: status=$HTTP_CODE, length=$WC_LEN)" ; ` +
+        `if [ -n "$WC_LEN" ] && [ "$WC_LEN" -gt 0 ] 2>/dev/null ; then ` +
+          `gobuster dir -u "$URL" -w '${wordlist}' --no-color -t 20 --timeout 10s -k --exclude-length "$WC_LEN" ; ` +
         `else ` +
-          `gobuster dir -u '${safeUrl}' -w '${wordlist}' --no-color -t 20 --timeout 10s --force ; ` +
+          `gobuster dir -u "$URL" -w '${wordlist}' --no-color -t 20 --timeout 10s -k --force ; ` +
         `fi`
       ];
     },
@@ -1015,8 +1471,12 @@ const RECON_TOOLS = {
       const fs = require('fs');
       const os = require('os');
       const path = require('path');
-      const f = path.join(os.tmpdir(), `john-${Date.now()}.hash`);
-      fs.writeFileSync(f, hash + '\n');
+      // Unique unguessable directory — avoids predictable-temp-file races
+      // (an attacker watching os.tmpdir() can't pre-create or symlink the
+      // path because mkdtempSync returns a fresh randomized suffix).
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmpg-john-'));
+      const f = path.join(dir, 'input.hash');
+      fs.writeFileSync(f, hash + '\n', { mode: 0o600 });
       return ['--format=raw-md5', f];
     },
     platform: ['darwin', 'linux'],
@@ -1361,6 +1821,40 @@ ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
   return { installed: false };
 });
 
+// Run a registered RECON_TOOLS tool in a visible Terminal window — same
+// command, same args, but with a TTY so sudo prompts, interactive CLI
+// tools, or color-aware outputs that require a terminal work properly.
+ipcMain.handle('recon:tool-terminal', async (_event, { toolId, args = {} } = {}) => {
+  const { spawn } = require('child_process');
+  const tool = RECON_TOOLS[toolId];
+  if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
+  let argv;
+  try { argv = tool.buildArgs(args); } catch (err) { return { ok: false, error: err.message || 'Invalid args' }; }
+
+  // Reassemble an interactive shell command that mirrors what the embedded
+  // spawn would run. Quote each argv element for shell safety.
+  const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+  const fullCmd = `${shellQuote(tool.command)} ${argv.map(shellQuote).join(' ')}`;
+
+  if (process.platform === 'darwin') {
+    const script = `echo "${tool.title}"; echo; ${fullCmd}; echo; echo "[done — press enter to close]"; read`;
+    const appleScript = `tell application "Terminal" to do script "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
+    spawn('osascript', ['-e', 'tell application "Terminal" to activate'], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  if (process.platform === 'linux') {
+    const term = process.env.TERMINAL || 'x-terminal-emulator';
+    spawn(term, ['-e', 'bash', '-c', `${fullCmd}; echo; read -p "Press enter to close"`], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  if (process.platform === 'win32') {
+    spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', fullCmd], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
+  }
+  return { ok: false, error: `Unsupported platform: ${process.platform}` };
+});
+
 // Open Terminal.app with a catalog command that needs interactive sudo.
 // The command is resolved from the bundled catalog by (category, className, kind, index),
 // same guardrails as recon:catalog-run.
@@ -1431,6 +1925,16 @@ ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, i
     if (!tool) return { ok: false, error: `Tool "${className}" not in category "${category}".` };
     const cmdList = kind === 'install' ? (tool.install || []) : (tool.run || []);
     let cmd = cmdList[index];
+    // Optional extraArgs from the UI — appended to the command verbatim.
+    // The renderer is trusted (same origin + context isolated) but we still
+    // ban shell metacharacters that would allow command chaining.
+    const extraArgs = arguments[0]?.extraArgs;
+    if (extraArgs && typeof extraArgs === 'string' && extraArgs.trim()) {
+      if (/[;&|`$<>]/.test(extraArgs)) {
+        return { ok: false, error: 'Extra args may not contain ; & | ` $ < or >' };
+      }
+      cmd = `${cmd} ${extraArgs.trim()}`;
+    }
     if (typeof cmd !== 'string' || !cmd.trim()) {
       return { ok: false, error: `No ${kind} command at index ${index} for ${tool.title}.` };
     }
@@ -1522,6 +2026,65 @@ ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
   return { ok: true };
 });
 
+// Detailed Recon Connect install state (path + whether hackingtool.py is present)
+ipcMain.handle('recon:install-state', async () => {
+  const os = require('os');
+  const fs = require('fs');
+  const home = os.homedir();
+  if (process.platform === 'linux') {
+    const linuxBin = fs.existsSync('/usr/bin/hackingtool') ? '/usr/bin/hackingtool'
+      : fs.existsSync('/usr/local/bin/hackingtool') ? '/usr/local/bin/hackingtool' : null;
+    return { installed: !!linuxBin, path: linuxBin, repoDir: linuxBin ? null : undefined };
+  }
+  const dir = path.join(home, 'recon-connect');
+  const dotGit = path.join(dir, '.git');
+  const entry = ['hackingtool.py', 'recon connect.py'].find((f) => fs.existsSync(path.join(dir, f)));
+  return {
+    installed: Boolean(entry),
+    path: entry ? path.join(dir, entry) : null,
+    repoDir: fs.existsSync(dotGit) ? dir : null,
+    entry: entry || null,
+  };
+});
+
+// Pull latest changes from the Recon Connect repo
+ipcMain.handle('recon:update', async (event) => {
+  const { spawn } = require('child_process');
+  const crypto = require('crypto');
+  const os = require('os');
+  const fs = require('fs');
+  const dir = path.join(os.homedir(), 'recon-connect');
+  if (!fs.existsSync(path.join(dir, '.git'))) {
+    return { ok: false, error: 'Recon Connect is not a git checkout — cannot update.' };
+  }
+  const child = spawn('bash', ['-c', `cd "${dir}" && git pull --ff-only --no-rebase`], {
+    env: { ...process.env, PATH: ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean).join(':') },
+  });
+  const sessionId = crypto.randomUUID();
+  toolSessions.set(sessionId, child);
+  child.stdout.on('data', (b) => event.sender.isDestroyed() || event.sender.send('recon:term-data', { sessionId, data: b.toString('utf8') }));
+  child.stderr.on('data', (b) => event.sender.isDestroyed() || event.sender.send('recon:term-data', { sessionId, data: b.toString('utf8') }));
+  child.on('exit', (code) => {
+    toolSessions.delete(sessionId);
+    if (!event.sender.isDestroyed()) event.sender.send('recon:term-exit', { sessionId, code });
+  });
+  return { ok: true, sessionId };
+});
+
+// Emergency kill-all — stops every child process this module has spawned
+ipcMain.handle('recon:kill-all', async () => {
+  let killed = 0;
+  for (const [, child] of toolSessions) {
+    try { child.kill('SIGTERM'); killed++; } catch { /* ignore */ }
+  }
+  toolSessions.clear();
+  for (const [, child] of reconSessions) {
+    try { child.kill('SIGTERM'); killed++; } catch { /* ignore */ }
+  }
+  reconSessions.clear();
+  return { ok: true, killed };
+});
+
 // Quick install-state check so the UI can show the right button.
 ipcMain.handle('recon:check', async () => {
   const os = require('os');
@@ -1567,7 +2130,15 @@ ipcMain.handle('recon:install', async () => {
         `echo "✓ Recon Connect installed at ${dir}"`,
         `echo "You can close this window."`,
       ].join(' && ');
-      const appleScript = `tell application "Terminal" to do script "${script.replace(/"/g, '\\"').replace(/\\/g, '\\\\').replace(/\\\\"/g, '\\"')}"`;
+      // Single-pass escape of backslashes and double quotes for embedding
+      // inside the AppleScript string literal. The previous chained-replace
+      // approach double-escaped its own output (escape `"` -> `\"`, then
+      // escape `\` -> `\\` re-escapes the just-added backslash) and then
+      // tried to undo the damage with a third replace — fragile and
+      // incomplete for inputs that already contain `\`. One callback
+      // visits each char exactly once, so neither character can be
+      // re-escaped after it's been escaped.
+      const appleScript = `tell application "Terminal" to do script "${script.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -1610,6 +2181,176 @@ ipcMain.handle('app:force-refresh', async () => {
     mainWindow.webContents.reload();
   }
   return { success: true };
+});
+
+// ─── Internal GPS (Panasonic Toughbook) ──────────────────────
+// On Toughbooks, the internal u-blox GPS module is exposed as a
+// virtual COM port. We read raw NMEA sentences instead of relying
+// on Chromium's geolocation (which falls back to WiFi triangulation
+// and gives ~100-500m accuracy in moving vehicles).
+//
+// Lifecycle:
+//   renderer → geo:internal-gps-detect → { isToughbook, portPath } | null
+//   renderer → geo:internal-gps-start → boolean (started?)
+//   renderer ← geo:internal-gps-update (event with { latitude, ... })
+//   renderer → geo:internal-gps-stop  → void
+
+let internalGpsReader = null;
+
+/**
+ * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
+ *
+ * This function is CALLED ONCE on app startup. The decision drives whether
+ * useGpsTracking.ts replaces navigator.geolocation entirely (per the team
+ * decision 2026-05-27).
+ *
+ * Returns: { isToughbook: boolean, manufacturer: string, model: string, portPath: string | null }
+ *
+ * TODO: Christopher — fill in the manufacturer/model predicate below.
+ * What you know that I don't:
+ *   - Which Toughbook models RMPG actually deploys (CF-33? FZ-55? FZ-G2?)
+ *   - Whether the manufacturer string is "Panasonic Corporation",
+ *     "Matsushita Electric", "Panasonic" alone, or something else
+ *   - Whether any non-Toughbook Panasonic gear should also qualify
+ *     (e.g., Lenovo ThinkPad with aftermarket u-blox dongle — same code path)
+ */
+async function detectToughbook() {
+  if (process.platform !== 'win32') {
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+  try {
+    const { execFile } = require('child_process');
+    const wmi = await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-Command', 'Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model | ConvertTo-Json'],
+        { timeout: 8000 },
+        (err, stdout) => {
+          if (err) return resolve(null);
+          try { resolve(JSON.parse(stdout)); } catch { resolve(null); }
+        }
+      );
+    });
+    const manufacturer = (wmi?.Manufacturer || '').trim();
+    const model = (wmi?.Model || '').trim();
+
+    // ─── Toughbook detection (RMPG fleet: FZ-55 only) ───
+    // Only the Panasonic Toughbook FZ-55 ships internal GPS in the
+    // RMPG fleet. CF-33s and other Panasonic gear (including consumer
+    // Lumix laptops) should fall back to navigator.geolocation.
+    // 'Matsushita' (Panasonic's pre-2008 name) is intentionally NOT
+    // matched — no live RMPG hardware predates the 2008 rename.
+    const mfg = manufacturer.toLowerCase();
+    const mdl = model.toLowerCase();
+
+    // Normalize the model so hyphen / spacing / case / SKU-suffix variants of
+    // the order code all match. WMI reports the FZ-55 inconsistently across
+    // BIOS/SKUs: "FZ-55", "FZ55", "FZ-55C", "FZ-55F MK2", "Toughbook FZ-55", …
+    // The old exact `mdl.includes('fz-55')` (hyphen, lowercase) missed every
+    // variant that lacked that precise hyphen → isToughbook=false → the unit
+    // silently fell back to navigator.geolocation (WiFi/IP).
+    //   ▶ Confirmed live 2026-06-02: an in-fleet FZ-55 was recording
+    //     gps_source='browser_desktop' (the IP fallback) for exactly this reason.
+    const mdlNorm = mdl.replace(/[^a-z0-9]/g, '');     // "FZ-55C" → "fz55c"
+    const mfgIsPanasonic = mfg.includes('panasonic');
+    const modelLooksFz55 = mdlNorm.includes('fz55');
+
+    // Detect by HARDWARE PRESENCE, not just the model string. We ALWAYS
+    // enumerate serial ports — the WMI manufacturer string is unreliable (some
+    // FZ-55 SKUs report a blank or OEM manufacturer, and the PowerShell probe
+    // above can degrade), so gating port discovery on `mfgIsPanasonic` silently
+    // hid a present u-blox module and dropped the unit to WiFi triangulation.
+    //
+    // A u-blox VID (score 100) or a GNSS-named bridge (score 70) is hardware-
+    // definitive — no consumer non-GPS machine exposes one — so it qualifies on
+    // its own regardless of the manufacturer string. A weak name-only match
+    // (score 50, e.g. a bare USB-serial adapter with "gps" in its label) is
+    // trusted only on a confirmed Panasonic host, preserving the original intent
+    // of keeping unrelated serial ports on non-Panasonic gear from being grabbed.
+    const gpsPort = await findGpsPort();          // { path, score } | null
+    const portPath = gpsPort?.path ?? null;
+    const portIsDefinitive = (gpsPort?.score ?? 0) >= 70;
+    const isToughbook =
+      portIsDefinitive ||
+      (mfgIsPanasonic && (modelLooksFz55 || portPath != null));
+
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} score=${gpsPort?.score ?? 0} definitive=${portIsDefinitive} -> toughbook=${isToughbook}`);
+    return { isToughbook, manufacturer, model, portPath };
+  } catch (err) {
+    console.warn('[INTERNAL-GPS] Detection failed:', err.message);
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+}
+
+ipcMain.handle('geo:internal-gps-detect', detectToughbook);
+
+ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+  if (internalGpsReader) return { ok: true, alreadyRunning: true };
+  if (!portPath) {
+    const detected = await detectToughbook();
+    if (!detected.portPath) return { ok: false, error: 'No GPS COM port found' };
+    portPath = detected.portPath;
+  }
+  internalGpsReader = new InternalGps();
+  internalGpsReader.on('position', (pos) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-update', pos);
+    }
+  });
+  internalGpsReader.on('error', (err) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-error', { message: err.message });
+    }
+  });
+  // No baud default here — let InternalGps probe its 9600-first ladder
+  // (u-blox NEO-M8 ships at 9600; the old 4800 default never locked).
+  const ok = await internalGpsReader.start(portPath, baudRate);
+  return { ok, portPath };
+});
+
+ipcMain.handle('geo:internal-gps-stop', async () => {
+  if (internalGpsReader) {
+    internalGpsReader.stop();
+    internalGpsReader.removeAllListeners();
+    internalGpsReader = null;
+  }
+  return { ok: true };
+});
+
+// ─── Power management (keep navigation alive off-screen) ─────
+// While a vehicle trip is active, the renderer asks the main process to hold a
+// powerSaveBlocker so the Toughbook doesn't suspend mid-patrol. We use
+// 'prevent-app-suspension' (NOT 'prevent-display-sleep'): the display may turn
+// off to save power, but the system stays awake so the nav engine keeps
+// calculating + uploading breadcrumbs in the background. The blocker is
+// released the moment the trip ends (renderer calls power:allow-sleep) so a
+// parked/idle unit returns to normal power behavior. Idempotent: repeated
+// keep-awake calls reuse the single active blocker id.
+let powerBlockerId = null;
+ipcMain.handle('power:keep-awake', () => {
+  try {
+    if (powerBlockerId == null || !powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[POWER] prevent-app-suspension started (id', powerBlockerId + ') — active trip');
+    }
+    return { ok: true, blocking: true };
+  } catch (err) {
+    console.warn('[POWER] keep-awake failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+ipcMain.handle('power:allow-sleep', () => {
+  try {
+    if (powerBlockerId != null && powerSaveBlocker.isStarted(powerBlockerId)) {
+      powerSaveBlocker.stop(powerBlockerId);
+      console.log('[POWER] prevent-app-suspension stopped — trip ended');
+    }
+    powerBlockerId = null;
+    return { ok: true, blocking: false };
+  } catch (err) {
+    console.warn('[POWER] allow-sleep failed:', err.message);
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── IP Geolocation Fallback ─────────────────────────────────

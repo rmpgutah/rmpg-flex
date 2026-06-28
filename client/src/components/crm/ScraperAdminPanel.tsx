@@ -4,6 +4,8 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
+import RichTextArea from '../RichTextArea';
 import {
   Loader2,
   X,
@@ -16,6 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { LeadScrapeSource } from '../../types';
 
 interface ScrapeLog {
@@ -46,7 +49,7 @@ function formatDuration(ms: number): string {
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 // Badge for scraper type (legacy vs firecrawl)
@@ -110,7 +113,7 @@ function ExtraConfigEditor({
         </button>
         {expanded && (
           <div className="pb-2 space-y-1">
-            <textarea
+            <RichTextArea
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onBlur={() => validateJson(value)}
@@ -242,19 +245,19 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
   if (loading) {
     return (
-      <div className="px-3 py-4 bg-[#0c0c0c] border-b border-rmpg-700 flex items-center justify-center">
+      <div className="px-3 py-4 bg-surface-sunken border-b border-rmpg-700 flex items-center justify-center">
         <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="bg-[#0c0c0c] border-b border-rmpg-700 max-h-[350px] overflow-y-auto">
+    <div className="bg-surface-sunken border-b border-rmpg-700 max-h-[350px] overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-rmpg-700/50">
         <div className="flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5 text-brand-400" />
-          <span className="text-xs font-bold text-white">Lead Scraper Sources</span>
+          <span className="text-xs font-bold text-rmpg-100">Lead Scraper Sources</span>
           {/* Firecrawl connection status */}
           {firecrawlStatus && (
             <span className="flex items-center gap-1 ml-3 text-[10px]">
@@ -265,14 +268,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
             </span>
           )}
         </div>
-        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white" aria-label="Close" title="Close">
+        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Sources table */}
       <div className="px-3 py-2">
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr className="border-b border-rmpg-700/50">
               <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -289,9 +292,9 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
           <tbody>
             {sources.map(src => (
               <React.Fragment key={src.id}>
-                <tr className="border-b border-rmpg-700/30 hover:bg-[#141414]">
+                <tr className="border-b border-rmpg-700/30 hover:bg-surface-base">
                   <td className="px-2 py-1.5">
-                    <div className="text-xs text-white font-medium">{src.display_name}</div>
+                    <div className="text-xs text-rmpg-100 font-medium">{src.display_name}</div>
                     {src.base_url && (
                       <div className="text-[10px] text-rmpg-500 truncate max-w-[180px]">{src.base_url}</div>
                     )}
@@ -339,14 +342,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
               </React.Fragment>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Recent logs */}
       {logs.length > 0 && (
         <div className="px-3 py-2 border-t border-rmpg-700/50">
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Recent Scrape Runs</div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700/30">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -368,7 +371,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                       log.status === 'error' ? 'text-red-400 bg-red-900/30 border-red-700/50' :
                       'text-amber-400 bg-amber-900/30 border-amber-700/50'
                     }`}>
-                      {(log.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                      {toDisplayLabel(log.status)}
                     </span>
                   </td>
                   <td className="px-2 py-1 text-[10px] text-rmpg-300 text-right font-mono">{log.records_found}</td>
@@ -379,7 +382,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

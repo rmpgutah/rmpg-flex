@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
 const PING_INTERVAL_MS = 2000;

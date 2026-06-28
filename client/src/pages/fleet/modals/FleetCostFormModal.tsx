@@ -15,11 +15,13 @@
 import React, { useEffect, useId, useState } from 'react';
 import {
   DollarSign, Calendar, Save, X as XIcon, AlertTriangle,
-  CreditCard, Shield, Wrench, Zap,
+  CreditCard, Shield, Wrench, Zap, Clock, Receipt,
 } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import MoneyInput from '../components/MoneyInput';
 
-export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility';
+export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 export interface CostFormState {
   // Common
@@ -62,6 +64,14 @@ export interface CostFormState {
   cost_frequency: 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
   period_start: string;
   period_end: string;
+  // Other (user-defined)
+  other_cost_type: string;
+  other_provider: string;
+  other_amount: string;
+  other_frequency: 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+  other_incurred_date: string;
+  other_period_end: string;
+  other_status: 'active' | 'inactive' | 'cancelled';
 }
 
 export const EMPTY_COST_FORM: CostFormState = {
@@ -77,6 +87,9 @@ export const EMPTY_COST_FORM: CostFormState = {
   accessory_status: 'installed',
   utility_category: '', provider: '', cost_amount: '',
   cost_frequency: 'monthly', period_start: '', period_end: '',
+  other_cost_type: '', other_provider: '', other_amount: '',
+  other_frequency: 'one_time', other_incurred_date: '', other_period_end: '',
+  other_status: 'active',
 };
 
 const CATEGORY_META: Record<CostCategory, { title: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -84,14 +97,15 @@ const CATEGORY_META: Record<CostCategory, { title: string; icon: React.Component
   insurance: { title: 'INSURANCE',     icon: Shield },
   accessory: { title: 'ACCESSORY',     icon: Wrench },
   utility:   { title: 'UTILITY COST',  icon: Zap },
+  other:     { title: 'OTHER COST',    icon: Receipt },
 };
 
 interface Props {
   isOpen: boolean;
   category: CostCategory;
   mode: 'create' | 'edit';
-  form: CostFormState;
-  onChange: (form: CostFormState) => void;
+  /** Optional: pre-populate form for editing. When omitted, starts empty. */
+  initial?: CostFormState | null;
   onSave: (payload: Record<string, any>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
@@ -192,14 +206,57 @@ function buildPayload(category: CostCategory, f: CostFormState): { payload: Reco
         error: null,
       };
     }
+    case 'other': {
+      if (!f.other_cost_type.trim() || !num(f.other_amount) || !f.other_incurred_date) {
+        return { payload: {}, error: 'Cost type, amount, and date are required' };
+      }
+      return {
+        payload: {
+          cost_type: f.other_cost_type.trim(),
+          provider: str(f.other_provider),
+          amount: num(f.other_amount),
+          frequency: f.other_frequency,
+          incurred_date: f.other_incurred_date,
+          period_end: f.other_period_end || null,
+          status: f.other_status,
+          notes: str(f.notes),
+        },
+        error: null,
+      };
+    }
   }
 }
 
 export default function FleetCostFormModal({
-  isOpen, category, mode, form, onChange, onSave, onClose, saving,
+  isOpen, category, mode, initial, onSave, onClose, saving,
 }: Props) {
   const titleId = useId();
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<CostFormState>({
+    storageKey: `rmpg_fleet_cost_form_${category}`,
+    defaultValue: EMPTY_COST_FORM,
+    isActive: isOpen,
+  });
   const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Honour a provided `initial` in BOTH modes: edit pre-populates the full
+    // record; create uses it for "carry-over" auto-fill (context fields from
+    // the last entry, amounts/dates left blank). Falls back to empty.
+    if (initial) {
+      setForm(initial);
+    } else if (mode === 'create') {
+      setForm(EMPTY_COST_FORM);
+    }
+    setTimeout(() => snapshot(), 0);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -210,7 +267,7 @@ export default function FleetCostFormModal({
 
   if (!isOpen) return null;
   const meta = CATEGORY_META[category];
-  const set = (k: keyof CostFormState, v: string) => onChange({ ...form, [k]: v });
+  const set = (k: keyof CostFormState, v: string) => setForm({ ...form, [k]: v });
 
   const submit = async () => {
     setLocalError('');
@@ -218,22 +275,44 @@ export default function FleetCostFormModal({
     if (error) { setLocalError(error); return; }
     try {
       await onSave(payload);
+      clearDraft();
     } catch (e: any) {
       setLocalError(e?.message || 'Save failed');
+    }
+  };
+
+  const guardedClose = () => {
+    if (isDirty && !saving) {
+      if (window.confirm('You have unsaved changes. Discard them?')) {
+        clearDraft();
+        onClose();
+      }
+    } else {
+      onClose();
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
       role="dialog" aria-modal="true" aria-labelledby={titleId}
-      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[560px] max-w-full mx-4 max-h-[90vh] flex flex-col bg-surface-raised"
         onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={`${mode === 'edit' ? 'EDIT' : 'NEW'} ${meta.title}`} icon={meta.icon} id={titleId}>
-          <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
+          {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
+          <button type="button" className="toolbar-btn text-[9px]" onClick={guardedClose}>X</button>
         </PanelTitleBar>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           {localError && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20">
               <div className="flex items-center gap-1.5 text-[10px] text-red-400"><AlertTriangle className="w-3 h-3" />{localError}</div>
@@ -244,11 +323,11 @@ export default function FleetCostFormModal({
           {category === 'loan' && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Lender">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.lender}
+                <input id="ff-fleetcostformmodal-0" className="input-dark w-full text-[11px] min-h-[36px]" value={form.lender}
                   onChange={(e) => set('lender', e.target.value)} placeholder="e.g. Wells Fargo Auto" />
               </Field>
               <Field label="Status">
-                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.loan_status}
+                <select id="ff-fleetcostformmodal-1" className="select-dark w-full text-[11px] min-h-[36px]" value={form.loan_status}
                   onChange={(e) => set('loan_status', e.target.value as CostFormState['loan_status'])}>
                   <option value="active">Active</option>
                   <option value="paid_off">Paid Off</option>
@@ -257,32 +336,32 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Original Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.original_amount} onChange={(e) => set('original_amount', e.target.value)} placeholder="35000" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Original loan amount"
+                  value={form.original_amount} onChange={(v) => set('original_amount', v)} placeholder="35,000.00" />
               </Field>
               <Field label="Current Balance ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.current_balance} onChange={(e) => set('current_balance', e.target.value)} placeholder="22340" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Current loan balance"
+                  value={form.current_balance} onChange={(v) => set('current_balance', v)} placeholder="22,340.00" />
               </Field>
               <Field label="Monthly Payment ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.monthly_payment} onChange={(e) => set('monthly_payment', e.target.value)} placeholder="589.42" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Monthly loan payment"
+                  value={form.monthly_payment} onChange={(v) => set('monthly_payment', v)} placeholder="589.42" />
               </Field>
               <Field label="Interest Rate (%)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0" max="100"
+                <input id="ff-fleetcostformmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0" max="100"
                   value={form.interest_rate} onChange={(e) => set('interest_rate', e.target.value)} placeholder="5.99" />
               </Field>
               <Field label="Term (months)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="1" min="0"
+                <input id="ff-fleetcostformmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="1" min="0"
                   value={form.term_months} onChange={(e) => set('term_months', e.target.value)} placeholder="60" />
               </Field>
               <div />
               <Field label="Start Date *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.start_date} onChange={(e) => set('start_date', e.target.value)} />
               </Field>
               <Field label="Payoff Date">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-5" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.payoff_date} onChange={(e) => set('payoff_date', e.target.value)} />
               </Field>
             </div>
@@ -292,19 +371,19 @@ export default function FleetCostFormModal({
           {category === 'insurance' && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Carrier">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.carrier}
+                <input id="ff-fleetcostformmodal-6" className="input-dark w-full text-[11px] min-h-[36px]" value={form.carrier}
                   onChange={(e) => set('carrier', e.target.value)} placeholder="e.g. State Farm" />
               </Field>
               <Field label="Policy #">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.policy_number}
+                <input id="ff-fleetcostformmodal-7" className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.policy_number}
                   onChange={(e) => set('policy_number', e.target.value)} placeholder="POL-12345-A" />
               </Field>
               <Field label="Coverage Type">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.coverage_type}
+                <input id="ff-fleetcostformmodal-8" className="input-dark w-full text-[11px] min-h-[36px]" value={form.coverage_type}
                   onChange={(e) => set('coverage_type', e.target.value)} placeholder="e.g. Liability + Collision" />
               </Field>
               <Field label="Status">
-                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.insurance_status}
+                <select id="ff-fleetcostformmodal-9" className="select-dark w-full text-[11px] min-h-[36px]" value={form.insurance_status}
                   onChange={(e) => set('insurance_status', e.target.value as CostFormState['insurance_status'])}>
                   <option value="active">Active</option>
                   <option value="expired">Expired</option>
@@ -312,11 +391,11 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Premium Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.premium_amount} onChange={(e) => set('premium_amount', e.target.value)} placeholder="125.00" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Premium amount"
+                  value={form.premium_amount} onChange={(v) => set('premium_amount', v)} placeholder="125.00" />
               </Field>
               <Field label="Billing Frequency *">
-                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.premium_frequency}
+                <select id="ff-fleetcostformmodal-10" className="select-dark w-full text-[11px] min-h-[36px]" value={form.premium_frequency}
                   onChange={(e) => set('premium_frequency', e.target.value as CostFormState['premium_frequency'])}>
                   <option value="monthly">Monthly</option>
                   <option value="quarterly">Quarterly</option>
@@ -325,20 +404,20 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Effective From *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-11" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.effective_from} onChange={(e) => set('effective_from', e.target.value)} />
               </Field>
               <Field label="Expires At">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-12" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
               </Field>
               <Field label="Deductible ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.deductible} onChange={(e) => set('deductible', e.target.value)} placeholder="500" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Deductible"
+                  value={form.deductible} onChange={(v) => set('deductible', v)} placeholder="500.00" />
               </Field>
               <Field label="Liability Limit ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.liability_limit} onChange={(e) => set('liability_limit', e.target.value)} placeholder="100000" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Liability limit"
+                  value={form.liability_limit} onChange={(v) => set('liability_limit', v)} placeholder="100,000.00" />
               </Field>
             </div>
           )}
@@ -347,11 +426,11 @@ export default function FleetCostFormModal({
           {category === 'accessory' && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Name *">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.name}
+                <input id="ff-fleetcostformmodal-13" className="input-dark w-full text-[11px] min-h-[36px]" value={form.name}
                   onChange={(e) => set('name', e.target.value)} placeholder="e.g. Whelen Edge 9M Light Bar" />
               </Field>
               <Field label="Category">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.accessory_category}
+                <input id="ff-fleetcostformmodal-14" className="input-dark w-full text-[11px] min-h-[36px]" value={form.accessory_category}
                   onChange={(e) => set('accessory_category', e.target.value)}
                   placeholder="e.g. Lighting / Radio / Cage" list="accessory-cats" />
                 <datalist id="accessory-cats">
@@ -366,19 +445,19 @@ export default function FleetCostFormModal({
                 </datalist>
               </Field>
               <Field label="Installed Date *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-15" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.installed_date} onChange={(e) => set('installed_date', e.target.value)} />
               </Field>
               <Field label="Cost ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.cost} onChange={(e) => set('cost', e.target.value)} />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Accessory cost"
+                  value={form.cost} onChange={(v) => set('cost', v)} placeholder="0.00" />
               </Field>
               <Field label="Vendor">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.vendor}
+                <input id="ff-fleetcostformmodal-16" className="input-dark w-full text-[11px] min-h-[36px]" value={form.vendor}
                   onChange={(e) => set('vendor', e.target.value)} placeholder="e.g. Galls" />
               </Field>
               <Field label="Status">
-                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.accessory_status}
+                <select id="ff-fleetcostformmodal-17" className="select-dark w-full text-[11px] min-h-[36px]" value={form.accessory_status}
                   onChange={(e) => set('accessory_status', e.target.value as CostFormState['accessory_status'])}>
                   <option value="installed">Installed</option>
                   <option value="removed">Removed</option>
@@ -387,15 +466,15 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Warranty Until">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-18" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.warranty_until} onChange={(e) => set('warranty_until', e.target.value)} />
               </Field>
               <Field label="Serial Number">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.serial_number}
+                <input id="ff-fleetcostformmodal-19" className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.serial_number}
                   onChange={(e) => set('serial_number', e.target.value)} />
               </Field>
               <Field label="Removed Date">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-20" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.removed_date} onChange={(e) => set('removed_date', e.target.value)} />
               </Field>
             </div>
@@ -405,7 +484,7 @@ export default function FleetCostFormModal({
           {category === 'utility' && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Category *">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.utility_category}
+                <input id="ff-fleetcostformmodal-21" className="input-dark w-full text-[11px] min-h-[36px]" value={form.utility_category}
                   onChange={(e) => set('utility_category', e.target.value)}
                   placeholder="e.g. Charging / Storage / Parking" list="utility-cats" />
                 <datalist id="utility-cats">
@@ -418,15 +497,15 @@ export default function FleetCostFormModal({
                 </datalist>
               </Field>
               <Field label="Provider">
-                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.provider}
+                <input id="ff-fleetcostformmodal-22" className="input-dark w-full text-[11px] min-h-[36px]" value={form.provider}
                   onChange={(e) => set('provider', e.target.value)} placeholder="e.g. Rocky Mountain Power" />
               </Field>
               <Field label="Cost Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.cost_amount} onChange={(e) => set('cost_amount', e.target.value)} />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Utility cost amount"
+                  value={form.cost_amount} onChange={(v) => set('cost_amount', v)} placeholder="0.00" />
               </Field>
               <Field label="Frequency *">
-                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.cost_frequency}
+                <select id="ff-fleetcostformmodal-23" className="select-dark w-full text-[11px] min-h-[36px]" value={form.cost_frequency}
                   onChange={(e) => set('cost_frequency', e.target.value as CostFormState['cost_frequency'])}>
                   <option value="one_time">One-time</option>
                   <option value="monthly">Monthly</option>
@@ -436,26 +515,85 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Period Start *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-24" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.period_start} onChange={(e) => set('period_start', e.target.value)} />
               </Field>
               <Field label="Period End">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                <input id="ff-fleetcostformmodal-25" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.period_end} onChange={(e) => set('period_end', e.target.value)} />
+              </Field>
+            </div>
+          )}
+
+          {/* ── Other (user-defined) fields ──────────────────── */}
+          {category === 'other' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Cost Type *">
+                <input id="ff-fleetcostformmodal-26" className="input-dark w-full text-[11px] min-h-[36px]" value={form.other_cost_type}
+                  onChange={(e) => set('other_cost_type', e.target.value)}
+                  placeholder="e.g. Registration / Tolls" list="other-cost-types" />
+                <datalist id="other-cost-types">
+                  <option value="Registration" />
+                  <option value="Tolls" />
+                  <option value="Citation/Fine" />
+                  <option value="Towing" />
+                  <option value="Car Wash/Detailing" />
+                  <option value="Property Tax" />
+                  <option value="Telematics Subscription" />
+                  <option value="Parking" />
+                  <option value="Emissions/Inspection Fee" />
+                  <option value="Extended Warranty" />
+                  <option value="Decals/Wrap" />
+                  <option value="Storage" />
+                </datalist>
+              </Field>
+              <Field label="Provider">
+                <input id="ff-fleetcostformmodal-27" className="input-dark w-full text-[11px] min-h-[36px]" value={form.other_provider}
+                  onChange={(e) => set('other_provider', e.target.value)} placeholder="e.g. Utah DMV" />
+              </Field>
+              <Field label="Amount ($) *">
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Other cost amount"
+                  value={form.other_amount} onChange={(v) => set('other_amount', v)} placeholder="0.00" />
+              </Field>
+              <Field label="Frequency *">
+                <select id="ff-fleetcostformmodal-28" className="select-dark w-full text-[11px] min-h-[36px]" value={form.other_frequency}
+                  onChange={(e) => set('other_frequency', e.target.value as CostFormState['other_frequency'])}>
+                  <option value="one_time">One-time</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="semi_annual">Semi-Annual</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </Field>
+              <Field label="Date Incurred *">
+                <input id="ff-fleetcostformmodal-29" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                  value={form.other_incurred_date} onChange={(e) => set('other_incurred_date', e.target.value)} />
+              </Field>
+              <Field label="Period End">
+                <input id="ff-fleetcostformmodal-30" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                  value={form.other_period_end} onChange={(e) => set('other_period_end', e.target.value)} />
+              </Field>
+              <Field label="Status">
+                <select id="ff-fleetcostformmodal-31" className="select-dark w-full text-[11px] min-h-[36px]" value={form.other_status}
+                  onChange={(e) => set('other_status', e.target.value as CostFormState['other_status'])}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
               </Field>
             </div>
           )}
 
           {/* ── Notes (shared) ───────────────────────────────── */}
           <div>
-            <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+            <label htmlFor="ff-fleetcostformmodal-32" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+            <textarea id="ff-fleetcostformmodal-32" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => set('notes', e.target.value)} maxLength={2000} />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>
             <XIcon className="w-3 h-3" /> Cancel
           </button>
           <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={submit} disabled={saving}>
