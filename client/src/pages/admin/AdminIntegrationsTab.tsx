@@ -49,20 +49,17 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Reusable API Key Panel ────────────────────────────────────
-// Generic panel for managing encrypted API keys via PUT /api/admin/third-party-keys
-interface ApiKeyConfig {
-  key: string;
-  label: string;
-  desc: string;
-  /** Regex pattern the key must match, or null for no validation */
-  pattern?: RegExp;
-  /** Human-readable format hint shown below the input */
-  formatHint?: string;
-  /** When set, render a "Test" button that live-probes the stored key via
-   *  POST /admin/third-party-keys/:key/test (only anthropic_api_key today). */
-  testable?: boolean;
-}
+// ── Third-Party API Keys Panel ──────────────────────────────
+// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
+const THIRD_PARTY_KEYS = [
+  {
+    key: 'google_maps_platform_api_key',
+    label: 'Google Maps Platform',
+    desc: 'Used for all enabled Google Maps Platform services, including Maps, Places, Routes, Geocoding, Weather, and related APIs',
+  },
+  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
+  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
+] as const;
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
   if (!value.trim()) return null;
@@ -343,10 +340,10 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   };
 
   return (
-    <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
-        {icon}
-        <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
+    <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
+        <Key className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-semibold text-rmpg-300">API Integrations</h2>
       </div>
       <div className="p-4 space-y-4">
         {keyConfigs.map(({ key, label, desc, formatHint, testable }) => (
