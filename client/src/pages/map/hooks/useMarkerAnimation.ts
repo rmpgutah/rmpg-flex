@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 interface AnimationState {
   currentLat: number;

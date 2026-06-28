@@ -41,7 +41,6 @@ export function useMapDragDispatch(
       const dx = dragPx.x - callPx.x;
       const dy = dragPx.y - callPx.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
       if (dist <= THRESHOLD_PX && (!nearest || dist < nearest.distance)) {
         nearest = { callId: entry.callId, distance: dist };
       }
@@ -89,7 +88,8 @@ export function useMapDragDispatch(
             content.style.transition = 'filter 0.2s ease';
             content.style.filter = 'drop-shadow(0 0 8px #d4a017) drop-shadow(0 0 16px #d4a017)';
           }
-        });
+        }
+      };
 
         marker.on('dragend', async () => {
           if (content && content.style) {

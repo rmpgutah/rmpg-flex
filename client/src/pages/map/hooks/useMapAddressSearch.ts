@@ -44,7 +44,7 @@ function buildAddressMarkerElement(label: string): HTMLElement {
 
 export function useMapAddressSearch({ mapInstanceRef, infoWindowRef }: UseMapAddressSearchParams) {
   const [addressSearch, setAddressSearch] = useState('');
-  const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
+  const [addressResults, setAddressResults] = useState<MapboxFeature[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const [recentSearches, setRecentSearches] = useState<{ description: string; place_id: string }[]>(getRecentSearches);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,7 +124,7 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef }: UseMapAdd
       // geocode failed
     }
 
-    setAddressSearch(description.split(',')[0]);
+    setAddressSearch(place_name.split(',')[0]);
     setShowAddressResults(false);
   }, [mapInstanceRef, infoWindowRef]);
 
