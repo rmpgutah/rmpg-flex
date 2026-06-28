@@ -69,9 +69,17 @@ describe('stripHtmlForText', () => {
   it('turns <br> into newlines', () => {
     expect(stripHtmlForText('Line A<br>Line B')).toBe('Line A\nLine B');
   });
-  it('decodes common entities (&amp; &nbsp; &lt; &gt; &quot; &#39;)', () => {
+  it('decodes &amp; &nbsp; &quot; &#39; — entity-encoded tags are stripped as tags', () => {
+    // &lt;c&gt; is decoded to <c> before tag-stripping, so it disappears — this is
+    // intentional: CodeQL fix ensures HTML-encoded script blocks cannot survive the strip.
     expect(stripHtmlForText('A &amp; B&nbsp;&lt;c&gt; &quot;d&quot; &#39;e&#39;'))
-      .toBe('A & B <c> "d" \'e\'');
+      .toBe('A & B "d" \'e\'');
+  });
+  it('strips HTML-encoded script tags — content becomes plain text (safe for PDF)', () => {
+    // <script> and </script> tags are removed; the inner text remains as plain output.
+    // In a PDF that is harmless — the danger only exists in DOM contexts.
+    expect(stripHtmlForText('safe &lt;script&gt;alert(1)&lt;/script&gt; text'))
+      .toBe('safe alert(1) text');
   });
   it('collapses runs of blank lines but keeps a single paragraph break', () => {
     expect(stripHtmlForText('<p>One</p><p>Two</p>')).toBe('One\n\nTwo');

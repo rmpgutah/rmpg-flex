@@ -3,6 +3,199 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1214: Patrol — ?checkpoint_id= deep-link (rowRefs scroll+flash-highlight+strip+useRef guard); N+canCreate role gate (admin|manager|supervisor|officer); Esc cascade stopPropagation per branch (deleteConfirmId→QR modal→checkpoint modal); canDelete (admin|manager) gates Delete button+context-menu; text-[var(--brand-gold)] → text-brand-gold-500 (4 sites); dead patrolTabs+TabBar+Wrench/DollarSign/FileText/ClipboardCheck removed; useMemo role gates.
+// v1195: Document Intake — ConfirmDialog gates discard-review (Esc→confirm or button), ?doc_id= deep-link (scroll review panel + toast if not loaded), N+canUpload role gate (admin|manager|supervisor|officer|dispatcher), Esc cascade stopPropagation per branch (discardConfirmOpen→review), 4-state empty (idle/processing/error/review), canUpload gates drop-zone+picker+drag, AlertTriangle error state with retry, reviewPanelRef scroll target.
+// v1200: Interaction Recorder — ConfirmDialog gates stop/discard (warning variant), ?recording_id= deep-link (scroll+toast+strip+useRef guard), N focuses location input (any-role gate), Esc closes stop-confirm, canDelete (admin|manager) gates DEL button, 3-state loading/no-data empty states, #888888/#d4a017 hex → rmpg-400/brand-400 tokens, parseTimestamp for row timestamps.
+// v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
+// v1203: Jail — canCreate (admin/manager/supervisor) gates New Inmate button, N shortcut, and empty-state hint; deep-link ?inmate_id=/?booking_id=/?booking_number=/?status=/?q= with useRef guard+strip; Esc cascade (deleteId→formOpen→filtersActive) stopPropagation per branch; ConfirmDialog for delete; 3-state empty (loading/no-data/no-results); parseTimestamp in fmtRelativeAge.
+// v1204: Knowledge Base — ConfirmDialog guards clear-recent-searches, ?article_id= deep-link highlights result (deepLinkRef guard+toast), N focuses search input (any authed user), Esc cascade e.stopPropagation() per branch (clearConfirm→typeFilter→query→blur), loading skeleton distinct from no-data/no-results, canPrint (admin|manager) gates Print Results button, brand tokens verified (no raw hex).
+// v1202: IPED — ConfirmDialog gates cancel-job + remove-hash-set, ?job_id= + ?search= deep-links, N focuses hash search, Esc cascade (cancelJobTarget→removeHashSetTarget→showNewJob→showImportHashSet→selectedJob→hashSearch), canManage (admin|manager) gates New Job / Import / cancel / remove buttons, 3-state empty (loading/no-data/no-results) on job queue, .data envelope unwrap on fetchJobDetail.
+// v1197: Forensic Lab — canDelete (admin/manager) gates Cancel Case (ConfirmDialog), ?sample_id= deep-link alias + invalid-id toast, e.stopPropagation() per Esc cascade branch (completeTarget→confirmUnlinkId→confirmCloseCase→modals→filters→selectedCase), primaryInputRef focuses title on N, confirmCloseCase added to keyboard-effect deps.
+// v1195: Document Intake — ConfirmDialog gates discard-review (Esc→confirm or button), ?doc_id= deep-link (scroll review panel + toast if not loaded), N+canUpload role gate (admin|manager|supervisor|officer|dispatcher), Esc cascade stopPropagation per branch (discardConfirmOpen→review), 4-state empty (idle/processing/error/review), canUpload gates drop-zone+picker+drag, AlertTriangle error state with retry, reviewPanelRef scroll target.
+// v1203: Jail — canCreate (admin/manager/supervisor) gates New Inmate button, N shortcut, and empty-state hint; deep-link ?inmate_id=/?booking_id=/?booking_number=/?status=/?q= with useRef guard+strip; Esc cascade (deleteId→formOpen→filtersActive) stopPropagation per branch; ConfirmDialog for delete; 3-state empty (loading/no-data/no-results); parseTimestamp in fmtRelativeAge.
+// v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
+// v1201: Interagency — status field added to create/edit form (server-persisted, shown in table), EMPTY_FORM includes status:'pending' default.
+// v1200: Interaction Recorder — ConfirmDialog gates stop/discard (warning variant), ?recording_id= deep-link (scroll+toast+strip+useRef guard), N focuses location input (any-role gate), Esc closes stop-confirm, canDelete (admin|manager) gates DEL button, 3-state loading/no-data/no-results empty states, #888888 hex → text-rmpg-400 + brand-400 tokens, parseTimestamp for row timestamps, dead focus:border-[#d4a017] → focus:border-brand-400.
+// v1198: Forgot Password — ?email= deep-link pre-fills input (strip+useRef guard), N shortcut focuses email field, Esc resets form, #888888 hex → text-rmpg-400 tokens (label/footer/icon), hover:text-rmpg-400 replaces inline onMouseEnter/Leave handlers.
+// v1196: Documents — ?file_id= deep-link toasts on missing target (addToast in effect deps), DossierGrid 3-state empty (loading/no-results/no-data via isLoading+searchQuery props), delete folder/file/bulk gated to isAdmin via ConfirmDialog, Esc cascade full deps, SW v1196.
+// v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
+// v1198: Forgot Password — ?email= deep-link pre-fills input (strip+useRef guard), N shortcut focuses email field, Esc resets form, #888888 hex → text-rmpg-400 tokens (label/footer/icon), hover:text-rmpg-400 replaces inline onMouseEnter/Leave handlers.
+// v1197: Forensic Lab — canDelete (admin/manager) gates Cancel Case (ConfirmDialog), ?sample_id= deep-link alias + invalid-id toast, e.stopPropagation() per Esc cascade branch (completeTarget→confirmUnlinkId→confirmCloseCase→modals→filters→selectedCase), primaryInputRef focuses title on N, confirmCloseCase added to keyboard-effect deps.
+// v1196: Documents — ?file_id= deep-link toasts on missing target (addToast added to effect deps), DossierGrid 3-state empty (loading/no-results/no-data via isLoading+searchQuery props), isLoading+searchQuery passed from DocumentsPage dossier view.
+// v1195: Document Intake — ConfirmDialog gates discard-review (Esc→confirm or button), ?doc_id= deep-link (scroll review panel + toast if not loaded), N+canUpload role gate (admin|manager|supervisor|officer|dispatcher), Esc cascade stopPropagation per branch (discardConfirmOpen→review), 4-state empty (idle/processing/error/review), canUpload gates drop-zone+picker+drag, AlertTriangle error state with retry, reviewPanelRef scroll target.
+// v1194: DL Search — brand-gold-500 tokens replace text/bg/border [var(--brand-gold)] (19 sites), fromDeepLinkRef guard toasts on no-results deep-link, addToast in handleSearch deps.
+// v1191: Dashboard — ?panel=/?widget= deep-link (scroll+strip+useRef guard), N shortcut opens New Call (canCreate gate), Esc cascade (NewCallModal→IncidentModal stopPropagation per branch), canCreate gates newCall/newIncident/newCitation/quickCapture toolbar buttons, 3-state activeBolos empty (loading/no-BOLOs/list), panel id attrs for deep-link targets.
+// v1190: DashCameras — e.stopPropagation() per Esc cascade branch (videoToDelete→editing→linking→upload→playing→detail), ?camera_id= deep-link (was clip_id), isAdminOrManager gates upload/delete/N-shortcut, list-view 3-state empty (loading/no-data/no-results), parseTimestamp replaces new Date(string) in delete-label/details, purple led-dot uses --sev-special/--sev-special-rgb, camera-channel overlay migrated to rmpg/purple Tailwind tokens.
+// v1192: Dashcam AI — ConfirmDialog gates AI result discard (admin/manager), ?session_id=/?clip_id= deep-link with scroll+toast+strip+useRef guard, N focuses source filter, Esc cascade (discardTarget→playerEventId→selected) stopPropagation per branch, 3-state empty (loading/no-data/no-results), canConfigure (admin/manager) gates Discard button, brand-400 token replaces inline #d4a017 (5 sites), DetailRow icon typed as ComponentType.
+// v1186: Crisis Response — ConfirmDialog for delete, ?incident_id= deep-link, N shortcut (canCreate), Esc cascade e.stopPropagation() per branch (deleteTarget→form→search), canCreate/canDelete (admin|manager) role gates, 3-state empty (loading/error/no-results/no-data).
+// v1185: Court Tracker — ?hearing_id= deep-link alias, Esc cascade e.stopPropagation() per branch (cloneEventId→witnessOpen→feeOpen→prosecutorOpen→judgeNotesOpen→bailOpen→continuanceOpen→outcomeOpen→citationSearchOpen→formOpen), text-[var(--brand-gold)] → text-brand-gold-500 token (14 sites).
+// v1188: Custom Report Builder — ConfirmDialog for reset/start-over, ?report_id= deep-link (missing-target toast + strip), N focuses first source card or jumps to source step, Esc cascade e.stopPropagation() per branch (resetConfirm→preview→filters→columns→source), canCreate (admin|manager) gates source cards/Run Query/Re-run/Reset, 3-state loading/no-data/no-results empty states in preview step.
+// v1193: Dashcam — ConfirmDialog for device deactivation (admin/manager), ?device_id= deep-link with deepLinkRef guard, N refreshes, Esc cascade stopPropagation (deactivateTarget→selectedDevice), canEdit (admin/manager/supervisor) gates label/unit-assignment fields, canManage gates deactivate, 3-state loading/no-data/no-results empty states, bg-[#d4a017] → bg-brand-gold-500 token, parseTimestamp replaces raw event_at/last_gps_at/last_connection_at display.
+// v1189: DashCam Detail — ConfirmDialog for Burn HUD (admin/manager gate), ?clip_id= deep-link, N triggers Download Original, Esc cascade (burnConfirm→editModal→fullscreen→back) stopPropagation, 3-state empty (loading/error/no-data), isAdminOrManager gates reclassify+burn, .data envelope unwrap, dead duplicate title+Esc effects removed, Video icon for no-data state.
+// v1193: Dashcam — ConfirmDialog for device deactivation (admin/manager), ?device_id= deep-link with deepLinkRef guard, N refreshes, Esc cascade stopPropagation (deactivateTarget→selectedDevice), canEdit (admin/manager/supervisor) gates label/unit-assignment fields, canManage gates deactivate, 3-state loading/no-data/no-results empty states, bg-[#d4a017] → bg-brand-gold-500 token, parseTimestamp replaces raw event_at/last_gps_at/last_connection_at display.
+// v1190: DashCameras — e.stopPropagation() per Esc cascade branch (videoToDelete→editing→linking→upload→playing→detail), ?camera_id= deep-link (was clip_id), isAdminOrManager gates upload/delete/N-shortcut, list-view 3-state empty (loading/no-data/no-results), parseTimestamp replaces new Date(string) in delete-label/details, purple led-dot uses --sev-special/--sev-special-rgb, camera-channel overlay migrated to rmpg/purple Tailwind tokens.
+// v1189: DashCam Detail — ConfirmDialog for Burn HUD (admin/manager gate), ?clip_id= deep-link, N triggers Download Original, Esc cascade (burnConfirm→editModal→fullscreen→back) stopPropagation, 3-state empty (loading/error/no-data), isAdminOrManager gates reclassify+burn, .data envelope unwrap, dead duplicate useEffects removed, Video icon for no-data state.
+// v1188: Custom Report Builder — ConfirmDialog for reset/start-over, ?report_id= deep-link (missing-target toast + strip), N focuses first source card or jumps to source step, Esc cascade e.stopPropagation() per branch (resetConfirm→preview→filters→columns→source), canCreate (admin|manager) gates source cards/Run Query/Re-run/Reset, 3-state loading/no-data/no-results empty states in preview step.
+// v1187: CRM — ConfirmDialog for contact delete, canManage (admin|manager) gates task/contact delete + N shortcut on tasks, Esc cascade e.stopPropagation() per branch + contactToDelete added, ?account_id= deep-link alias for ?client_id= with missing-target toast, 3-state empty (loading/no-data/no-results) on Properties/Contacts/Invoices, contact delete button + context menu.
+// v1186: Crisis Response — ConfirmDialog for delete, ?incident_id= deep-link, N shortcut (canCreate), Esc cascade e.stopPropagation() per branch (deleteTarget→form→search), canCreate/canDelete (admin|manager) role gates, 3-state empty (loading/error/no-results/no-data).
+// v1194: DL Search — brand-gold-500 tokens replace text/bg/border [var(--brand-gold)] (19 sites), fromDeepLinkRef guard toasts on no-results deep-link, addToast in handleSearch deps.
+// v1185: Court Tracker — ?hearing_id= deep-link alias, Esc cascade e.stopPropagation() per branch (cloneEventId→witnessOpen→feeOpen→prosecutorOpen→judgeNotesOpen→bailOpen→continuanceOpen→outcomeOpen→citationSearchOpen→formOpen), text-[var(--brand-gold)] → text-brand-gold-500 token (14 sites).
+// v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
+// v1191: Dashboard — ?panel=/?widget= deep-link (scroll+strip+useRef guard), N shortcut opens New Call (canCreate gate), Esc cascade (NewCallModal→IncidentModal stopPropagation per branch), canCreate gates newCall/newIncident/newCitation/quickCapture toolbar buttons, 3-state activeBolos empty (loading/no-BOLOs/list), panel id attrs for deep-link targets.
+// v1181: Code Enforcement — Esc cascade e.stopPropagation() per branch (confirmOpen→showReinspection→tFormOpen→vFormOpen), canEnforce added to keyboard-effect deps, text-[var(--brand-gold)] → text-brand-gold-500 token migration (6 sites).
+// v1180: Case Management — ConfirmDialog for delete-case, N shortcut opens new-case modal, Esc cascade stopPropagation per branch + caseToDelete guard, canDelete/canArchive (admin|manager) + canAssign (admin|manager|supervisor) role gates, 3-state empty (loading/no-data/no-results), dead StatusBadge import removed, rgba(0,0,0,0.55) inline → bg-black/60 backdrop-blur-sm token.
+// v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
+// v1177: Assets — canCreate/canEdit role gates (admin|manager|supervisor) on New Asset button, edit pencil, row-click, context-menu, and N shortcut; toast for missing ?asset_id= deep-link target.
+// v1176: Alarm Management — dead React import removed, DataTable loading prop wired, emptyDescription added for error/no-data/no-results states.
+// v1182: Colorado DOC — ?doc_number= deep-link auto-runs DOC lookup (toast if missing), N shortcut focuses search input, Esc cascade (close detail panel→clear search), canManage (admin/manager/supervisor) gates Create Person Record, loading skeleton distinct from no-results/empty, #888888 hex → rmpg-400 CSS var token.
+// v1181: Code Enforcement — Esc cascade e.stopPropagation() per branch (confirmOpen→showReinspection→tFormOpen→vFormOpen), canEnforce added to keyboard-effect deps, text-[var(--brand-gold)] → text-brand-gold-500 token migration (6 sites).
+// v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
+// v1177: Assets — canCreate/canEdit role gates (admin|manager|supervisor) on New Asset button, edit pencil, row-click, context-menu, and N shortcut; toast for missing ?asset_id= deep-link target.
+// v1176: Alarm Management — dead React import removed, DataTable loading prop wired, emptyDescription added for error/no-data/no-results states.
+// v1175: Accreditation — deep-link ?standard_id= with missing-record toast, DataTable loading prop for distinct loading/no-data/no-results empty states.
+// v1183: Community — deepLinkRef guard on ?event_id= deep-link, Esc cascade adds e.stopPropagation() per branch (deleteTarget→form), N shortcut focuses nameInputRef, 3-state empty messages per tab (loading/no-data/no-results), emptyDescription added per tab.
+// v1184: Court Records — e.stopPropagation() per Esc cascade branch (outcomeConfirm→outcomeModal→createModal→expandedRow→error→filters), canManage (admin|manager) gates New Event button, N shortcut, Record Outcome button + context-menu item.
+// v1178: Billing — canManage (admin|manager) role gates on New Invoice / Edit / Delete (button + context menu + row-click + N shortcut), Esc cascade adds e.stopPropagation() per branch (deleteConfirm→formModal→filterClear) + switched to document.addEventListener, role-aware empty-state hint.
+// v1174: Warrants — ConfirmDialog for single archive, Esc cascade adds e.stopPropagation() per branch + archiveConfirmOpen, role gates: canManageWarrants (admin|manager|supervisor|dispatcher) on Serve/Edit/Recall, isAdminOrManager on Archive/Delete/Unarchive.
+// v1173: Tasks — Esc cascade e.stopPropagation() per branch, brand-gold CSS var replaces inline hex fallback.
+// v1168: FlexCam Footage — ConfirmDialog for evidence lock, N shortcut focuses play button, Esc stopPropagation per cascade branch (lockConfirm→shortcuts→fullscreen→playbackErr→pause), canManage (admin/manager) role gates on Lock/CourtPkg/Repair, parseTimestamp replaces new Date(string) in court-pkg message, brand-400 token replaces inline #d4a017 on evidence badge.
+// v1172: MDT — ConfirmDialog for off-duty + clear-call, N shortcut opens Quick FI, Esc cascade, canManage role gates, brand token cleanup.
+// v1174: Warrants — ConfirmDialog for single archive, Esc cascade adds e.stopPropagation() per branch + archiveConfirmOpen, role gates: canManageWarrants (admin|manager|supervisor|dispatcher) on Serve/Edit/Recall, isAdminOrManager on Archive/Delete/Unarchive.
+// v1171: Jail Records — ConfirmDialog for roster ingest, ?booking_id= deep-link, N gated to canIngest, Esc cascade (ingestConfirm→bookingSearch), id attrs on booking rows for scroll-target, sourceDeepLinkRef extracted to prevent double-consume.
+// v1169: Help — N/slash focuses search, ?article=/?section= deep-link aliases (strip after mount), ConfirmDialog replaces alert() on PDF errors, Print/PDF gated to admin (canPrint), Esc cascade adds stopPropagation per branch, healthLoading state distinct empty, #d4a017/#888888/#ffffff/#aaaaaa → brand-400/rmpg-* CSS var tokens.
+// v1168: FlexCam Footage — ConfirmDialog for evidence lock, N shortcut focuses play button, Esc stopPropagation per cascade branch (lockConfirm→shortcuts→fullscreen→playbackErr→pause), canManage (admin/manager) role gates on Lock/CourtPkg/Repair, parseTimestamp replaces new Date(string) in court-pkg message, brand-400 token replaces inline #d4a017 on evidence badge.
+// v1167: FlexCam — ConfirmDialog for repair+court-pkg, canLock role gate (admin/manager), N shortcut triggers refresh, Esc cascade adds stopPropagation, ?trip_id= deep-link, loading skeleton, brand token migration (#d4a017→brand-400), <a>→<Link> for PLAY, parseTimestamp replaces new Date() in custody timestamps.
+// v1166: Email — useSearchParams replaces window.history.replaceState for ?enrolled=/?folder=/?thread_id=/?message_id=/?compose= deep-links, canManage (admin/manager) role gates on bulk-delete/empty-folder/block-sender/sweep-sender/auto-categorize/delete-folder.
+// v1170: Invoices — divide-border-subtle token replaces inline CSS var, PAYMENT_METHODS map/find shadow-m renamed to pm, CreatePanel RichTextArea ids + labels deduped from line-item form ids.
+// v1164: Incidents — manager/supervisor role gates for delete/approve/return/archive, isGodMode → canSupervise (admin|manager|supervisor), #ec4899 hex → CSS var token.
+// v1163: Field Interviews — ?interview_id= deep-link (alias for ?fi_id=, strip after mount), Esc stopPropagation per cascade branch, canManage (admin/manager/supervisor) role gates on Edit/Archive/New FI, dead StatusBadge import removed, localToday() replaces new Date() in EMPTY_FORM, rgba hex → toolbar-btn token on submit button.
+// v1160: Criminal History — N shortcut focuses search, ConfirmDialog before PDF export, Print gated admin/manager/supervisor, Esc cascade extended (printConfirm → person deselect).
+// v1162: Evidence & Property — ConfirmDialog for dispose/forfeit + approve/deny release, canDispose role gate (admin/manager) on destroy+forfeit, useSearchParams hoisted before useState initialisers, Esc cascade adds e.stopPropagation() per branch, unused StatusBadge import removed, evidence-barcode-stripe CSS var replaces inline rgba hex.
+// v1161: Daily Activity Reports — role gates broadened (canApprove: admin/manager/supervisor for approve/return, canManage: admin unrestricted), deep-link ?dar_id=/?date=/?officer_id= already present, N shortcut, Esc cascade, ConfirmDialog for return-for-revision, 3-state empty (loading/no-data/no-results), isAdmin/isGodMode renamed to canApprove/canManage for clarity.
+// v1160: Criminal History — N shortcut focuses search, ConfirmDialog before PDF export, Print gated admin/manager/supervisor, Esc cascade extended (printConfirm → person deselect).
+// v1159: Crime Analysis — N shortcut focuses date-range filter, Esc cascade blurs active control, ?date_range=/?district= deep-link strip, Export gated to admin/manager (canExport), brand token migration (#888888→rmpg-400, #1e1e1e→border-subtle, chart hex→CSS vars), filterActive TS2367 fix.
+// v1158: Communications — useSearchParams replaces window.history.replaceState for deep-link strip (?tab=, ?thread_id=, ?message_id=, ?bolo_id=, ?newBolo=), N shortcut (compose message/bolos tab), Esc cascade (emergencyBroadcast→deleteMsg→cancelBOLO→compose→newBOLO→thread→search), role gates (canCreateBolo: admin/manager/supervisor/dispatcher), ConfirmDialog for delete-message + cancel-BOLO, 3-state empty states (loading/no-data/no-search-results), brand token migration (#9ca4ad→rmpg-300-rgb, #fff→text-primary CSS var).
+// v1157: Citations — role gates (canManage: admin/manager/supervisor) on New/Edit/Void/context-menu/mobile-FAB, N shortcut gated on canManage, Esc cascade adds e.stopPropagation() per branch, ?citation_id= deep-link already present.
+// v1156: Arrest Records — role gates expanded to admin/manager/supervisor (MANAGE_ROLES), N shortcut + New Booking button + delete gated to canManage, Esc cascade adds e.stopPropagation() per branch, empty-state text/action conditional on canManage.
+// v1163: Field Interviews — ?interview_id= deep-link (alias for ?fi_id=, strip after mount), Esc stopPropagation per cascade branch, canManage (admin/manager/supervisor) role gates on Edit/Archive/New FI, dead StatusBadge import removed, localToday() replaces new Date() in EMPTY_FORM, rgba hex → toolbar-btn token on submit button.
+// v1155: Affairs — role gates (admin/manager/supervisor) on create/edit/delete; N shortcut gated by canManage; ComplaintDetail Edit+Delete hidden for non-managers.
+// v1154: Person Dossier — ?person_id= deep-link (strip after mount), Esc stopPropagation in photoOpen branch, N shortcut (canManage→open record), role-gate watchlist toggle (admin/manager/supervisor), text-rmpg-400/text-brand-400 token migration.
+// v1153: Module Directory — ?module= deep-link (strip after mount), N shortcut focuses search, Esc cascade (clear search→blur), 3-state empty (loading badges/no-results/empty-favorites), brand token migration (hex→CSS var), dead PanelTitleBar clone removed (import shared component), apiFetch types tightened (any→typed), useSearchParams replaces manual URL param read.
+// v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
+// v1151: Intel Search — ?subject_id= deep-link (strip after mount, hydrates person:<id> query), N shortcut focuses search input, Esc cascade adds e.stopPropagation() per branch + ConfirmDialog handled first, ConfirmDialog for saved-search delete (admin/manager), brand token migration (#d4a017→brand-400/brand-500, #888→rmpg-400/rmpg-500, #ff6b5e→red-400, #3a0d0a→bg-red-950, type-tag hex→Tailwind semantic tokens, relevance bar bg-[#d4a017]→bg-brand-500), SearchBar accepts inputRef + onRemoveSaved props (Trash2 icon on saved rows for canManage).
+// v1150: Geography — role gates (admin/manager/supervisor) for create/edit/delete, N shortcut gated, + button hidden for read-only roles.
+// v1149: GeoData Viewer — ?layer= deep-link (strip after mount), N shortcut focuses feature search, Esc cascade (detail panel→column filter→search clear), 3-state empty states (loading/no-features/no-search-results with clear-search action), brand tokens (#34d399→var(--green-400), #f87171→var(--red-400), #a78bfa→var(--purple-400), #fb923c→var(--orange-400), #888→var(--rmpg-400), #666→var(--rmpg-600), #080808/#0a0a0a→CSS surface vars).
+// v1148: NCIC Terminal — deep-link strip, N shortcut, Esc nav, Export/Clear session (admin/manager), timezone-aware timestamps
+// v1147: Command Center — ?panel= deep-link (strip after mount), N shortcut triggers refresh, Esc cascade stops propagation, Loader2 loading state + Retry no-data state + no-unit/no-chart empty states, canManage role gate on fullscreen button (admin/manager/supervisor), field alias fix (call_type/address fallbacks for incident_type/location_address+unit_number/call_sign), brand token migration (UNIT_STATUS_TOK CSS vars replace hardcoded hex, chart Cell fills, risk-score inline styles, priority border colors).
+// v1149: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, created_at relative time formatting.
+// v1146: Analytics — ?report=+?date_range= deep-link (strip after mount), N shortcut focuses plate search input, Esc cascade (confirmExport→showRaw), ConfirmDialog for Export action (admin/manager), role gate canExport (admin/manager) on Export button, 3-state empty states (loading/no-data/no-search-results) across all tabs, parseTimestamp replaces new Date() in fmtTs.
+// v1145: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, N shortcut skips non-managers, created_at relative time formatting.
+// v1144: Notifications — N shortcut marks all read, role gates (admin/manager/supervisor) for bulk Clear Read and Cleanup 30d+.
+// v1143: Screening — ?screen_id=+?person_id= deep-link (strip after mount), N shortcut focuses surname input on search tab, Esc cascade closes confirm dialog, ConfirmDialog for hit confirm/dismiss + forced re-scrape, role gates canManage (admin/manager/supervisor) on SOR import/scrape/interval-edit, 3-state empty states (search: idle/loading/no-results; review: loading/empty; sources: loading/no-sources), inline interval editor replaces window.prompt+window.alert, brand token migration (#d4a017→brand-400/brand-500, #888→rmpg-400/rmpg-500, bg-black→bg-surface-sunken, #e87558→red-400, warning banners use brand-300/brand-600).
+// v1142: Security Dashboard — ConfirmDialog for unblock-IP, ?tab= deep-link (strip after mount), N shortcut triggers refresh, Esc cascade closes confirm dialog, distinct empty states (loading/no-data), role-gated unblock action (admin/manager/supervisor), brand-gold-500/text-rmpg-400 tokens replace hardcoded hex.
+// v1141: Serve Scheduler — ?schedule_id= deep-link (strip after mount, highlight+scroll slot), N shortcut opens Rebalance (canManage), Esc cascade (rebalance→blur), ConfirmDialog for rebalance apply (warning variant), canManage role gate on Rebalance button+drag ops, 3-state empty (loading/empty-window/error), OfficerLaneTimeline highlightSlotId prop.
+// v1136: Skip Tracer — Esc cascade adds e.stopPropagation() per branch, remove dead expandedPerson state (no callsites).
+// v1139: Serve — role gates (canManage: admin/manager/supervisor) on Add Job button, N shortcut, Edit job menu item; Esc cascade adds e.stopPropagation(); dead code removed (affidavitData, handleGenerateAffidavit, handleNotifyCompletion); brand tokens (#d4a017→text-brand-gold-500, #888888→rmpg-500, #141414→CSS vars); map popup CSS vars; duplicate id fixed on Apt/Unit input.
+// v1138: Training Management — ?course_id= deep-link (strip after mount), search/filter in toolbar, distinct no-data vs no-results empty states, Esc stopPropagation, ConfirmDialog + role gates + N shortcut already present.
+// v1137: Statute Analytics — ?statute=+?date_range= deep-link (strip after mount), N shortcut focuses statute search, Esc cascade (clearConfirm→search→penaltyResult→topCharged), ConfirmDialog for clear-cache (admin/manager), role gate clear button, 3-state empty (loading/no-data/no-search-results), LEVEL_COLORS hex → CSS var tokens (rgb(var(--*-rgb))), ?? nullish-coalescing replaces ||, dead inline-style replaced with Tailwind tokens.
+// v1135: Settings — ConfirmDialog for reset-tones/reset-map, useSearchParams replaces window.history.replaceState for ?section= deep-link strip, N shortcut (admin/manager publishes org defaults), Esc cascade (confirmResetTones→confirmResetMap→capturingKey).
+// v1133: Connections Analyst — ?connection_id=+?type= deep-link (strip after mount), N shortcut saves investigation (canManage), Esc cascade (annotation→save modal→load dropdown→path mode), ConfirmDialog for delete-investigation, role gate save/delete (admin/manager/supervisor), no-seed + no-results empty states, brand token migration (var(--brand-gold)/var(--surface-sunken)/brand-400 Tailwind tokens).
+// v1132: Admin — brand token pass: replace hardcoded #1a1a1a/#888888/rgba(136,136,136,…) in header gradient, mobile tab strip, and desktop sidebar with CSS variable tokens (var(--surface-base), rgb(var(--rmpg-500-rgb)), var(--text-primary), var(--text-muted)); hover class migrated to hover:bg-rmpg-500/[0.08].
+// v1131: Audit Log — N shortcut focuses search-details input, in-page role gate (admin/manager) with restricted empty state, hex tokens replaced with CSS vars (--green-500/--amber-500), Esc cascade refactored to stable refs, dead comment cleanup.
+// v1130: Training Docs (/training-docs) — fixed creator name display (API returns created_by_name, not creator_name); all 10 audit items already present (ConfirmDialog, deep-link ?doc_id=, N shortcut, Esc cascade, 3-state empty, role gates, API shape, no dead code, brand tokens).
+// v1129: Text Editor — ConfirmDialog replaces window.confirm for revert, ?doc_id= deep-link alias (strip after mount), N shortcut (navigate to Documents when no file loaded), Esc cascade closes revert dialog, empty state for no-file, role gates (supervisor+ can edit/save; others view-only), #d4a017 → text-brand-gold-500 token.
+// v1128: Shift Plans — useSearchParams replaces window.history.replaceState for deep-link strip (?plan_id=/?date=), canManage role gate (admin/manager/supervisor) on create/edit/delete/archive/clear-all/N-shortcut, N shortcut gated, context menu mutate items gated.
+// v1127: Use of Force — audit pass: e.stopPropagation() added to Esc cascade branches (form/reviewDialog/error/selection/filters), header comment updated to v1127; all prior features (ConfirmDialog, ?uof_id= deep-link, N shortcut, role-gated review, 3-state empty, brand tokens) verified clean.
+// v1126: Plate Log — role gates (canManage: admin/manager/supervisor) on Confirm/Reject/Bulk actions, ConfirmDialog for bulk ops, 3-state empty (loading/no-data/no-results-for-filter), brand-gold-500 tokens replace all hardcoded #d4a017, text-rmpg-400 replaces #888888.
+// v1125: NSOPW Offender Registry — deep-link setSearchParams strip, N shortcut, Esc cascade, parseTimestamp for last-run display.
+// v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
+// v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
+//        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
+//        void + cancel (warning variant); ?case_id= deep-link alias for ?violation_id=;
+//        Esc cascade now closes ConfirmDialog first; all existing features preserved.
+// v1122: Trespass Orders — role gates (canManage: admin/manager/supervisor) for create/edit/serve/lift/violate/renew; officers/dispatchers get read-only. Context menu, toolbar, detail panel, and empty-state action all gated. N shortcut suppressed for read-only roles.
+// v1121: Law Book — ?section= deep-link alias, / shortcut to focus search, Esc stopPropagation, canManage role gate, sev-* token migration.
+// v1120: National Warrants — ?search= / ?warrant_id= deep-link, N shortcut, Esc cascade (highlight→state→results), 3-state empty (idle/searching/no-results), row highlight + scroll-into-view for warrant_id deep-link.
+// v1119: DL Search — ?dl_number= / ?person_id= deep-link, N shortcut focuses search, Esc cascade (modal→panel→results), 3-state empty (not-searched/loading/no-results), ConfirmDialog for SOR import, dead Camera import removed.
+// v1118: Recruitment — ConfirmDialog replaces inline delete div, ?applicant_id= / ?recruit_id=
+//        deep-link, N shortcut, Esc cascade (delete → form), 3-state empty (loading/error/no-data/
+//        no-results), role gates (canManage: admin/manager/human_resources), search filter,
+//        safeDateStr for applied_date display, localToday() replaces new Date() in EMPTY_FORM,
+//        dead-code cleanup (deleteId → deleteTarget, loading → loadState, any → typed formData).
+// v1117: Accreditation — role gates (canManage: admin/manager), ?standard_id= / ?accred_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces inline delete modal, search filter, typed formData, dead-code cleanup.
+// v1116: Narcotics — role gates (canManage: admin/manager/supervisor), ?narcotics_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1115: Alarm Management — role gates (canWrite/canDelete: admin/manager/supervisor), ?alarm_id= deep-link, N shortcut, Esc cascade, 3-state empty states, ConfirmDialog replaces inline delete modal, search filter, dead-code cleanup.
+// v1134: Forensic Lab — role gates (canManage: admin/manager/supervisor) for create/edit/QC/custody actions and New Case tab/shortcut.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
+//        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
+//        with distinct empty states (loading/no-data/no-results), role-gated create
+//        and delete (admin|manager only), text-green-400 -> text-blue-400 brand token.
+// v1111: Gang Intel (/gang-intel) — Page 88 of the full-app frontend pass.
+//        Replaced inline delete modal with ConfirmDialog (danger variant, shows
+//        name/moniker/gang in details). Added N shortcut (new member), Esc
+//        cascade (form → delete confirm, stopPropagation). Deep-link:
+//        ?member_id= auto-opens that member in the edit form after load,
+//        ?gang_id= accepted and stripped; both removed with { replace: true }.
+//        Role gate: Delete button + context-menu item hidden for non-admin/
+//        manager/supervisor (mirrors Worker DELETE 403 guard). Distinct empty
+//        states: "Loading…" spinner on initial fetch, "No results for X" when
+//        search has no hits vs "No gang members tracked yet" when data is truly
+//        empty. Search bar filters by name/moniker/gang in-client. Removed dead
+//        EMPTY_GANG constant and unused `gangs` render path. Brand tokens: no
+//        hardcoded hex (was using CSS-var-backed Tailwind tokens already).
+//        formData type tightened from `any` to `typeof EMPTY_MEMBER`.
+// v1110: Interagency (/interagency) — ConfirmDialog replaces hand-rolled delete modal,
+//        ?agency_id= deep-link (strip with replace:true), N shortcut for New Partner,
+//        Esc cascade closes form/dialog, 3-state empty states (loading/no-data/no-results),
+//        admin|manager role gates on edit/delete UI, search filter, typed Partner interface.
+// v1109: Risk Management (/risk) — Page 86 frontend audit. Replaced inline
+//        delete div with ConfirmDialog. Added ?risk_id= deep-link (opens edit
+//        modal, stripped with replace:true). N shortcut opens New Assessment
+//        (admin/manager only). Esc cascade: delete confirm → form. Empty states
+//        now distinguish loading vs no-data vs no-search-results. Role gates:
+//        canWrite (admin|manager) hides New/Edit/Delete from other roles.
+//        API envelope correctly unwraps .data array from /risk/assessments.
+//        Dead state removed (showForm erroneously derived from editingRecord
+//        !== null). Hardcoded hex (#888888) migrated to text-rmpg-400 token.
+//        Filter bar with live client-side search added to toolbar.
+// v1108: Billing (/billing, /invoices) — Page 85 of the full-app frontend
+//        pass. BillingPage: replaced todayLocal() helper with localToday()
+//        from dateUtils (consistent timezone handling). InvoicesPage: added
+//        ?invoice_id= deep-link (opens + selects invoice after load) +
+//        ?client_id= pre-filter; N shortcut (canEdit only, skips while
+//        typing) opens New Invoice; Esc cascade (payment form → line-item
+//        form → detail panel → create panel); ConfirmDialog for delete-
+//        payment and delete-line-item (were instant no-confirmation deletes);
+//        useToast feedback on delete success/error; distinct empty states —
+//        loading spinner / "no invoices match filters" + clear CTA / "no
+//        invoices yet" + create CTA.
+// v1107: QA (/qa) — Page 84 of the full-app frontend pass. Replaced inline
+//        delete dialog with ConfirmDialog (with review details). Added ?qa_id=
+//        / ?review_id= deep-link (stripped after mount with replace:true). Added
+//        N shortcut (new review when not in input) and Esc cascade (close modal
+//        or delete dialog). Role gates: admin/manager/supervisor for create/edit,
+//        admin/manager for delete. DataTable loading prop wired for skeleton vs
+//        empty-state distinction. Removed `showForm = editingRecord !== null`
+//        dead pattern — replaced with separate formOpen boolean. Migrated
+//        hardcoded hex (#888888, #991b1b, #f87171) to CSS variable tokens via
+//        ConfirmDialog. Fixed created_at column to use formatDateTime().
+// v1106: Asset Management — ?asset_id= deep-link, Esc cascade, N shortcut, search bar,
+//        distinct empty states, ConfirmDialog delete, role-gated delete (admin|manager).
+// v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
+//        fmtRelativeAge, JailRecordsPage: deep-link ?source_key=, N shortcut,
+//        Esc cascade, loading/empty states, role gate ingest (supervisor+),
+//        brand tokens (no hardcoded hex), booking search filter.
+// v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
+//        notificationRouting: add task/task_assignment entity types + fix case_task
+//        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
+// v1102: Crime Analysis (/crime-analysis) — Page 79 of the full-app frontend
+//        pass. Added ?days= / ?date_range= deep-link (also seeds ?start_date=
+//        / ?end_date= for custom range), stripped after mount. Fixed BlueGradient
+//        stops (were both #888888, now steel-blue CSS vars). Cell keys changed
+//        from array index to stable d.name. Empty states now distinguish "no data
+//        for this period" vs "no data available" based on filterActive flag.
 // v1101: Reports pages (/reports, /reports/custom) — Page 78 of the full-app
 //        frontend audit. Backend: added 7 missing endpoints (comparison,
 //        daily-briefing, weekly-digest, patrol-tracking, POST /reports/custom,
@@ -13,6 +206,58 @@
 //        instead of raw day/type/count triples. Frontend: CustomReportBuilder
 //        gains ?type= deep-link (pre-selects source), Esc cascade
 //        (preview→filters→columns→source→/reports). No window.confirm/prompt.
+// v1100: Communications — Page 77 of the full-app frontend pass.
+//        Implemented messages CRUD backend (GET/POST/PUT read+ack/DELETE)
+//        + emergency-broadcast (accepts content not message) + drafts POST
+//        + activity-feed real D1 query in stubs router. Client: BOLO search
+//        field + distinct empty states (no-BOLOs vs no-results), role gates
+//        (canCreateBolo: supervisor+ only sees New BOLO/resolve/archive/N
+//        shortcut), Esc cascade clears boloSearch, subject not required in
+//        compose (auto-derived from content).
+// v1099: Training pages — Page 76 of the full-app frontend audit.
+//        TrainingDocsPage: replaced window.confirm() with ConfirmDialog,
+//        removed dead isGodMode variable, fixed stale-closure keyboard
+//        shortcut (loadDocuments now in deps), added ?doc_id= deep-link,
+//        improved empty-state (no-data vs filtered vs no-category).
+//        TrainingManagementPage: fixed critical bug where "New Course"
+//        modal never opened (showForm was editingRecord !== null, but
+//        openNew sets editingRecord = null); added separate showForm boolean,
+//        role gate (admin/manager/hr only), Esc cascade, N shortcut,
+//        replaced inline delete div with ConfirmDialog, added Docs Library
+//        cross-link button. Worker: added 3 missing endpoints —
+//        GET /personnel/training-materials, GET /personnel/training-alerts,
+//        POST /personnel/training-bulk-assign.
+// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
+//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
+//        API never emitted; now reads total_devices/online_devices/active_devices).
+//        Removed broken POST /howen/enable stub call and unguarded power-toggle
+//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
+//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
+//        with text-brand-400. Distinct empty states for no-devices vs no-results.
+//        Removed unused AlertTriangle + Smartphone imports. Removed dead
+//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
+// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
+//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
+//        and ?officer_id= deep-links (camera row highlight + officer search
+//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
+//        messages (no data vs no search results). Removed dead isGodMode alias.
+// v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
+//        Added N shortcut (open New Vehicle modal when not typing),
+//        Esc cascade (closes New Vehicle modal before propagating),
+//        ?unit_id= deep-link param (alongside ?vehicle_id= and ?fleet_id=),
+//        VehicleDetailRoute now distinguishes loading vs 404 (no more
+//        silent blank on a bad ID), GpsTrackingRoute link updated from
+//        /fleet-legacy to /map (the actual GPS map surface).
+// v1095: Personnel (/personnel) — Page 72 of the full-app frontend pass.
+//        Removed dead state (analytics, analyticsLoading, dashcamEvents,
+//        deviceMappings, dashcamLoading, refreshDashcamData — never read).
+//        Role gate: terminate/archive/restore buttons in detail panel now
+//        hidden for officer/dispatcher/client_viewer (admin|manager|supervisor|
+//        human_resources only). N shortcut extended to credentials, training,
+//        and deployment tabs (was roster+equipment only). Fixed hex tokens:
+//        #0a1a0a → bg-green-950/30 (DutyBoard/Deployment/Training),
+//        #1a0a0a → bg-red-950/30 (DashCam impact alert). FitnessCommendations
+//        apiFetch now guards against wrapper objects {data:[]} on both loads.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
@@ -77,76 +322,48 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-// v1088: Criminal History (/criminal-history) — Page 70 of the full-app
-//        frontend pass.
-//        (1) Fixed silent search bug: name/DOB/DL searches sent ?name=/?dob=/?dl=
-//            params the server does not read, returning the full 500-person
-//            unfiltered list instead of matching records. Name now routes to
-//            /records/persons/search?q= (proper LIKE); DOB/DL use the bulk
-//            list's ?search= param.
-//        (2) Switched person history to /records/persons/:id/system-history
-//            (single round-trip, FK-joined) — previously 4 separate fetches
-//            used fuzzy name-text search for citations/FIs, returning records
-//            for anyone with a similar name, not the selected person.
-//        (3) Added CriminalHistorySection panel — formal arrest/conviction/
-//            charge records from the criminal_history table were absent.
-//        (4) Added WarrantNsopwStatus panel — NSOPW nationwide SOR cross-ref.
-//        (5) Esc smart-cascade: Esc while person selected returns to list.
-//        (6) ?subject= URL param pre-fills and auto-fires name search.
-//        (7) ConfirmDialog on CriminalHistorySection delete (was bare click).
-//        (8) normPerson() handles dob/gender/dl_number aliases from bulk list.
-// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
-//        by the client but silently ignored by the Worker (no LIKE clause);
-//        pagination.totalPages missing from API response (client showed page 1
-//        always); client sent limit= but Worker read per_page=; reviewed_by_name
-//        never populated (only officer join, no reviewer join). Added:
-//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
-//        equipment_issues + recommendations edit fields (were in PDF + type but
-//        no UI to write them); ensureTable idempotent ALTER for new cols.
-// v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
-//   (chain-action, checkout, checkin, disposition, request-release,
-//   approve-release, custody-validation, linked-records); fix ?id= deep-link
-//   from QuickSearchCard; gate Approve/Deny release to supervisor+; seed
-//   ?status= and ?case_id= URL filters on mount.
-// v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
-//        (1) Stats bar was always showing zeros: GET /citations/stats returned
-//        byStatus as a row array (camelCase) but CitationsPage read it as
-//        by_status: Record<string,number>. Worker now returns both shapes plus
-//        the missing fines_issued, fines_collected, and today_count fields.
-//        (2) Deep-links: ?plate=<plate> pre-fills the search box (incoming from
-//        PlateLog "View citations for plate"); ?officer_id=<id> pre-fills with
-//        the officer id (incoming from Personnel). ?citation_id=<id> already
-//        existed. (3) Plate in detail view now has an "ALPR" button that
-//        navigates to /intel/plate-log?plate=<plate> for history. Right-click
-//        context menu also gets "View plate history" when plate is present.
-//        (4) Court Information section header now has a "Court Tracker" link
-//        that navigates to /court.
-// v1082: Incidents (Page 64) — source-call buttons now deep-link to
-//        /dispatch?call_id=<id> so clicking the call number from an incident
-//        auto-selects that call in the Dispatch CAD board. Previously both
-//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
-//        to /dispatch with no context, leaving operators to find the call
-//        manually. No schema or API changes.
-// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
-//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
-//        New Checkpoint form on the Checkpoints tab, four-way empty-state
-//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
-//        ever / no-active-checkpoints-for-compliance), and removed dead
-//        coverageData/handleLoadCoverage state that was defined but never
-//        rendered anywhere in the JSX.
-// v1070: Cmd+K Global Search — scope recent-search history per user.id
-//        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
-//        key across every operator on the MDT. A shared patrol laptop was
-//        leaking one officer's recent name/plate/badge queries to the next
-//        person who opened the dialog. Now keyed on
-//        `rmpg_globalsearch_recent_${user.id}`, with a one-time read-through
-//        migration that copies the legacy bare key into the first
-//        signed-in user's slot and then deletes the legacy key so the
-//        next user doesn't inherit it. Reads/writes are skipped entirely
-//        when no user is signed in (mid-login first render). Mirrors the
-//        SkipTracerPage history pattern (PR #1657 / SW v1065).
-//        SW name auto-stamps via vite plugin — bump here is documentation.
-
+// v1070: Internal Affairs (/affairs) — Page 52 of the full-app frontend pass.
+//        IA complaints are court / civil-rights material the moment a 42 USC
+//        1983 or POST decertification proceeding starts. The page shipped with
+//        a list + form modal but no detail panel, no URL deep-link contract,
+//        no court-ready PDF, no Esc handler, no N shortcut, no privacy banner,
+//        no investigations surfacing at all (the /affairs/complaints/:id/
+//        investigations endpoint existed but was never called), and zero
+//        recordAudit() hooks anywhere on the IA route.
+//        Client (client/src/pages/AffairsPage.tsx, +affairsComplaintPdf.ts):
+//          - URL deep-link: ?complaint_id=<n>, ?investigation_id=<n>, ?new=1
+//          - Split list / detail surface; detail loads the investigations
+//            list on demand from the existing route.
+//          - Court-ready PDF (affairsComplaintPdf) with the same RMPG-gold
+//            CONFIDENTIAL banner, tamper-evidence statement, payload-hash
+//            trailer and signature lines as forensicCasePdf / arrests /
+//            evidenceItemPdf — UT GRAMA §63G-2-302 + POST §53-6-211 cited
+//            on the confidentiality strip.
+//          - Esc smart-cascade: delete → form → error → detail → filters.
+//          - N opens "new complaint" (typing-suppressed). Visible "(N)" hint.
+//          - Privacy advisory banner on the page itself + CONFIDENTIAL footer
+//            on every PDF page.
+//          - Status / type / free-text filter bar with distinct empty states
+//            for "nothing filed yet" vs "filter matches nothing".
+//          - Document title reflects the selected complaint.
+//          - 17 unit tests for affairsComplaintPdf helpers + smoke generation.
+//        notificationRouting.ts: ia_complaint + ia_investigation entity types
+//          deep-link to /affairs?complaint_id= / ?investigation_id= so a
+//          watchlist hit / supervisor referral notification lands directly
+//          on the row instead of the IA list. +2 tests.
+//        Worker (src/routes/affairs.ts):
+//          - recordAudit() wired into create / update / delete on complaints,
+//            create / update on investigations, raise / resolve on early-
+//            intervention flags — IA edits are now part of the central audit
+//            seam (audit_log + flex_events mirror). Actions:
+//            IA_COMPLAINT_FILED / IA_COMPLAINT_UPDATED / IA_COMPLAINT_DELETED
+//            / IA_INVESTIGATION_OPENED / IA_INVESTIGATION_UPDATED /
+//            IA_FLAG_RAISED / IA_FLAG_RESOLVED.
+//          - Missed auto-stamp: status='reviewed' now stamps reviewed_at via
+//            COALESCE alongside the existing status='completed' →
+//            completed_at stamp.
+//        No D1 migration — ia_complaints / ia_investigations /
+//        early_intervention_flags schema unchanged.
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
@@ -3370,6 +3587,9 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1112: Special Ops — ConfirmDialog for delete, ?op_id= deep-link, N shortcut,
+//        Esc cascade, three-state empty (loading/empty/search), admin/manager/supervisor
+//        role gate for create/delete, parseTimestamp for dates, search filter bar.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';
