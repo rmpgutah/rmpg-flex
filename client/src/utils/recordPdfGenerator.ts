@@ -66,6 +66,7 @@ import {
   drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
   type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
+import { toDisplayLabel } from './formatters';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -3807,8 +3808,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const warrantRows = activeWarrantsOnly.map(w => [
       w.warrant_number || 'N/A',
-      titleCase(w.type || ''),
-      titleCase(w.status || ''),
+      toDisplayLabel(w.type || ''),
+      toDisplayLabel(w.status || ''),
       w.charge_description || 'N/A',
       titleCase(w.offense_level || '') || 'N/A',
       fmtDate(w.date_issued || (w as any).issued_date) || 'N/A',
@@ -3836,9 +3837,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
-      titleCase((inc.incident_type || '').replace(/_/g, ' ')),
-      titleCase(inc.role || ''),
-      titleCase(inc.status || ''),
+      toDisplayLabel(inc.incident_type || ''),
+      toDisplayLabel(inc.role || ''),
+      toDisplayLabel(inc.status || ''),
       fmtDate(inc.created_at),
     ]);
     y = addTableWithShading(
@@ -3863,8 +3864,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
       c.citation_number || 'N/A',
-      titleCase(c.type || ''),
-      titleCase(c.status || ''),
+      toDisplayLabel(c.type || ''),
+      toDisplayLabel(c.status || ''),
       c.violation_description || c.statute_citation || 'N/A',
       fmtDate(c.violation_date),
     ]);
@@ -3919,7 +3920,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const crRows = data.criminal_records.map(r => [
       formatEnumValue(r.record_type),
       r.offense || 'N/A',
-      (r.offense_level || '').toUpperCase() || 'N/A',
+      toDisplayLabel(r.offense_level || '') || 'N/A',
       r.case_number || 'N/A',
       r.disposition || 'N/A',
       fmtDate(r.offense_date),
@@ -7163,9 +7164,9 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     topBanner: true,
     rows: [
       { cells: [
-        { label: 'TOTAL SCANS', value: String(data.scanActivity.totalScans), ratio: 1, align: 'center' },
-        { label: 'WARRANTS FOUND', value: String(data.scanActivity.totalFound), ratio: 1, align: 'center', valueBold: true },
-        { label: 'WARRANTS CLEARED', value: String(data.scanActivity.totalCleared), ratio: 1, align: 'center' },
+        { label: 'TOTAL SCANS', value: String(data.scanActivity?.totalScans ?? 0), ratio: 1, align: 'center' },
+        { label: 'WARRANTS FOUND', value: String(data.scanActivity?.totalFound ?? 0), ratio: 1, align: 'center', valueBold: true },
+        { label: 'WARRANTS CLEARED', value: String(data.scanActivity?.totalCleared ?? 0), ratio: 1, align: 'center' },
       ]},
     ],
     y,
