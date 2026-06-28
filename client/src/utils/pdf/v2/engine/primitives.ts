@@ -227,25 +227,49 @@ export class Primitives {
     let bodyTop = this.layout.cursorY;   // below-header separator y for this fragment
     applyBodyStyle();
 
+    // ── Body rows: zebra-striped, black text ──
+    this.doc.setFont('helvetica', TYPOGRAPHY.tableBody.weight);
+    this.doc.setFontSize(TYPOGRAPHY.tableBody.size);
+    this.doc.setTextColor(0, 0, 0);
+
+    const bodyTop = this.layout.cursorY;
+
+    // Draw the outer rect + column dividers (+ optional below-header separator)
+    // for ONE page fragment. Tables that overflow a page get borders per
+    // fragment — the old single-rect pass spanned tableTop→bodyBottom and was
+    // skipped entirely once a page break reset cursorY below tableTop, leaving
+    // the table as gridless floating text on every page it touched.
+    const drawFragmentBorders = (top: number, bottom: number, withHeaderSep: boolean) => {
+      if (bottom <= top) return;
+      const h = bottom - top;
+      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
+      this.doc.setDrawColor(0, 0, 0);
+      this.doc.rect(left, top, tableWidth, h);
+      if (withHeaderSep) this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      for (let i = 1; i < spec.columns.length; i++) {
+        this.doc.line(colStarts[i], top, colStarts[i], top + h);
+      }
+    };
+
     if (rows.length === 0) {
       this.doc.setTextColor(150, 150, 150);
       this.doc.text('No records', left + 1, this.layout.cursorY + rowH - 1.5);
       this.layout.advance(rowH);
       this.doc.setTextColor(0, 0, 0);
-      drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
+      drawFragmentBorders(tableTop, this.layout.cursorY, true);
     } else {
+      let fragTop = tableTop;      // first fragment includes the header band
+      let fragHasHeader = true;
       for (let r = 0; r < rows.length; r++) {
-        const broke = this.layout.pageBreakIfNeeded(rowH, () => {
-          // Close THIS page's fragment before jsPDF flips to the next page.
-          drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
-        });
-        if (broke) {
-          // New page: repeat the header band and re-anchor the fragment.
+        const yBefore = this.layout.cursorY;
+        this.layout.pageBreakIfNeeded(rowH);
+        if (this.layout.cursorY < yBefore) {
+          // Page break: close the fragment on the page just left (from fragTop
+          // down to the last row's bottom), then start fresh on the new page
+          // top (continuation fragments carry no below-header separator).
+          drawFragmentBorders(fragTop, yBefore, fragHasHeader);
           fragTop = this.layout.cursorY;
-          drawHeaderBand(fragTop);
-          this.layout.advance(headerH);
-          bodyTop = this.layout.cursorY;
-          applyBodyStyle();
+          fragHasHeader = false;
         }
         const row = rows[r];
         const yRow = this.layout.cursorY;
@@ -262,7 +286,7 @@ export class Primitives {
         });
         this.layout.advance(rowH);
       }
-      drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
+      drawFragmentBorders(fragTop, this.layout.cursorY, fragHasHeader);
     }
 
     // Reset text + fill color for downstream callers — the body loop
