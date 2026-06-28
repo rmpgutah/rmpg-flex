@@ -17,6 +17,10 @@ export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
 }
 
+export interface PatrolTrackingPdfOptions {
+  printTarget?: PrintTarget;
+}
+
 // ── Types matching the server patrol-tracking response ──────
 
 interface PatrolPoint {
