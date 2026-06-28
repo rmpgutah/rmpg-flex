@@ -128,7 +128,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
           {canManage && (
             <form onSubmit={handleAdd} className="panel-inset p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <select
+                <select id="ff-dashcamlinkmodal-0"
                   value={entityType}
                   onChange={e => setEntityType(e.target.value)}
                   className="select-dark text-[10px] flex-1"
@@ -137,7 +137,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
-                <input
+                <input id="ff-dashcamlinkmodal-1"
                   type="number"
                   value={entityId}
                   onChange={e => setEntityId(e.target.value)}
@@ -147,7 +147,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                   required
                 />
               </div>
-              <input
+              <input id="ff-dashcamlinkmodal-2"
                 type="text"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}

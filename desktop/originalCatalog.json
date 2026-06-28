@@ -1,0 +1,2080 @@
+{
+  "active-directory": [
+    {
+      "className": "BloodHound",
+      "title": "BloodHound (AD Attack Paths)",
+      "description": "Uses graph theory to reveal hidden attack paths in Active Directory/Azure environments.",
+      "install": [
+        "pip install --user bloodhound",
+        "sudo apt-get install -y neo4j"
+      ],
+      "run": [
+        "bloodhound-python --help"
+      ],
+      "projectUrl": "https://github.com/BloodHoundAD/BloodHound"
+    },
+    {
+      "className": "NetExec",
+      "title": "NetExec \u2014 nxc (Network Pentesting)",
+      "description": "Swiss army knife for pentesting Windows/AD networks. Successor to CrackMapExec.",
+      "install": [
+        "pip install --user netexec"
+      ],
+      "run": [
+        "nxc --help"
+      ],
+      "projectUrl": "https://github.com/Pennyw0rth/NetExec"
+    },
+    {
+      "className": "Impacket",
+      "title": "Impacket (Network Protocol Tools)",
+      "description": "Python classes for working with SMB, MSRPC, Kerberos, LDAP, and more.",
+      "install": [
+        "pip install --user impacket"
+      ],
+      "run": [
+        "impacket-smbclient --help"
+      ],
+      "projectUrl": "https://github.com/fortra/impacket"
+    },
+    {
+      "className": "Responder",
+      "title": "Responder (LLMNR/NBT-NS Poisoner)",
+      "description": "LLMNR/NBT-NS/MDNS poisoner with rogue authentication servers for credential capture.",
+      "install": [
+        "git clone https://github.com/lgandx/Responder.git"
+      ],
+      "run": [
+        "cd Responder && sudo python3 Responder.py --help"
+      ],
+      "projectUrl": "https://github.com/lgandx/Responder"
+    },
+    {
+      "className": "Certipy",
+      "title": "Certipy (AD Certificate Abuse)",
+      "description": "Active Directory Certificate Services enumeration and abuse tool.",
+      "install": [
+        "pip install --user certipy-ad"
+      ],
+      "run": [
+        "certipy --help"
+      ],
+      "projectUrl": "https://github.com/ly4k/Certipy"
+    },
+    {
+      "className": "Kerbrute",
+      "title": "Kerbrute (Kerberos Brute Force)",
+      "description": "Kerberos pre-auth brute-forcer for username enumeration and password spraying.",
+      "install": [
+        "go install github.com/ropnop/kerbrute@latest"
+      ],
+      "run": [
+        "kerbrute --help"
+      ],
+      "projectUrl": "https://github.com/ropnop/kerbrute"
+    },
+    {
+      "className": "ActiveDirectoryTools",
+      "title": "Active Directory Tools",
+      "description": "Tools for AD enumeration, attack path discovery, and credential attacks.",
+      "install": [],
+      "run": []
+    }
+  ],
+  "anonymity": [
+    {
+      "className": "AnonymouslySurf",
+      "title": "Anonymously Surf",
+      "description": "It automatically overwrites the RAM when the system shuts down\nand also changes your IP address.",
+      "install": [
+        "git clone https://github.com/Und3rf10w/kali-anonsurf.git",
+        "cd kali-anonsurf && sudo ./installer.sh"
+      ],
+      "run": [
+        "sudo anonsurf start"
+      ],
+      "projectUrl": "https://github.com/Und3rf10w/kali-anonsurf"
+    },
+    {
+      "className": "Multitor",
+      "title": "Multitor",
+      "description": "How to stay in multi places at the same time.",
+      "install": [
+        "git clone https://github.com/trimstray/multitor.git",
+        "cd multitor && sudo bash setup.sh install"
+      ],
+      "run": [
+        "multitor --init 2 --user debian-tor --socks-port 9000 --control-port 9900 --proxy privoxy --haproxy"
+      ],
+      "projectUrl": "https://github.com/trimstray/multitor"
+    },
+    {
+      "className": "AnonSurfTools",
+      "title": "Anonymously Hiding Tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "cloud-security": [
+    {
+      "className": "Prowler",
+      "title": "Prowler (Cloud Security Scanner)",
+      "description": "Open-source security tool for AWS, Azure, GCP, and Kubernetes assessments.",
+      "install": [
+        "pip install --user prowler"
+      ],
+      "run": [
+        "prowler --help"
+      ],
+      "projectUrl": "https://github.com/prowler-cloud/prowler"
+    },
+    {
+      "className": "ScoutSuite",
+      "title": "ScoutSuite (Multi-Cloud Auditing)",
+      "description": "Multi-cloud security auditing tool for AWS, Azure, GCP, Alibaba, and Oracle.",
+      "install": [
+        "pip install --user scoutsuite"
+      ],
+      "run": [
+        "scout --help"
+      ],
+      "projectUrl": "https://github.com/nccgroup/ScoutSuite"
+    },
+    {
+      "className": "Pacu",
+      "title": "Pacu (AWS Exploitation Framework)",
+      "description": "AWS exploitation framework for offensive security testing of AWS environments.",
+      "install": [
+        "pip install --user pacu"
+      ],
+      "run": [
+        "pacu --help"
+      ],
+      "projectUrl": "https://github.com/RhinoSecurityLabs/pacu"
+    },
+    {
+      "className": "Trivy",
+      "title": "Trivy (Container/K8s Scanner)",
+      "description": "Comprehensive vulnerability scanner for containers, Kubernetes, IaC, and code.",
+      "install": [
+        "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin"
+      ],
+      "run": [
+        "trivy --help"
+      ],
+      "projectUrl": "https://github.com/aquasecurity/trivy"
+    },
+    {
+      "className": "CloudSecurityTools",
+      "title": "Cloud Security Tools",
+      "description": "Tools for cloud infrastructure security assessment and exploitation.",
+      "install": [],
+      "run": []
+    }
+  ],
+  "ddos": [
+    {
+      "className": "DDoSTool",
+      "title": "DDoS",
+      "description": "Best DDoS Attack Script With 36 Plus Methods. DDoS attacks for SECURITY TESTING PURPOSES ONLY!",
+      "install": [
+        "git clone https://github.com/the-deepnet/ddos.git",
+        "cd ddos && sudo pip3 install -r requirements.txt"
+      ],
+      "projectUrl": "https://github.com/the-deepnet/ddos",
+      "run": []
+    },
+    {
+      "className": "SlowLoris",
+      "title": "SlowLoris",
+      "description": "Slowloris is basically an HTTP Denial of Service attack. It sends lots of HTTP requests.",
+      "install": [
+        "sudo pip3 install slowloris"
+      ],
+      "run": []
+    },
+    {
+      "className": "Asyncrone",
+      "title": "Asyncrone | Multifunction SYN Flood DDoS Weapon",
+      "description": "aSYNcrone is a C language based, multifunction SYN Flood DDoS Weapon.\nDisable the destination system by sending SYN packets intensively.",
+      "install": [
+        "git clone https://github.com/fatih4842/aSYNcrone.git",
+        "cd aSYNcrone && sudo gcc aSYNcrone.c -o aSYNcrone -lpthread"
+      ],
+      "projectUrl": "https://github.com/fatihsnsy/aSYNcrone",
+      "run": []
+    },
+    {
+      "className": "UFONet",
+      "title": "UFOnet",
+      "description": "UFONet is a free software, P2P and cryptographic disruptive toolkit that allows performing DoS and DDoS attacks.",
+      "install": [
+        "git clone https://github.com/epsylon/ufonet.git",
+        "cd ufonet && pip install --user ."
+      ],
+      "run": [
+        "python3 ufonet --gui"
+      ],
+      "projectUrl": "https://github.com/epsylon/ufonet"
+    },
+    {
+      "className": "GoldenEye",
+      "title": "GoldenEye",
+      "description": "GoldenEye is a python3 app for SECURITY TESTING PURPOSES ONLY!\nGoldenEye is a HTTP DoS Test Tool.\nUsage: ./goldeneye.py <url> [OPTIONS]",
+      "install": [
+        "git clone https://github.com/jseidl/GoldenEye.git",
+        "chmod -R 755 GoldenEye"
+      ],
+      "projectUrl": "https://github.com/jseidl/GoldenEye",
+      "run": []
+    },
+    {
+      "className": "Saphyra",
+      "title": "SaphyraDDoS",
+      "description": "A Python DDoS script for SECURITY TESTING PURPOSES ONLY.",
+      "install": [
+        "git clone https://github.com/anonymous24x7/Saphyra-DDoS.git",
+        "chmod +x Saphyra-DDoS/saphyra.py"
+      ],
+      "projectUrl": "https://github.com/anonymous24x7/Saphyra-DDoS",
+      "run": []
+    },
+    {
+      "className": "DDOSTools",
+      "title": "DDOS Attack Tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "exploitation": [
+    {
+      "className": "RouterSploit",
+      "title": "RouterSploit",
+      "description": "The RouterSploit Framework is an open-source exploitation framework dedicated to embedded devices",
+      "install": [
+        "git clone https://github.com/threat9/routersploit.git",
+        "cd routersploit && sudo python3 -m pip install -r requirements.txt"
+      ],
+      "run": [
+        "cd routersploit && sudo python3 rsf.py"
+      ],
+      "projectUrl": "https://github.com/threat9/routersploit"
+    },
+    {
+      "className": "WebSploit",
+      "title": "WebSploit",
+      "description": "Websploit is an advanced MITM framework.",
+      "install": [
+        "git clone https://github.com/The404Hacking/websploit.git;cd websploit/Setup;sudo chmod +x install.sh && sudo bash install.sh"
+      ],
+      "run": [
+        "sudo websploit"
+      ],
+      "projectUrl": "https://github.com/The404Hacking/websploit "
+    },
+    {
+      "className": "Commix",
+      "title": "Commix",
+      "description": "Automated All-in-One OS command injection and exploitation tool.\nCommix can be used from web developers, penetration testers or even security researchers\n in order to test web-based applications with the view to find bugs,\n errors or vulnerabilities related to command injection attacks.\n Usage: python commix.py [option(s)]",
+      "install": [
+        "git clone https://github.com/commixproject/commix.git commix",
+        "cd commix && pip install --user ."
+      ],
+      "run": [
+        "cd commix && sudo python3 commix.py --wizard"
+      ],
+      "projectUrl": "https://github.com/commixproject/commix"
+    },
+    {
+      "className": "ExploitFrameworkTools",
+      "title": "Exploit framework",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "TheFatRat",
+      "title": "The FatRat",
+      "description": "TheFatRat provides an easy way to create backdoors and payloads which can bypass most anti-virus.",
+      "install": [
+        "git clone https://github.com/Screetsec/TheFatRat.git",
+        "cd TheFatRat && chmod +x setup.sh"
+      ],
+      "run": [
+        "cd TheFatRat && sudo bash setup.sh"
+      ],
+      "projectUrl": "https://github.com/Screetsec/TheFatRat"
+    },
+    {
+      "className": "Brutal",
+      "title": "Brutal",
+      "description": "Brutal is a toolkit to quickly create various payloads, powershell attacks, virus attacks and launch listener for a Human Interface Device.",
+      "install": [
+        "git clone https://github.com/Screetsec/Brutal.git",
+        "cd Brutal && chmod +x Brutal.sh"
+      ],
+      "run": [
+        "cd Brutal && sudo bash Brutal.sh"
+      ],
+      "projectUrl": "https://github.com/Screetsec/Brutal"
+    },
+    {
+      "className": "Stitch",
+      "title": "Stitch",
+      "description": "Stitch is a Cross Platform Python Remote Administrator Tool.\n[!] Refer to the project link for Windows & macOS support.",
+      "install": [
+        "git clone https://github.com/nathanlopez/Stitch.git",
+        "cd Stitch && pip install --user -r lnx_requirements.txt"
+      ],
+      "run": [
+        "cd Stitch && sudo python3 main.py"
+      ],
+      "projectUrl": "https://nathanlopez.github.io/Stitch"
+    },
+    {
+      "className": "MSFVenom",
+      "title": "MSFvenom Payload Creator",
+      "description": "MSFvenom Payload Creator (MSFPC) is a wrapper to generate multiple types of payloads, based on user choice.",
+      "install": [
+        "git clone https://github.com/g0tmi1k/msfpc.git",
+        "cd msfpc && chmod +x msfpc.sh"
+      ],
+      "run": [
+        "cd msfpc && sudo bash msfpc.sh -h -v"
+      ],
+      "projectUrl": "https://github.com/g0tmi1k/msfpc"
+    },
+    {
+      "className": "Venom",
+      "title": "Venom Shellcode Generator",
+      "description": "Venom exploits apache2 webserver to deliver LAN payloads via fake webpages.",
+      "install": [
+        "git clone https://github.com/r00t-3xp10it/venom.git",
+        "sudo chmod -R 775 venom*/ && cd venom*/ && cd aux && sudo bash setup.sh"
+      ],
+      "run": [
+        "cd venom && sudo ./venom.sh"
+      ],
+      "projectUrl": "https://github.com/r00t-3xp10it/venom"
+    },
+    {
+      "className": "Spycam",
+      "title": "Spycam",
+      "description": "Generates a Win32 payload that captures webcam images every 1 minute.",
+      "install": [
+        "git clone https://github.com/indexnotfound404/spycam.git",
+        "cd spycam && bash install.sh && chmod +x spycam"
+      ],
+      "run": [
+        "cd spycam && ./spycam"
+      ],
+      "projectUrl": "https://github.com/indexnotfound404/spycam"
+    },
+    {
+      "className": "MobDroid",
+      "title": "Mob-Droid",
+      "description": "Generates metasploit payloads easily without typing long commands.",
+      "install": [
+        "git clone https://github.com/kinghacker0/mob-droid.git"
+      ],
+      "run": [
+        "cd mob-droid && sudo python3 mob-droid.py"
+      ],
+      "projectUrl": "https://github.com/kinghacker0/Mob-Droid"
+    },
+    {
+      "className": "Enigma",
+      "title": "Enigma",
+      "description": "Enigma is a Multiplatform payload dropper.",
+      "install": [
+        "git clone https://github.com/UndeadSec/Enigma.git"
+      ],
+      "run": [
+        "cd Enigma && sudo python3 enigma.py"
+      ],
+      "projectUrl": "https://github.com/UndeadSec/Enigma"
+    },
+    {
+      "className": "PayloadCreatorTools",
+      "title": "Payload creation tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "forensics": [
+    {
+      "className": "Autopsy",
+      "title": "Autopsy",
+      "description": "Autopsy is a platform that is used by Cyber Investigators.\n[!] Works in any OS\n[!] Recover Deleted Files from any OS & Media \n[!] Extract Image Metadata",
+      "run": [
+        "sudo autopsy"
+      ],
+      "install": []
+    },
+    {
+      "className": "Wireshark",
+      "title": "Wireshark",
+      "description": "Wireshark is a network capture and analyzer \ntool to see what\u2019s happening in your network.\n And also investigate Network related incident",
+      "run": [
+        "sudo wireshark"
+      ],
+      "install": []
+    },
+    {
+      "className": "BulkExtractor",
+      "title": "Bulk extractor",
+      "description": "Extract useful information without parsing the file system",
+      "projectUrl": "https://github.com/simsong/bulk_extractor",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Guymager",
+      "title": "Disk Clone and ISO Image Acquire",
+      "description": "Guymager is a free forensic imager for media acquisition.",
+      "install": [
+        "sudo apt install guymager"
+      ],
+      "run": [
+        "sudo guymager"
+      ],
+      "projectUrl": "https://guymager.sourceforge.io/"
+    },
+    {
+      "className": "Toolsley",
+      "title": "Toolsley",
+      "description": "Toolsley got more than ten useful tools for investigation.\n[+]File signature verifier\n[+]File identifier \n[+]Hash & Validate \n[+]Binary inspector \n [+]Encode text \n[+]Data URI generator \n[+]Password generator",
+      "projectUrl": "https://www.toolsley.com/",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Volatility3",
+      "title": "Volatility 3 (Memory Forensics)",
+      "description": "The world's most widely used memory forensics framework.\nUsage: python3 vol.py -f memory.dmp windows.pslist",
+      "install": [
+        "git clone https://github.com/volatilityfoundation/volatility3.git",
+        "cd volatility3 && pip install --user -r requirements.txt"
+      ],
+      "projectUrl": "https://github.com/volatilityfoundation/volatility3",
+      "run": []
+    },
+    {
+      "className": "Binwalk",
+      "title": "Binwalk (Firmware Analysis)",
+      "description": "Analyze, reverse engineer, and extract firmware images.\nUsage: binwalk -e firmware.bin",
+      "install": [
+        "pip install --user binwalk"
+      ],
+      "run": [
+        "binwalk --help"
+      ],
+      "projectUrl": "https://github.com/ReFirmLabs/binwalk"
+    },
+    {
+      "className": "Pspy",
+      "title": "pspy (Process Monitor \u2014 No Root)",
+      "description": "Monitor Linux processes without root \u2014 detects cron jobs, scheduled tasks, other users' commands.",
+      "install": [
+        "curl -sSL https://github.com/DominicBreuker/pspy/releases/latest/download/pspy64 -o pspy",
+        "chmod +x pspy"
+      ],
+      "run": [
+        "./pspy --help"
+      ],
+      "projectUrl": "https://github.com/DominicBreuker/pspy"
+    },
+    {
+      "className": "ForensicTools",
+      "title": "Forensic tools",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "SteganoHide",
+      "title": "SteganoHide",
+      "install": [
+        "sudo apt-get install steghide -y"
+      ],
+      "description": "",
+      "run": []
+    },
+    {
+      "className": "StegnoCracker",
+      "title": "StegnoCracker",
+      "description": "SteganoCracker uncovers hidden data inside files using brute-force utility",
+      "install": [
+        "pip3 install stegcracker && pip3 install stegcracker -U --force-reinstall"
+      ],
+      "run": []
+    },
+    {
+      "className": "StegoCracker",
+      "title": "StegoCracker",
+      "description": "StegoCracker lets you hide and retrieve data in image or audio files",
+      "install": [
+        "git clone https://github.com/W1LDN16H7/StegoCracker.git",
+        "sudo chmod -R 755 StegoCracker"
+      ],
+      "run": [
+        "cd StegoCracker && python3 -m pip install -r requirements.txt",
+        "./install.sh"
+      ],
+      "projectUrl": "https://github.com/W1LDN16H7/StegoCracker"
+    },
+    {
+      "className": "Whitespace",
+      "title": "Whitespace",
+      "description": "Use whitespace and unicode characters for steganography",
+      "install": [
+        "git clone https://github.com/beardog108/snow10.git",
+        "sudo chmod -R 755 snow10"
+      ],
+      "run": [
+        "cd snow10 && ./install.sh"
+      ],
+      "projectUrl": "https://github.com/beardog108/snow10"
+    },
+    {
+      "className": "SteganographyTools",
+      "title": "Steganography Tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "osint": [
+    {
+      "className": "NMAP",
+      "title": "Network Map (nmap)",
+      "description": "Free and open source utility for network discovery and security auditing",
+      "install": [
+        "git clone https://github.com/nmap/nmap.git",
+        "sudo chmod -R 755 nmap && cd nmap && sudo ./configure && make && sudo make install"
+      ],
+      "projectUrl": "https://github.com/nmap/nmap",
+      "run": []
+    },
+    {
+      "className": "Dracnmap",
+      "title": "Dracnmap",
+      "description": "Dracnmap is an open source program which is using to \nexploit the network and gathering information with nmap help.",
+      "install": [
+        "git clone https://github.com/Screetsec/Dracnmap.git",
+        "cd Dracnmap && chmod +x dracnmap-v2.2-dracOs.sh  dracnmap-v2.2.sh"
+      ],
+      "run": [
+        "cd Dracnmap;sudo ./dracnmap-v2.2.sh"
+      ],
+      "projectUrl": "https://github.com/Screetsec/Dracnmap"
+    },
+    {
+      "className": "PortScan",
+      "title": "Port scanning",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Host2IP",
+      "title": "Host to IP ",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "XeroSploit",
+      "title": "Xerosploit",
+      "description": "Xerosploit is a penetration testing toolkit whose goal is to perform\nman-in-the-middle attacks for testing purposes",
+      "install": [
+        "git clone https://github.com/LionSec/xerosploit.git",
+        "cd xerosploit && sudo python install.py"
+      ],
+      "run": [
+        "sudo xerosploit"
+      ],
+      "projectUrl": "https://github.com/LionSec/xerosploit"
+    },
+    {
+      "className": "RedHawk",
+      "title": "RED HAWK (All In One Scanning)",
+      "description": "All in one tool for Information Gathering and Vulnerability Scanning.",
+      "install": [
+        "git clone https://github.com/Tuhinshubhra/RED_HAWK.git"
+      ],
+      "run": [
+        "cd RED_HAWK;php rhawk.php"
+      ],
+      "projectUrl": "https://github.com/Tuhinshubhra/RED_HAWK"
+    },
+    {
+      "className": "ReconSpider",
+      "title": "ReconSpider(For All Scanning)",
+      "description": "ReconSpider is most Advanced Open Source Intelligence (OSINT) Framework for scanning IP Address, Emails, \nWebsites, Organizations and find out information from different sources.\n",
+      "install": [
+        "git clone https://github.com/bhavsec/reconspider.git",
+        "sudo apt install -y python3 python3-pip && cd reconspider && pip install --user ."
+      ],
+      "run": [
+        "cd reconspider;python3 reconspider.py"
+      ],
+      "projectUrl": "https://github.com/bhavsec/reconspider"
+    },
+    {
+      "className": "IsItDown",
+      "title": "IsItDown (Check Website Down/Up)",
+      "description": "Check Website Is Online or Not",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Infoga",
+      "title": "Infoga - Email OSINT",
+      "description": "Infoga is a tool gathering email accounts information\n(ip, hostname, country,...) from different public source",
+      "install": [
+        "git clone https://github.com/m4ll0k/Infoga.git",
+        "cd Infoga && pip install --user ."
+      ],
+      "run": [
+        "cd Infoga;python3 infoga.py"
+      ],
+      "projectUrl": "https://github.com/m4ll0k/Infoga"
+    },
+    {
+      "className": "ReconDog",
+      "title": "ReconDog",
+      "description": "ReconDog Information Gathering Suite",
+      "install": [
+        "git clone https://github.com/s0md3v/ReconDog.git"
+      ],
+      "run": [
+        "cd ReconDog;sudo python dog"
+      ],
+      "projectUrl": "https://github.com/s0md3v/ReconDog"
+    },
+    {
+      "className": "Striker",
+      "title": "Striker",
+      "description": "Recon & Vulnerability Scanning Suite",
+      "install": [
+        "git clone https://github.com/s0md3v/Striker.git",
+        "cd Striker && pip3 install -r requirements.txt"
+      ],
+      "projectUrl": "https://github.com/s0md3v/Striker",
+      "run": []
+    },
+    {
+      "className": "SecretFinder",
+      "title": "SecretFinder (like API & etc)",
+      "description": "SecretFinder - A python script for find sensitive data \nlike apikeys, accesstoken, authorizations, jwt,..etc \n and search anything on javascript files.\n\n Usage: python SecretFinder.py -h",
+      "install": [
+        "git clone https://github.com/m4ll0k/SecretFinder.git secretfinder",
+        "cd secretfinder; sudo pip3 install -r requirements.txt"
+      ],
+      "projectUrl": "https://github.com/m4ll0k/SecretFinder",
+      "run": []
+    },
+    {
+      "className": "Shodan",
+      "title": "Find Info Using Shodan",
+      "description": "Get ports, vulnerabilities, information, banners,..etc \n for any IP with Shodan (no apikey! no rate limit!)\n[X] Don't use this tool because your ip will be blocked by Shodan!",
+      "install": [
+        "git clone https://github.com/m4ll0k/Shodanfy.py.git"
+      ],
+      "projectUrl": "https://github.com/m4ll0k/Shodanfy.py",
+      "run": []
+    },
+    {
+      "className": "PortScannerRanger",
+      "title": "Port Scanner - rang3r",
+      "description": "rang3r is a python script which scans in multi thread\n all alive hosts within your range that you specify.",
+      "install": [
+        "git clone https://github.com/floriankunushevci/rang3r.git;pip install --user termcolor"
+      ],
+      "projectUrl": "https://github.com/floriankunushevci/rang3r",
+      "run": []
+    },
+    {
+      "className": "Breacher",
+      "title": "Breacher",
+      "description": "An advanced multithreaded admin panel finder written in python.",
+      "install": [
+        "git clone https://github.com/s0md3v/Breacher.git"
+      ],
+      "projectUrl": "https://github.com/s0md3v/Breacher",
+      "run": []
+    },
+    {
+      "className": "TheHarvester",
+      "title": "theHarvester (OSINT)",
+      "description": "Gather emails, names, subdomains, IPs and URLs from public sources.\nUsage: theHarvester -d example.com -b all",
+      "install": [
+        "git clone https://github.com/laramies/theHarvester.git",
+        "cd theHarvester && pip install --user -r requirements/base.txt"
+      ],
+      "run": [
+        "cd theHarvester && python3 theHarvester.py -h"
+      ],
+      "projectUrl": "https://github.com/laramies/theHarvester"
+    },
+    {
+      "className": "Amass",
+      "title": "Amass (Attack Surface Mapping)",
+      "description": "In-depth subdomain enumeration and attack surface mapping.\nUsage: amass enum -d example.com",
+      "install": [
+        "go install -v github.com/owasp-amass/amass/v4/...@master"
+      ],
+      "run": [
+        "amass -h"
+      ],
+      "projectUrl": "https://github.com/owasp-amass/amass"
+    },
+    {
+      "className": "Masscan",
+      "title": "Masscan (Fast Port Scanner)",
+      "description": "Fastest internet port scanner \u2014 10 million packets/sec.\nUsage: masscan -p1-65535 <IP> --rate=1000",
+      "install": [
+        "sudo apt-get install -y masscan"
+      ],
+      "run": [
+        "masscan --help"
+      ],
+      "projectUrl": "https://github.com/robertdavidgraham/masscan"
+    },
+    {
+      "className": "RustScan",
+      "title": "RustScan (Modern Port Scanner)",
+      "description": "Scans all 65k ports in 3 seconds, passes results to nmap automatically.\nUsage: rustscan -a <IP> -- -sV",
+      "install": [
+        "curl -sLO https://github.com/RustScan/RustScan/releases/latest/download/rustscan_2.3.0_amd64.deb",
+        "sudo dpkg -i rustscan_2.3.0_amd64.deb"
+      ],
+      "run": [
+        "rustscan --help"
+      ],
+      "projectUrl": "https://github.com/RustScan/RustScan"
+    },
+    {
+      "className": "Holehe",
+      "title": "Holehe (Email \u2192 Social Accounts)",
+      "description": "Check if an email address is registered on 120+ websites.\nUsage: holehe user@example.com",
+      "install": [
+        "pip install --user holehe"
+      ],
+      "run": [
+        "holehe --help"
+      ],
+      "projectUrl": "https://github.com/megadose/holehe"
+    },
+    {
+      "className": "Maigret",
+      "title": "Maigret (Username OSINT)",
+      "description": "Collect a dossier on a person by username across 3000+ sites.\nUsage: maigret <username>",
+      "install": [
+        "pip install --user maigret"
+      ],
+      "run": [
+        "maigret --help"
+      ],
+      "projectUrl": "https://github.com/soxoj/maigret"
+    },
+    {
+      "className": "Httpx",
+      "title": "httpx (HTTP Toolkit)",
+      "description": "Fast multi-purpose HTTP probing tool.\nUsage: httpx -l urls.txt -status-code -title -tech-detect",
+      "install": [
+        "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+      ],
+      "run": [
+        "httpx -h"
+      ],
+      "projectUrl": "https://github.com/projectdiscovery/httpx"
+    },
+    {
+      "className": "SpiderFoot",
+      "title": "SpiderFoot (OSINT Automation)",
+      "description": "Automates OSINT collection for threat intelligence and attack surface mapping.",
+      "install": [
+        "pip install --user spiderfoot"
+      ],
+      "run": [
+        "spiderfoot -h"
+      ],
+      "projectUrl": "https://github.com/smicallef/spiderfoot"
+    },
+    {
+      "className": "Subfinder",
+      "title": "Subfinder (Subdomain Enumeration)",
+      "description": "Fast passive subdomain enumeration using multiple sources.",
+      "install": [
+        "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+      ],
+      "run": [
+        "subfinder -h"
+      ],
+      "projectUrl": "https://github.com/projectdiscovery/subfinder"
+    },
+    {
+      "className": "TruffleHog",
+      "title": "TruffleHog (Secret Scanner)",
+      "description": "Find, verify, and analyze leaked credentials across git repos, S3 buckets, filesystems.",
+      "install": [
+        "pip install --user trufflehog"
+      ],
+      "run": [
+        "trufflehog --help"
+      ],
+      "projectUrl": "https://github.com/trufflesecurity/trufflehog"
+    },
+    {
+      "className": "Gitleaks",
+      "title": "Gitleaks (Git Secret Scanner)",
+      "description": "Fast secret scanner for git repos \u2014 detects hardcoded passwords, API keys, tokens.",
+      "install": [
+        "go install github.com/gitleaks/gitleaks/v8@latest"
+      ],
+      "run": [
+        "gitleaks --help"
+      ],
+      "projectUrl": "https://github.com/gitleaks/gitleaks"
+    },
+    {
+      "className": "InformationGatheringTools",
+      "title": "Information gathering tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "mobile-security": [
+    {
+      "className": "MobSF",
+      "title": "MobSF (Mobile Security Framework)",
+      "description": "All-in-one mobile app pentesting, malware analysis, and security assessment.",
+      "install": [
+        "git clone https://github.com/MobSF/Mobile-Security-Framework-MobSF.git",
+        "cd Mobile-Security-Framework-MobSF && ./setup.sh"
+      ],
+      "run": [
+        "cd Mobile-Security-Framework-MobSF && ./run.sh"
+      ],
+      "projectUrl": "https://github.com/MobSF/Mobile-Security-Framework-MobSF"
+    },
+    {
+      "className": "Frida",
+      "title": "Frida (Dynamic Instrumentation)",
+      "description": "Dynamic instrumentation toolkit for runtime hooking on Android, iOS, Windows, macOS, Linux.",
+      "install": [
+        "pip install --user frida-tools"
+      ],
+      "run": [
+        "frida --help"
+      ],
+      "projectUrl": "https://github.com/frida/frida"
+    },
+    {
+      "className": "Objection",
+      "title": "Objection (Mobile Runtime Exploration)",
+      "description": "Runtime mobile exploration toolkit powered by Frida \u2014 no jailbreak/root required.",
+      "install": [
+        "pip install --user objection"
+      ],
+      "run": [
+        "objection --help"
+      ],
+      "projectUrl": "https://github.com/sensepost/objection"
+    },
+    {
+      "className": "MobileSecurityTools",
+      "title": "Mobile Security Tools",
+      "description": "Tools for Android/iOS application security testing and analysis.",
+      "install": [],
+      "run": []
+    }
+  ],
+  "other": [
+    {
+      "className": "HatCloud",
+      "title": "HatCloud(Bypass CloudFlare for IP)",
+      "description": "HatCloud build in Ruby. It makes bypass in CloudFlare for discover real IP.",
+      "install": [
+        "git clone https://github.com/HatBashBR/HatCloud.git"
+      ],
+      "projectUrl": "https://github.com/HatBashBR/HatCloud",
+      "run": []
+    },
+    {
+      "className": "OtherTools",
+      "title": "Other tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "social-engineering": [
+    {
+      "className": "Autophisher",
+      "title": "Autophisher RK",
+      "description": "Automated Phishing Toolkit",
+      "install": [
+        "git clone https://github.com/CodingRanjith/autophisher.git"
+      ],
+      "run": [
+        "cd autophisher && sudo bash autophisher.sh"
+      ],
+      "projectUrl": "https://github.com/CodingRanjith/autophisher"
+    },
+    {
+      "className": "Pyphisher",
+      "title": "Pyphisher",
+      "description": "Easy to use phishing tool with 77 website templates",
+      "install": [
+        "git clone https://github.com/KasRoudra/PyPhisher",
+        "pip3 install --user -r PyPhisher/files/requirements.txt"
+      ],
+      "run": [
+        "cd PyPhisher && sudo python3 pyphisher.py"
+      ],
+      "projectUrl": "https://github.com/KasRoudra/PyPhisher"
+    },
+    {
+      "className": "AdvPhishing",
+      "title": "AdvPhishing",
+      "description": "This is Advance Phishing Tool ! OTP PHISHING",
+      "install": [
+        "git clone https://github.com/Ignitetch/AdvPhishing.git",
+        "cd AdvPhishing && chmod +x Linux-Setup.sh && bash Linux-Setup.sh"
+      ],
+      "run": [
+        "cd AdvPhishing && sudo bash AdvPhishing.sh"
+      ],
+      "projectUrl": "https://github.com/Ignitetch/AdvPhishing"
+    },
+    {
+      "className": "Setoolkit",
+      "title": "Setoolkit",
+      "description": "The Social-Engineer Toolkit is an open-source penetration\ntesting framework designed for social engineering.",
+      "install": [
+        "git clone https://github.com/trustedsec/social-engineer-toolkit/",
+        "cd social-engineer-toolkit && pip install --user ."
+      ],
+      "run": [
+        "sudo setoolkit"
+      ],
+      "projectUrl": "https://github.com/trustedsec/social-engineer-toolkit"
+    },
+    {
+      "className": "SocialFish",
+      "title": "SocialFish",
+      "description": "Automated Phishing Tool & Information Collector NOTE: username is 'root' and password is 'pass'",
+      "install": [
+        "git clone https://github.com/UndeadSec/SocialFish.git && sudo apt-get install python3 python3-pip python3-dev -y",
+        "cd SocialFish && sudo python3 -m pip install -r requirements.txt"
+      ],
+      "run": [
+        "cd SocialFish && sudo python3 SocialFish.py root pass"
+      ],
+      "projectUrl": "https://github.com/UndeadSec/SocialFish"
+    },
+    {
+      "className": "HiddenEye",
+      "title": "HiddenEye",
+      "description": "Modern Phishing Tool With Advanced Functionality And Multiple Tunnelling Services\n\t[!] https://github.com/DarkSecDevelopers/HiddenEye",
+      "install": [
+        "git clone https://github.com/Morsmalleo/HiddenEye.git && chmod -R 755 HiddenEye",
+        "cd HiddenEye && sudo pip3 install -r requirements.txt && pip3 install pyngrok"
+      ],
+      "run": [
+        "cd HiddenEye && sudo python3 HiddenEye.py"
+      ],
+      "projectUrl": "https://github.com/Morsmalleo/HiddenEye"
+    },
+    {
+      "className": "Evilginx3",
+      "title": "Evilginx3",
+      "description": "evilginx is a man-in-the-middle attack framework used for phishing login credentials\nalong with session cookies, bypassing 2-factor authentication.\nRequires Go >= 1.18 installed.",
+      "install": [
+        "sudo apt-get install -y git make golang-go",
+        "go install github.com/kgretzky/evilginx/v3@latest"
+      ],
+      "run": [
+        "evilginx"
+      ],
+      "projectUrl": "https://github.com/kgretzky/evilginx2"
+    },
+    {
+      "className": "ISeeYou",
+      "title": "I-See_You",
+      "description": "[!] ISeeYou finds the exact location of a target via social engineering.\n[!] Expose local servers to the internet and decode location from log file.",
+      "install": [
+        "git clone https://github.com/Viralmaniar/I-See-You.git",
+        "cd I-See-You && sudo chmod u+x ISeeYou.sh"
+      ],
+      "run": [
+        "cd I-See-You && sudo bash ISeeYou.sh"
+      ],
+      "projectUrl": "https://github.com/Viralmaniar/I-See-You"
+    },
+    {
+      "className": "SayCheese",
+      "title": "SayCheese",
+      "description": "Take webcam shots from target just by sending a malicious link",
+      "install": [
+        "git clone https://github.com/hangetzzu/saycheese"
+      ],
+      "run": [
+        "cd saycheese && sudo bash saycheese.sh"
+      ],
+      "projectUrl": "https://github.com/hangetzzu/saycheese"
+    },
+    {
+      "className": "QRJacking",
+      "title": "QR Code Jacking",
+      "description": "QR Code Jacking (Any Website)",
+      "install": [
+        "git clone https://github.com/cryptedwolf/ohmyqr.git && sudo apt -y install scrot"
+      ],
+      "run": [
+        "cd ohmyqr && sudo bash ohmyqr.sh"
+      ],
+      "projectUrl": "https://github.com/cryptedwolf/ohmyqr"
+    },
+    {
+      "className": "BlackEye",
+      "title": "BlackEye",
+      "description": "The ultimate phishing tool with 38 websites available!",
+      "install": [
+        "git clone https://github.com/thelinuxchoice/blackeye"
+      ],
+      "run": [
+        "cd blackeye && sudo bash blackeye.sh"
+      ],
+      "projectUrl": "https://github.com/An0nUD4Y/blackeye"
+    },
+    {
+      "className": "ShellPhish",
+      "title": "ShellPhish",
+      "description": "Phishing Tool for 18 social media",
+      "install": [
+        "git clone https://github.com/An0nUD4Y/shellphish.git"
+      ],
+      "run": [
+        "cd shellphish && sudo bash shellphish.sh"
+      ],
+      "projectUrl": "https://github.com/An0nUD4Y/shellphish"
+    },
+    {
+      "className": "Thanos",
+      "title": "Thanos",
+      "description": "Browser to Browser Phishing toolkit",
+      "install": [
+        "git clone https://github.com/TridevReddy/Thanos.git",
+        "cd Thanos && chmod +x Thanos.sh"
+      ],
+      "run": [
+        "cd Thanos && sudo bash Thanos.sh"
+      ],
+      "projectUrl": "https://github.com/TridevReddy/Thanos"
+    },
+    {
+      "className": "QRLJacking",
+      "title": "QRLJacking",
+      "description": "QRLJacking \u2014 session hijacking attack vector targeting QR code based login",
+      "install": [
+        "git clone https://github.com/OWASP/QRLJacking.git",
+        "GECKO_VER=$(curl -s https://api.github.com/repos/mozilla/geckodriver/releases/latest | grep tag_name | cut -d '\"' -f4) && wget -q https://github.com/mozilla/geckodriver/releases/download/$GECKO_VER/geckodriver-$GECKO_VER-linux64.tar.gz -O /tmp/geckodriver.tar.gz && tar -xzf /tmp/geckodriver.tar.gz -C /tmp && sudo mv /tmp/geckodriver /usr/local/bin/",
+        "cd QRLJacking && pip3 install --user -r QRLJacker/requirements.txt"
+      ],
+      "run": [
+        "cd QRLJacking/QRLJacker && python3 QrlJacker.py"
+      ],
+      "projectUrl": "https://github.com/OWASP/QRLJacking"
+    },
+    {
+      "className": "Maskphish",
+      "title": "Maskphish",
+      "description": "Hide phishing URL under a normal looking URL (google.com or facebook.com)",
+      "install": [
+        "git clone https://github.com/jaykali/maskphish.git"
+      ],
+      "run": [
+        "cd maskphish && sudo bash maskphish.sh"
+      ],
+      "projectUrl": "https://github.com/jaykali/maskphish"
+    },
+    {
+      "className": "BlackPhish",
+      "title": "BlackPhish",
+      "install": [
+        "git clone https://github.com/iinc0gnit0/BlackPhish.git",
+        "cd BlackPhish && sudo bash install.sh"
+      ],
+      "run": [
+        "cd BlackPhish && sudo python3 blackphish.py"
+      ],
+      "projectUrl": "https://github.com/iinc0gnit0/BlackPhish",
+      "description": ""
+    },
+    {
+      "className": "Dnstwist",
+      "title": "dnstwist",
+      "description": "Domain name permutation engine for detecting typosquatting, phishing and brand impersonation",
+      "install": [
+        "pip3 install --user dnstwist"
+      ],
+      "run": [
+        "dnstwist --help"
+      ],
+      "projectUrl": "https://github.com/elceef/dnstwist"
+    },
+    {
+      "className": "PhishingAttackTools",
+      "title": "Phishing attack tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "post-exploitation": [
+    {
+      "className": "Vegile",
+      "title": "Vegile - Ghost In The Shell",
+      "description": "This tool will set up your backdoor/rootkits when backdoor is already setup it will be \nhidden your specific process,unlimited your session in metasploit and transparent.",
+      "install": [
+        "git clone https://github.com/Screetsec/Vegile.git",
+        "cd Vegile && sudo chmod +x Vegile"
+      ],
+      "run": [
+        "cd Vegile && sudo bash Vegile"
+      ],
+      "projectUrl": "https://github.com/Screetsec/Vegile"
+    },
+    {
+      "className": "ChromeKeyLogger",
+      "title": "Chrome Keylogger",
+      "description": "Hera Chrome Keylogger",
+      "install": [
+        "git clone https://github.com/UndeadSec/HeraKeylogger.git",
+        "cd HeraKeylogger && sudo apt-get install python3-pip -y && sudo pip3 install -r requirements.txt"
+      ],
+      "run": [
+        "cd HeraKeylogger && sudo python3 hera.py"
+      ],
+      "projectUrl": "https://github.com/UndeadSec/HeraKeylogger"
+    },
+    {
+      "className": "PwncatCS",
+      "title": "pwncat-cs (Reverse Shell Handler)",
+      "description": "Post-exploitation platform \u2014 manages reverse/bind shells with automation.\nHandles file upload/download, persistence, privilege escalation.\nUsage: pwncat-cs -lp 4444",
+      "install": [
+        "pip install --user pwncat-cs"
+      ],
+      "run": [
+        "pwncat-cs --help"
+      ],
+      "projectUrl": "https://github.com/calebstewart/pwncat"
+    },
+    {
+      "className": "Sliver",
+      "title": "Sliver (C2 Framework)",
+      "description": "Cross-platform adversary emulation/red team C2 framework \u2014 mTLS, HTTP(S), DNS, WireGuard.",
+      "install": [
+        "curl -sSf https://sliver.sh/install -o /tmp/sliver-install.sh",
+        "sudo bash /tmp/sliver-install.sh"
+      ],
+      "run": [
+        "sliver --help"
+      ],
+      "projectUrl": "https://github.com/BishopFox/sliver"
+    },
+    {
+      "className": "Havoc",
+      "title": "Havoc (C2 Framework)",
+      "description": "Modern post-exploitation C2 framework with EDR evasion. Cobalt Strike alternative.",
+      "install": [
+        "git clone https://github.com/HavocFramework/Havoc.git",
+        "cd Havoc && make"
+      ],
+      "run": [
+        "cd Havoc && ./havoc --help"
+      ],
+      "projectUrl": "https://github.com/HavocFramework/Havoc"
+    },
+    {
+      "className": "PEASSng",
+      "title": "PEASS-ng \u2014 LinPEAS/WinPEAS (Priv Esc)",
+      "description": "Privilege escalation enumeration scripts for Linux and Windows.",
+      "install": [
+        "curl -sSL https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh -o linpeas.sh",
+        "chmod +x linpeas.sh"
+      ],
+      "run": [
+        "./linpeas.sh --help"
+      ],
+      "projectUrl": "https://github.com/peass-ng/PEASS-ng"
+    },
+    {
+      "className": "LigoloNg",
+      "title": "Ligolo-ng (Tunneling/Pivoting)",
+      "description": "Advanced tunneling/pivoting tool using TUN interfaces \u2014 no SOCKS needed.",
+      "install": [
+        "go install github.com/nicocha30/ligolo-ng@latest"
+      ],
+      "run": [
+        "ligolo-ng --help"
+      ],
+      "projectUrl": "https://github.com/nicocha30/ligolo-ng"
+    },
+    {
+      "className": "ChiselTunnel",
+      "title": "Chisel (HTTP Tunnel)",
+      "description": "Fast TCP/UDP tunnel over HTTP, secured via SSH \u2014 pivoting and port forwarding.",
+      "install": [
+        "go install github.com/jpillora/chisel@latest"
+      ],
+      "run": [
+        "chisel --help"
+      ],
+      "projectUrl": "https://github.com/jpillora/chisel"
+    },
+    {
+      "className": "EvilWinRM",
+      "title": "Evil-WinRM (Windows Remote Shell)",
+      "description": "Ultimate WinRM shell for hacking/pentesting Windows machines.",
+      "install": [
+        "gem install evil-winrm"
+      ],
+      "run": [
+        "evil-winrm --help"
+      ],
+      "projectUrl": "https://github.com/Hackplayers/evil-winrm"
+    },
+    {
+      "className": "Mythic",
+      "title": "Mythic (C2 Platform)",
+      "description": "Collaborative, multi-payload C2 platform designed for red team operations.",
+      "install": [
+        "git clone https://github.com/its-a-feature/Mythic.git",
+        "cd Mythic && sudo make"
+      ],
+      "run": [
+        "cd Mythic && sudo ./mythic-cli start"
+      ],
+      "projectUrl": "https://github.com/its-a-feature/Mythic"
+    },
+    {
+      "className": "PostExploitationTools",
+      "title": "Post exploitation tools",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Pyshell",
+      "title": "Pyshell",
+      "description": "Pyshell is a Rat Tool that can be able to download & upload files,\n Execute OS Command and more..",
+      "install": [
+        "git clone https://github.com/knassar702/Pyshell.git;pip install --user pyscreenshot python-nmap requests"
+      ],
+      "run": [
+        "cd Pyshell;./Pyshell"
+      ],
+      "projectUrl": "https://github.com/knassar702/pyshell"
+    },
+    {
+      "className": "RemoteAdministrationTools",
+      "title": "Remote Administrator Tools (RAT)",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "reverse-engineering": [
+    {
+      "className": "AndroGuard",
+      "title": "Androguard",
+      "description": "Androguard is a Reverse engineering, Malware and goodware analysis of Android applications and more",
+      "install": [
+        "sudo pip3 install -U androguard"
+      ],
+      "projectUrl": "https://github.com/androguard/androguard ",
+      "run": []
+    },
+    {
+      "className": "Apk2Gold",
+      "title": "Apk2Gold",
+      "description": "Apk2Gold is a CLI tool for decompiling Android apps to Java",
+      "install": [
+        "git clone https://github.com/lxdvs/apk2gold.git",
+        "cd apk2gold;sudo bash make.sh"
+      ],
+      "projectUrl": "https://github.com/lxdvs/apk2gold ",
+      "run": []
+    },
+    {
+      "className": "Jadx",
+      "title": "JadX",
+      "description": "Jadx is Dex to Java decompiler.\n[*] decompile Dalvik bytecode to java classes from APK, dex, aar and zip files\n[*] decode AndroidManifest.xml and other resources from resources.arsc",
+      "install": [
+        "git clone https://github.com/skylot/jadx.git",
+        "java -version 2>&1 | grep -q 'version' && cd jadx && ./gradlew dist || echo '[ERROR] Java not found. Install: sudo apt install default-jdk'"
+      ],
+      "projectUrl": "https://github.com/skylot/jadx",
+      "run": []
+    },
+    {
+      "className": "Ghidra",
+      "title": "Ghidra (NSA Reverse Engineering)",
+      "description": "NSA's software reverse engineering framework \u2014 disassembly, decompilation, scripting.",
+      "install": [
+        "sudo apt-get install -y ghidra || echo 'Download from https://ghidra-sre.org/'"
+      ],
+      "run": [
+        "ghidra --help || echo 'Run: ghidraRun'"
+      ],
+      "projectUrl": "https://github.com/NationalSecurityAgency/ghidra"
+    },
+    {
+      "className": "Radare2",
+      "title": "Radare2 (RE Framework)",
+      "description": "Portable UNIX-like reverse engineering framework and command-line toolset.",
+      "install": [
+        "git clone https://github.com/radareorg/radare2.git",
+        "cd radare2 && sys/install.sh"
+      ],
+      "run": [
+        "r2 -h"
+      ],
+      "projectUrl": "https://github.com/radareorg/radare2"
+    },
+    {
+      "className": "ReverseEngineeringTools",
+      "title": "Reverse engineering tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "sql-injection": [
+    {
+      "className": "Sqlmap",
+      "title": "Sqlmap tool",
+      "description": "sqlmap is an open source penetration testing tool that automates the process of detecting and exploiting SQL injection flaws and taking over database servers. [!] python3 sqlmap.py -u [http://example.com] --batch --banner. More usage: https://github.com/sqlmapproject/sqlmap/wiki/Usage",
+      "install": [
+        "git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git sqlmap-dev"
+      ],
+      "run": [
+        "cd sqlmap-dev;python3 sqlmap.py --wizard"
+      ],
+      "projectUrl": "https://github.com/sqlmapproject/sqlmap"
+    },
+    {
+      "className": "NoSqlMap",
+      "title": "NoSqlMap",
+      "description": "NoSQLMap is an open source Python tool designed to audit and automate injection attacks. [*] Please install MongoDB.",
+      "install": [
+        "git clone https://github.com/codingo/NoSQLMap.git",
+        "cd NoSQLMap && pip install --user ."
+      ],
+      "run": [
+        "python3 -m nosqlmap"
+      ],
+      "projectUrl": "https://github.com/codingo/NoSQLMap"
+    },
+    {
+      "className": "SQLiScanner",
+      "title": "Damn Small SQLi Scanner",
+      "description": "DSSS is a fully functional SQL injection vulnerability scanner also supporting GET and POST parameters. Usage: python3 dsss.py -h | -u [URL]",
+      "install": [
+        "git clone https://github.com/stamparm/DSSS.git"
+      ],
+      "projectUrl": "https://github.com/stamparm/DSSS",
+      "run": []
+    },
+    {
+      "className": "Explo",
+      "title": "Explo",
+      "description": "Explo is a simple tool to describe web security issues in human and machine readable format. Usage: explo [--verbose|-v] testcase.yaml | explo [--verbose|-v] examples/*.yaml",
+      "install": [
+        "git clone https://github.com/dtag-dev-sec/explo.git",
+        "cd explo && pip install --user ."
+      ],
+      "projectUrl": "https://github.com/dtag-dev-sec/explo",
+      "run": []
+    },
+    {
+      "className": "Blisqy",
+      "title": "Blisqy - Exploit Time-based blind-SQL injection",
+      "description": "Blisqy helps web security researchers find time-based blind SQL injections on HTTP headers and exploit them.",
+      "install": [
+        "git clone https://github.com/JohnTroony/Blisqy.git"
+      ],
+      "projectUrl": "https://github.com/JohnTroony/Blisqy",
+      "run": []
+    },
+    {
+      "className": "Leviathan",
+      "title": "Leviathan - Wide Range Mass Audit Toolkit",
+      "description": "Leviathan is a mass audit toolkit with service discovery, brute force, SQL injection detection, and custom exploit capabilities. Requires API keys.",
+      "install": [
+        "git clone https://github.com/leviathan-framework/leviathan.git",
+        "cd leviathan;pip install --user -r requirements.txt"
+      ],
+      "run": [
+        "cd leviathan;python leviathan.py"
+      ],
+      "projectUrl": "https://github.com/leviathan-framework/leviathan"
+    },
+    {
+      "className": "SQLScan",
+      "title": "SQLScan",
+      "description": "SQLScan is a quick web scanner to find SQL injection points. Not for educational purposes.",
+      "install": [
+        "sudo apt install php php-bz2 php-curl php-mbstring curl",
+        "sudo curl https://raw.githubusercontent.com/Cvar1984/sqlscan/dev/build/main.phar --output /usr/local/bin/sqlscan",
+        "chmod +x /usr/local/bin/sqlscan"
+      ],
+      "run": [
+        "sudo sqlscan"
+      ],
+      "projectUrl": "https://github.com/Cvar1984/sqlscan"
+    },
+    {
+      "className": "SqlInjectionTools",
+      "title": "SQL Injection Tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "web-recon": [
+    {
+      "className": "Web2Attack",
+      "title": "Web2Attack",
+      "description": "Web hacking framework with tools, exploits by python",
+      "install": [
+        "git clone https://github.com/santatic/web2attack.git"
+      ],
+      "run": [
+        "cd web2attack && sudo python3 w2aconsole"
+      ],
+      "projectUrl": "https://github.com/santatic/web2attack"
+    },
+    {
+      "className": "Skipfish",
+      "title": "Skipfish",
+      "description": "Skipfish \u2013 Fully automated, active web application security reconnaissance tool \n Usage: skipfish -o [FolderName] targetip/site",
+      "run": [
+        "sudo skipfish -h",
+        "echo \"skipfish -o [FolderName] targetip/site\"|boxes -d headline | lolcat"
+      ],
+      "install": []
+    },
+    {
+      "className": "SubDomainFinder",
+      "title": "SubDomain Finder",
+      "description": "Sublist3r is a python tool designed to enumerate subdomains of websites using OSINT \n Usage:\n\t[1] python3 sublist3r.py -d example.com \n[2] python3 sublist3r.py -d example.com -p 80,443",
+      "install": [
+        "sudo pip3 install requests argparse dnspython",
+        "git clone https://github.com/aboul3la/Sublist3r.git",
+        "cd Sublist3r && sudo pip3 install -r requirements.txt"
+      ],
+      "run": [
+        "cd Sublist3r && python3 sublist3r.py -h"
+      ],
+      "projectUrl": "https://github.com/aboul3la/Sublist3r"
+    },
+    {
+      "className": "CheckURL",
+      "title": "CheckURL",
+      "description": "Detect evil urls that uses IDN Homograph Attack.\n\t[!] python3 checkURL.py --url google.com",
+      "install": [
+        "git clone https://github.com/UndeadSec/checkURL.git"
+      ],
+      "run": [
+        "cd checkURL && python3 checkURL.py --help"
+      ],
+      "projectUrl": "https://github.com/UndeadSec/checkURL"
+    },
+    {
+      "className": "Blazy",
+      "title": "Blazy(Also Find ClickJacking)",
+      "description": "Blazy is a modern login page bruteforcer",
+      "install": [],
+      "run": [],
+      "projectUrl": "https://github.com/UltimateHackers/Blazy"
+    },
+    {
+      "className": "SubDomainTakeOver",
+      "title": "Sub-Domain TakeOver",
+      "description": "Sub-domain takeover vulnerability occur when a sub-domain \n (subdomain.example.com) is pointing to a service (e.g: GitHub, AWS/S3,..)\nthat has been removed or deleted.\nUsage:python3 takeover.py -d www.domain.com -v",
+      "install": [
+        "git clone https://github.com/edoardottt/takeover.git",
+        "cd takeover && pip install --user ."
+      ],
+      "projectUrl": "https://github.com/edoardottt/takeover",
+      "run": []
+    },
+    {
+      "className": "Dirb",
+      "title": "Dirb",
+      "description": "DIRB is a Web Content Scanner. It looks for existing (and/or hidden) Web Objects.\nIt basically works by launching a dictionary based attack against \n a web server and analyzing the response.",
+      "install": [
+        "git clone https://gitlab.com/kalilinux/packages/dirb.git",
+        "cd dirb;sudo bash configure;make"
+      ],
+      "projectUrl": "https://gitlab.com/kalilinux/packages/dirb",
+      "run": []
+    },
+    {
+      "className": "Nuclei",
+      "title": "Nuclei (Vulnerability Scanner)",
+      "description": "Fast, template-based vulnerability scanner used by 50k+ security teams.\nUsage: nuclei -u https://example.com",
+      "install": [
+        "go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
+        "nuclei -update-templates"
+      ],
+      "run": [
+        "nuclei -h"
+      ],
+      "projectUrl": "https://github.com/projectdiscovery/nuclei"
+    },
+    {
+      "className": "Ffuf",
+      "title": "ffuf (Web Fuzzer)",
+      "description": "Fast web fuzzer \u2014 content discovery, parameter fuzzing, vhost discovery.\nUsage: ffuf -w wordlist.txt -u https://example.com/FUZZ",
+      "install": [
+        "go install -v github.com/ffuf/ffuf/v2@latest"
+      ],
+      "run": [
+        "ffuf -h"
+      ],
+      "projectUrl": "https://github.com/ffuf/ffuf"
+    },
+    {
+      "className": "Feroxbuster",
+      "title": "Feroxbuster (Directory Brute Force)",
+      "description": "Fast, recursive content discovery tool written in Rust.\nUsage: feroxbuster -u https://example.com -w wordlist.txt",
+      "install": [
+        "curl -sL https://raw.githubusercontent.com/epi052/feroxbuster/main/install-nix.sh | sudo bash -s /usr/local/bin"
+      ],
+      "run": [
+        "feroxbuster -h"
+      ],
+      "projectUrl": "https://github.com/epi052/feroxbuster"
+    },
+    {
+      "className": "Nikto",
+      "title": "Nikto (Web Server Scanner)",
+      "description": "Scan web servers for dangerous files, outdated software, misconfigurations.\nUsage: nikto -h https://example.com",
+      "install": [
+        "sudo apt-get install -y nikto"
+      ],
+      "run": [
+        "nikto -Help"
+      ],
+      "projectUrl": "https://github.com/sullo/nikto"
+    },
+    {
+      "className": "Wafw00f",
+      "title": "wafw00f (WAF Detector)",
+      "description": "Fingerprint and identify Web Application Firewalls (WAF).\nUsage: wafw00f https://example.com",
+      "install": [
+        "git clone https://github.com/EnableSecurity/wafw00f.git",
+        "cd wafw00f && pip install --user ."
+      ],
+      "run": [
+        "wafw00f --help"
+      ],
+      "projectUrl": "https://github.com/EnableSecurity/wafw00f"
+    },
+    {
+      "className": "Katana",
+      "title": "Katana (Web Crawler)",
+      "description": "Next-generation crawling and spidering framework from ProjectDiscovery.\nUsage: katana -u https://example.com",
+      "install": [
+        "go install -v github.com/projectdiscovery/katana/cmd/katana@latest"
+      ],
+      "run": [
+        "katana -h"
+      ],
+      "projectUrl": "https://github.com/projectdiscovery/katana"
+    },
+    {
+      "className": "Gobuster",
+      "title": "Gobuster (Dir/DNS/Vhost Brute Force)",
+      "description": "Directory/file, DNS, and vhost brute-forcing tool written in Go.",
+      "install": [
+        "go install github.com/OJ/gobuster/v3@latest"
+      ],
+      "run": [
+        "gobuster --help"
+      ],
+      "projectUrl": "https://github.com/OJ/gobuster"
+    },
+    {
+      "className": "Dirsearch",
+      "title": "Dirsearch (Web Path Discovery)",
+      "description": "Web path brute-forcing tool for discovering directories and files on web servers.",
+      "install": [
+        "pip install --user dirsearch"
+      ],
+      "run": [
+        "dirsearch --help"
+      ],
+      "projectUrl": "https://github.com/maurosoria/dirsearch"
+    },
+    {
+      "className": "OwaspZap",
+      "title": "OWASP ZAP (Web App Scanner)",
+      "description": "Full-featured web application security scanner \u2014 proxy, spider, fuzzer, scanner.",
+      "install": [
+        "sudo apt-get install -y zaproxy"
+      ],
+      "run": [
+        "zaproxy --help"
+      ],
+      "projectUrl": "https://github.com/zaproxy/zaproxy"
+    },
+    {
+      "className": "TestSSL",
+      "title": "testssl.sh (TLS/SSL Checker)",
+      "description": "Check TLS/SSL ciphers, protocols, and cryptographic flaws on any port.",
+      "install": [
+        "git clone https://github.com/drwetter/testssl.sh.git"
+      ],
+      "run": [
+        "cd testssl.sh && ./testssl.sh --help"
+      ],
+      "projectUrl": "https://github.com/drwetter/testssl.sh"
+    },
+    {
+      "className": "Arjun",
+      "title": "Arjun (HTTP Parameter Discovery)",
+      "description": "HTTP parameter discovery suite that finds hidden GET/POST parameters.",
+      "install": [
+        "pip install --user arjun"
+      ],
+      "run": [
+        "arjun --help"
+      ],
+      "projectUrl": "https://github.com/s0md3v/Arjun"
+    },
+    {
+      "className": "Caido",
+      "title": "Caido (Web Security Auditing)",
+      "description": "Lightweight, modern web security auditing toolkit \u2014 Burp Suite alternative written in Rust.",
+      "install": [
+        "curl -sSL https://caido.download/releases/latest/caido-cli-linux-x86_64.tar.gz | sudo tar xz -C /usr/local/bin"
+      ],
+      "run": [
+        "caido --help"
+      ],
+      "projectUrl": "https://github.com/caido/caido"
+    },
+    {
+      "className": "Mitmproxy",
+      "title": "mitmproxy (Intercepting Proxy)",
+      "description": "Interactive TLS-capable intercepting HTTP proxy for pentesters and developers.",
+      "install": [
+        "pip install --user mitmproxy"
+      ],
+      "run": [
+        "mitmproxy --version"
+      ],
+      "projectUrl": "https://github.com/mitmproxy/mitmproxy"
+    },
+    {
+      "className": "WebAttackTools",
+      "title": "Web Attack tools",
+      "description": "",
+      "install": [],
+      "run": []
+    },
+    {
+      "className": "Dalfox",
+      "title": "DalFox (Finder of XSS)",
+      "description": "XSS Scanning and Parameter Analysis tool.",
+      "install": [
+        "sudo apt-get install -y golang",
+        "go install github.com/hahwul/dalfox/v2@latest"
+      ],
+      "run": [
+        "~/go/bin/dalfox --help"
+      ],
+      "projectUrl": "https://github.com/hahwul/dalfox"
+    },
+    {
+      "className": "XSSPayloadGenerator",
+      "title": "XSS Payload Generator",
+      "description": "XSS PAYLOAD GENERATOR - XSS SCANNER - XSS DORK FINDER",
+      "install": [
+        "git clone https://github.com/capture0x/XSS-LOADER.git",
+        "cd XSS-LOADER;sudo pip3 install -r requirements.txt"
+      ],
+      "run": [
+        "cd XSS-LOADER;sudo python3 payloader.py"
+      ],
+      "projectUrl": "https://github.com/capture0x/XSS-LOADER.git"
+    },
+    {
+      "className": "XSSFinder",
+      "title": "Extended XSS Searcher and Finder",
+      "description": "Extended XSS Searcher and Finder",
+      "install": [
+        "git clone https://github.com/Damian89/extended-xss-search.git"
+      ],
+      "projectUrl": "https://github.com/Damian89/extended-xss-search",
+      "run": []
+    },
+    {
+      "className": "XSSFreak",
+      "title": "XSS-Freak",
+      "description": "An XSS scanner fully written in Python 3 from scratch.",
+      "install": [
+        "git clone https://github.com/PR0PH3CY33/XSS-Freak.git",
+        "cd XSS-Freak;sudo pip3 install -r requirements.txt"
+      ],
+      "run": [
+        "cd XSS-Freak;sudo python3 XSS-Freak.py"
+      ],
+      "projectUrl": "https://github.com/PR0PH3CY33/XSS-Freak"
+    },
+    {
+      "className": "XSpear",
+      "title": "XSpear",
+      "description": "XSpear is an XSS Scanner built on Ruby Gems.",
+      "install": [
+        "gem install XSpear"
+      ],
+      "run": [
+        "XSpear -h"
+      ],
+      "projectUrl": "https://github.com/hahwul/XSpear"
+    },
+    {
+      "className": "XSSCon",
+      "title": "XSSCon",
+      "install": [
+        "git clone https://github.com/menkrep1337/XSSCon.git",
+        "sudo chmod 755 -R XSSCon"
+      ],
+      "projectUrl": "https://github.com/menkrep1337/XSSCon",
+      "description": "",
+      "run": []
+    },
+    {
+      "className": "XanXSS",
+      "title": "XanXSS",
+      "description": "Reflected XSS searching tool that creates payloads from templates.",
+      "install": [
+        "git clone https://github.com/Ekultek/XanXSS.git"
+      ],
+      "projectUrl": "https://github.com/Ekultek/XanXSS",
+      "run": []
+    },
+    {
+      "className": "XSSStrike",
+      "title": "Advanced XSS Detection Suite",
+      "description": "XSStrike is a Python-based tool designed to detect and exploit XSS vulnerabilities.",
+      "install": [
+        "sudo rm -rf XSStrike",
+        "git clone https://github.com/UltimateHackers/XSStrike.git && cd XSStrike && pip install -r requirements.txt"
+      ],
+      "projectUrl": "https://github.com/UltimateHackers/XSStrike",
+      "run": []
+    },
+    {
+      "className": "RVuln",
+      "title": "RVuln",
+      "description": "Multi-threaded and Automated Web Vulnerability Scanner written in Rust.",
+      "install": [
+        "git clone https://github.com/iinc0gnit0/RVuln.git;curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh;source $HOME/.cargo/env;sudo apt install librust-openssl-dev;cd RVuln;sudo su;cargo build --release;mv target/release/RVuln"
+      ],
+      "run": [
+        "RVuln"
+      ],
+      "projectUrl": "https://github.com/iinc0gnit0/RVuln"
+    },
+    {
+      "className": "XSSAttackTools",
+      "title": "XSS Attack Tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "wireless-attacks": [
+    {
+      "className": "WIFIPumpkin",
+      "title": "WiFi-Pumpkin",
+      "description": "The WiFi-Pumpkin is a rogue AP framework to easily create fake networks\nwhile forwarding legitimate traffic to and from the unsuspecting target.",
+      "install": [
+        "sudo apt install -y libssl-dev libffi-dev build-essential python3-pyqt5",
+        "git clone https://github.com/P0cL4bs/wifipumpkin3.git",
+        "chmod -R 755 wifipumpkin3",
+        "cd wifipumpkin3 && pip install --user ."
+      ],
+      "run": [
+        "sudo wifipumpkin3"
+      ],
+      "projectUrl": "https://github.com/P0cL4bs/wifipumpkin3"
+    },
+    {
+      "className": "pixiewps",
+      "title": "pixiewps",
+      "description": "Pixiewps is a tool written in C used to bruteforce offline the WPS pin\nexploiting the low or non-existing entropy of some Access Points (pixie dust attack).",
+      "install": [
+        "git clone https://github.com/wiire/pixiewps.git && apt-get -y install build-essential",
+        "cd pixiewps && make",
+        "cd pixiewps && sudo make install"
+      ],
+      "projectUrl": "https://github.com/wiire/pixiewps",
+      "run": []
+    },
+    {
+      "className": "BluePot",
+      "title": "Bluetooth Honeypot GUI Framework",
+      "description": "You need at least 1 bluetooth receiver.\nInstall libbluetooth-dev (Ubuntu) / bluez-libs-devel (Fedora) / bluez-devel (openSUSE).",
+      "install": [
+        "sudo wget https://raw.githubusercontent.com/andrewmichaelsmith/bluepot/master/bin/bluepot-0.2.tar.gz",
+        "sudo tar xfz bluepot-0.2.tar.gz && sudo rm bluepot-0.2.tar.gz"
+      ],
+      "run": [
+        "cd bluepot && sudo java -jar bluepot.jar"
+      ],
+      "projectUrl": "https://github.com/andrewmichaelsmith/bluepot"
+    },
+    {
+      "className": "Fluxion",
+      "title": "Fluxion",
+      "description": "Fluxion is a remake of linset by vk496 with enhanced functionality.",
+      "install": [
+        "git clone https://github.com/FluxionNetwork/fluxion.git",
+        "cd fluxion && chmod +x fluxion.sh"
+      ],
+      "run": [
+        "cd fluxion && sudo bash fluxion.sh -i"
+      ],
+      "projectUrl": "https://github.com/FluxionNetwork/fluxion"
+    },
+    {
+      "className": "Wifiphisher",
+      "title": "Wifiphisher",
+      "description": "Wifiphisher is a rogue Access Point framework for conducting red team engagements\nor Wi-Fi security testing. Easily achieve man-in-the-middle position against\nwireless clients by performing targeted Wi-Fi association attacks.",
+      "install": [
+        "git clone https://github.com/wifiphisher/wifiphisher.git",
+        "cd wifiphisher && pip install --user ."
+      ],
+      "run": [
+        "cd wifiphisher && sudo wifiphisher"
+      ],
+      "projectUrl": "https://github.com/wifiphisher/wifiphisher"
+    },
+    {
+      "className": "Wifite",
+      "title": "Wifite",
+      "description": "Wifite is an automated wireless attack tool.",
+      "install": [
+        "git clone https://github.com/derv82/wifite2.git",
+        "cd wifite2 && pip install --user ."
+      ],
+      "run": [
+        "sudo wifite"
+      ],
+      "projectUrl": "https://github.com/derv82/wifite2"
+    },
+    {
+      "className": "EvilTwin",
+      "title": "EvilTwin",
+      "description": "Fakeap \u2014 perform Evil Twin Attack by getting credentials using a Fake page and Fake Access Point.",
+      "install": [
+        "git clone https://github.com/Z4nzu/fakeap.git"
+      ],
+      "run": [
+        "cd fakeap && sudo bash fakeap.sh"
+      ],
+      "projectUrl": "https://github.com/Z4nzu/fakeap"
+    },
+    {
+      "className": "Fastssh",
+      "title": "Fastssh",
+      "description": "Fastssh \u2014 multi-threaded scan and brute force attack against SSH protocol\nusing the most commonly used credentials.",
+      "install": [
+        "git clone https://github.com/Z4nzu/fastssh.git && cd fastssh && chmod +x fastssh.sh",
+        "sudo apt-get install -y sshpass netcat"
+      ],
+      "run": [
+        "cd fastssh && sudo bash fastssh.sh --scan"
+      ],
+      "projectUrl": "https://github.com/Z4nzu/fastssh"
+    },
+    {
+      "className": "Howmanypeople",
+      "title": "Howmanypeople",
+      "description": "Count the number of people around you by monitoring wifi signals.\n[@] WIFI ADAPTER REQUIRED\n[*] It may be illegal to monitor networks for MAC addresses on networks you do not own.",
+      "install": [
+        "sudo apt-get install -y tshark",
+        "sudo python3 -m pip install howmanypeoplearearound"
+      ],
+      "run": [
+        "howmanypeoplearearound"
+      ]
+    },
+    {
+      "className": "Airgeddon",
+      "title": "Airgeddon (Wireless Attack Suite)",
+      "description": "Multi-use bash script for auditing wireless networks.\nCovers WPA/WPA2, WEP, WPS, PMKID, evil twin, handshake capture and more.",
+      "install": [
+        "git clone https://github.com/v1s1t0r1sh3r3/airgeddon.git"
+      ],
+      "run": [
+        "cd airgeddon && sudo bash airgeddon.sh"
+      ],
+      "projectUrl": "https://github.com/v1s1t0r1sh3r3/airgeddon"
+    },
+    {
+      "className": "Hcxdumptool",
+      "title": "hcxdumptool (PMKID Capture)",
+      "description": "Capture packets and PMKID hashes from WLAN devices.\nUsage: hcxdumptool -i <iface> -o capture.pcapng --enable_status=1",
+      "install": [
+        "git clone https://github.com/ZerBea/hcxdumptool.git",
+        "cd hcxdumptool && make && sudo make install"
+      ],
+      "run": [
+        "hcxdumptool --help"
+      ],
+      "projectUrl": "https://github.com/ZerBea/hcxdumptool"
+    },
+    {
+      "className": "Hcxtools",
+      "title": "hcxtools (PMKID/Hash Conversion)",
+      "description": "Convert captured WLAN packets to hashcat/JtR-compatible format.\nUsage: hcxpcapngtool -o hashes.txt capture.pcapng",
+      "install": [
+        "git clone https://github.com/ZerBea/hcxtools.git",
+        "cd hcxtools && make && sudo make install"
+      ],
+      "run": [
+        "hcxpcapngtool --help"
+      ],
+      "projectUrl": "https://github.com/ZerBea/hcxtools"
+    },
+    {
+      "className": "Bettercap",
+      "title": "Bettercap (Network/WiFi/BLE MITM)",
+      "description": "Swiss army knife for WiFi, BLE, HID, and Ethernet network recon and MITM attacks.",
+      "install": [
+        "sudo apt-get install -y bettercap"
+      ],
+      "run": [
+        "sudo bettercap --help"
+      ],
+      "projectUrl": "https://github.com/bettercap/bettercap"
+    },
+    {
+      "className": "WirelessAttackTools",
+      "title": "Wireless attack tools",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ],
+  "password-tools": [
+    {
+      "className": "Cupp",
+      "title": "Cupp",
+      "description": "Common User Passwords Profiler \u2014 generates personalized wordlists based on target info.",
+      "install": [
+        "git clone https://github.com/Mebus/cupp.git"
+      ],
+      "run": [
+        "cd cupp && python3 cupp.py -i"
+      ],
+      "projectUrl": "https://github.com/Mebus/cupp"
+    },
+    {
+      "className": "WlCreator",
+      "title": "WordlistCreator",
+      "description": "WlCreator is a C program that can create all possibilities of passwords,\n and you can choose Length, Lowercase, Capital, Numbers and Special Chars",
+      "install": [
+        "git clone https://github.com/Z4nzu/wlcreator.git"
+      ],
+      "run": [
+        "cd wlcreator && sudo gcc -o wlcreator wlcreator.c && ./wlcreator 5"
+      ],
+      "projectUrl": "https://github.com/Z4nzu/wlcreator"
+    },
+    {
+      "className": "GoblinWordGenerator",
+      "title": "Goblin WordGenerator",
+      "description": "Goblin WordGenerator",
+      "install": [
+        "git clone https://github.com/UndeadSec/GoblinWordGenerator.git"
+      ],
+      "run": [
+        "cd GoblinWordGenerator && python3 goblin.py"
+      ],
+      "projectUrl": "https://github.com/UndeadSec/GoblinWordGenerator.git"
+    },
+    {
+      "className": "showme",
+      "title": "Password list (1.4 Billion Clear Text Password)",
+      "description": "This tool allows you to perform OSINT and reconnaissance on an organisation or an individual. It allows one to search 1.4 Billion clear text credentials which was dumped as part of BreachCompilation leak. This database makes finding passwords faster and easier than ever before.",
+      "install": [
+        "git clone https://github.com/Viralmaniar/SMWYG-Show-Me-What-You-Got.git",
+        "cd SMWYG-Show-Me-What-You-Got && pip3 install -r requirements.txt"
+      ],
+      "run": [
+        "cd SMWYG-Show-Me-What-You-Got && python SMWYG.py"
+      ],
+      "projectUrl": "https://github.com/Viralmaniar/SMWYG-Show-Me-What-You-Got"
+    },
+    {
+      "className": "Hashcat",
+      "title": "Hashcat (Password Cracker)",
+      "description": "World's fastest GPU/CPU password recovery tool \u2014 supports 300+ hash types.\nUsage: hashcat -m 0 -a 0 hashes.txt wordlist.txt",
+      "install": [
+        "sudo apt-get install -y hashcat"
+      ],
+      "run": [
+        "hashcat --help"
+      ],
+      "projectUrl": "https://github.com/hashcat/hashcat"
+    },
+    {
+      "className": "JohnTheRipper",
+      "title": "John the Ripper",
+      "description": "Open-source password security auditing and recovery tool.\nUsage: john --wordlist=wordlist.txt hashfile",
+      "install": [
+        "sudo apt-get install -y john"
+      ],
+      "run": [
+        "john --help"
+      ],
+      "projectUrl": "https://github.com/openwall/john"
+    },
+    {
+      "className": "Haiti",
+      "title": "haiti (Hash Type Identifier)",
+      "description": "Identify hash types \u2014 supports 300+ algorithms.\nUsage: haiti <hash>",
+      "install": [
+        "gem install haiti-hash"
+      ],
+      "run": [
+        "haiti --help"
+      ],
+      "projectUrl": "https://github.com/noraj/haiti"
+    },
+    {
+      "className": "WordlistGeneratorTools",
+      "title": "Wordlist Generator",
+      "description": "",
+      "install": [],
+      "run": []
+    }
+  ]
+}

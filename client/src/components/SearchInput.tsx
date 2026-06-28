@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { Search, X } from 'lucide-react';
 
 interface SearchInputProps {
@@ -19,8 +19,9 @@ export default function SearchInput({
   autoFocus = false,
 }: SearchInputProps) {
   const [localValue, setLocalValue] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
 
   // Sync external value changes
   useEffect(() => {
@@ -66,7 +67,7 @@ export default function SearchInput({
         size={14}
         className="absolute left-2.5 text-rmpg-500 pointer-events-none"
       />
-      <input
+      <input id={inputId}
         ref={inputRef}
         type="text"
         value={localValue}

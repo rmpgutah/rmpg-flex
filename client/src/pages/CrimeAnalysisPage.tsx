@@ -6,49 +6,98 @@
 // metrics — all driven by existing calls/incidents data.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle,
-  RefreshCw, Loader2, Calendar, Filter,
+  TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle, RefreshCw, Loader2,
+  Calendar,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Cell,
 } from 'recharts';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { humanizePriority } from '../utils/statusLabels';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 
 /* ── Custom Tooltip ─────────────────────────────────────────── */
 const ChartTooltip = ({ active, payload, label, formatter }: any) => {
   if (!active || !payload?.length) return null;
   const display = formatter ? formatter(label, payload[0].value) : `${payload[0].value}`;
   return (
-    <div style={{ background: '#050505', border: '1px solid #222222', padding: '6px 10px', borderRadius: 2 }}>
-      <div style={{ color: '#aaaaaa', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
-      <div style={{ color: '#e0e0e0', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
+    <div style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '6px 10px', borderRadius: 2 }}>
+      <div style={{ color: 'var(--rmpg-400)', fontSize: 10, fontFamily: 'monospace' }}>{label}</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>{display}</div>
     </div>
   );
 };
 
 /* ── Shared axis / grid props ───────────────────────────────── */
-const AXIS_STYLE = { fill: '#888888', fontSize: 9, fontFamily: 'monospace' };
-const GRID_PROPS = { stroke: '#1e1e1e', strokeDasharray: '3 3' } as const;
+const AXIS_STYLE = { fill: 'var(--rmpg-400)', fontSize: 9, fontFamily: 'monospace' };
+const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as const;
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('90');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  const canExport = user?.role === 'admin' || user?.role === 'manager';
+
+  // Deep-link seed: ?days=30|90|180|365|custom or ?date_range= alias — read
+  // once on mount, then strip the param so the URL stays clean.
+  const VALID_DAYS = new Set(['30', '90', '180', '365', 'custom']);
+  const seedDays = searchParams.get('days') ?? searchParams.get('date_range') ?? '90';
+  const [dateRange, setDateRange] = useState<string>(() => VALID_DAYS.has(seedDays) ? seedDays : '90');
+  const [startDate, setStartDate] = useState(searchParams.get('start_date') ?? '');
+  const [endDate, setEndDate] = useState(searchParams.get('end_date') ?? '');
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  // Ref for N-shortcut focus target (the date-range select).
+  const filterRef = useRef<HTMLSelectElement>(null);
+
+  // Strip deep-link params after seeding so the address bar stays tidy.
+  useEffect(() => {
+    const hasSeedParam = searchParams.has('days') || searchParams.has('date_range')
+      || searchParams.has('start_date') || searchParams.has('end_date')
+      || searchParams.has('district');
+    if (!hasSeedParam) return;
+    const next = new URLSearchParams(searchParams);
+    ['days', 'date_range', 'start_date', 'end_date', 'district'].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N shortcut → focus the date range filter
+  // Esc cascade → blur the focused filter (no modals on this page)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (e.key === 'n' || e.key === 'N') {
+        if (editing) return;
+        e.preventDefault();
+        filterRef.current?.focus();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -71,6 +120,11 @@ export default function CrimeAnalysisPage() {
   useLiveSync('incidents', fetchData);
 
   /* ── Derived data ──────────────────────────────────────────── */
+  // filterActive = user has chosen a custom or non-default period, so "no
+  // data" means the filter returned nothing rather than the system being empty.
+  const filterActive = dateRange !== '90' && (dateRange !== 'custom' || !!(startDate || endDate));
+  const emptyHint = filterActive ? 'No data for this period' : 'No data available';
+
   const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
 
   const offenseData = (data?.topOffenses || []).slice(0, 10).map((o: any) => ({
@@ -112,8 +166,8 @@ export default function CrimeAnalysisPage() {
   const BlueGradient = (
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#888888" />
-        <stop offset="100%" stopColor="#888888" />
+        <stop offset="0%" stopColor="var(--rmpg-600)" />
+        <stop offset="100%" stopColor="var(--rmpg-400)" />
       </linearGradient>
     </defs>
   );
@@ -121,8 +175,8 @@ export default function CrimeAnalysisPage() {
   const OrangeGradient = (
     <defs>
       <linearGradient id="orangeBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#92400e" />
-        <stop offset="100%" stopColor="#d97706" />
+        <stop offset="0%" stopColor="var(--amber-900, #92400e)" />
+        <stop offset="100%" stopColor="var(--amber-500, #d97706)" />
       </linearGradient>
     </defs>
   );
@@ -130,29 +184,34 @@ export default function CrimeAnalysisPage() {
   const AreaGradientBlue = (
     <defs>
       <linearGradient id="areaBlue" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#888888" stopOpacity={0.4} />
-        <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
+        <stop offset="0%" stopColor="var(--rmpg-400)" stopOpacity={0.4} />
+        <stop offset="100%" stopColor="var(--rmpg-400)" stopOpacity={0.05} />
       </linearGradient>
     </defs>
   );
 
   // Set document title
-  useEffect(() => { document.title = 'Crime Analysis \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Crime Analysis — RMPG Flex'; }, []);
 
 
-  if (!data) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-xs text-rmpg-500">No data available</div>
-      </div>
-    );
-  }
-  if (loading) {
+  // Loading FIRST — on mount data is null AND loading is true; checking !data
+  // first used to flash (and, when the endpoint was stubbed, permanently show)
+  // "No data available" instead of the spinner.
+  if (loading && !data) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
           <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
+        </div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-xs text-rmpg-500">
+          {filterActive ? 'No data for the selected period' : 'No data available'}
         </div>
       </div>
     );
@@ -164,6 +223,8 @@ export default function CrimeAnalysisPage() {
       <PanelTitleBar title="Crime Analysis — Intelligence-Led Policing" icon={TrendingUp}>
         <div className="flex items-center gap-2">
           <select
+            id="ff-crimeanalysispage-0"
+            ref={filterRef}
             value={dateRange}
             onChange={e => setDateRange(e.target.value)}
             className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none"
@@ -176,33 +237,35 @@ export default function CrimeAnalysisPage() {
           </select>
           {dateRange === 'custom' && (
             <>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              <input id="ff-crimeanalysispage-1" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                 className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none" title="Start date" />
               <span className="text-[10px] text-rmpg-500">to</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              <input id="ff-crimeanalysispage-2" type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                 className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none" title="End date" />
             </>
           )}
-          <ExportButton
-            exportUrl={dateRange === 'custom' && startDate && endDate
-              ? `/reports/crime-analysis/export?format=csv&start_date=${startDate}&end_date=${endDate}`
-              : `/reports/crime-analysis/export?format=csv&days=${dateRange}`}
-            exportFilename="crime_analysis.csv"
-          />
+          {canExport && (
+            <ExportButton
+              exportUrl={dateRange === 'custom' && startDate && endDate
+                ? `/reports/crime-analysis/export?format=csv&start_date=${startDate}&end_date=${endDate}`
+                : `/reports/crime-analysis/export?format=csv&days=${dateRange}`}
+              exportFilename="crime_analysis.csv"
+            />
+          )}
           <button type="button" onClick={fetchData} className="toolbar-btn">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>
         </div>
       </PanelTitleBar>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {/* ── Summary Cards ──────────────────────────────────── */}
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
-            { label: 'Total Incidents', value: totalIncidents, color: 'text-white', spark: '#888888' },
-            { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: '#10b981' },
-            { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '\u2014'} min`, color: 'text-amber-400', spark: '#d97706' },
-            { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: '#ef4444' },
+            { label: 'Total Incidents', value: totalIncidents, color: 'text-rmpg-100', spark: 'var(--rmpg-400)' },
+            { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: 'var(--green-500, #10b981)' },
+            { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400', spark: 'var(--amber-500, #d97706)' },
+            { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: 'var(--red-500, #ef4444)' },
           ].map(card => (
             <div key={card.label} className="panel-beveled p-3 text-center relative overflow-hidden">
               <div className="text-[9px] font-mono text-rmpg-500 uppercase">{card.label}</div>
@@ -220,7 +283,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Top Offenses" icon={BarChart3} />
             <div className="p-3">
               {offenseData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No offense data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={offenseData} layout="vertical" margin={{ left: 4, right: 30, top: 4, bottom: 4 }}>
@@ -241,7 +304,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Hotspots (Top Locations)" icon={MapPin} />
             <div className="p-3">
               {hotspotData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No hotspot data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={hotspotData} layout="vertical" margin={{ left: 4, right: 30, top: 4, bottom: 4 }}>
@@ -262,16 +325,16 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Time of Day Distribution" icon={Clock} />
             <div className="p-3">
               {todData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No time data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <>
                   <ResponsiveContainer width="100%" height={180}>
                     <AreaChart data={todData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="todGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.5} />
-                          <stop offset="50%" stopColor="#888888" stopOpacity={0.3} />
-                          <stop offset="100%" stopColor="#888888" stopOpacity={0.05} />
+                          <stop offset="0%" stopColor="var(--purple-600, #7c3aed)" stopOpacity={0.5} />
+                          <stop offset="50%" stopColor="var(--rmpg-400)" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="var(--rmpg-400)" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid {...GRID_PROPS} />
@@ -279,16 +342,16 @@ export default function CrimeAnalysisPage() {
                         interval={isMobile ? 5 : 3} />
                       <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={28} />
                       <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} calls`} />} />
-                      <Area type="monotone" dataKey="count" stroke="#7c3aed" strokeWidth={2}
-                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: '#a78bfa', stroke: '#7c3aed' }} />
+                      <Area type="monotone" dataKey="count" stroke="var(--purple-600, #7c3aed)" strokeWidth={2}
+                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: 'var(--purple-400, #a78bfa)', stroke: 'var(--purple-600, #7c3aed)' }} />
                     </AreaChart>
                   </ResponsiveContainer>
                   <div className="flex items-center justify-center gap-4 mt-2">
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                      <div className="w-3 h-2" style={{ background: '#888888' }} /> Day (06-18)
+                      <div className="w-3 h-2 bg-rmpg-400" /> Day (06-18)
                     </span>
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                      <div className="w-3 h-2" style={{ background: '#7c3aed' }} /> Night
+                      <div className="w-3 h-2" style={{ background: 'var(--purple-600, #7c3aed)' }} /> Night
                     </span>
                   </div>
                 </>
@@ -301,18 +364,18 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Day of Week" icon={Calendar} />
             <div className="p-3">
               {dowData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No day data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={dowData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="greenBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" />
-                        <stop offset="100%" stopColor="#059669" />
+                        <stop offset="0%" stopColor="var(--green-400, #10b981)" />
+                        <stop offset="100%" stopColor="var(--green-600, #059669)" />
                       </linearGradient>
                       <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#a855f7" />
-                        <stop offset="100%" stopColor="#7c3aed" />
+                        <stop offset="0%" stopColor="var(--purple-400, #a855f7)" />
+                        <stop offset="100%" stopColor="var(--purple-600, #7c3aed)" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid {...GRID_PROPS} vertical={false} />
@@ -320,8 +383,8 @@ export default function CrimeAnalysisPage() {
                     <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={28} />
                     <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} incidents`} />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Bar dataKey="count" radius={[2, 2, 0, 0]} barSize={24}>
-                      {dowData.map((d: any, i: number) => (
-                        <Cell key={i} fill={d.isWeekend ? 'url(#purpleBar)' : 'url(#greenBar)'} />
+                      {dowData.map((d: any) => (
+                        <Cell key={d.name} fill={d.isWeekend ? 'url(#purpleBar)' : 'url(#greenBar)'} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -329,10 +392,10 @@ export default function CrimeAnalysisPage() {
               )}
               <div className="flex items-center justify-center gap-4 mt-1">
                 <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                  <div className="w-3 h-2 rounded-[1px]" style={{ background: '#10b981' }} /> Weekday
+                  <div className="w-3 h-2 rounded-[1px] bg-green-400" /> Weekday
                 </span>
                 <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                  <div className="w-3 h-2 rounded-[1px]" style={{ background: '#a855f7' }} /> Weekend
+                  <div className="w-3 h-2 rounded-[1px]" style={{ background: 'var(--purple-400, #a855f7)' }} /> Weekend
                 </span>
               </div>
             </div>
@@ -343,7 +406,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Repeat Offenders (3+ Incidents)" icon={Users} />
             <div className="p-3">
               {(data?.repeatOffenders || []).length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No repeat offenders</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <div className="space-y-1">
                   {(data?.repeatOffenders || []).slice(0, 15).map((person: any, idx: number) => {
@@ -352,9 +415,9 @@ export default function CrimeAnalysisPage() {
                     return (
                       <div key={idx} className="flex items-center gap-2 px-2 py-1.5 panel-beveled">
                         <span className="text-[9px] font-mono text-rmpg-500 w-4 text-right">{idx + 1}</span>
-                        <span className="text-[10px] text-white flex-1 truncate">{person.name || 'Unknown'}</span>
+                        <span className="text-[10px] text-rmpg-100 min-w-0 flex-1 truncate">{person.name || 'Unknown'}</span>
                         <div className="w-16 h-2 bg-surface-sunken rounded-[1px] overflow-hidden">
-                          <div className="h-full rounded-[1px]" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #ef4444, #dc2626)' }} />
+                          <div className="h-full rounded-[1px] bg-gradient-to-r from-red-600 to-red-500" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="text-[10px] font-mono font-bold text-red-400 w-12 text-right">{person.incident_count}</span>
                       </div>
@@ -370,25 +433,25 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Response Metrics by Priority" icon={AlertTriangle} />
             <div className="p-3">
               {(data?.responseMetrics || []).length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No response data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <div className="space-y-2">
                   {(data?.responseMetrics || []).map((metric: any, idx: number) => {
                     const target = responseTargets[metric.priority] ?? 15;
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
-                    const barColor = overTarget ? '#ef4444' : metric.priority === 'critical' ? '#f59e0b' : '#10b981';
-                    const labelColor = metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#888888' : '#999999';
+                    const barColor = overTarget ? 'var(--red-500, #ef4444)' : metric.priority === 'critical' ? 'var(--amber-500, #f59e0b)' : 'var(--green-500, #10b981)';
+                    const labelColor = metric.priority === 'critical' ? 'var(--red-400)' : metric.priority === 'high' ? 'var(--amber-400)' : 'var(--rmpg-400)';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase" style={{ color: labelColor }}>
-                            {metric.priority}
+                            {humanizePriority(metric.priority)}
                           </span>
                           <div className="flex items-center gap-3">
-                            <span className="text-[9px] text-rmpg-400">Avg: <span className="text-white font-bold">{metric.avg_minutes} min</span></span>
+                            <span className="text-[9px] text-rmpg-400">Avg: <span className="text-rmpg-100 font-bold">{metric.avg_minutes} min</span></span>
                             <span className="text-[9px] text-rmpg-400">Target: <span className="text-rmpg-300">{target}m</span></span>
-                            <span className="text-[9px] text-rmpg-400">Calls: <span className="text-white font-bold">{metric.call_count}</span></span>
+                            <span className="text-[9px] text-rmpg-400">Calls: <span className="text-rmpg-100 font-bold">{metric.call_count}</span></span>
                           </div>
                         </div>
                         <div className="h-2 bg-surface-sunken rounded-[1px] overflow-hidden relative">
@@ -409,7 +472,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Monthly Incident Trend" icon={TrendingUp} />
             <div className="p-3">
               {trendData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No trend data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={trendData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
@@ -418,9 +481,9 @@ export default function CrimeAnalysisPage() {
                     <XAxis dataKey="name" tick={AXIS_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={30} />
                     <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} incidents`} />} />
-                    <Area type="monotone" dataKey="count" stroke="#888888" strokeWidth={2}
-                      fill="url(#areaBlue)" dot={{ r: 3, fill: '#888888', stroke: '#888888', strokeWidth: 1 }}
-                      activeDot={{ r: 5, fill: '#888888', stroke: '#fff', strokeWidth: 1 }} />
+                    <Area type="monotone" dataKey="count" stroke="var(--rmpg-400)" strokeWidth={2}
+                      fill="url(#areaBlue)" dot={{ r: 3, fill: 'var(--rmpg-400)', stroke: 'var(--rmpg-400)', strokeWidth: 1 }}
+                      activeDot={{ r: 5, fill: 'var(--rmpg-400)', stroke: 'var(--surface-base)', strokeWidth: 1 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}

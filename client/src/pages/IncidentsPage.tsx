@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus,
   Search,
@@ -28,17 +29,22 @@ import {
   Flame,
   Eye,
   Link,
+  Pencil,
+  Copy,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
+import IconButton from '../components/IconButton';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import AddLinkModal from '../components/AddLinkModal';
 import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
 import EvidenceFormModal from '../components/EvidenceFormModal';
+import OfficerPicker from '../components/OfficerPicker';
+import RecordPicker, { type LinkableRecordType } from '../components/RecordPicker';
 import CollapsibleSection from '../components/CollapsibleSection';
+import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import SupplementFormModal from '../components/SupplementFormModal';
 import type { SupplementFormData } from '../components/SupplementFormModal';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -48,7 +54,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatIncidentType, type PdfReportType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
+import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
@@ -58,12 +65,29 @@ import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
-import { humanizeStatus, humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay, humanizeType, humanizeDisposition } from '../utils/statusLabels';
+import { coded } from '../utils/searchText';
+import ZsbBadge from '../components/ZsbBadge';
+
+export function incidentMatchesSearch(
+  inc: { incident_number: string; title: string; location: string; officer_name: string; type: string },
+  q: string,
+): boolean {
+  return (
+    inc.incident_number.toLowerCase().includes(q) ||
+    inc.title.toLowerCase().includes(q) ||
+    inc.location.toLowerCase().includes(q) ||
+    inc.officer_name.toLowerCase().includes(q) ||
+    coded(inc.type, humanizeType).includes(q)
+  );
+}
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -175,7 +199,7 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -187,13 +211,63 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+type IncidentOfficerOption = {
+  id: string;
+  full_name: string;
+  badge_number?: string;
+  call_sign?: string;
+};
+
+const INCIDENT_OFFICER_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
+function toIncidentOfficerOption(user: any): IncidentOfficerOption | null {
+  if (!user || !user.id) return null;
+  if (user.status !== 'active') return null;
+  if (!INCIDENT_OFFICER_ALLOWED_ROLES.has(user.role)) return null;
+
+  const fullName =
+    user.full_name
+    || `${user.first_name || ''} ${user.last_name || ''}`.trim()
+    || user.username
+    || `User ${user.id}`;
+
+  return {
+    id: String(user.id),
+    full_name: fullName,
+    badge_number: user.badge_number || '',
+    call_sign: user.unit_call_sign || user.call_sign || '',
+  };
+}
+
+function formatIncidentOfficerOptionLabel(officer: IncidentOfficerOption): string {
+  const meta = [
+    officer.badge_number ? `#${officer.badge_number}` : '',
+    officer.call_sign || '',
+  ].filter(Boolean).join(' • ');
+
+  return meta ? `${officer.full_name} (${meta})` : officer.full_name;
+}
+
+function isIncidentOfficerLinked(detailOfficers: any[], officerId: string): boolean {
+  return detailOfficers.some((officer) => String(officer.officer_id || '') === officerId);
+}
+
 export default function IncidentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // canSupervise: roles that can approve, return, close, and delete incidents
+  const canSupervise = isAdmin || isManager || isSupervisor;
+  // isGodMode alias retained for backward compat with existing gate expressions below
+  const isGodMode = canSupervise;
   const isMobile = useIsMobile();
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -231,12 +305,49 @@ export default function IncidentsPage() {
   const [detailOffenses, setDetailOffenses] = useState<any[]>([]);
   const [detailOfficers, setDetailOfficers] = useState<any[]>([]);
   const [detailLinks, setDetailLinks] = useState<any[]>([]);
+  const [incidentOfficerOptions, setIncidentOfficerOptions] = useState<IncidentOfficerOption[]>([]);
+  const [incidentOfficerOptionsLoading, setIncidentOfficerOptionsLoading] = useState(false);
   const [showAddOffenseModal, setShowAddOffenseModal] = useState(false);
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
+  const [addOfficerPickerId, setAddOfficerPickerId] = useState<number | null>(null);
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+  const [addLinkType, setAddLinkType] = useState<LinkableRecordType | ''>('');
+  const [addLinkId, setAddLinkId] = useState<number | null>(null);
 
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
+
+  // ---------- unlink/remove confirmation state ----------
+  // Replaces the six native window.confirm / confirm() calls on this page
+  // (unlink-person, unlink-vehicle, remove-offense, remove-officer, remove-
+  // cross-reference). A single themed ConfirmDialog drives all five flows;
+  // payload carries the action callback so the dialog stays generic.
+  const [removalConfirm, setRemovalConfirm] = useState<{
+    title: string;
+    message: string;
+    detail?: string;
+    run: () => Promise<void> | void;
+  } | null>(null);
+  const [removalSubmitting, setRemovalSubmitting] = useState(false);
+
+  // ---------- return-incident modal state ----------
+  // Replaces window.prompt('Return comments…'). Inline modal mirrors the
+  // Cases page pattern (PR #1604 / SW v1028) so operators get a real
+  // textarea + Cancel/Confirm flow instead of the browser-native prompt
+  // that strips formatting and dies in some kiosk modes.
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnComments, setReturnComments] = useState('');
+
+  const runRemovalConfirm = async () => {
+    if (!removalConfirm) return;
+    setRemovalSubmitting(true);
+    try {
+      await removalConfirm.run();
+    } finally {
+      setRemovalSubmitting(false);
+      setRemovalConfirm(null);
+    }
+  };
 
   // ---------- custody transfer modal ----------
   const [custodyTransfer, setCustodyTransfer] = useState<{ evidenceId: string; evidenceNumber: string; currentLocation: string } | null>(null);
@@ -269,8 +380,15 @@ export default function IncidentsPage() {
         const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
-    } catch {
-      addToast('Network error', 'error');
+    } catch (err: any) {
+      // Audit caught (2026-06-21): the original bare `} catch { addToast(
+      // 'Network error', ...) }` discarded the error object. Operators
+      // re-tried the chain-of-custody action several times not realizing
+      // the failure was 401 (re-auth needed), 409 (duplicate transfer),
+      // or 422 (missing location) — not actually a network issue. Mirror
+      // the pattern that EvidencePropertyPage.handleChainAction:319-320
+      // already uses correctly.
+      addToast(err?.message || 'Failed to record custody action', 'error');
     }
     setCustodySubmitting(false);
   };
@@ -305,39 +423,37 @@ export default function IncidentsPage() {
   useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
   useEffect(() => { selectedIncidentRef.current = selectedIncident; }, [selectedIncident]);
 
-  // Auto-save unsaved narrative on component unmount (SPA navigation)
+  // Auto-save unsaved narrative on component unmount (SPA navigation).
+  // Uses raw fetch + keepalive (matching DispatchPage's unmount cleanup
+  // pattern) rather than apiFetch. apiFetch's wrapper logic — token
+  // refresh on 401 which can redirect to /login, AbortController timeout,
+  // offline-router detours — is appropriate for normal requests but
+  // wrong for a fire-and-forget save during teardown: token-refresh
+  // failures during unmount could trigger a /login redirect on an
+  // unrelated route change, and offline routing could swallow the save.
+  // The browser's `keepalive` flag guarantees the request commits even
+  // as the page unloads (subject to a 64KB body limit, fine for a
+  // narrative field).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrative }),
-        keepalive: true,
-      }).catch(() => { /* best-effort save */ });
+      try {
+        const token = localStorage.getItem('rmpg_token');
+        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ narrative }),
+          keepalive: true,
+        });
+      } catch { /* best-effort save */ }
     };
   }, []);
-
-  // Debounced narrative auto-save (every 10s while editing)
-  const [narrativeLastSaved, setNarrativeLastSaved] = useState<string | null>(null);
-  const narrativeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!isEditing || !selectedIncident) return;
-    if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current);
-    narrativeAutoSaveTimer.current = setTimeout(() => {
-      const narrative = narrativeRef.current?.value;
-      if (narrative == null || !selectedIncidentRef.current) return;
-      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ narrative }),
-      }).then(() => {
-        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      }).catch(() => { /* silent fail — unmount save is the fallback */ });
-    }, 10000);
-    return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
-  }, [isEditing, selectedIncident]);
 
   // ============================================================
   // Fetch incidents
@@ -346,7 +462,7 @@ export default function IncidentsPage() {
   const fetchIncidents = useCallback(async (options?: { silent?: boolean }) => {
     try {
       if (!options?.silent) setError(null);
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/incidents?limit=100000&archived=${showArchived}`);
       setIncidents((Array.isArray(res?.data) ? res.data : []).map(mapDbIncident));
     } catch (err: any) {
       if (!options?.silent) setError(err.message ?? 'Failed to load incidents');
@@ -377,12 +493,18 @@ export default function IncidentsPage() {
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
   useLiveSync('incidents', silentRefreshIncidents);
 
-  // Keep selectedIncident in sync after data refresh
+  // Keep selectedIncident in sync after live-sync refresh.
+  // MERGE the refreshed list-row into the existing selectedIncident
+  // instead of replacing it — the list query returns a thin shape
+  // (no linked_persons/vehicles/evidence/offenses/officers), which
+  // are populated by fetchIncidentDetail. A raw replace stripped those
+  // arrays back to undefined every refresh, blanking the detail tabs
+  // until the user re-selected the row.
   useEffect(() => {
     if (selectedIncident) {
       const updated = incidents.find((i) => i.id === selectedIncident.id);
       if (updated) {
-        setSelectedIncident(updated);
+        setSelectedIncident((prev) => prev ? { ...prev, ...updated } as any : updated);
       } else {
         setSelectedIncident(null);
       }
@@ -411,7 +533,8 @@ export default function IncidentsPage() {
       setDetailVehicles(detail.linked_vehicles || []);
       setDetailEvidence(detail.evidence || []);
       setSelectedIncident((prev) => prev ? { ...prev, call_type: detail.call_type, call_created_at: detail.call_created_at } as any : prev);
-    } catch {
+    } catch (err) {
+      console.error('[IncidentsPage] Failed to load incident detail:', err);
       setDetailPersons([]);
       setDetailVehicles([]);
       setDetailEvidence([]);
@@ -464,24 +587,86 @@ export default function IncidentsPage() {
     }
   }, [selectedIncident?.id, fetchIncidentDetail, fetchSupplements]);
 
-  const handleUnlinkPerson = async (personId: string | number) => {
+  useEffect(() => {
+    if (!showAddOfficerModal || incidentOfficerOptions.length > 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setIncidentOfficerOptionsLoading(true);
+        const res = await apiFetch<any>('/personnel?status=active');
+        if (cancelled) return;
+
+        const list = Array.isArray(res) ? res : res?.data ?? [];
+        const rosterById = new Map<string, IncidentOfficerOption>();
+
+        for (const row of list) {
+          const option = toIncidentOfficerOption(row);
+          if (option && !rosterById.has(option.id)) {
+            rosterById.set(option.id, option);
+          }
+        }
+
+        setIncidentOfficerOptions(Array.from(rosterById.values()));
+      } catch {
+        if (!cancelled) setIncidentOfficerOptions([]);
+      } finally {
+        if (!cancelled) setIncidentOfficerOptionsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showAddOfficerModal, incidentOfficerOptions.length]);
+
+  const handleUnlinkPerson = (personId: string | number) => {
     if (!selectedIncident) return;
-    try {
-      await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
-      fetchIncidentDetail(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unlink person', 'error');
-    }
+    // Audit caught (2026-06-21): silent unlink with no confirm + no success
+    // toast. Operator destroyed link with zero feedback. Look up the
+    // person's display name from detailPersons (already loaded) so the
+    // confirm shows WHO is being removed, not just "this person".
+    // 2026-06-22 (SW v1032): native window.confirm → themed ConfirmDialog
+    // (same pattern Cases SW v1028 / FI SW v1024 adopted).
+    const person = (detailPersons || []).find((p: any) => String(p?.id ?? p?.person_id) === String(personId));
+    const name = person
+      ? ([person.first_name, person.last_name].filter(Boolean).join(' ').trim() || (person as any).full_name || 'this person')
+      : 'this person';
+    setRemovalConfirm({
+      title: 'Unlink Person',
+      message: `Unlink ${name} from this incident?`,
+      detail: name,
+      run: async () => {
+        try {
+          await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
+          fetchIncidentDetail(selectedIncident.id);
+          addToast(`Unlinked ${name}`, 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to unlink person', 'error');
+        }
+      },
+    });
   };
 
-  const handleUnlinkVehicle = async (vehicleId: string | number) => {
+  const handleUnlinkVehicle = (vehicleId: string | number) => {
     if (!selectedIncident) return;
-    try {
-      await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
-      fetchIncidentDetail(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unlink vehicle', 'error');
-    }
+    const vehicle = (detailVehicles || []).find((v: any) => String(v?.id ?? v?.vehicle_id) === String(vehicleId));
+    const label = vehicle ? (vehicle.plate_number || (vehicle as any).vin || `vehicle #${vehicleId}`) : `vehicle #${vehicleId}`;
+    setRemovalConfirm({
+      title: 'Unlink Vehicle',
+      message: `Unlink ${label} from this incident?`,
+      detail: label,
+      run: async () => {
+        try {
+          await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
+          fetchIncidentDetail(selectedIncident.id);
+          addToast(`Unlinked ${label}`, 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to unlink vehicle', 'error');
+        }
+      },
+    });
   };
 
   // ============================================================
@@ -583,16 +768,26 @@ export default function IncidentsPage() {
     }
   };
 
-  const handleReturn = async () => {
+  // Opens the inline return modal (replaces window.prompt — 2026-06-22).
+  // Native prompt strips line breaks, kills focus management on iPad
+  // kiosks, and isn't themable. The modal gives operators a real textarea
+  // + Cancel/Confirm with proper review feedback.
+  const handleReturn = () => {
     if (!selectedIncident) return;
-    const comments = window.prompt('Return comments (optional):');
-    if (comments === null) return; // cancelled
+    setReturnComments('');
+    setShowReturnModal(true);
+  };
+
+  const submitReturn = async () => {
+    if (!selectedIncident) return;
     try {
       setIsSubmitting(true);
       await apiFetch(`/incidents/${selectedIncident.id}/return`, {
         method: 'PUT',
-        body: JSON.stringify({ comments }),
+        body: JSON.stringify({ comments: returnComments }),
       });
+      setShowReturnModal(false);
+      setReturnComments('');
       await fetchIncidents({ silent: true });
     } catch (err: any) {
       addToast(err.message ?? 'Failed to return incident', 'error');
@@ -645,6 +840,29 @@ export default function IncidentsPage() {
     } catch (err: any) {
       addToast(err?.message || 'Failed to unarchive incident', 'error');
     }
+  };
+
+  // ============================================================
+  // Right-click context menu (per incident row)
+  // ============================================================
+
+  const buildIncidentMenu = (incident: Incident): ContextMenuItem[] => {
+    return [
+      m.action('Open incident', () => { setSelectedIncident(incident); setIsEditing(false); }, { icon: <Eye size={12} /> }),
+      m.action('Edit incident', () => { setEditingIncident(incident); setShowFormModal(true); }, { icon: <Pencil size={12} /> }),
+      m.action('Open in new window', () => openIncidentWindow(incident.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy IR #', incident.incident_number, <Copy size={12} />),
+      m.copyId(incident.id),
+      ...((incident as any).latitude != null && (incident as any).longitude != null
+        ? [m.go('Show on map', `/map?flyto=${(incident as any).latitude},${(incident as any).longitude}`, <MapPin size={12} />)]
+        : []),
+      m.separator(),
+      ...(showArchived
+        ? [m.action('Unarchive', () => handleUnarchiveIncident(incident), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveIncident(incident), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeleteTarget(incident), { icon: <Trash2 size={12} />, danger: true }),
+    ];
   };
 
   // ============================================================
@@ -735,13 +953,7 @@ export default function IncidentsPage() {
       if (uofFilter && !UOF_TYPES.includes(inc.type)) return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
-      return (
-        inc.incident_number.toLowerCase().includes(q) ||
-        inc.title.toLowerCase().includes(q) ||
-        inc.location.toLowerCase().includes(q) ||
-        inc.officer_name.toLowerCase().includes(q) ||
-        inc.type.toLowerCase().includes(q)
-      );
+      return incidentMatchesSearch(inc as any, q);
     })
     .sort((a, b) => {
       const aVal = a[sortKey] ?? '';
@@ -805,7 +1017,7 @@ export default function IncidentsPage() {
             </button>
             <button type="button"
               className="toolbar-btn"
-              style={{ color: '#f87171', borderColor: '#991b1b' }}
+              style={{ color: 'rgb(var(--sev-critical-rgb) / 0.85)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.55)' }}
               onClick={() => {
                 setEditingIncident(undefined);
                 setFormDefaultType('use_of_force');
@@ -839,7 +1051,7 @@ export default function IncidentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-incidentspage-0"
             type="text"
             className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
@@ -847,25 +1059,25 @@ export default function IncidentsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+            <IconButton onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3.5 h-3.5" />
-            </button>
+            </IconButton>
           )}
         </div>
       </div>
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#050505' }}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: 'var(--surface-overlay)' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
             <span className="text-amber-400 font-bold">{incidentStats.draft}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-gray-500" />
+            <div className="w-2 h-2 rounded-full bg-rmpg-300" />
             <span className="text-rmpg-400">Submitted:</span>
-            <span className="text-gray-400 font-bold">{incidentStats.submitted}</span>
+            <span className="text-rmpg-200 font-bold">{incidentStats.submitted}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
@@ -891,9 +1103,9 @@ export default function IncidentsPage() {
       )}
 
       {/* Table / Loading / Error */}
-      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th>{!isMobile && <th>Location</th>}{!isMobile && <th>Officer</th>}<th>Date</th>
@@ -902,7 +1114,7 @@ export default function IncidentsPage() {
             <tbody>
               {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={isMobile ? 5 : 7} />)}
             </tbody>
-          </table>
+          </table></div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <AlertTriangle className="w-6 h-6 text-red-500/60" />
@@ -912,7 +1124,7 @@ export default function IncidentsPage() {
             </button>
           </div>
         ) : (
-          <table className="table-dark">
+          <div className="overflow-x-auto"><table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="cursor-pointer select-none" onClick={() => handleSort('incident_number')}>
@@ -960,11 +1172,24 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
+                  onContextMenu={(e) => openMenu(e, buildIncidentMenu(inc))}
                   className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
-                  <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
+                  <td className="font-bold text-rmpg-100 text-xs font-mono">
+                    <span className="cursor-pointer hover:text-green-400 transition-colors" title="Click to copy"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inc.incident_number || ''); }}>
+                      {inc.incident_number}
+                    </span>
+                    {/* Age indicator */}
+                    {inc.occurred_at && (() => {
+                      const days = Math.floor((Date.now() - parseTimestamp(inc.occurred_at).getTime()) / 86400000);
+                      if (days > 30) return <span className="ml-1 text-[7px] text-red-400 font-normal">{days}d</span>;
+                      if (days > 7) return <span className="ml-1 text-[7px] text-amber-400 font-normal">{days}d</span>;
+                      return null;
+                    })()}
+                  </td>
                   <td className="text-xs text-brand-400">
                     <span className="inline-flex items-center gap-1">
                       {(() => { const Icon = INCIDENT_TYPE_ICONS[inc.type] || FileText; return <Icon className="w-3 h-3 flex-shrink-0" />; })()}
@@ -986,12 +1211,40 @@ export default function IncidentsPage() {
                 <tr>
                   <td colSpan={isMobile ? 5 : 7} className="text-center py-12">
                     <FileText className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
-                    <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">No incidents found</span>
+                    {/* Distinguish empty-shelf from no-match — operator
+                        needs to know whether the search dropped them off
+                        the cliff or there's just nothing here yet (e.g.
+                        on a fresh property w/o any incidents on file). */}
+                    {incidents.length === 0 ? (
+                      <>
+                        <div className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">
+                          {showArchived ? 'No archived incidents' : 'No incidents on file'}
+                        </div>
+                        {!showArchived && (
+                          <div className="text-[9px] text-rmpg-600 font-mono mt-1">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-700 text-rmpg-300">N</kbd> or click New Incident to create one.</div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">
+                          No incidents match your search
+                        </div>
+                        {(searchQuery || uofFilter) && (
+                          <button
+                            type="button"
+                            onClick={() => { setSearchQuery(''); setUofFilter(false); }}
+                            className="text-[9px] text-brand-400 hover:text-brand-300 font-mono mt-1 underline"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>
@@ -1024,7 +1277,7 @@ export default function IncidentsPage() {
       client_name: inc?.client_name,
       call_number: inc?.call_number,
       // District / zone
-      section_id: inc?.section_id,
+      sector_id: inc?.sector_id,
       zone_id: inc?.zone_id,
       beat_id: inc?.beat_id,
       disposition: inc?.disposition,
@@ -1165,24 +1418,18 @@ export default function IncidentsPage() {
           if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
           // Build call notes from dispatch notes
           if (callDetail.notes?.length > 0) {
+            // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
+            // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
+            // and the DB strings are MST-stamped. safeDateTimeStr applies the
+            // correct Mountain-Time offset before formatting.
             pdfData.call_notes = callDetail.notes.map((n: any) =>
-              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+              `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
             ).join('\n');
           }
           // Inherit lat/lng from call if incident doesn't have them
           if (pdfData.latitude == null && callDetail.latitude != null) {
             pdfData.latitude = callDetail.latitude;
             pdfData.longitude = callDetail.longitude;
-          }
-          // Resolve responding_vehicle_id to fleet vehicle call sign
-          const vehId = callDetail.responding_vehicle_id || pdfData.responding_vehicle_id;
-          if (vehId) {
-            try {
-              const fv = await apiFetch<any>(`/fleet/${vehId}`);
-              if (fv?.vehicle_number) {
-                pdfData.responding_vehicle_id = fv.vehicle_number;
-              }
-            } catch { /* vehicle lookup optional */ }
           }
         }
       } catch { /* call detail optional */ }
@@ -1225,22 +1472,32 @@ export default function IncidentsPage() {
             }}
             onPreview={async (reportType) => {
               try {
-                if (!selectedIncident) { addToast('No incident selected', 'error'); return; }
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
                 setPdfViewerOpen(true);
-              } catch (err: any) {
+              } catch (err) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
-                addToast(err?.message || 'PDF preview generation failed', 'error');
               }
             }}
             onSignAndExport={async (reportType, signature) => {
               const pdfData = await buildIncidentPdfData();
               pdfData._officerSignature = signature;
               await downloadPdfReport(reportType, pdfData);
+            }}
+            onMobilePrint={async (reportType) => {
+              try {
+                if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                const pdfData = await buildIncidentPdfData();
+                const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
+                setPdfBlobUrl(blobUrl);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerOpen(true);
+              } catch (err) {
+                console.error('[IncidentsPage] Mobile PDF preview failed:', err);
+              }
             }}
           />
         <button type="button"
@@ -1261,10 +1518,10 @@ export default function IncidentsPage() {
         const currentIdx = steps.indexOf(selectedIncident.status as any);
         const idx = currentIdx >= 0 ? currentIdx : selectedIncident.status === 'returned' ? 1 : 0;
         return (
-          <div className="flex items-center gap-0 px-4 py-2 border-b border-[#222222]" style={{ background: '#050505' }}>
+          <div className="flex items-center gap-0 px-4 py-2 border-b border-border-default bg-surface-base">
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px rgb(var(--sev-ok-rgb) / 0.9)' } : {}} />
                 <span className={`text-[8px] font-mono uppercase ml-1 ${i <= idx ? 'text-green-400 font-bold' : 'text-rmpg-500'}`}>{label}</span>
                 {i < labels.length - 1 && <div className={`flex-1 h-px mx-1 ${i < idx ? 'bg-green-700' : 'bg-rmpg-700'}`} />}
               </div>
@@ -1274,7 +1531,7 @@ export default function IncidentsPage() {
       })()}
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1297,9 +1554,9 @@ export default function IncidentsPage() {
             {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
             {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
             {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
-            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Mental Health</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Mental Health</span>}
             {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
-            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-surface-sunken/40 text-rmpg-300 text-[10px] uppercase font-bold border border-border-default/40">Juvenile</span>}
             {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
             {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
             {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
@@ -1308,11 +1565,11 @@ export default function IncidentsPage() {
             {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
             {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
             {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
-            {inc.k9_requested && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">K9</span>}
-            {inc.ems_requested && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">EMS</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">EMS</span>}
             {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
-            {inc.le_notified && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">LE Notified</span>}
-            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-gray-900/40 text-gray-300 text-[10px] uppercase font-bold border border-gray-700/40">Supvr</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-rmpg-700/25 text-rmpg-200 text-[10px] uppercase font-bold border border-rmpg-600/40">Supvr</span>}
           </div>
         )}
 
@@ -1322,13 +1579,13 @@ export default function IncidentsPage() {
             <label className="field-label" style={{ fontSize: '10px', letterSpacing: '0.05em' }}>SOURCE CALL</label>
             <div className="flex items-center gap-3 mt-0.5">
               <button type="button"
-                onClick={() => navigate('/dispatch')}
+                onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
                 className="font-mono text-green-400 text-sm hover:text-green-300 hover:underline transition-colors"
               >
                 {inc.call_number}
               </button>
               {inc.call_type && (
-                <span className="text-xs text-rmpg-300">{inc.call_type}</span>
+                <span className="text-xs text-rmpg-300">{humanizeType(inc.call_type)}</span>
               )}
               {inc.call_created_at && (
                 <span className="text-xs text-rmpg-400 font-mono">
@@ -1343,7 +1600,7 @@ export default function IncidentsPage() {
         <CollapsibleSection title="Incident Info" icon={FileText} defaultOpen>
           <div className="mb-2">
             <label className="field-label">Title:</label>
-            <p className="text-sm text-white font-medium">{selectedIncident.title}</p>
+            <p className="text-sm text-rmpg-100 font-medium">{selectedIncident.title}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1354,8 +1611,8 @@ export default function IncidentsPage() {
               <label className="field-label">Linked Call:</label>
               {selectedIncident.call_number ? (
                 <button type="button"
-                  onClick={() => navigate('/dispatch')}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-cyan-400 bg-cyan-900/20 border border-cyan-700/40 hover:bg-cyan-900/40 transition-colors"
+                  onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-rmpg-400 bg-surface-sunken/20 border border-border-default/40 hover:bg-surface-sunken/40 transition-colors"
                   title="Go to dispatch"
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -1401,18 +1658,18 @@ export default function IncidentsPage() {
                 <p className="text-sm text-rmpg-300">{timeAgo(selectedIncident.updated_at)}</p>
               </div>
             )}
-            {(inc.dispatch_code || inc.section_id || inc.zone_id || inc.beat_id) && (
+            {(inc.dispatch_code || inc.sector_id || inc.zone_id || inc.beat_id) && (
               <div>
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {inc.dispatch_code && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
-                      {inc.dispatch_code}
-                    </span>
-                  )}
-                  <span className="text-sm text-rmpg-200">
-                    {[inc.section_id, inc.zone_id, inc.beat_id].filter(Boolean).join(' / ')}
-                  </span>
+                  {/* Full Z/S/B composite in the gold chart-code badge — derived
+                      from the geography fields (raw ids like "28.0 / SL1-SSL /
+                      SL1-SSL/A1" are internal keys, not display values). */}
+                  <ZsbBadge
+                    zoneId={inc.zone_id}
+                    beatId={inc.beat_id}
+                    dispatchCode={inc.dispatch_code}
+                  />
                 </div>
               </div>
             )}
@@ -1498,7 +1755,7 @@ export default function IncidentsPage() {
               {inc.process_service_type && (
                 <div>
                   <label className="field-label">Document Type:</label>
-                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.process_service_type || '')}</p>
                 </div>
               )}
               {inc.process_served_to && (
@@ -1535,7 +1792,7 @@ export default function IncidentsPage() {
                       ? 'bg-red-900/40 text-red-400 border-red-600/40'
                       : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
                   }`}>
-                    {(inc.process_service_result || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    {toDisplayLabel(inc.process_service_result || '')}
                   </span>
                 </div>
               )}
@@ -1547,7 +1804,7 @@ export default function IncidentsPage() {
         <CollapsibleSection title="Narrative" icon={FileText} defaultOpen>
           {isEditing ? (
             <>
-              <textarea
+              <RichTextArea
                 ref={narrativeRef}
                 className="textarea-dark mt-1"
                 rows={8}
@@ -1561,11 +1818,6 @@ export default function IncidentsPage() {
                   if (narrativeRef.current) narrativeRef.current.value = narrative;
                 }}
               />
-              {narrativeLastSaved && (
-                <div className="text-[9px] text-rmpg-500 mt-1 flex items-center gap-1">
-                  <CheckCircle className="w-2.5 h-2.5 text-green-500" /> Auto-saved at {narrativeLastSaved}
-                </div>
-              )}
             </>
           ) : (
             <>
@@ -1605,9 +1857,9 @@ export default function IncidentsPage() {
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {lp.role.replace(/_/g, ' ')}
+                        {(lp.role || 'involved').replace(/_/g, ' ')}
                       </span>
-                      <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
+                      <span className="text-sm text-rmpg-100 font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => {
@@ -1620,13 +1872,14 @@ export default function IncidentsPage() {
                       })}
                     </div>
                     {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
-                      <button type="button"
+                      <IconButton
                         onClick={() => handleUnlinkPerson(lp.person_id)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
+                        aria-label="Unlink person"
                       >
                         <X className="w-3.5 h-3.5" />
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 );
@@ -1657,9 +1910,9 @@ export default function IncidentsPage() {
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {lv.role.replace(/_/g, ' ')}
+                      {(lv.role || 'involved').replace(/_/g, ' ')}
                     </span>
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
                     </span>
                     <span className="text-[11px] text-rmpg-300">
@@ -1670,13 +1923,14 @@ export default function IncidentsPage() {
                     )}
                   </div>
                   {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
-                    <button type="button"
+                    <IconButton
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
+                      aria-label="Unlink vehicle"
                     >
                       <X className="w-3.5 h-3.5" />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               ))}
@@ -1703,33 +1957,48 @@ export default function IncidentsPage() {
           {detailOffenses.length > 0 ? (
             <div className="space-y-1.5">
               {detailOffenses.map((offense: any) => (
-                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
+                <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : '#666666' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--rmpg-500)' }}>
                         {offense.offense_code}
                       </span>
-                      <span className="text-xs text-white font-medium truncate">{offense.description}</span>
-                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-[#0a0a0a] text-gray-400 border border-gray-700'}`}>
+                      <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded-sm ${offense.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : offense.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' : 'bg-surface-sunken text-rmpg-400 border border-border-default'}`}>
                         {(offense.offense_level || 'other').toUpperCase()}
                       </span>
                       {offense.attempted_completed === 'attempted' && <span className="text-[8px] text-purple-400 bg-purple-900/30 px-1 py-0.5 rounded-sm border border-purple-700/30">ATTEMPTED</span>}
-                      {offense.counts > 1 && <span className="text-[8px] text-gray-400">×{offense.counts}</span>}
+                      {offense.counts > 1 && <span className="text-[8px] text-rmpg-200">×{offense.counts}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                       {offense.statute_number && <span className="font-mono">§{offense.statute_number}</span>}
                       {offense.ucr_code && <span>UCR: {offense.ucr_code}</span>}
                       {offense.suspect_first && <span className="text-red-300">Suspect: {offense.suspect_first} {offense.suspect_last}</span>}
-                      {offense.victim_first && <span className="text-gray-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
-                      {offense.disposition && <span className="text-green-400">Disp: {offense.disposition}</span>}
+                      {offense.victim_first && <span className="text-rmpg-300">Victim: {offense.victim_first} {offense.victim_last}</span>}
+                      {offense.disposition && <span className="text-green-400">Disp: {humanizeDisposition(offense.disposition)}</span>}
                     </div>
                   </div>
                   {(isAdmin || isGodMode) && (
-                    <button type="button" onClick={async () => {
-                      if (!confirm('Remove this offense?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
-                      fetchIncidentDetail(selectedIncident.id);
-                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                    <IconButton onClick={() => {
+                      // Audit caught (2026-06-21): bare "Remove this offense?"
+                      // was ambiguous on incidents with multiple offenses.
+                      // 2026-06-22 (SW v1032): native confirm → ConfirmDialog
+                      // (same op-feedback flow as Cases SW v1028).
+                      const label = [offense.offense_code, offense.description].filter(Boolean).join(' — ') || `offense #${offense.id}`;
+                      setRemovalConfirm({
+                        title: 'Remove Offense',
+                        message: `Remove ${label}?`,
+                        detail: label,
+                        run: async () => {
+                          try {
+                            await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
+                            fetchIncidentDetail(selectedIncident.id);
+                          } catch (err: any) {
+                            addToast(err?.message || 'Failed to remove offense', 'error');
+                          }
+                        },
+                      });
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
               ))}
@@ -1756,26 +2025,38 @@ export default function IncidentsPage() {
           {detailOfficers.length > 0 ? (
             <div className="space-y-1">
               {detailOfficers.map((officer: any) => (
-                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
+                <div key={officer.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-surface-sunken border border-border-default">
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase ${
-                    officer.role === 'primary' ? 'bg-gray-900/60 text-gray-300 border border-gray-700/50' :
+                    officer.role === 'primary' ? 'bg-rmpg-700/25 text-rmpg-200 border border-rmpg-600/40' :
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
-                    'bg-[#0a0a0a] text-gray-400 border border-gray-700'
+                    'bg-surface-base text-rmpg-400 border border-border-default'
                   }`}>{officer.role}</span>
-                  <span className="text-xs text-white font-medium">{officer.first_name} {officer.last_name}</span>
+                  <span className="text-xs text-rmpg-100 font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
-                  {officer.call_sign && <span className="text-[10px] text-cyan-400">{officer.call_sign}</span>}
+                  {officer.call_sign && <span className="text-[10px] text-rmpg-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
-                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
-                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {safeTimeStr(officer.arrived_at, '')}</span>}
+                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
-                    <button type="button" onClick={async () => {
-                      if (!confirm('Remove this officer?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
-                      fetchIncidentDetail(selectedIncident.id);
-                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                    <IconButton onClick={() => {
+                      const officerName = officer.full_name || officer.officer_name || `officer #${officer.id}`;
+                      const role = officer.role ? ` (${officer.role})` : '';
+                      setRemovalConfirm({
+                        title: 'Remove Officer',
+                        message: `Remove ${officerName}${role} from this incident?`,
+                        detail: `${officerName}${role}`,
+                        run: async () => {
+                          try {
+                            await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
+                            fetchIncidentDetail(selectedIncident.id);
+                          } catch (err: any) {
+                            addToast(err?.message || 'Failed to remove officer', 'error');
+                          }
+                        },
+                      });
+                    }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
               ))}
@@ -1802,15 +2083,42 @@ export default function IncidentsPage() {
           {detailLinks.length > 0 ? (
             <div className="space-y-1">
               {detailLinks.map((link: any) => {
-                const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
+                // Categorical entity palette — 6 visually-distinct hues. The
+                // four with a semantic match route through CSS variables
+                // (foreground + matching alpha tint for bg/border); arrest
+                // keeps a raw hot-pink to stay distinct from warrant red
+                // (same categorical-palette carve-out as Connections graph
+                // PR #1605 / SW v1029 — chart-code 16-entity palette stays
+                // hex because --sev-* can't differentiate that many types).
+                // Two parallel maps because the original `color + '20'` hex-
+                // opacity trick doesn't work on `var(--…)` references — we
+                // need to drive alpha tints from the *-rgb companion tokens.
+                const typeColors: Record<string, string> = {
+                  incident: 'var(--spm-text-muted)',
+                  call: 'var(--sev-ok)',
+                  case: 'var(--sev-special-soft)',
+                  warrant: 'var(--sev-critical)',
+                  citation: 'var(--sev-warn)',
+                  arrest: 'var(--pink-400, #ec4899)',
+                };
+                const typeColorRgb: Record<string, string> = {
+                  incident: 'var(--spm-text-muted-rgb)',
+                  call: 'var(--sev-ok-rgb)',
+                  case: 'var(--sev-special-rgb)',
+                  warrant: 'var(--sev-critical-rgb)',
+                  citation: 'var(--sev-warn-rgb)',
+                  arrest: 'var(--pink-400-rgb, 236 72 153)',
+                };
+                const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
+                const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
-                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background: '#0a0a0a', border: '1px solid #222222' }}>
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || '#666666', background: (typeColors[link.linked_type] || '#666666') + '20', border: `1px solid ${typeColors[link.linked_type] || '#666666'}40` }}>
+                  <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: fg, background: `rgb(${rgb} / 0.12)`, border: `1px solid rgb(${rgb} / 0.25)` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
                     {link.detail ? (
-                      <span className="text-xs text-white font-mono">
+                      <span className="text-xs text-rmpg-100 font-mono">
                         {link.detail.incident_number || link.detail.call_number || link.detail.case_number || link.detail.warrant_number || link.detail.citation_number || `#${link.linked_id}`}
                       </span>
                     ) : (
@@ -1820,11 +2128,22 @@ export default function IncidentsPage() {
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{link.detail.status}</span>}
                     {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
                     {(isAdmin || isGodMode) && (
-                      <button type="button" onClick={async () => {
-                        if (!confirm('Remove this link?')) return;
-                        await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
-                        fetchIncidentDetail(selectedIncident.id);
-                      }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden"><Trash2 className="w-3 h-3" /></button>
+                      <IconButton onClick={() => {
+                        const linkLabel = [link.linked_type, link.detail?.incident_number || link.detail?.call_number || link.detail?.case_number || `#${link.linked_id}`].filter(Boolean).join(' ');
+                        setRemovalConfirm({
+                          title: 'Remove Cross-Reference',
+                          message: `Remove cross-reference to ${linkLabel || 'this record'}?`,
+                          detail: linkLabel,
+                          run: async () => {
+                            try {
+                              await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
+                              fetchIncidentDetail(selectedIncident.id);
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to remove cross-reference', 'error');
+                            }
+                          },
+                        });
+                      }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
                     )}
                   </div>
                 );
@@ -1864,8 +2183,8 @@ export default function IncidentsPage() {
                       <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
                         {ev.evidence_type || 'physical'}
                       </span>
-                      <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
-                      <span className="text-xs text-rmpg-300 flex-1 truncate">{ev.description}</span>
+                      <span className="text-xs text-rmpg-100 font-mono font-bold">{ev.evidence_number}</span>
+                      <span className="text-xs text-rmpg-300 flex-1 min-w-0 truncate">{ev.description}</span>
                       <button type="button"
                         className="toolbar-btn"
                         style={{ fontSize: '10px', padding: '2px 6px' }}
@@ -1959,15 +2278,15 @@ export default function IncidentsPage() {
             <div className="space-y-2">
               {/* Summary row */}
               <div className="flex items-center gap-4 text-[10px] text-rmpg-400 pb-1 border-b border-rmpg-700/50">
-                <span>Total: <strong className="text-white">{detailSupplements.length}</strong></span>
+                <span>Total: <strong className="text-rmpg-100">{detailSupplements.length}</strong></span>
                 <span>Draft: <strong className="text-amber-400">{detailSupplements.filter((s: any) => s.status === 'draft').length}</strong></span>
-                <span>Submitted: <strong className="text-gray-400">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
+                <span>Submitted: <strong className="text-rmpg-200">{detailSupplements.filter((s: any) => s.status === 'submitted').length}</strong></span>
                 <span>Approved: <strong className="text-green-400">{detailSupplements.filter((s: any) => s.status === 'approved').length}</strong></span>
               </div>
               {detailSupplements.map((sup: any) => {
                 const statusColors: Record<string, string> = {
                   draft: 'border-l-amber-500',
-                  submitted: 'border-l-blue-500',
+                  submitted: 'border-l-rmpg-400',
                   approved: 'border-l-green-500',
                 };
                 const typeIcons: Record<string, string> = {
@@ -1985,7 +2304,7 @@ export default function IncidentsPage() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-white font-mono font-bold">{sup.report_number || 'N/A'}</span>
+                          <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
                               {(sup.report_type || sup.type || '').replace(/_/g, ' ')}
@@ -2011,7 +2330,7 @@ export default function IncidentsPage() {
                         <summary className="text-[10px] text-brand-400 cursor-pointer hover:text-brand-300 select-none">
                           View narrative ({sup.narrative.length} chars)
                         </summary>
-                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                        <div className="mt-1.5 p-2 bg-surface-deep border border-rmpg-700 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-wrap max-h-48 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
                           {sup.narrative}
                         </div>
                       </details>
@@ -2055,12 +2374,15 @@ export default function IncidentsPage() {
             readOnly={!isGodMode && !isAdmin && !['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)}
           />
         </CollapsibleSection>
+
+        {/* Linked Emails (autolinker + manual) */}
+        <LinkedEmailsSection entityType="incident" entityId={selectedIncident.id} />
       </div>
 
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #050505 100%)' }}
+        style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
       >
         {!isEditing ? (
           <>
@@ -2080,7 +2402,7 @@ export default function IncidentsPage() {
                 </button>
               </>
             )}
-            {(isAdmin || selectedIncident.status === 'draft') && (
+            {(canSupervise || selectedIncident.status === 'draft') && (
               <button type="button"
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
@@ -2161,14 +2483,102 @@ export default function IncidentsPage() {
   // Set document title
   useEffect(() => { document.title = 'Incident Reports \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 /incidents?incident_id=<id> deep-link auto-select \u2500\u2500
+  // 12th consecutive page-pass for the cross-page deep-link contract
+  // (Patrol/FI/MDT/Cases/etc.). Falls through to /incidents/:id when the
+  // row isn't in the first 100k pulled by fetchIncidents (defensive \u2014 the
+  // list query already caps at limit=100000 so this is mostly a safety
+  // net for archived rows or future server-side pagination).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingIncidentIdRef = useRef<string | null>(searchParams.get('incident_id'));
   useEffect(() => {
+    const target = pendingIncidentIdRef.current;
+    if (!target || loading) return;
+    pendingIncidentIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = incidents.find((i) => String(i.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelectedIncident(hit); setIsEditing(false); }
+        } else {
+          const detail = await apiFetch<any>(`/incidents/${target}`);
+          if (cancelled) return;
+          const row = detail?.data ?? detail;
+          if (row && row.id != null) {
+            setSelectedIncident(mapDbIncident(row));
+            setIsEditing(false);
+          } else {
+            addToast(`Incident ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load incident ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('incident_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incidents, loading]);
+
+  // Keyboard shortcuts. Escape uses smallest-open-first cascade so a
+  // confirm dialog inside the page doesn't compete with the form modal
+  // \u2014 pressing Esc closes only the topmost open modal, not all of them.
+  // `N` opens a new incident from anywhere on the page (mirrors
+  // Dispatch / Field Interviews / MDT for operator muscle memory) but
+  // is suppressed while typing into an input / textarea / contenteditable
+  // so it doesn't fire mid-narrative.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowFormModal(false); }
+      if (e.key === 'Escape') {
+        // Order: confirm/transient dialogs first, then entry modals, then
+        // the main form. ConfirmDialog has its own internal Esc handler
+        // for the removal flow but the React-rendered raw-overlay modals
+        // (custody, offense, officer, link) don't, so we close them here.
+        if (removalConfirm) { setRemovalConfirm(null); return; }
+        if (deleteTarget) { setDeleteTarget(null); return; }
+        if (custodyTransfer) { setCustodyTransfer(null); return; }
+        if (showReturnModal) { setShowReturnModal(false); return; }
+        if (showAddLinkModal) { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); return; }
+        if (showAddOfficerModal) { setShowAddOfficerModal(false); setAddOfficerPickerId(null); return; }
+        if (showAddOffenseModal) { setShowAddOffenseModal(false); return; }
+        if (showSupplementModal) { setShowSupplementModal(false); return; }
+        if (showEvidenceModal) { setShowEvidenceModal(false); return; }
+        if (showLinkVehicleModal) { setShowLinkVehicleModal(false); return; }
+        if (showLinkPersonModal) { setShowLinkPersonModal(false); return; }
+        if (showFormModal) { setShowFormModal(false); return; }
+        return;
+      }
+      if (isTypingInField(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'n' || e.key === 'N') {
+        // Don't shadow the new-incident button if a modal is already open
+        // \u2014 Esc dismisses first.
+        if (showFormModal || showReturnModal || deleteTarget || removalConfirm) return;
+        e.preventDefault();
+        setEditingIncident(undefined);
+        setFormDefaultType('');
+        setShowFormModal(true);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [
+    removalConfirm, deleteTarget, custodyTransfer, showReturnModal,
+    showAddLinkModal, showAddOfficerModal, showAddOffenseModal,
+    showSupplementModal, showEvidenceModal, showLinkVehicleModal,
+    showLinkPersonModal, showFormModal,
+  ]);
 
   return (
     <div className="flex h-full flex-col">
@@ -2208,6 +2618,93 @@ export default function IncidentsPage() {
         confirmVariant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Removal Confirmation Dialog — single themed dialog drives all
+          five in-detail removal flows (unlink person/vehicle, remove
+          offense/officer/cross-reference). Replaces 5 native dialogs
+          that the v1020-era audit catalogued (3 confirm() + 2 window.
+          confirm — see SW v1032 notes). */}
+      <ConfirmDialog
+        isOpen={!!removalConfirm}
+        onClose={() => removalSubmitting ? undefined : setRemovalConfirm(null)}
+        onConfirm={runRemovalConfirm}
+        title={removalConfirm?.title ?? ''}
+        message={removalConfirm?.message ?? ''}
+        details={removalConfirm?.detail ? <span className="font-mono">{removalConfirm.detail}</span> : undefined}
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        isLoading={removalSubmitting}
+      />
+
+      {/* Return Incident Modal — replaces window.prompt('Return
+          comments…') with a proper textarea + cancel/confirm. Mirrors
+          the Cases-page pattern (PR #1604 / SW v1028). */}
+      {showReturnModal && (
+        <div
+          className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !isSubmitting && setShowReturnModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[420px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider flex items-center gap-2">
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                Return Incident
+              </h3>
+              <IconButton onClick={() => setShowReturnModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close return incident">
+                <X className="w-4 h-4" />
+              </IconButton>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300">
+                {selectedIncident?.incident_number ? (
+                  <>Return <span className="font-mono text-rmpg-100">{selectedIncident.incident_number}</span> to the submitting officer. Reviewer comments are stored on the incident.</>
+                ) : (
+                  'Return this incident to the submitting officer. Reviewer comments are stored on the incident.'
+                )}
+              </p>
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  Return Comments (optional)
+                </label>
+                <RichTextArea
+                  value={returnComments}
+                  onChange={(e) => setReturnComments(e.target.value)}
+                  rows={4}
+                  placeholder="Explain what additional work is needed (missing fields, narrative clarity, supporting evidence…)"
+                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500 outline-none resize-none"
+                  style={{ borderRadius: 2 }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-2.5 border-t border-rmpg-600">
+              <button
+                type="button"
+                onClick={() => setShowReturnModal(false)}
+                className="toolbar-btn"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitReturn}
+                disabled={isSubmitting}
+                className="toolbar-btn toolbar-btn-danger flex items-center gap-1"
+              >
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RotateCcw className="w-3 h-3" />}
+                Return Incident
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Link Person Modal */}
       {selectedIncident && (
@@ -2298,17 +2795,17 @@ export default function IncidentsPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
-              <button type="button" onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+              <IconButton onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close custody transfer">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
-                <select
+                <label htmlFor="ff-incidentspage-1" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
+                <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100`}
                   style={{ borderRadius: 2 }}
                 >
                   <option value="transfer">Transfer</option>
@@ -2321,8 +2818,8 @@ export default function IncidentsPage() {
               </div>
               {custodyTransfer.currentLocation && (
                 <div>
-                  <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
-                  <input
+                  <label htmlFor="ff-incidentspage-2" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
+                  <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
                     className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
@@ -2331,24 +2828,24 @@ export default function IncidentsPage() {
                 </div>
               )}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
-                <input
+                <label htmlFor="ff-incidentspage-3" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
+                <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500`}
                   style={{ borderRadius: 2 }}
                   autoFocus
                 />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={custodyNotes}
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
                   rows={isMobile ? 3 : 2}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500 resize-none`}
                   style={{ borderRadius: 2 }}
                 />
               </div>
@@ -2394,7 +2891,7 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
-              <button type="button" onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -2415,7 +2912,7 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Counts</label><input name="counts" type="number" min="1" defaultValue="1" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Weapon / Force Used</label><input name="weapon_force" className="input-dark w-full text-xs" placeholder="e.g., Handgun, Knife, Personal weapons" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowAddOffenseModal(false)} className="toolbar-btn">Cancel</button>
@@ -2427,7 +2924,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Officer Modal ═══ */}
       {showAddOfficerModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOfficerModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2436,22 +2933,49 @@ export default function IncidentsPage() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const data: Record<string, any> = {};
-              fd.forEach((v, k) => { if (v) data[k] = v; });
+              const selectedOfficerId = String(fd.get('officer_select_id') || '').trim();
+              const manualOfficerId = String(fd.get('manual_officer_id') || '').trim();
+              const officerId = selectedOfficerId || manualOfficerId;
+
+              fd.forEach((v, k) => {
+                if (!v || k === 'officer_select_id' || k === 'manual_officer_id') return;
+                data[k] = v;
+              });
+
+              if (!officerId) {
+                addToast('Select an officer or enter an officer user ID', 'error');
+                return;
+              }
+
+              data.officer_id = officerId;
+
               try {
-                await apiFetch(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddOfficerModal(false);
+                const result = await apiFetch<any>(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
+                { setShowAddOfficerModal(false); setAddOfficerPickerId(null); };
+                addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
-              } catch { /* error */ }
+              } catch (err: any) {
+                addToast(err?.message || 'Failed to add officer', 'error');
+              }
             }}
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
-              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer User ID *</label>
-                <input name="officer_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter officer user ID" />
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Find IDs in Personnel or Admin &gt; Users</p>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
+                <OfficerPicker
+                  value={addOfficerPickerId}
+                  onChange={(id) => setAddOfficerPickerId(id)}
+                  placeholder="Search officer by name, badge, rank, unit…"
+                />
+                {/* Hidden inputs kept so the existing FormData submission keeps
+                    working unchanged — the FormData path reads officer_select_id
+                    OR manual_officer_id and prefers whichever is non-empty. */}
+                <input type="hidden" name="officer_select_id" value={addOfficerPickerId ?? ''} />
+                <input type="hidden" name="manual_officer_id" value="" />
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Selecting an officer already on the incident updates their role, timing, or notes.</p>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
                 <select name="role" className="input-dark w-full text-xs">
@@ -2469,10 +2993,10 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Departed At</label><input name="departed_at" type="datetime-local" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Action Taken</label><input name="action_taken" className="input-dark w-full text-xs" placeholder="e.g., Perimeter security, witness interview" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="toolbar-btn">Cancel</button>
               <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Plus className="w-3 h-3" /> Add Officer</button>
             </div>
           </form>
@@ -2480,12 +3004,68 @@ export default function IncidentsPage() {
       )}
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
-      <AddLinkModal
-        isOpen={showAddLinkModal && !!selectedIncident}
-        onClose={() => setShowAddLinkModal(false)}
-        incidentId={selectedIncident?.id || ''}
-        onLinked={() => { setShowAddLinkModal(false); if (selectedIncident) fetchIncidentDetail(selectedIncident.id); }}
-      />
+      {showAddLinkModal && selectedIncident && (
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
+          <form
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const data: Record<string, any> = {};
+              fd.forEach((v, k) => { if (v) data[k] = v; });
+              try {
+                await apiFetch(`/incidents/${selectedIncident.id}/links`, { method: 'POST', body: JSON.stringify(data) });
+                { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); };
+                fetchIncidentDetail(selectedIncident.id);
+              } catch { /* error */ }
+            }}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
+              <IconButton onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
+            </div>
+            <div className="p-4 space-y-3">
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>
+                <select
+                  required
+                  value={addLinkType}
+                  onChange={(e) => { setAddLinkType(e.target.value as LinkableRecordType | ''); setAddLinkId(null); }}
+                  className="input-dark w-full text-xs"
+                >
+                  <option value="">Select type...</option>
+                  <option value="incident">Incident Report</option>
+                  <option value="call">Call for Service</option>
+                  <option value="case">Case</option>
+                  <option value="warrant">Warrant</option>
+                  <option value="citation">Citation</option>
+                  <option value="arrest">Arrest Record</option>
+                </select>
+                {/* Hidden form-field so the existing FormData submit picks up
+                    the picker-driven type without rewriting the submit path. */}
+                <input type="hidden" name="linked_type" value={addLinkType} />
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record *</label>
+                <RecordPicker
+                  type={addLinkType}
+                  value={addLinkId}
+                  onChange={(id) => setAddLinkId(id)}
+                  required
+                />
+                <input type="hidden" name="linked_id" value={addLinkId ?? ''} />
+              </div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link Reason</label>
+                <input name="link_reason" className="input-dark w-full text-xs" placeholder="e.g., Related incident, follow-up, same suspect" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button type="button" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="toolbar-btn">Cancel</button>
+              <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Link className="w-3 h-3" /> Link Record</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
