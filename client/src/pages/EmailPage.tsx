@@ -1046,10 +1046,11 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
   const [showBcc, setShowBcc] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [subject, setSubject] = useState(prefill?.subject || '');
+  const [body, setBody] = useState(prefill?.body || '');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [redactionPreview, setRedactionPreview] = useState<{ redacted: string; diff: Array<{ original: string; replacement: string; type: string; index: number }> } | null>(null);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -1453,6 +1454,12 @@ Drag & drop files to attach • Ctrl+Enter to send" />
           onClose={() => setShowScheduleModal(false)}
         />
       )}
+      <ForwardRedactionModal
+        open={redactionPreview !== null}
+        preview={redactionPreview}
+        onConfirm={handleRedactionConfirm}
+        onCancel={() => { setRedactionPreview(null); setSending(false); }}
+      />
     </div>
   );
 }
@@ -1921,6 +1928,20 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
@@ -2094,6 +2115,25 @@ export default function EmailPage() {
 
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
+  const [composePrefill, setComposePrefill] = useState<{ subject?: string; body?: string } | null>(null);
+
+  // Open compose on page mount when arriving from a /email?compose=1&subject=... link
+  // (used by the "Email about this" buttons on case/incident detail pages). The
+  // auto-linker in the poller will pick up Case#/Incident# references in the
+  // subject on the outbound sent-items sync, so no explicit link call is needed.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('compose') === '1') {
+      setComposePrefill({
+        subject: params.get('subject') || undefined,
+        body: params.get('body') || undefined,
+      });
+      setComposing('new');
+      // Clean URL so refresh doesn't reopen the modal.
+      const clean = window.location.pathname;
+      window.history.replaceState({}, '', clean);
+    }
+  }, []);
 
   // Mobile
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
@@ -2218,7 +2258,46 @@ export default function EmailPage() {
     setLoadingMessage(true);
     try {
       const msg = await apiFetch<EmailMessage>(`/email/messages/${id}`);
-      setFullMessage(msg);
+      let atts: EmailAttachment[] = [];
+      try { atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); } catch { /* no attachments */ }
+      setAttachments(atts);
+
+      // Resolve cid: inline image references → data URLs
+      let resolvedHtml = msg.bodyHtml || '';
+      if (resolvedHtml && atts.length > 0) {
+        const inlineAtts = atts.filter(a => a.isInline && a.contentId && a.contentType?.startsWith('image/'));
+        if (inlineAtts.length > 0) {
+          const token = localStorage.getItem('rmpg_token');
+          const authHeader = token ? `Bearer ${token}` : '';
+          const cidReplacements = await Promise.allSettled(
+            inlineAtts.map(async (att) => {
+              try {
+                const res = await fetch(`/api/email/messages/${id}/attachments/${att.id}`, {
+                  headers: authHeader ? { Authorization: authHeader } : {},
+                });
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                return new Promise<{ cid: string; dataUrl: string } | null>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve({ cid: att.contentId!, dataUrl: reader.result as string });
+                  reader.onerror = () => resolve(null);
+                  reader.readAsDataURL(blob);
+                });
+              } catch { return null; }
+            })
+          );
+          for (const result of cidReplacements) {
+            if (result.status === 'fulfilled' && result.value) {
+              const { cid, dataUrl } = result.value;
+              // Replace all cid: variations (with or without angle brackets, URL-encoded)
+              resolvedHtml = resolvedHtml
+                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
+                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
+            }
+          }
+        }
+      }
+      setFullMessage({ ...msg, bodyHtml: resolvedHtml });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
       catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
@@ -2804,8 +2883,18 @@ export default function EmailPage() {
         if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
         if (searchFilters.unreadOnly && msg.isRead) return false;
-        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
-        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        if (searchFilters.dateFrom) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const fromTime = new Date(searchFilters.dateFrom).getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(fromTime) && msgTime < fromTime) return false;
+        }
+        if (searchFilters.dateTo) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const endOfDay = new Date(searchFilters.dateTo);
+          endOfDay.setHours(23, 59, 59, 999);
+          const toTime = endOfDay.getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(toTime) && msgTime > toTime) return false;
+        }
         return true;
       })
     : displayedMessages;

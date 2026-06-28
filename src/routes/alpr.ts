@@ -33,13 +33,6 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
-import { notConfigured } from '../utils/notConfigured';
-import { trustScore } from '../utils/plateTrust';
-import { verifyEdgeSignature } from '../utils/edgeHmac';
-import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
-import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
-import { emitAnalytics, alprReadEvent } from '../utils/analytics';
-import { recordAudit } from '../utils/auditLog';
 
 const alpr = new Hono<Env>();
 
@@ -263,9 +256,7 @@ function cfReadToVehicle(read: CloudflarePlateResult): AlprVehicle {
   return {
     plate: read.plate, state: read.state, make: read.make, model: read.model,
     color: read.color, year: read.year, vehicleType: read.bodyStyle, plateType: read.plateType,
-    confidence: conf, condition: read.condition,
-    damageObserved: read.damageSummary != null || (read.condition != null && read.condition !== 'clean'),
-    damageSummary: read.damageSummary,
+    confidence: conf, condition: null, damageObserved: null, damageSummary: null,
     damageAreas: [], aftermarket: null,
     confidences: { plate: conf, make: conf, model: conf, year: conf, color: conf },
   };
@@ -276,13 +267,12 @@ interface FinalizeResult {
   vehicles: Array<Record<string, unknown>>;
   recordIds: number[]; sightingId: number | null;
   accepted: boolean; plateConf: number | null;
-  status: 'done' | 'failed';
 }
 
 /** Finalize a capture from a single Cloudflare plate read: screen the plate
- *  (always — officer safety), derive trust, apply the 0.80/0.85 gates, and only on an
+ *  (always — officer safety), apply the 0.85 acceptance gate, and only on an
  *  accepted read create/enrich the authoritative vehicles_records + call link +
- *  sighting. Held (trust < ASSERT_GATE) reads create nothing as fact (POST /accept promotes).
+ *  sighting. Held (<0.85) reads create nothing as fact (POST /accept promotes).
  *  Stamps the alpr_captures row 'done'/'failed'; never throws. */
 async function finalizeCapture(
   env: Env['Bindings'],
@@ -290,36 +280,18 @@ async function finalizeCapture(
   args: {
     captureRowId: number; read: CloudflarePlateResult | null;
     callId: number | null; incidentId: number | null;
-    lat: number | null; lng: number | null; locationText: string | null;
-    userId: number; imageKey: string;
+    lat: number | null; lng: number | null; locationText: string | null; userId: number;
   },
 ): Promise<FinalizeResult> {
   const read = args.read;
   const out: FinalizeResult = {
     hits: [], vehicles: [], recordIds: [], sightingId: null,
     accepted: false, plateConf: read?.confidence ?? null,
-    status: 'done',
   };
   const plate = read?.plate ?? null;
-
-  // Derive trust from the single Workers AI read. A single read is always hard-capped
-  // below 0.85 by trustScore (no corroboration), so the ASSERT_GATE (acceptThreshold)
-  // must be met by format + model confidence together. The PACKAGE_GATE is looser —
-  // we store the photo package for any marginally-useful read so crop uploads can
-  // be attached later for human review.
-  const reads = plate ? [plate] : [];
-  const trust = trustScore({ reads, modelPct: read?.confidence ?? undefined });
-  const PACKAGE_GATE = 0.80;
-  const ASSERT_GATE = acceptThreshold(env);
-  const canonical = trust.canonical || plate || '';
-  const asserted = !!plate && trust.trustScore >= ASSERT_GATE;
-  const packaged = !!plate && trust.trustScore >= PACKAGE_GATE;
-  out.accepted = asserted;
-  // Persist DERIVED trust as the capture confidence — never the vision model's
-  // self-report (Llama 3.2 11B emits 1.0). Mirrors the dashcam captureTrust fix so
-  // alpr_captures.confidence/plate_confidence mean "derived trust" system-wide; the
-  // raw model % is preserved in raw_json for forensics.
-  out.plateConf = plate ? trust.trustScore : null;
+  const TH = acceptThreshold(env);
+  const accepted = !!plate && (out.plateConf ?? 0) >= TH;
+  out.accepted = accepted;
 
   try {
     if (!plate || !read) {
@@ -327,7 +299,6 @@ async function finalizeCapture(
       return out;
     }
 
-    // Screen UNCONDITIONALLY — officer safety regardless of confidence.
     const screen = await screenVehicle(db, { plate });
     out.hits.push(...screen.hits);
     const critical = screen.hits.filter((h) => h.severity === 'critical');
@@ -336,132 +307,56 @@ async function finalizeCapture(
         await execute(db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
            VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, ?, 0, datetime('now'))`,
-          `${asserted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
+          `${accepted ? '' : 'UNCONFIRMED — verify plate: '}PLATE HIT: ${plate}`,
           critical.map((h) => h.detail).join('; '), screen.vehicleId, args.userId);
       } catch (err: any) { console.error('[alpr] notify failed:', err?.message); }
     }
 
     let recordId: number | null = null;
-    // Only write authoritative record attributes when asserted (trust >= ASSERT_GATE).
-    // When not asserted, collapse to the canonical plate but skip enrichment so variant
-    // spellings don't pollute the record.
-    if (asserted) {
-      const up = await upsertVehicleRecord(db, cfReadToVehicle({ ...read, plate: canonical }), screen.vehicleId);
+    if (accepted) {
+      const up = await upsertVehicleRecord(db, cfReadToVehicle(read), screen.vehicleId);
       recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId) out.recordIds.push(recordId);
+      if (recordId && args.callId != null) {
+        try {
+          await execute(db,
+            `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+             VALUES (?, ?, 'observed', 'ALPR', ?, datetime('now'))`, args.callId, recordId, args.userId);
+        } catch (err: any) { console.error('[alpr] link failed:', err?.message); }
+      }
       try {
         const base = `ALPR: ${[read.color, read.make, read.model, read.year].filter(Boolean).join(' ')}`.trim();
         const note = base === 'ALPR:' ? 'ALPR capture (Workers AI)' : base;
         const sres = await execute(db,
           `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          canonical, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
+          plate, read.state, recordId, args.locationText, args.lat, args.lng, note, args.userId, out.plateConf);
         out.sightingId = Number(sres.meta.last_row_id);
       } catch (err: any) { console.error('[alpr] sighting failed:', err?.message); }
-    } else if (screen.vehicleId) {
-      // Sub-threshold but existing record — use existing id so the photo package links
-      // to the right vehicle without asserting any attribute updates.
-      recordId = screen.vehicleId;
-    }
-
-    // Link the vehicle to the call whenever a record exists (asserted OR a
-    // sub-threshold-but-screened sighting that resolved to an existing record),
-    // not only on asserted reads — so a screened sighting still ties to the call.
-    if (recordId && args.callId != null) {
-      try {
-        await execute(db,
-          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-           VALUES (?, ?, 'observed', ?, ?, datetime('now'))`,
-          args.callId, recordId, asserted ? 'ALPR' : 'ALPR (unconfirmed)', args.userId);
-      } catch (err: any) { console.error('[alpr] link failed:', err?.message); }
-    }
-
-    // Persist the vehicle_capture_photos package for any read that clears the lower gate.
-    // The Cloudflare path carries no bbox — all bbox columns are null.
-    let photoRowId: number | null = null;
-    if (packaged) {
-      try {
-        const vcpRes = await execute(db,
-          `INSERT INTO vehicle_capture_photos
-             (capture_id, vehicle_record_id, canonical_plate, raw_reads_json, variants_json,
-              read_count, consensus_ratio, trust_score, trust_basis, full_r2_key,
-              vehicle_bbox_json, plate_bbox_json, source_type, asserted, created_by)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          args.captureRowId, recordId, canonical, JSON.stringify(reads),
-          JSON.stringify(trust.variants), trust.readCount, trust.consensusRatio,
-          trust.trustScore, trust.basis, args.imageKey,
-          null, null,
-          'field', asserted ? 1 : 0, args.userId);
-        photoRowId = Number(vcpRes.meta.last_row_id);
-      } catch (err: any) { console.error('[alpr] vehicle_capture_photos insert failed:', err?.message); }
     }
 
     out.vehicles.push({
-      // Observed attributes surfaced regardless of assertion (F1); the authoritative
-      // record write above stays gated by `asserted`, and `vehicle_record_created`
-      // tells the client whether this was recorded as fact vs. observed-only.
-      plate, canonical_plate: canonical, state: read.state,
-      make: read.make, model: read.model,
-      year: read.year, color: read.color,
-      vehicle_type: read.bodyStyle, confidence: out.plateConf,
-      trust_score: trust.trustScore, trust_basis: trust.basis,
+      plate, state: read.state,
+      make: accepted ? read.make : null, model: accepted ? read.model : null,
+      year: accepted ? read.year : null, color: accepted ? read.color : null,
+      vehicle_type: accepted ? read.bodyStyle : null, confidence: out.plateConf,
       vehicle_record_id: recordId, vehicle_record_created: recordId != null,
       sighting_id: out.sightingId, hits: screen.hits,
-      photo_row_id: photoRowId,
-      vehicle_bbox: null, plate_bbox: null,
     });
 
-    // Persist the AI-OBSERVED attributes onto the capture row UNCONDITIONALLY —
-    // they describe THIS photo, so a reviewer (and the edit/verify editor) sees
-    // what the model read even on a held (<0.85) capture. The `asserted` gate
-    // still governs only the authoritative vehicles_records + sighting writes
-    // above; the capture row is observation, not assertion. (Mirrors the dashcam
-    // path in clearpathAlpr.ts, which already retains observed attributes.)
-    const damageObserved = read.damageSummary != null || (read.condition != null && read.condition !== 'clean');
     await execute(db,
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
-         condition=?, damage_observed=?, damage_summary=?,
-         confidence=?, plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
+         plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
-      read.make, read.model, read.color,
-      read.year, read.state, read.bodyStyle,
-      read.condition, damageObserved ? 1 : 0, read.damageSummary,
-      out.plateConf, out.plateConf, asserted ? 1 : 0, asserted ? 'accepted' : 'needs_review',
+      accepted ? read.make : null, accepted ? read.model : null, accepted ? read.color : null,
+      accepted ? read.year : null, read.state, accepted ? read.bodyStyle : null,
+      out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] finalize failed:', err?.message);
-    out.status = 'failed';
     try { await execute(db, `UPDATE alpr_captures SET enrich_status='failed', accepted=0, review_status='needs_review' WHERE id=?`, args.captureRowId); } catch { /* */ }
   }
   return out;
-}
-
-/** Screen + (re)create the authoritative vehicles_records + call link + sighting
- *  for a human-confirmed capture. Shared by POST /capture/:id/verify and the bulk
- *  endpoint so the confirm path lives in ONE place. Returns the screen hits. */
-async function persistConfirmedVehicle(
-  db: ReturnType<typeof getDb>,
-  row: any,
-  v: AlprVehicle,
-  userId: number,
-  noteTag: string,
-): Promise<Array<{ kind: string; severity: string; detail: string }>> {
-  const plate = v.plate;
-  if (!plate) return [];
-  const screen = await screenVehicle(db, { plate });
-  const up = await upsertVehicleRecord(db, v, screen.vehicleId);
-  const recordId = up?.id ?? screen.vehicleId ?? null;
-  if (recordId && row.call_id != null) {
-    await execute(db,
-      `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
-       VALUES (?, ?, 'observed', ?, ?, datetime('now'))`, row.call_id, recordId, noteTag, userId);
-  }
-  await execute(db,
-    `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, condition, damage_observed, damage_summary, confidence)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    plate, v.state, recordId, row.location_text ?? null, row.lat ?? null, row.lng ?? null, noteTag, userId,
-    v.condition, row.damage_observed ?? null, v.damageSummary, v.confidence);
-  return screen.hits;
 }
 
 // ── Health: is the integration configured? ───────────────────
@@ -537,8 +432,6 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
-  const fieldPhotoLinked = !attachToCall || fieldPhotoId != null;
-
   // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
   // One vision call returns plate + state + make/model/color + confidence, so the
   // old two-stage fast→enrich collapses into a single read. The photo is already
@@ -553,57 +446,24 @@ alpr.post('/capture', operational, async (c) => {
 
   // Capture row (plate known). finalizeCapture then screens + applies the 0.85
   // gate + creates records, and stamps the row 'done'.
-  // The ON CONFLICT(capture_id) suffix makes the offline-replay idempotent at the
-  // DB level (closes the concurrent-replay race the check-above can't) — but ONLY
-  // when the partial unique index exists, and it must repeat the index predicate.
-  // captureConflictClause() returns '' when the index is absent (legacy dupes on
-  // live) so the INSERT can't throw; check-then-insert above still guards the
-  // common case.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
        (sighting_id, capture_id, case_id, plate, state, confidence, plate_confidence,
         review_status, image_key, raw_json, lat, lng, location_text, captured_by,
         call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')` +
-    captureConflictClause(hasCaptureUniqueIndex, captureId),
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
     null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
-    // confidence/plate_confidence start NULL (pending) — finalizeCapture fills them
-    // with DERIVED trust, never the model self-report. raw_json keeps the raw read.
-    null, null, 'pending', imageKey,
+    read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
     JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
-  // A concurrent replay won the race (no row inserted) — return the existing one
-  // rather than finalizing a phantom row. Only possible when the conflict clause
-  // was actually emitted.
-  if (captureId && hasCaptureUniqueIndex && (ins.meta.changes ?? 0) === 0) {
-    const existing = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE capture_id = ?', captureId);
-    if (existing) return c.json({ success: true, duplicate: true, ...shapeCapture(existing) });
-  }
   const captureRowId = Number(ins.meta.last_row_id);
 
   const fin = await finalizeCapture(c.env, db, {
-    captureRowId, read, callId, incidentId, lat, lng, locationText, userId, imageKey,
+    captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
   });
 
-  // Fan each finalized read out to the analytics lakehouse (best-effort; no-op
-  // until the ANALYTICS pipeline is provisioned). D1 above is the source of truth.
-  if (fin.vehicles.length) {
-    const occurredAt = new Date().toISOString();
-    emitAnalytics(c, c.env.ANALYTICS, fin.vehicles.map((v) =>
-      alprReadEvent(
-        { captureRowId, callId, incidentId, lat, lng, locationText, userId, source: 'field' },
-        v, occurredAt,
-      ),
-    ));
-  }
-
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
-  // Honest status: reflect finalize's real outcome instead of hardcoding success.
-  const finalized = fin.status === 'done';
-  // Real persisted vehicle_count: finalize writes vehicle_count=1 only for a
-  // processed plate on success; a no-plate read or a failed finalize persisted 0.
-  const vehicleCount = finalized && plate ? fin.vehicles.length : 0;
   return c.json({
     success: finalized,
     status: fin.status,
@@ -617,33 +477,26 @@ alpr.post('/capture', operational, async (c) => {
     call_id: callId,
     incident_id: incidentId,
     field_photo_id: fieldPhotoId,
-    vehicle_count: vehicleCount,
+    vehicle_count: plate ? 1 : 0,
     vehicles: fin.vehicles,
     capture: {
-      // Surface the AI-OBSERVED attributes immediately, even on a held (<0.85)
-      // read — the officer should see the full read on the scan card. Honesty is
-      // preserved by `accepted`/`reviewStatus` (and the client's "held for review"
-      // note), not by blanking what the model saw. Mirrors the capture-row write.
       plate, state: read?.state ?? null,
-      make: read?.make ?? null,
-      model: read?.model ?? null,
-      color: read?.color ?? null,
-      year: read?.year ?? null,
-      vehicleType: read?.bodyStyle ?? null,
-      condition: read?.condition ?? null,
-      damageObserved: read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean'),
-      damageSummary: read?.damageSummary ?? null,
+      make: fin.accepted ? read?.make ?? null : null,
+      model: fin.accepted ? read?.model ?? null : null,
+      color: fin.accepted ? read?.color ?? null : null,
+      year: fin.accepted ? read?.year ?? null : null,
+      vehicleType: fin.accepted ? read?.bodyStyle ?? null : null,
       confidence: fin.plateConf, riskScore: null,
       reviewStatus: fin.accepted ? 'accepted' : (plate ? 'needs_review' : 'no_plate'),
       alerted: hits.some((h) => h.severity === 'critical'),
     },
     detections: [],
-    enrich_status: fin.status,
+    enrich_status: 'done',
     accepted: plate ? fin.accepted : null,
     plate_confidence: fin.plateConf,
-    condition: read?.condition ?? null,
-    damage_observed: read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean'),
-    damage_summary: read?.damageSummary ?? null,
+    condition: null,
+    damage_observed: null,
+    damage_summary: null,
     damage_areas: [],
     hits,
     image_url: imageUrlFor(imageKey),

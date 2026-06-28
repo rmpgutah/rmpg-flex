@@ -116,6 +116,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     if (!mapContainerRef.current) return;
 
     let cancelled = false;
+    injectMapboxStyles();
 
     function initPatrolMap() {
       if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
@@ -824,6 +825,46 @@ const PatrolPage: React.FC = () => {
     { id: 'contracts' as const, label: 'Contracts', icon: FileText },
     { id: 'billing' as const, label: 'Billing Review', icon: ClipboardCheck },
   ];
+
+  // ── Esc smart-cascade: dismiss innermost open layer first ──
+  // Priority: QR modal > Checkpoint modal, then stop. ConfirmDialog handles
+  // its own Esc internally, so we don't need to mirror deleteConfirmId here.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showQrModal) { setShowQrModal(false); return; }
+      if (showCheckpointModal) {
+        clearFormDraft();
+        setShowCheckpointModal(false);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showQrModal, showCheckpointModal, clearFormDraft]);
+
+  // ── N shortcut: open new Checkpoint form ──
+  // Only active on the Checkpoints tab; suppressed while typing in a field
+  // or when any modal is already open.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (activeTab !== 'checkpoints') return;
+      if (showCheckpointModal || showQrModal || deleteConfirmId !== null) return;
+      e.preventDefault();
+      handleCreateCheckpoint();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
 
   // ── Esc smart-cascade: dismiss innermost open layer first ──
   // Priority: QR modal > Checkpoint modal, then stop. ConfirmDialog handles
