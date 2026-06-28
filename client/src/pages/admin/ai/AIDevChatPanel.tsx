@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle, Wifi, WifiOff } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface ChatMessage {
   id?: number;
   role: 'user' | 'assistant';
@@ -65,11 +67,11 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🗺️',
       detail: 'Accessing geospatial architecture knowledge base...\n' +
         'Key components identified:\n' +
-        '  ├─ Google Maps JS API (dark styled) — primary map provider\n' +
+        '  ├─ Mapbox GL JS (dark-v11 style) — primary map provider\n' +
         '  ├─ CartoDB dark_matter tiles — offline fallback layer\n' +
         '  ├─ GPS tracking via WebSocket (real-time unit positions)\n' +
         '  └─ Service Worker tile caching: Z7-Z15 coverage for SLC metro',
-      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/googleMapsLoader.ts', 'server/src/utils/geocode.ts'],
+      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/mapboxLoader.ts', 'server/src/utils/geocode.ts'],
     });
   } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql') || q.includes('data')) {
     steps.push({
@@ -117,7 +119,7 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🎨',
       detail: 'Accessing design system knowledge base...\n' +
         'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
-        '  ├─ Surfaces: #0a0a0a (base), #141414 (raised), #050505 (sunken)\n' +
+        '  ├─ Surfaces: #141414 (base), #181818 (raised), #0c0c0c (sunken)\n' +
         '  ├─ Brand: blue #888888, gold #d4a017\n' +
         '  ├─ Border-radius: 2px (flat retro console)\n' +
         '  ├─ Font: system sans-serif, monospace for data\n' +
@@ -226,13 +228,13 @@ export default function AIDevChatPanel() {
   }, [isStreaming]);
 
   // Generate session ID
-  const newSessionId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const newSessionId = () => `dev-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 6)}`;
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
     try {
       const data = await apiFetch<ChatSession[]>('/ai/dev-chat/history');
-      setSessions(data);
+      setSessions(asArray<ChatSession>(data));
     } catch { /* ignore */ }
   }, []);
 
@@ -241,7 +243,7 @@ export default function AIDevChatPanel() {
     setActiveSession(sessionId);
     try {
       const data = await apiFetch<ChatMessage[]>(`/ai/dev-chat/history/${sessionId}`);
-      setMessages(data);
+      setMessages(asArray<ChatMessage>(data));
     } catch { /* ignore */ }
   }, []);
 
@@ -432,12 +434,12 @@ export default function AIDevChatPanel() {
         return (
           <div key={i} className="my-2">
             {lang && (
-              <div className="text-[10px] text-gray-500 bg-[#050505] border border-[#1a3550] border-b-0 rounded-t px-2 py-0.5 font-mono">
+              <div className="text-[10px] text-rmpg-500 bg-surface-sunken border border-rmpg-700 border-b-0 rounded-t px-2 py-0.5 font-mono">
                 {lang}
               </div>
             )}
             <pre
-              className={`bg-[#050505] border border-[#1a3550] text-green-400 font-mono text-xs p-3 overflow-x-auto ${
+              className={`bg-surface-sunken border border-rmpg-700 text-green-400 font-mono text-xs p-3 overflow-x-auto ${
                 lang ? 'rounded-b' : 'rounded'
               }`}
             >
@@ -452,7 +454,7 @@ export default function AIDevChatPanel() {
           {part.split(/(`[^`]+`)/g).map((seg, j) => {
             if (seg.startsWith('`') && seg.endsWith('`')) {
               return (
-                <code key={j} className="bg-[#050505] text-amber-400 px-1 py-0.5 rounded text-xs font-mono">
+                <code key={j} className="bg-surface-sunken text-amber-400 px-1 py-0.5 rounded text-xs font-mono">
                   {seg.slice(1, -1)}
                 </code>
               );
@@ -461,7 +463,7 @@ export default function AIDevChatPanel() {
             return seg.split(/(\*\*[^*]+\*\*)/g).map((s, k) => {
               if (s.startsWith('**') && s.endsWith('**')) {
                 return (
-                  <strong key={`${j}-${k}`} className="text-white font-semibold">
+                  <strong key={`${j}-${k}`} className="text-rmpg-100 font-semibold">
                     {s.slice(2, -2)}
                   </strong>
                 );
@@ -479,74 +481,74 @@ export default function AIDevChatPanel() {
     <style>{`
       @keyframes shimmer { 0% { transform: translateX(-200%); } 100% { transform: translateX(400%); } }
     `}</style>
-    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#050505] rounded border border-[#1a3550] overflow-hidden">
+    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-surface-sunken rounded border border-rmpg-700 overflow-hidden">
       {/* Session Sidebar */}
-      <div className="w-60 flex-shrink-0 bg-[#050505] border-r border-[#1a3550] flex flex-col">
-        <div className="p-3 border-b border-[#1a3550]">
+      <div className="w-60 flex-shrink-0 bg-surface-sunken border-r border-rmpg-700 flex flex-col">
+        <div className="p-3 border-b border-rmpg-700">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1a6abe] text-white text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-rmpg-100 text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {sessions.map(s => (
             <div
               key={s.session_id}
               onClick={() => loadSession(s.session_id)}
-              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[#1a3550]/50 transition-colors ${
-                activeSession === s.session_id ? 'bg-[#1a3550]/50' : 'hover:bg-[#0a0a0a]'
+              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-rmpg-700/50 transition-colors ${
+                activeSession === s.session_id ? 'bg-rmpg-700/50' : 'hover:bg-surface-base'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
+              <MessageSquare className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-300 truncate">{s.first_message || 'New conversation'}</p>
-                <p className="text-[10px] text-gray-600">{s.message_count} messages</p>
+                <p className="text-xs text-rmpg-300 truncate">{s.first_message || 'New conversation'}</p>
+                <p className="text-[10px] text-rmpg-500">{s.message_count} messages</p>
               </div>
               <button
                 onClick={(e) => deleteSession(s.session_id, e)}
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
           ))}
           {sessions.length === 0 && (
-            <p className="text-center text-gray-600 text-xs py-8">No conversations yet</p>
+            <p className="text-center text-rmpg-500 text-xs py-8">No conversations yet</p>
           )}
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* AI Status Bar */}
-        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#1a3550] bg-[#0a0a0a]">
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex items-center gap-2">
             {aiStatus === 'checking' && <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />}
             {aiStatus === 'online' && <Circle className="w-2.5 h-2.5 text-green-500 fill-green-500" />}
             {aiStatus === 'offline' && <Circle className="w-2.5 h-2.5 text-red-500 fill-red-500" />}
-            <span className="text-[10px] text-gray-400">
+            <span className="text-[10px] text-rmpg-400">
               {aiStatus === 'checking' ? 'Connecting...' : aiStatus === 'online' ? `AI Online — ${aiModel}` : 'AI Offline'}
             </span>
           </div>
           {isStreaming && (
             <div className="flex items-center gap-2">
               <div className="flex gap-0.5">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-rmpg-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
-              <span className="text-[10px] text-gray-400 font-mono">{elapsedSec}s</span>
+              <span className="text-[10px] text-rmpg-400 font-mono">{elapsedSec}s</span>
             </div>
           )}
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && !streamingContent && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-600">
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500">
               <Bot className="w-12 h-12 mb-3 opacity-30" />
               <p className="text-sm font-medium">RMPG Flex Dev Assistant</p>
               <p className="text-xs mt-1">Ask about the codebase, request features, debug issues</p>
@@ -563,7 +565,7 @@ export default function AIDevChatPanel() {
                       setInput(suggestion);
                       inputRef.current?.focus();
                     }}
-                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#0a0a0a] hover:bg-[#141414] border border-[#1a3550] rounded p-2 transition-colors"
+                    className="text-left text-[11px] text-rmpg-500 hover:text-rmpg-300 bg-surface-base hover:bg-surface-raised border border-rmpg-700 rounded p-2 transition-colors"
                   >
                     {suggestion}
                   </button>
@@ -576,26 +578,26 @@ export default function AIDevChatPanel() {
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
                 <div className="w-7 h-7 rounded bg-[#888888] flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-white" />
+                  <Bot className="w-4 h-4 text-rmpg-100" />
                 </div>
               )}
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#888888] text-white rounded-sm px-3 py-2'
-                    : 'bg-[#141414] text-gray-200 rounded-sm px-3 py-2 border border-[#1a3550]'
+                    ? 'bg-[#888888] text-rmpg-100 rounded-sm px-3 py-2'
+                    : 'bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-rmpg-700'
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap leading-relaxed">
                   {msg.role === 'assistant' ? renderContent(msg.content) : msg.content}
                 </div>
                 {msg.latency_ms ? (
-                  <p className="text-[10px] text-gray-500 mt-1">{(msg.latency_ms / 1000).toFixed(1)}s</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1">{(msg.latency_ms / 1000).toFixed(1)}s</p>
                 ) : null}
               </div>
               {msg.role === 'user' && (
-                <div className="w-7 h-7 rounded bg-[#141414] flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-gray-300" />
+                <div className="w-7 h-7 rounded bg-surface-raised flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-rmpg-300" />
                 </div>
               )}
             </div>
@@ -604,18 +606,18 @@ export default function AIDevChatPanel() {
           {/* Streaming message */}
           {isStreaming && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
-                <Bot className={`w-4.5 h-4.5 text-white ${!streamingContent ? 'animate-pulse' : ''}`} />
+              <div className="w-8 h-8 rounded-sm bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center flex-shrink-0 shadow-lg shadow-gray-500/20">
+                <Bot className={`w-4.5 h-4.5 text-rmpg-100 ${!streamingContent ? 'animate-pulse' : ''}`} />
               </div>
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
                 {(isThinking || thinkingText) && (
-                  <div className={`bg-gradient-to-b from-[#141414] to-[#0a0a0a] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                  <div className={`bg-gradient-to-b from-[#181818] to-[#141414] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
                     streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
                   }`}>
                     {/* Animated header bar */}
                     <div className="relative">
-                      <div className="h-1 bg-[#050505] overflow-hidden">
+                      <div className="h-1 bg-surface-sunken overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600"
                           style={{ width: '30%', animation: 'shimmer 1.2s infinite linear' }} />
                       </div>
@@ -641,13 +643,13 @@ export default function AIDevChatPanel() {
                               ))}
                             </div>
                           )}
-                          <span className="text-[10px] text-gray-600 font-mono tabular-nums">{elapsedSec}s</span>
+                          <span className="text-[10px] text-rmpg-500 font-mono tabular-nums">{elapsedSec}s</span>
                         </div>
                       </div>
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0a0f18] rounded p-3 border border-[#1a2a3a] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-rmpg-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-surface-sunken rounded p-3 border border-border-subtle shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}
@@ -658,17 +660,17 @@ export default function AIDevChatPanel() {
                             return <div key={i} className="text-amber-400 font-bold mt-2 first:mt-0">{line}</div>;
                           }
                           if (line.startsWith('  ├─') || line.startsWith('  └─')) {
-                            return <div key={i} className="text-cyan-400/80">{line}</div>;
+                            return <div key={i} className="text-rmpg-400/80">{line}</div>;
                           }
                           if (line.startsWith('📁')) {
-                            return <div key={i} className="text-gray-400/70 text-[10px] mt-0.5">{line}</div>;
+                            return <div key={i} className="text-rmpg-400/70 text-[10px] mt-0.5">{line}</div>;
                           }
                           if (line.match(/^(Tokens|Intent|Engine|Pattern|Theme|Output|Including|Evaluation|Authentication|Checking)/)) {
-                            return <div key={i} className="text-gray-400">{line}</div>;
+                            return <div key={i} className="text-rmpg-400">{line}</div>;
                           }
-                          return <div key={i} className="text-gray-400">{line}</div>;
+                          return <div key={i} className="text-rmpg-400">{line}</div>;
                         }) : (
-                          <span className="text-gray-600">Initializing analysis...</span>
+                          <span className="text-rmpg-500">Initializing analysis...</span>
                         )}
                         {isThinking && <span className="inline-block w-1.5 h-3.5 bg-amber-400 animate-pulse ml-0.5 align-text-bottom" />}
                       </div>
@@ -678,32 +680,32 @@ export default function AIDevChatPanel() {
 
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-[#141414] text-gray-200 rounded-sm px-3 py-2 border border-gray-500/30">
-                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a3550]">
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
-                      <span className="text-[10px] text-gray-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
-                      <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                  <div className="bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-rmpg-500/30">
+                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-rmpg-700">
+                      <div className="w-2 h-2 bg-rmpg-500 rounded-full animate-pulse" />
+                      <span className="text-[10px] text-rmpg-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
+                      <span className="text-[10px] text-rmpg-500 font-mono ml-auto">{elapsedSec}s</span>
                     </div>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
                       {renderContent(streamingContent)}
-                      <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-2 h-4 bg-rmpg-400 animate-pulse ml-0.5" />
                     </div>
                   </div>
                 ) : !thinkingText && (
-                  <div className="bg-[#141414] rounded-sm border border-gray-500/30 overflow-hidden">
-                    <div className="h-0.5 bg-[#050505] overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
+                  <div className="bg-surface-raised rounded-sm border border-rmpg-500/30 overflow-hidden">
+                    <div className="h-0.5 bg-surface-sunken overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-transparent via-gray-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
                     </div>
                     <div className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                        <span className="text-sm text-gray-400">
+                        <Loader2 className="w-4 h-4 text-rmpg-400 animate-spin" />
+                        <span className="text-sm text-rmpg-400">
                           {elapsedSec < 3 ? 'Connecting to AI model...' :
                            elapsedSec < 10 ? 'Waiting for response...' :
                            'Processing — this may take a moment...'}
                         </span>
-                        <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
+                        <span className="text-[10px] text-rmpg-500 font-mono ml-auto">{elapsedSec}s</span>
                       </div>
                     </div>
                   </div>
@@ -717,21 +719,21 @@ export default function AIDevChatPanel() {
 
         {/* File context bar */}
         {showFileInput && (
-          <div className="px-4 py-2 border-t border-[#1a3550] bg-[#0a0a0a] flex items-center gap-2">
-            <FileCode className="w-4 h-4 text-gray-500" />
-            <input
+          <div className="px-4 py-2 border-t border-rmpg-700 bg-surface-base flex items-center gap-2">
+            <FileCode className="w-4 h-4 text-rmpg-500" />
+            <input id="ff-aidevchatpanel-0"
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-[#050505] border border-[#1a3550] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
+              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-rmpg-500"
             />
             <button
               onClick={() => {
                 setShowFileInput(false);
                 setFileContext('');
               }}
-              className="text-gray-500 hover:text-gray-300"
+              className="text-rmpg-500 hover:text-rmpg-300"
             >
               <X className="w-4 h-4" />
             </button>
@@ -739,25 +741,25 @@ export default function AIDevChatPanel() {
         )}
 
         {/* Input area */}
-        <div className="p-3 border-t border-[#1a3550] bg-[#0a0a0a]">
+        <div className="p-3 border-t border-rmpg-700 bg-surface-base">
           <div className="flex items-end gap-2">
             <button
               onClick={() => setShowFileInput(!showFileInput)}
               className={`p-2 rounded transition-colors ${
-                showFileInput || fileContext ? 'text-gray-400 bg-gray-500/10' : 'text-gray-500 hover:text-gray-300'
+                showFileInput || fileContext ? 'text-rmpg-400 bg-rmpg-500/10' : 'text-rmpg-500 hover:text-rmpg-300'
               }`}
               title="Attach file context"
             >
               <FileCode className="w-4 h-4" />
             </button>
-            <textarea
+            <RichTextArea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-[#050505] border border-[#1a3550] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
+              className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-rmpg-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -768,13 +770,13 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#141414] disabled:text-gray-500 text-white rounded transition-colors"
+              className="p-2 bg-rmpg-600 hover:bg-rmpg-700 disabled:bg-surface-raised disabled:text-rmpg-500 text-rmpg-100 rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
           {fileContext && (
-            <p className="text-[10px] text-gray-400 mt-1 ml-10">Context: {fileContext}</p>
+            <p className="text-[10px] text-rmpg-400 mt-1 ml-10">Context: {fileContext}</p>
           )}
         </div>
       </div>

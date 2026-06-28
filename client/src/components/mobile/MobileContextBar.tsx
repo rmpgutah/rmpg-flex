@@ -24,9 +24,9 @@ export default function MobileContextBar({
   return (
     <div
       style={{
-        height: 32,
-        background: '#050505',
-        borderBottom: '1px solid #222222',
+        height: 28,
+        background: 'var(--surface-overlay)',
+        borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -37,7 +37,7 @@ export default function MobileContextBar({
       }}
     >
       {/* Left: Unit + Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
         {/* Connection LED */}
         <span
           className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`}
@@ -47,10 +47,10 @@ export default function MobileContextBar({
         {/* Unit call sign */}
         <span
           style={{
-            fontSize: 12,
+            fontSize: 11,
             fontFamily: 'var(--font-mono, monospace)',
             fontWeight: 700,
-            color: '#999999',
+            color: 'var(--rmpg-400)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -59,14 +59,14 @@ export default function MobileContextBar({
         </span>
 
         {/* Separator */}
-        <span style={{ color: '#2e2e2e', fontSize: 12 }}>│</span>
+        <span style={{ color: 'var(--border-default)', fontSize: 10 }}>│</span>
 
         {/* Radio channel */}
         <span
           style={{
-            fontSize: 11,
+            fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: radioChannel ? '#22c55e' : '#666666',
+            color: radioChannel ? '#22c55e' : 'var(--rmpg-500)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -77,12 +77,12 @@ export default function MobileContextBar({
         {/* Active call */}
         {activeCallNumber && (
           <>
-            <span style={{ color: '#2e2e2e', fontSize: 12 }}>│</span>
+            <span style={{ color: 'var(--border-default)', fontSize: 10 }}>│</span>
             <span
               style={{
-                fontSize: 11,
+                fontSize: 10,
                 fontFamily: 'var(--font-mono, monospace)',
-                color: '#f59e0b',
+                color: 'var(--brand-gold)',
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
               }}
@@ -100,7 +100,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: gpsTracking ? '#22c55e' : '#666666',
+            color: gpsTracking ? '#22c55e' : 'var(--rmpg-500)',
           }}
         >
           {gpsTracking ? 'GPS' : ''}

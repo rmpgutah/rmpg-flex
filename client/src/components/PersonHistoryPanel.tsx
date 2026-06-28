@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Shield,
   FileText,
@@ -96,7 +97,7 @@ interface PersonHistoryPanelProps {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -106,13 +107,13 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
-function formatRole(role: string): string {
-  return (role || '').replace(/_/g, ' ').toUpperCase();
-}
-
-function formatType(type: string): string {
-  return (type || '').replace(/_/g, ' ');
-}
+// Local helpers were a half-fix: formatType dropped underscores but kept the
+// raw lowercase (e.g. `pso_client_request` → `pso client request`), and
+// formatRole jammed everything to ALL CAPS without acronym awareness.
+// toDisplayLabel from formatters.ts handles both — Title Case for normal
+// words, ALL CAPS for known acronyms (PSO, NCIC, BOLO, …), so
+// `pso_client_request` → `PSO Client Request`. CSS `uppercase` on badges
+// still works on a Title Cased input, so role badges remain visually upper.
 
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
   felony: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -130,7 +131,7 @@ const WARRANT_STATUS_CLASSES: Record<string, string> = {
 };
 
 const CITATION_STATUS_CLASSES: Record<string, string> = {
-  issued: 'bg-gray-900/60 text-gray-300 border-gray-600/60',
+  issued: 'bg-surface-sunken/60 text-rmpg-300 border-border-subtle/60',
   paid: 'bg-green-900/50 text-green-400 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -142,7 +143,7 @@ const CITATION_TYPE_CLASSES: Record<string, string> = {
   traffic: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
   criminal: 'bg-red-900/50 text-red-300 border-red-700/50',
   parking: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
-  warning: 'bg-gray-900/40 text-gray-300 border-gray-700/50',
+  warning: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/50',
 };
 
 // ── Component ──────────────────────────────────────
@@ -301,7 +302,7 @@ export default function PersonHistoryPanel({
                   }`}
                 >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white font-mono font-bold text-[11px]">
+                    <span className="text-rmpg-100 font-mono font-bold text-[11px]">
                       {w.warrant_number || `W-${w.id}`}
                     </span>
                     <span
@@ -371,13 +372,13 @@ export default function PersonHistoryPanel({
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white font-mono font-bold text-[11px]">{c.citation_number}</span>
+                  <span className="text-rmpg-100 font-mono font-bold text-[11px]">{c.citation_number}</span>
                   <span
                     className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
                       CITATION_STATUS_CLASSES[c.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                     }`}
                   >
-                    {c.status.replace(/_/g, ' ')}
+                    {toDisplayLabel(c.status)}
                   </span>
                   <span
                     className={`inline-flex items-center px-1 py-0.5 text-[9px] uppercase font-bold border panel-beveled ${
@@ -440,11 +441,11 @@ export default function PersonHistoryPanel({
                   key={inc.id}
                   className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700 flex-wrap"
                 >
-                  <span className="text-white font-mono font-bold">{inc.incident_number || `I-${inc.id}`}</span>
+                  <span className="text-rmpg-100 font-mono font-bold">{inc.incident_number || `I-${inc.id}`}</span>
                   <span className="px-1 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold">
-                    {formatRole(inc.role)}
+                    {toDisplayLabel(inc.role)}
                   </span>
-                  <span className="text-rmpg-300">{formatType(inc.incident_type)}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   <span className="text-rmpg-400 ml-auto text-[10px]">{formatDate(inc.created_at)}</span>
                 </div>
@@ -480,8 +481,8 @@ export default function PersonHistoryPanel({
                   key={c.id}
                   className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700 flex-wrap"
                 >
-                  <span className="text-white font-mono font-bold">{c.call_number || `C-${c.id}`}</span>
-                  <span className="text-rmpg-300">{formatType(c.incident_type)}</span>
+                  <span className="text-rmpg-100 font-mono font-bold">{c.call_number || `C-${c.id}`}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(c.incident_type)}</span>
                   {c.priority && <StatusBadge status={c.priority} type="priority" size="sm" />}
                   <StatusBadge status={c.status} type="call_status" size="sm" />
                   {c.location && (

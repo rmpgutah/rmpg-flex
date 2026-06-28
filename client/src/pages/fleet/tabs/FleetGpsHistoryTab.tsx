@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  MapPin, Clock, Navigation2, Gauge, Zap, AlertTriangle,
-  Car, Radio, RefreshCw, Loader2,
+  Navigation2, Gauge, Zap, AlertTriangle, Car, Radio, RefreshCw, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Breadcrumb {
   id: number;
@@ -51,7 +51,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   hard_turn: '#f97316',
   speeding: '#dc2626',
   impact: '#dc2626',
-  video_start: '#3b82f6',
+  video_start: '#888888',
   video_stop: '#6b7280',
   panic: '#dc2626',
   sos: '#dc2626',
@@ -94,11 +94,11 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const formatTime = (dt: string) => {
-    const d = new Date(dt);
+    const d = parseTimestamp(dt);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   const formatDate = (dt: string) => {
-    const d = new Date(dt);
+    const d = parseTimestamp(dt);
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
   };
 
@@ -115,7 +115,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#0a0a0a' }}>
+      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: 'var(--surface-deep)' }}>
         <div className="flex gap-0.5">
           {(['breadcrumbs', 'events'] as const).map(t => (
             <button
@@ -147,15 +147,16 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-5 h-5 text-rmpg-400 animate-spin" />
           </div>
         ) : subTab === 'breadcrumbs' ? (
+          <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0a0a0a' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: 'var(--surface-deep)' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>
                 <th className="px-2 py-1.5 font-bold">Speed</th>
@@ -179,7 +180,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                   </td>
                   <td className="px-2 py-1">
                     <span className="text-[8px] font-bold uppercase px-1 py-0.5" style={{
-                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#3b82f6' : '#a0a0a0',
+                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#888888' : 'var(--rmpg-400)',
                     }}>
                       {bc.unit_status || '-'}
                     </span>
@@ -192,10 +193,12 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
               )}
             </tbody>
           </table>
+          </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0a0a0a' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: 'var(--surface-deep)' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Event</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>
@@ -234,6 +237,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
