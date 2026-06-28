@@ -560,8 +560,8 @@ export default function Layout() {
   // scroll/resize so the panel follows the triggering button.
   const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
-  // Close dropdown on route change
-  useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
+  // Close dropdown on route change + Spillman MDT page-flip chirp
+  useEffect(() => { setOpenDropdown(null); playUiNavigate(); }, [location.pathname]);
 
   // Close dropdown on click outside
   useEffect(() => {
