@@ -234,7 +234,10 @@
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* End on transform:none (not translateY(0)) so animation-fill-mode:both does
+     not leave every animated element a containing block for position:fixed
+     descendants. See the page-fade-in note below for the full rationale. */
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes slide-in-right {
@@ -446,6 +449,7 @@ html:not(.theme-light) [style*="rgb(59 130 246"] {
    Covers the full Tailwind blue/sky/cyan/indigo palettes plus common
    custom blues. Updates background, border-color, color, outline,
    box-shadow, fill, and stroke so the blue never reaches the pixel.
+   Scoped to dark mode only — light (navy) mode uses blue-hued colors.
    ═══════════════════════════════════════════════════════════════════ */
 [style*="#3b82f6"], [style*="#60a5fa"], [style*="#93c5fd"],
 [style*="#bfdbfe"], [style*="#dbeafe"], [style*="#eff6ff"],
@@ -530,6 +534,74 @@ html:not(.theme-light) [class*="hover:bg-\\[\\#2b2b2b\\]"]:hover,
 html:not(.theme-light) [class*="hover:bg-\\[\\#202020\\]"]:hover,
 html:not(.theme-light) [class*="hover:bg-\\[\\#0f0f0f\\]"]:hover {
   background-color: #111111 !important;
+}
+
+/* --- High Contrast (accessibility / bright daylight) --- */
+body.fx-highcontrast {
+  filter: contrast(1.25) brightness(1.05);
+}
+
+/* --- Noise/Film Grain overlay --- */
+@keyframes fx-noise-shift {
+  0%   { background-position: 0 0; }
+  25%  { background-position: -50% 50%; }
+  50%  { background-position: 50% -50%; }
+  75%  { background-position: -25% 25%; }
+  100% { background-position: 0 0; }
+}
+body.fx-noise::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99997;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  animation: fx-noise-shift 0.5s steps(4) infinite;
+}
+
+/* --- Reduced Motion: disable animated effects --- */
+@media (prefers-reduced-motion: reduce) {
+  body.fx-noise::after { animation: none; }
+  body.fx-bloom * { text-shadow: none; }
+}
+
+/* ============================================================
+   DISPLAY EFFECTS — Toggle via View > Display Effects menu
+   Each effect is controlled by a class on <body>
+   ============================================================ */
+
+/* --- CRT Vignette (dark corners) --- */
+body.fx-vignette::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99998;
+}
+
+/* --- Phosphor Bloom (subtle glow on bright text) --- */
+body.fx-bloom {
+  --bloom-color: rgba(136, 136, 136, 0.08);
+}
+body.fx-bloom * {
+  text-shadow: 0 0 4px var(--bloom-color), 0 0 12px var(--bloom-color);
+}
+body.fx-bloom input,
+body.fx-bloom textarea,
+body.fx-bloom select {
+  text-shadow: none;
+}
+
+/* --- Amber Tint (warm CRT phosphor look) --- */
+body.fx-amber {
+  filter: sepia(0.12) saturate(1.1) hue-rotate(-5deg);
+}
+
+/* --- Green Phosphor (classic terminal) --- */
+body.fx-green {
+  filter: sepia(0.2) saturate(0.7) hue-rotate(80deg) brightness(0.95);
 }
 
 /* --- High Contrast (accessibility / bright daylight) --- */
@@ -2818,17 +2890,46 @@ body.fx-noise::after {
   inset: 0;
   pointer-events: none;
   z-index: 5;
+  /* Scanline + vignette alphas are driven by Console Settings → Display
+     (scanline_intensity / vignette_intensity) via systemSettings.ts,
+     falling back to the original 0.16 / 0.45 when unset. */
   background:
     repeating-linear-gradient(
       0deg,
       rgba(0, 0, 0, 0) 0px,
       rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.16) 3px,
-      rgba(0, 0, 0, 0.16) 3px
+      rgba(0, 0, 0, var(--crt-scanline-alpha, 0.16)) 3px,
+      rgba(0, 0, 0, var(--crt-scanline-alpha, 0.16)) 3px
     ),
-    radial-gradient(120% 100% at 50% 0%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.45) 100%);
+    radial-gradient(120% 100% at 50% 0%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, var(--crt-vignette-alpha, 0.45)) 100%);
   mix-blend-mode: multiply;
 }
+
+/* Console Settings → Display effect toggles (applied to <html> by
+   systemSettings.applyDisplaySettings). All org-level; no per-user
+   competing control, so they're safe to drive from settings. */
+html.crt-off .ncic-panel::after,
+html.crt-off .ncic-embedded::after { display: none; }
+
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html.high-contrast body { filter: contrast(1.25); }
+
+html.amber-phosphor body { filter: sepia(0.45) hue-rotate(-18deg) saturate(1.3); }
+html.green-phosphor body { filter: sepia(0.5) hue-rotate(60deg) saturate(1.2); }
+html.amber-phosphor.green-phosphor body { filter: none; } /* mutually exclusive — neither wins if both set */
+
+html.hide-grid-lines table th,
+html.hide-grid-lines table td { border-color: transparent !important; }
+
+html.hide-status-bar .status-bar { display: none !important; }
 
 .ncic-output::-webkit-scrollbar {
   width: 6px;
@@ -2958,6 +3059,29 @@ body.fx-noise::after {
 .ncic-c-section { text-shadow: 0 0 5px rgba(251, 247, 236, 0.30); }
 .ncic-c-label { text-shadow: 0 0 5px rgba(212, 160, 23, 0.40); }
 .ncic-c-value { text-shadow: 0 0 3px rgba(244, 236, 216, 0.22); }
+.ncic-c-dim { text-shadow: none; }
+
+/* The CRITICAL subject-status banner gets a steady LED-style pulse so it's
+   impossible to miss when a warrant/sanction/arrest is live. */
+.ncic-c-danger.ncic-status-critical {
+  animation: ncic-status-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ncic-status-pulse {
+  0%, 100% { text-shadow: 0 0 5px rgba(239, 68, 68, 0.45); }
+  50% { text-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 18px rgba(239, 68, 68, 0.5); }
+}
+
+/* ── Per-severity phosphor glow ──
+   Each semantic class blooms in its own hue so the CRT read carries the
+   threat color: red danger pulses hottest, amber caution warm, green clear
+   calm. Overrides the base amber glow on .ncic-output. */
+.ncic-c-danger,
+.ncic-c-error { text-shadow: 0 0 6px rgba(239, 68, 68, 0.55); }
+.ncic-c-caution { text-shadow: 0 0 5px rgba(245, 158, 11, 0.45); }
+.ncic-c-summary { text-shadow: 0 0 5px rgba(251, 191, 36, 0.45); }
+.ncic-c-clear { text-shadow: 0 0 5px rgba(34, 197, 94, 0.40); }
+.ncic-c-header { text-shadow: 0 0 4px rgba(200, 200, 200, 0.35); }
+.ncic-c-section { text-shadow: 0 0 4px rgba(240, 240, 240, 0.30); }
 .ncic-c-dim { text-shadow: none; }
 
 /* The CRITICAL subject-status banner gets a steady LED-style pulse so it's
@@ -3282,7 +3406,7 @@ body.fx-noise::after {
   .led-green,
   .led-amber,
   .led-red,
-  .led-blue,
+  .led-gray,
   .led-purple,
   .led-off,
   .btn-primary,
@@ -3646,7 +3770,7 @@ body.fx-noise::after {
   .text-red-400,
   .text-green-400,
   .text-amber-400,
-  .text-blue-400,
+  .text-gray-400,
   .text-purple-400 {
     color: #222 !important;
   }
@@ -4238,7 +4362,16 @@ html:not(.theme-light) {
    ═══════════════════════════════════════════════════════════════ */
 @keyframes page-fade-in {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* End on transform:none — NOT translateY(0). With animation-fill-mode:both
+     the final keyframe persists forever, and translateY(0) computes to
+     matrix(1,0,0,1,0,0): a non-none transform STILL establishes a containing
+     block for position:fixed descendants. That trapped every fixed modal
+     (.fixed.inset-0.z-50) inside this scrollable, below-the-nav content area
+     instead of the viewport, so tall modals slid their title bar under the
+     sticky top nav and the window-chrome buttons (minimize/maximize/close)
+     became partly/fully unclickable. transform:none clears the containing
+     block at rest while still animating the 4px slide-in. */
+  to { opacity: 1; transform: none; }
 }
 .animate-page-enter {
   animation: page-fade-in 0.2s ease-out both;
@@ -4525,7 +4658,7 @@ html:not(.theme-light) :focus-visible {
   outline-offset: 2px;
 }
 html.theme-light :focus-visible {
-  outline: 2px solid #94a3b8;
+  outline: 2px solid #264a80;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -5206,10 +5339,10 @@ html, body {
 
 /* --- 1. SHARP CORNERS EVERYWHERE ---
    Spillman Flex uses 2px max radius. No rounded-lg/xl/2xl anywhere. */
-.rounded-lg { border-radius: 2px !important; }
-.rounded-xl { border-radius: 2px !important; }
-.rounded-2xl { border-radius: 2px !important; }
-.rounded-3xl { border-radius: 2px !important; }
+.rounded-lg { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-2xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
+.rounded-3xl { border-radius: 2px !important; -webkit-border-radius: 2px !important; }
 .rounded-t-lg { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
 .rounded-b-lg { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
 .rounded-l-lg { border-top-left-radius: 2px !important; border-bottom-left-radius: 2px !important; }
