@@ -582,6 +582,12 @@ export function useGeoJsonLayers({
         }
       }
 
+      // Show/hide label markers for this layer
+      const labels = labelMarkersRef.current[layerId];
+      if (labels) {
+        for (const m of labels) m.setMap(nowVisible ? map : null);
+      }
+
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
   }, [map]);

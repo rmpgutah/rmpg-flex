@@ -20,7 +20,7 @@ import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../c
 import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
-import { getResolvedEngine } from '../../utils/mapProvider';
+import { getResolvedEngine, detectMapEngine, type MapEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
@@ -842,6 +842,9 @@ export default function DispatchPage() {
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
+  // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
+  const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
+  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -1914,7 +1917,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value || null }),
+        body: JSON.stringify({ [field]: payloadValue }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
@@ -2156,11 +2159,6 @@ export default function DispatchPage() {
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
   // ═══════════════════════════════════════════════════════════════
-
-  // Feature 1: Auto-escalation timer — REMOVED 2026-05-04.
-  // Priority is now stale until manually escalated by admin / supervisor /
-  // dispatcher / officer via the call detail panel. See server endpoint
-  // POST /api/dispatch/calls/:id/escalate (callActions.ts).
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
@@ -2859,7 +2857,7 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{renderFormattedText(note.text || '')}</div>
+                          <div className="text-rmpg-200 mt-0.5">{typeof note.text === 'string' ? note.text : String(note.text ?? '')}</div>
                         </div>
                       ))}
                     </div>
@@ -4233,6 +4231,25 @@ export default function DispatchPage() {
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 3px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
                         LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
+                    )}
+                    {/* Create Citation from this call */}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const params = new URLSearchParams();
+                          if (selectedCall.location) params.set('location', selectedCall.location);
+                          if (selectedCall.latitude) params.set('lat', String(selectedCall.latitude));
+                          if (selectedCall.longitude) params.set('lng', String(selectedCall.longitude));
+                          params.set('call_id', selectedCall.id);
+                          params.set('call_number', selectedCall.call_number);
+                          navigate(`/citations?create=true&${params.toString()}`);
+                        }}
+                        className="toolbar-btn text-[9px]"
+                        title="Create citation from this call"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Citation
+                      </button>
                     )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
@@ -6123,15 +6140,11 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-rmpg-200 leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[var(--spm-text-muted)] text-[8px] ml-1">(edited)</span>}</span>
-                            {(canEditNote(note) || isAdminOrManager) && (
-                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                {canEditNote(note) && (
-                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--spm-text)] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                )}
-                                {isAdminOrManager && (
-                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--sev-critical)] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
-                                )}
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note.text === 'string' ? note.text : String(note.text ?? ''))}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            {isAdminOrManager && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
@@ -6328,7 +6341,7 @@ export default function DispatchPage() {
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
-              getResolvedEngine() === 'mapbox' ? (
+              mapEngine === 'mapbox' ? (
                 <MapboxMiniMap
                   call={selectedCall}
                   units={units}

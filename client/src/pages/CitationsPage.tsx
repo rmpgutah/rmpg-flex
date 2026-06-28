@@ -355,6 +355,20 @@ const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 // ── Component ──────────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CitationsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -1679,8 +1693,15 @@ export default function CitationsPage() {
             </div>
 
             {form.person_id && (
-              <div className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1">
+              <div
+                className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-brand-900/30 transition-colors"
+                onClick={() => navigate(`/records?tab=persons&personId=${form.person_id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/records?tab=persons&personId=${form.person_id}`); }}
+              >
                 <Check size={10} /> Linked to person record #{form.person_id}
+                <ExternalLink size={9} className="ml-1 opacity-60" />
               </div>
             )}
 

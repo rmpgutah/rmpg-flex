@@ -284,3 +284,80 @@ export async function mapboxOptimization(
     body: JSON.stringify({ coordinates, ...options }),
   });
 }
+
+// ── Datasets API ──────────────────────────────────────────
+// Mapbox Developer Cheatsheet: Datasets API for managing custom vector data.
+
+export interface MapboxDataset {
+  id: string;
+  owner: string;
+  name: string;
+  description: string;
+  created: string;
+  modified: string;
+  features: number;
+  size: number;
+  bounds?: [number, number, number, number];
+}
+
+export async function mapboxListDatasets(): Promise<MapboxDataset[]> {
+  const data = await apiFetch<{ datasets: MapboxDataset[] }>('/mapbox/datasets');
+  return data.datasets;
+}
+
+export async function mapboxCreateDataset(
+  name: string,
+  description?: string
+): Promise<MapboxDataset> {
+  return apiFetch<MapboxDataset>('/mapbox/datasets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+export async function mapboxGetDataset(datasetId: string): Promise<MapboxDataset> {
+  return apiFetch<MapboxDataset>(`/mapbox/datasets/${encodeURIComponent(datasetId)}`);
+}
+
+export async function mapboxDeleteDataset(datasetId: string): Promise<void> {
+  await apiFetch(`/mapbox/datasets/${encodeURIComponent(datasetId)}`, { method: 'DELETE' });
+}
+
+export async function mapboxListDatasetFeatures(
+  datasetId: string,
+  options?: { limit?: number; start?: string }
+): Promise<GeoJSON.FeatureCollection> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.start) params.set('start', options.start);
+  const qs = params.toString();
+  return apiFetch<GeoJSON.FeatureCollection>(
+    `/mapbox/datasets/${encodeURIComponent(datasetId)}/features${qs ? `?${qs}` : ''}`
+  );
+}
+
+export async function mapboxPutDatasetFeature(
+  datasetId: string,
+  featureId: string,
+  feature: { geometry: GeoJSON.Geometry; properties?: Record<string, unknown> }
+): Promise<GeoJSON.Feature> {
+  return apiFetch<GeoJSON.Feature>(
+    `/mapbox/datasets/${encodeURIComponent(datasetId)}/features/${encodeURIComponent(featureId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(feature),
+    }
+  );
+}
+
+export async function mapboxDeleteDatasetFeature(
+  datasetId: string,
+  featureId: string
+): Promise<void> {
+  await apiFetch(
+    `/mapbox/datasets/${encodeURIComponent(datasetId)}/features/${encodeURIComponent(featureId)}`,
+    { method: 'DELETE' }
+  );
+}

@@ -80,6 +80,7 @@ import { useMapAtmosphere } from '../../hooks/useMapAtmosphere';
 import { useMapCameraAnimation } from '../../hooks/useMapCameraAnimation';
 import { useMapSnapshot } from '../../hooks/useMapSnapshot';
 import { useMapOptimization } from '../../hooks/useMapOptimization';
+import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import MapLayersPanel from './components/MapLayersPanel';
 import type { LayerGroup } from './components/MapLayersPanel';
@@ -267,7 +268,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current });
+  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
+  const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
+  const projection = useMapProjection(mapRef.current, mapLoaded);
+  const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
+  const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
+  const snapshot = useMapSnapshot();
+  const optimization = useMapOptimization(mapRef.current, mapLoaded);
+  const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
+  const [buildings3dEnabled, setBuildings3dEnabled] = usePersistedState('rmpg_mapbox_3d_buildings', true);
   const [showPlacesMenu, setShowPlacesMenu] = useState(false);
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
@@ -320,6 +330,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const incidents = calls
         .filter(c => c.latitude != null && c.longitude != null)
         .map(c => ({
+          id: c.id,
           position: [c.longitude!, c.latitude!] as [number, number],
           priority: c.priority,
           weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
@@ -328,6 +339,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const unitPositions = units
         .filter(u => u.latitude != null && u.longitude != null)
         .map(u => ({
+          id: u.id,
           position: [u.longitude!, u.latitude!] as [number, number],
           status: u.status,
           callSign: u.call_sign,
@@ -498,13 +510,29 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             msgLower.includes('invalid token') ||
             msgLower.includes('token is not authorized') ||
             msgLower.includes('not configured') ||
-            msgLower.includes('style not found') ||
             msgLower.includes('error status 4');
+
+           const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
 
           if (isNetworkErr && !mapDidLoad) {
             // Network error during init — don't fall back immediately;
             // Mapbox GL retries tile fetches internally. Only log it.
             devLog('[MapboxMap] Network error during init (will retry):', msg);
+            return;
+          }
+
+          // Style not found — retry with built-in dark style instead of
+          // falling all the way back to MapLibre. Custom style may have
+          // been deleted from the Mapbox account.
+          if (isStyleErr && !mapDidLoad) {
+            devLog('[MapboxMap] Custom style not found, retrying with default dark style');
+            clearTimeout(loadTimeout);
+            cancelled = true;
+            setTimeout(() => {
+              destroyMapboxMap(); mapRef.current = null;
+              setMapStyleId('dark' as MapStyleId);
+              setRetryNonce(n => n + 1);
+            }, 0);
             return;
           }
 
@@ -783,6 +811,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
     });
   }, [beatsVisible, mapLoaded]);
+
+  // Toggle 3D buildings
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    if (buildings3dEnabled) {
+      addMapbox3DBuildings(map);
+    } else {
+      if (map.getLayer('3d-buildings')) map.removeLayer('3d-buildings');
+    }
+  }, [buildings3dEnabled, mapLoaded]);
 
   // Toggle 3D terrain
   useEffect(() => {
@@ -1085,7 +1124,22 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'weather', label: 'Weather Radar', enabled: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
         { id: 'grid', label: 'Coordinate Grid', enabled: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
         { id: 'deck', label: 'GPU Overlay', enabled: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
+        { id: 'streetview', label: 'Street View', enabled: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
+        { id: 'inspect', label: 'Feature Inspector', enabled: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
+        { id: 'mapmatch', label: 'Map Match Trace', enabled: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
       ],
+    },
+    {
+      id: 'geojson',
+      label: 'GeoJSON Overlays',
+      layers: geoJsonLayers.configs.map(cfg => ({
+        id: `geo-${cfg.id}`,
+        label: cfg.label,
+        enabled: geoJsonLayers.layerStates[cfg.id]?.visible ?? false,
+        onToggle: () => geoJsonLayers.toggleGeoLayer(cfg.id),
+        color: cfg.style.strokeColor || cfg.style.fillColor,
+        description: cfg.file.replace('.geojson', ''),
+      })),
     },
     {
       id: 'base',
@@ -1093,7 +1147,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       layers: [
         { id: 'beats', label: 'Beat Boundaries', enabled: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
         { id: 'terrain', label: '3D Terrain', enabled: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
+        { id: 'buildings', label: '3D Buildings', enabled: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
         { id: 'selfpos', label: 'My Position', enabled: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
+        { id: 'projection', label: `Projection: ${projection.projection}`, enabled: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
+        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, enabled: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
       ],
     },
     {
@@ -1104,7 +1161,25 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'p1audio', label: 'P1 Audio Alert', enabled: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled]);
+    {
+      id: 'camera',
+      label: 'Camera & Export',
+      layers: [
+        { id: 'orbit', label: 'Orbit Animation', enabled: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
+        { id: 'snapshot', label: 'Capture Snapshot', enabled: snapshot.snapshots.length > 0, onToggle: () => { const c = mapRef.current?.getCenter(); if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 }); }, color: '#06b6d4', description: 'Save map viewport as image' },
+      ],
+    },
+    {
+      id: 'tools',
+      label: 'Tools & Search',
+      layers: [
+        { id: 'places', label: 'Places Search', enabled: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
+        { id: 'directions', label: 'Directions', enabled: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
+        { id: 'bookmarks', label: 'Bookmarks', enabled: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
+        { id: 'optimize', label: 'Route Optimizer', enabled: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
+      ],
+    },
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1771,6 +1846,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   </div>
                 )}
               </div>
+
+              {/* GL Draw — Official Mapbox drawing with vertex editing */}
+              <IconButton
+                aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
+                onClick={() => glDraw.toggle()}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  glDraw.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="GL Draw (vertex editing)"
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </IconButton>
             </>
           )}
         </div>
@@ -1804,6 +1892,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
           <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
+        </div>
+      )}
+
+      {/* GL Draw Feature Count */}
+      {glDraw.enabled && glDraw.featureCount > 0 && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <Grid3X3 className="w-3 h-3 text-[#d4a017]" />
+          <span className="text-rmpg-300 text-[10px] font-mono">{glDraw.featureCount} GL Draw feature(s)</span>
+          <button onClick={() => glDraw.deleteAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
         </div>
       )}
 

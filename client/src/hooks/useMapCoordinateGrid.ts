@@ -82,6 +82,7 @@ export function useMapCoordinateGrid(
   const updateGrid = useCallback(() => {
     if (!map || !activeRef.current) return;
     const bounds = map.getBounds();
+    if (!bounds) return;
     const zoom = map.getZoom();
     const geojson = buildGridGeoJson(bounds, zoom);
 
@@ -108,6 +109,7 @@ export function useMapCoordinateGrid(
     // Add
     activeRef.current = true;
     const bounds = map.getBounds();
+    if (!bounds) return;
     const zoom = map.getZoom();
     const geojson = buildGridGeoJson(bounds, zoom);
 
