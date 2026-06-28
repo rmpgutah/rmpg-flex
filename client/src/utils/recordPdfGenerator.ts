@@ -571,6 +571,8 @@ export interface CallPdfData {
   case_id?: number;
   case_number?: string;
   incident_number?: string;
+  // Serve queue linkage — enables QR code on printout for mobile status update
+  serve_queue_id?: number | string;
   // Contract ID (for PSO Client Request incidents)
   contract_id?: string;
   latitude?: number;
@@ -1595,6 +1597,61 @@ function formatElapsed(ms: number): string {
 function titleCase(str: string): string {
   if (!str) return '';
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+// ── Structured CFS notes renderer ─────────────────────────────
+// Parses serve-intake's 8-entry narrative (CASE --, COURT --, ATTORNEY --,
+// SERVICE RULES --, SCHEDULE --, RECOMMENDED SCHEDULE --, CLIENT HISTORY --,
+// INSTRUCTIONS --) into labeled panels. Entries from older CFS records
+// without this prefix shape are skipped; falls back gracefully.
+function renderStructuredCallNotes(
+  doc: jsPDF,
+  notes: { text?: string; content?: string }[] | undefined,
+  y: number,
+  prio?: string,
+): number {
+  if (!Array.isArray(notes) || notes.length === 0) return y;
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  try {
+    for (const entry of notes) {
+      const raw = (entry.text || entry.content || '').trim();
+      if (!raw) continue;
+      const m = raw.match(/^([A-Z][A-Z0-9 \-()\/]+?)\s*--\s*([\s\S]*)$/);
+      if (!m) continue;
+      const title = m[1].trim();
+      const body = m[2].trim();
+      if (!body) continue;
+      y = checkPageBreak(doc, y, 22, prio);
+      const sec = openAutoSection(doc, title, y);
+      y = sec.contentY;
+      // Set the font BEFORE splitTextToSize so width measurements match the
+      // actual drawn font (jsPDF uses the current font metrics for wrapping;
+      // setting font after produces letter-spaced output when wrap width
+      // falls below the min-word width under an incorrect font).
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const maxWidth = ffw - 4;
+      const fields = body.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean);
+      for (const f of fields) {
+        const lines = doc.splitTextToSize(f.toUpperCase(), maxWidth);
+        for (const line of lines) {
+          y = checkPageBreak(doc, y, 3.4, prio);
+          y += 2.8; // baseline advance — single line-height for body text
+          doc.text(line, lx + 2, y);
+          y += 0.1;
+        }
+        y += 0.4; // field separator gap (|-delimited sub-fields)
+      }
+      y += 0.5; // trailing pad before border
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      y += 1.2; // inter-section gap — tight but avoids header bar flush on prior content
+    }
+  } catch {
+    // malformed notes — bail gracefully
+  }
+  return y;
 }
 
 // ── Call for Service Report ──────────────────────────────────
