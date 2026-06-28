@@ -254,6 +254,7 @@ function isIncidentOfficerLinked(detailOfficers: any[], officerId: string): bool
 
 export default function IncidentsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isManager = user?.role === 'manager';
@@ -510,6 +511,19 @@ export default function IncidentsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents]);
+
+  // Auto-select incident when navigated from dispatch linked incidents
+  useEffect(() => {
+    const selectId = (location.state as any)?.selectIncidentId;
+    if (selectId && incidents.length > 0) {
+      const found = incidents.find((i) => i.id === selectId);
+      if (found) {
+        setSelectedIncident(found);
+        // Clear the state so it doesn't re-select on every render
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [incidents, location.state]);
 
   // Fetch full incident detail (linked persons, vehicles, evidence, offenses, officers, links) when selected
   const fetchIncidentDetail = useCallback(async (incidentId: string) => {
