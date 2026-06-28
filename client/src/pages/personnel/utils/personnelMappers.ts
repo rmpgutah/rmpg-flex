@@ -3,8 +3,9 @@
 // ============================================================
 
 import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
-export interface OfficerWithStatus extends UserType {
+export interface OfficerWithStatus extends Omit<UserType, 'status'> {
   status: string;
 }
 
@@ -27,6 +28,12 @@ export function mapUser(row: any): OfficerWithStatus {
     middle_name: row.middle_name || undefined,
     role: row.role || 'officer',
     badge_number: row.badge_number || undefined,
+    // employee_id, notes and full_name were omitted here, so openEditOfficer
+    // pre-filled them blank — and saving the edit could WIPE an officer's
+    // employee_id/notes back to empty. Carry them through from the row.
+    employee_id: row.employee_id || undefined,
+    notes: row.notes || undefined,
+    full_name: row.full_name || `${firstName} ${lastName}`.trim() || undefined,
     phone: row.phone || undefined,
     rank: row.rank || undefined,
     department: row.department || undefined,
@@ -53,7 +60,7 @@ export function mapUser(row: any): OfficerWithStatus {
     unit_call_sign: row.unit_call_sign || row.unit?.call_sign || undefined,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
-    status: isActive ? 'on_duty' : 'off_duty',
+    status: isActive && row.unit_status !== 'off_duty' ? 'on_duty' : 'off_duty',
   };
 }
 
@@ -66,7 +73,7 @@ export function mapSchedule(row: any): Schedule {
   let shiftEnd = '';
   if (shiftDate) {
     if (endTime <= startTime) {
-      const nextDay = new Date(shiftDate);
+      const nextDay = parseTimestamp(shiftDate);
       nextDay.setDate(nextDay.getDate() + 1);
       const pad = (n: number) => String(n).padStart(2, '0');
       const nextDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
@@ -110,6 +117,9 @@ export function mapTimeEntry(row: any): TimeEntry {
     break_start: row.break_start || undefined,
     break_minutes: Number(row.break_minutes) || 0,
     total_hours: row.total_hours != null ? Number(row.total_hours) : undefined,
+    starting_mileage: row.starting_mileage != null ? Number(row.starting_mileage) : undefined,
+    ending_mileage: row.ending_mileage != null ? Number(row.ending_mileage) : undefined,
+    total_miles: row.total_miles != null ? Number(row.total_miles) : undefined,
     status,
     notes: undefined,
     created_at: row.created_at || '',
@@ -120,7 +130,7 @@ export function mapTimeEntry(row: any): TimeEntry {
 export function mapCredential(row: any): Credential {
   let status: Credential['status'] = 'valid';
   if (row.expiry_date) {
-    const expiry = new Date(row.expiry_date);
+    const expiry = parseTimestamp(row.expiry_date);
     const now = new Date();
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
     if (expiry.getTime() < now.getTime()) {

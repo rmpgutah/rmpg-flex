@@ -3,7 +3,7 @@
 // Minimal wrapper for secondary browser windows (no sidebar)
 // ============================================================
 
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Printer, X } from 'lucide-react';
 
 interface DetachedLayoutProps {
@@ -15,7 +15,7 @@ interface DetachedLayoutProps {
 
 export default function DetachedLayout({ title, subtitle, children, actions }: DetachedLayoutProps) {
   return (
-    <div className="min-h-screen bg-surface-deep text-white flex flex-col">
+    <div className="min-h-screen bg-surface-deep text-rmpg-100 flex flex-col">
       {/* Header — Panel title bar style */}
       <header className="sticky top-0 z-50 print:hidden">
         <div className="panel-title-bar flex items-center gap-2">
@@ -24,7 +24,7 @@ export default function DetachedLayout({ title, subtitle, children, actions }: D
           {subtitle && <span className="text-[9px] text-rmpg-400 font-normal ml-1">— {subtitle}</span>}
           <div className="ml-auto flex items-center gap-1">
             {actions}
-            <button
+            <button type="button"
               onClick={() => window.print()}
               className="toolbar-btn"
               title="Print"
@@ -33,7 +33,7 @@ export default function DetachedLayout({ title, subtitle, children, actions }: D
               Print
             </button>
             <div className="toolbar-separator" />
-            <button
+            <button type="button"
               onClick={() => window.close()}
               className="toolbar-btn hover:!bg-red-900/40"
               title="Close Window"

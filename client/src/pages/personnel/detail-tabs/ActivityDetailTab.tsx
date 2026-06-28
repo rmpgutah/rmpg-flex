@@ -2,9 +2,9 @@
 // RMPG Flex — Officer Activity Detail Tab
 // ============================================================
 
-import React from 'react';
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface ActivityEntry {
   id: string;
@@ -31,13 +31,13 @@ function borderColor(action: string): string {
   if (action === 'clock_in' || action === 'user_login') return 'border-l-2 border-l-green-500';
   if (action === 'clock_out' || action === 'user_logout') return 'border-l-2 border-l-amber-500';
   if (action.startsWith('incident')) return 'border-l-2 border-l-brand-500';
-  if (action.startsWith('call')) return 'border-l-2 border-l-blue-500';
+  if (action.startsWith('call')) return 'border-l-2 border-l-rmpg-500';
   return 'border-l-2 border-l-rmpg-600';
 }
 
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -97,9 +97,12 @@ export default function ActivityDetailTab({ activity }: Props) {
           </div>
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
-          <Activity className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-          <p className="text-xs text-rmpg-400">No recent activity</p>
+        <div className="panel-beveled p-10 text-center bg-surface-base" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Activity className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">No recent activity</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Activity will appear here as actions are performed</p>
         </div>
       )}
     </div>

@@ -5,27 +5,37 @@
 // storage tracking, disposition pipeline, and BWC footage view.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Package, Search, Plus, ChevronDown, MapPin, Clock, User,
-  ArrowRightLeft, CheckCircle, AlertTriangle, X, Save, Loader2,
-  Box, Warehouse, Tag, FileText, Archive, Video,
-  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2,
-  Play, Shield, Camera,
+  Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,
+  AlertTriangle, X, Save, Loader2, Box, Warehouse, Tag, FileText, Video,
+  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2, Play, Shield, Camera, Eye,
+  Printer,
 } from 'lucide-react';
+import { openEvidenceItemPdf } from '../utils/evidenceItemPdf';
 import PanelTitleBar from '../components/PanelTitleBar';
-import StatusBadge from '../components/StatusBadge';
+import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { toDisplayLabel } from '../utils/formatters';
 import VideoPlayer from '../components/VideoPlayer';
+import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { humanizeType, humanizeStatus } from '../utils/statusLabels';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
   checked_in: 'bg-green-900/50 text-green-400 border-green-700/50',
-  in_storage: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
+  in_storage: 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50',
   checked_out: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   submitted_to_le: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   pending_disposition: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
@@ -59,12 +69,25 @@ const STATUS_OPTIONS = [
   { value: 'disposed', label: 'Disposed' },
 ];
 
-type DetailTab = 'info' | 'chain' | 'bwc';
+type DetailTab = 'info' | 'chain' | 'bwc' | 'checkout' | 'custody_audit' | 'links';
 
 // ─── Component ─────────────────────────────────────────
 export default function EvidencePropertyPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Approve/deny release requires supervisor-tier authority (same roles that can
+  // approve on the backend: admin / manager / supervisor).
+  const canApproveRelease = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  // Dispose / destroy / transfer to agency requires admin or manager authority.
+  const canDispose = user?.role === 'admin' || user?.role === 'manager';
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  // useSearchParams must be declared before any useState initialiser that
+  // reads from it (searchQuery / filterStatus seed from ?case_id= / ?status=).
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Data
   const [items, setItems] = useState<any[]>([]);
@@ -72,10 +95,14 @@ export default function EvidencePropertyPage() {
   const [stats, setStats] = useState<any>(null);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
-  // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  // Filters — ?status= and ?case_id= deep-links pre-seed on mount.
+  // ?case_id= pre-fills the search field with the case id so the list
+  // narrows to evidence linked to that case (relies on the API's ?search=
+  // param which the backend checks against incident_number / case_id).
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('case_id') || '');
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || '');
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -87,6 +114,12 @@ export default function EvidencePropertyPage() {
   const [chainLocation, setChainLocation] = useState('');
   const [chainNotes, setChainNotes] = useState('');
   const [chainSubmitting, setChainSubmitting] = useState(false);
+
+  // Release request
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [releaseTo, setReleaseTo] = useState('');
+  const [releaseReason, setReleaseReason] = useState('');
+  const [releaseSubmitting, setReleaseSubmitting] = useState(false);
 
   // New evidence modal
   const [newEvidenceOpen, setNewEvidenceOpen] = useState(false);
@@ -100,14 +133,62 @@ export default function EvidencePropertyPage() {
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
 
+  // ── Right-click context menu ──
+  // All mutating handlers (checkout/checkin/disposition/chain/release) operate
+  // on the currently-`selected` item, not on the row clicked. To avoid firing a
+  // mutation against stale state, the menu only navigates: it selects the row
+  // and opens the relevant detail tab, then copies identifiers. The user runs
+  // the actual action from the (now-loaded) panel.
+  const buildEvidenceMenu = (item: any): ContextMenuItem[] => [
+    m.action('Open item', () => { setSelected(item); setDetailTab('info'); }, { icon: <Eye size={12} /> }),
+    m.action('Chain of custody', () => { setSelected(item); setDetailTab('chain'); }, { icon: <ArrowRightLeft size={12} /> }),
+    m.action('Check out / in', () => { setSelected(item); setDetailTab('checkout'); }, { icon: <PackagePlus size={12} /> }),
+    m.separator(),
+    m.copy('Copy evidence #', item.evidence_number ?? `EV-${item.id}`),
+    m.copy('Copy description', item.description),
+    m.copyId(item.id),
+  ];
+
   // BWC footage
   const [bwcVideos, setBwcVideos] = useState<BodyCamVideo[]>([]);
   const [bwcLoading, setBwcLoading] = useState(false);
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
 
+  // Checkout/Checkin
+  const [checkoutReason, setCheckoutReason] = useState('');
+  const [checkoutExpectedReturn, setCheckoutExpectedReturn] = useState('');
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [checkinCondition, setCheckinCondition] = useState('');
+
+  // Custody audit
+  const [custodyAudit, setCustodyAudit] = useState<any>(null);
+  const [custodyAuditLoading, setCustodyAuditLoading] = useState(false);
+
+  // Linked records
+  const [linkedRecords, setLinkedRecords] = useState<any>(null);
+  const [linksLoading, setLinksLoading] = useState(false);
+
+  // Aging report
+  const [agingReport, setAgingReport] = useState<any>(null);
+  const [agingLoading, setAgingLoading] = useState(false);
+  const [showAgingReport, setShowAgingReport] = useState(false);
+
+  // Disposition
+  const [dispositionOpen, setDispositionOpen] = useState(false);
+  const [dispositionType, setDispositionType] = useState('pending');
+  const [dispositionMethod, setDispositionMethod] = useState('');
+  const [dispositionNotes, setDispositionNotes] = useState('');
+  const [dispositionSubmitting, setDispositionSubmitting] = useState(false);
+
+  // ConfirmDialog — destructive actions require explicit confirmation
+  const [confirmDispose, setConfirmDispose] = useState(false);
+  const [confirmApproveRelease, setConfirmApproveRelease] = useState(false);
+  const [pendingReleaseAction, setPendingReleaseAction] = useState<'approve' | 'deny' | null>(null);
+
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({
         page: String(page), per_page: '50',
@@ -119,20 +200,25 @@ export default function EvidencePropertyPage() {
       setItems(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: any }>('/records/evidence/stats');
-      setStats(res.data);
+      // The endpoint returns a BARE object { total, collected, stored, closed }
+      // (no {data} wrapper) — reading res.data left stats null and the whole
+      // stats row never rendered.
+      const res = await apiFetch<any>('/records/evidence/stats');
+      setStats(res?.data ?? res ?? null);
     } catch { /* silent */ }
   }, []);
 
   const fetchLocations = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: any[] }>('/records/evidence/locations');
-      setLocations(res.data || []);
+      // Bare array of { storage_location, count }; the dropdowns key on `name`.
+      const res = await apiFetch<any>('/records/evidence/locations');
+      const rows = Array.isArray(res) ? res : (res?.data ?? []);
+      setLocations(rows.map((r: any) => ({ name: r.storage_location ?? r.name, count: r.count })));
     } catch { /* silent */ }
   }, []);
 
@@ -145,6 +231,91 @@ export default function EvidencePropertyPage() {
     } catch { setBwcVideos([]); } finally { setBwcLoading(false); }
   }, []);
 
+  const fetchCustodyAudit = useCallback(async (evidenceId: number) => {
+    setCustodyAuditLoading(true);
+    try {
+      const res = await apiFetch<{ data: any }>(`/records/evidence/${evidenceId}/custody-validation`);
+      setCustodyAudit(res.data);
+    } catch { setCustodyAudit(null); } finally { setCustodyAuditLoading(false); }
+  }, []);
+
+  const fetchLinkedRecords = useCallback(async (evidenceId: number) => {
+    setLinksLoading(true);
+    try {
+      const res = await apiFetch<{ data: any }>(`/records/evidence/${evidenceId}/linked-records`);
+      setLinkedRecords(res.data);
+    } catch { setLinkedRecords(null); } finally { setLinksLoading(false); }
+  }, []);
+
+  const fetchAgingReport = useCallback(async () => {
+    setAgingLoading(true);
+    try {
+      const res = await apiFetch<{ data: any }>('/records/evidence/aging-report');
+      setAgingReport(res.data);
+    } catch { setAgingReport(null); } finally { setAgingLoading(false); }
+  }, []);
+
+  const handleCheckout = async () => {
+    if (!selected || !checkoutReason) return;
+    setCheckoutSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/checkout`, {
+        method: 'POST', body: JSON.stringify({ reason: checkoutReason, expected_return_date: checkoutExpectedReturn || undefined }),
+      });
+      addToast('Evidence checked out', 'success');
+      setCheckoutReason(''); setCheckoutExpectedReturn('');
+      fetchItems({ silent: true }); fetchStats();
+      const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
+      if (updated) setSelected(updated.data || updated);
+    } catch (err: any) { addToast(err?.message || 'Checkout failed', 'error'); }
+    finally { setCheckoutSubmitting(false); }
+  };
+
+  const handleCheckin = async () => {
+    if (!selected) return;
+    setCheckoutSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/checkin`, {
+        method: 'POST', body: JSON.stringify({ condition_on_return: checkinCondition || undefined }),
+      });
+      addToast('Evidence checked in', 'success');
+      setCheckinCondition('');
+      fetchItems({ silent: true }); fetchStats();
+      const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
+      if (updated) setSelected(updated.data || updated);
+    } catch (err: any) { addToast(err?.message || 'Check-in failed', 'error'); }
+    finally { setCheckoutSubmitting(false); }
+  };
+
+  // Destructive disposition types (destroy / forfeit) require ConfirmDialog.
+  const DESTRUCTIVE_DISPOSITIONS = new Set(['destroy', 'forfeit']);
+
+  const handleDispositionConfirmed = async () => {
+    if (!selected || !dispositionType) return;
+    setConfirmDispose(false);
+    setDispositionSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/disposition`, {
+        method: 'PUT', body: JSON.stringify({
+          disposition: dispositionType, disposition_method: dispositionMethod || undefined,
+          disposition_notes: dispositionNotes || undefined,
+        }),
+      });
+      addToast('Disposition recorded', 'success');
+      setDispositionOpen(false); setDispositionType('pending'); setDispositionMethod(''); setDispositionNotes('');
+      fetchItems({ silent: true }); fetchStats();
+    } catch (err: any) { addToast(err?.message || 'Disposition failed', 'error'); }
+    finally { setDispositionSubmitting(false); }
+  };
+
+  const handleDispositionSubmit = () => {
+    if (DESTRUCTIVE_DISPOSITIONS.has(dispositionType)) {
+      setConfirmDispose(true);
+    } else {
+      handleDispositionConfirmed();
+    }
+  };
+
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
@@ -155,7 +326,9 @@ export default function EvidencePropertyPage() {
       const caseNum = selected.evidence_number || selected.case_number || '';
       fetchBwcVideos(caseNum);
     }
-  }, [detailTab, selected, fetchBwcVideos]);
+    if (detailTab === 'custody_audit' && selected) fetchCustodyAudit(selected.id);
+    if (detailTab === 'links' && selected) fetchLinkedRecords(selected.id);
+  }, [detailTab, selected, fetchBwcVideos, fetchCustodyAudit, fetchLinkedRecords]);
 
   // ─── Handlers ──────────────────────────────────────
   const handleChainAction = async () => {
@@ -177,7 +350,7 @@ export default function EvidencePropertyPage() {
       const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
       setSelected(updated.data);
     } catch (err: any) {
-      addToast(err.message || 'Failed to record action', 'error');
+      addToast(err?.message || 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
   };
 
@@ -206,8 +379,49 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       fetchStats();
     } catch (err: any) {
-      addToast(err.message || 'Failed to create evidence', 'error');
+      addToast(err?.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
+  };
+
+  const handleRequestRelease = async () => {
+    if (!selected) return;
+    setReleaseSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/request-release`, {
+        method: 'POST', body: JSON.stringify({ release_to: releaseTo, reason: releaseReason }),
+      });
+      addToast('Release requested — awaiting supervisor approval', 'success');
+      setReleaseOpen(false);
+      setReleaseTo('');
+      setReleaseReason('');
+      fetchItems({ silent: true });
+      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
+      setSelected(updated.data);
+    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    finally { setReleaseSubmitting(false); }
+  };
+
+  const requestApproveRelease = (action: 'approve' | 'deny') => {
+    setPendingReleaseAction(action);
+    setConfirmApproveRelease(true);
+  };
+
+  const handleApproveRelease = async () => {
+    if (!selected || !pendingReleaseAction) return;
+    const action = pendingReleaseAction;
+    setConfirmApproveRelease(false);
+    setPendingReleaseAction(null);
+    setReleaseSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/approve-release`, {
+        method: 'PUT', body: JSON.stringify({ action }),
+      });
+      addToast(action === 'approve' ? 'Release approved' : 'Release denied', 'success');
+      fetchItems({ silent: true });
+      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
+      setSelected(updated.data);
+    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    finally { setReleaseSubmitting(false); }
   };
 
   let chainOfCustody: any[] = [];
@@ -221,12 +435,12 @@ export default function EvidencePropertyPage() {
 
   const formatDate = (d?: string) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateTime = (d?: string) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {
@@ -245,6 +459,12 @@ export default function EvidencePropertyPage() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
+  // VideoPlayer requires a function it can call to build Authorization
+  // headers for the signed-URL handshake on the BWC stream endpoint. This
+  // mirrors the centralized token source in apiFetch (also reads
+  // 'rmpg_token' from localStorage). Kept inline because VideoPlayer's
+  // prop shape expects `() => Record<string, string>` — not a refactor
+  // target until VideoPlayer's signed-URL flow is extracted into a hook.
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = {};
@@ -253,50 +473,192 @@ export default function EvidencePropertyPage() {
   };
 
   // ─── Render ────────────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Evidence & Property \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcuts:
+  //   Escape — smart-cascade close (smallest-open-first: any of the four
+  //            modals; previously only chainModalOpen was honored, the
+  //            other three ignored Escape entirely).
+  //   N      — open the New Evidence modal (mirrors Dispatch / FI / Patrol
+  //            N-binding for operator muscle memory). Suppressed when
+  //            typing into an input / textarea / contenteditable.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        // Close-smallest-open-first cascade. Each branch returns after
+        // closing so a single Esc doesn't blast through multiple open modals.
+        if (confirmDispose) { setConfirmDispose(false); return; }
+        if (confirmApproveRelease) { setConfirmApproveRelease(false); setPendingReleaseAction(null); return; }
+        if (releaseOpen) { setReleaseOpen(false); return; }
+        if (dispositionOpen) { setDispositionOpen(false); return; }
+        if (newEvidenceOpen) { setNewEvidenceOpen(false); return; }
+        if (chainModalOpen) { setChainModalOpen(false); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setNewEvidenceOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [confirmDispose, confirmApproveRelease, releaseOpen, dispositionOpen, newEvidenceOpen, chainModalOpen]);
+
+  // ── /evidence?evidence_id=<id> URL deep-link auto-select ──
+  // Tenth consecutive page-pass implementing the cross-page contract. Court
+  // case + incident references → "view this evidence" land directly on the
+  // item. One-shot per page load; param is stripped after applying.
+  // (searchParams / setSearchParams are declared earlier so they can seed
+  //  the ?case_id= / ?status= filter initialisers.)
+  // Accept both ?evidence_id= (canonical) and ?id= (QuickSearchCard mobile link).
+  const pendingEvidenceIdRef = useRef<string | null>(
+    searchParams.get('evidence_id') || searchParams.get('id'),
+  );
+  useEffect(() => {
+    const target = pendingEvidenceIdRef.current;
+    if (!target || loading) return;
+    pendingEvidenceIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = items.find((it) => String(it.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelected(hit); setDetailTab('info'); }
+        } else {
+          // Not in the current paged list — fetch by id directly so the
+          // deep-link works regardless of filters / pagination.
+          const res = await apiFetch<any>(`/records/evidence/${target}`);
+          if (cancelled) return;
+          const item = res?.data ?? res;
+          if (item && item.id != null) {
+            setSelected(item);
+            setDetailTab('info');
+          } else {
+            addToast(`Evidence ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load evidence ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('evidence_id');
+          next.delete('id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, loading]);
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel: Evidence List ── */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
-          <button
+          <button type="button"
             onClick={() => setNewEvidenceOpen(true)}
-            className="toolbar-btn toolbar-btn-primary"
+            className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Plus style={{ width: 11, height: 11 }} />
             <span className="hidden sm:inline">New Evidence</span>
           </button>
         </PanelTitleBar>
 
+        {fetchError && (
+          <div className="mx-3 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
+            <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
+          </div>
+        )}
+
         {/* Stats Row */}
         {stats && (
           <div className="flex gap-3 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
             {[
-              { label: 'TOTAL', value: stats.total_items || 0, color: 'text-white' },
-              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-blue-400' },
-              { label: 'CHECKED OUT', value: stats.by_status?.checked_out || 0, color: 'text-amber-400' },
-              { label: 'PENDING', value: stats.pending_disposition || 0, color: 'text-orange-400' },
+              { label: 'TOTAL', value: stats.total || 0, color: 'text-rmpg-100' },
+              { label: 'COLLECTED', value: stats.collected || 0, color: 'text-rmpg-400' },
+              { label: 'IN STORAGE', value: stats.stored || 0, color: 'text-amber-400' },
+              { label: 'CLOSED', value: stats.closed || 0, color: 'text-orange-400' },
             ].map(s => (
               <div key={s.label} className="panel-beveled px-3 py-1.5 text-center min-w-0">
                 <div className="text-[9px] font-mono text-rmpg-500 tracking-wider">{s.label}</div>
-                <div className={`text-sm font-bold ${s.color}`}>{s.value}</div>
+                <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value}</div>
               </div>
             ))}
+            <button type="button"
+              onClick={() => { setShowAgingReport(!showAgingReport); if (!agingReport) fetchAgingReport(); }}
+              className="panel-beveled px-3 py-1.5 text-center min-w-0 hover:bg-rmpg-700/50 transition-colors cursor-pointer">
+              <div className="text-[9px] font-mono text-rmpg-500 tracking-wider">AGING</div>
+              <div className="text-sm font-bold text-purple-400">Report</div>
+            </button>
+          </div>
+        )}
+
+        {/* Aging Report Panel */}
+        {showAgingReport && (
+          <div className="border-b border-rmpg-700 bg-surface-sunken px-3 py-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Evidence Aging Report</span>
+              <IconButton onClick={() => setShowAgingReport(false)} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close aging report"><X style={{ width: 12, height: 12 }} /></IconButton>
+            </div>
+            {agingLoading ? (
+              <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /></div>
+            ) : agingReport ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {(agingReport.aging_breakdown || []).map((a: any) => (
+                    <div key={a.age_range} className="panel-beveled p-2 text-center">
+                      <div className="text-[9px] text-rmpg-500">{a.age_range}</div>
+                      <div className="text-sm font-bold text-rmpg-100">{a.count}</div>
+                      <div className="text-[9px] text-rmpg-500">{a.in_storage || 0} stored / {a.checked_out || 0} out</div>
+                    </div>
+                  ))}
+                </div>
+                {agingReport.items_needing_disposition > 0 && (
+                  <div className="panel-beveled p-2 border-l-2 border-orange-500">
+                    <span className="text-[10px] text-orange-400 font-bold">{agingReport.items_needing_disposition} items over 1 year old need disposition review</span>
+                  </div>
+                )}
+                {agingReport.overdue_checkouts?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-red-400 font-bold uppercase mb-1">Overdue Checkouts</div>
+                    {agingReport.overdue_checkouts.slice(0, 5).map((c: any) => (
+                      <div key={c.id} className="text-[10px] text-rmpg-300 py-0.5">
+                        {c.description} — {c.days_overdue}d overdue ({c.checked_out_by_name})
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : <div className="text-xs text-rmpg-500 py-2">No data available</div>}
           </div>
         )}
 
         {/* Filters */}
-        <div className="flex flex-col gap-1.5 p-2 border-b border-rmpg-700 bg-surface-base">
+        <div className="flex flex-col gap-1.5 px-3 py-2 border-b border-rmpg-700 bg-surface-base">
           <div className="flex gap-1.5">
             <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-              <input
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
+              <input id="ff-evidencepropertypage-0"
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                placeholder="Search evidence..."
-                className="input-dark w-full pl-7 pr-2 py-1 text-xs"
+                placeholder="Search evidence..." aria-label="Search evidence..."
+                className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
               />
             </div>
-            <select
+            <select id="ff-evidencepropertypage-1"
               value={filterType}
               onChange={e => { setFilterType(e.target.value); setPage(1); }}
               className="select-dark text-[10px] px-1.5 py-1"
@@ -306,16 +668,17 @@ export default function EvidencePropertyPage() {
             </select>
           </div>
           {/* Status filter chips */}
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap" role="group" aria-label="Filter by status">
             {STATUS_OPTIONS.map(opt => (
-              <button
+              <button type="button"
                 key={opt.value}
                 onClick={() => { setFilterStatus(opt.value); setPage(1); }}
-                className={`text-[9px] px-2 py-0.5 transition-colors ${
+                className={`text-[9px] px-2 py-0.5 transition-all duration-150 ${
                   filterStatus === opt.value
-                    ? 'bg-brand-600/30 text-brand-300 border border-brand-600/50'
-                    : 'toolbar-btn text-rmpg-500'
+                    ? 'bg-brand-600/30 text-brand-300 border border-brand-600/50 shadow-sm'
+                    : 'toolbar-btn text-rmpg-500 hover:text-rmpg-300'
                 }`}
+                aria-pressed={filterStatus === opt.value}
               >
                 {opt.label}
               </button>
@@ -324,32 +687,37 @@ export default function EvidencePropertyPage() {
         </div>
 
         {/* Item List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="w-5 h-5 animate-spin text-rmpg-500" />
+            <div className="flex flex-col items-center justify-center h-40 gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading evidence items" />
+              <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading evidence...</span>
             </div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-              <Package className="w-8 h-8 mb-2 text-rmpg-600" />
-              <p className="text-xs">No evidence items found</p>
-              <button onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn text-[10px] mt-3 text-brand-400">
+            <div className="flex flex-col items-center justify-center py-16 text-rmpg-500">
+              <Package className="w-10 h-10 mb-3 text-rmpg-600" />
+              <p className="text-xs font-medium">No evidence items found</p>
+              <p className="text-[9px] text-rmpg-600 mt-1">Adjust your filters or create a new item</p>
+              <button type="button" onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn toolbar-btn-primary text-[10px] mt-3">
                 <Plus style={{ width: 10, height: 10 }} /> Create Evidence Item
               </button>
             </div>
           ) : (
             items.map(item => (
-              <button
+              <button type="button"
                 key={item.id}
+                role="listitem"
                 onClick={() => { setSelected(item); setDetailTab('info'); }}
-                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-colors ${
+                onContextMenu={(e) => openMenu(e, buildEvidenceMenu(item))}
+                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-all duration-150 ${
                   selected?.id === item.id
                     ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                    : 'hover:bg-rmpg-800/30 border-l-2 border-l-transparent'
+                    : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
+                aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-white truncate">
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100 truncate px-1.5 py-0.5 evidence-barcode-stripe" style={{ letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
@@ -383,13 +751,13 @@ export default function EvidencePropertyPage() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">
               ← Prev
             </button>
-            <span className="text-[9px] font-mono text-rmpg-500">
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
               Page {page} / {totalPages} &bull; {totalCount} items
             </span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-rmpg-100 transition-colors">
               Next →
             </button>
           </div>
@@ -397,13 +765,31 @@ export default function EvidencePropertyPage() {
       </div>
 
       {/* ── Right Panel: Detail ── */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={selected.evidence_number || `Evidence #${selected.id}`} icon={Box}>
-              <button
+              {/* Court-ready PDF — item card + disposition-overdue alert
+                  + chain-of-custody timeline + supervisor signature line.
+                  Evidence + chain of custody is statutory court-record
+                  material; supervisors and custodians previously had no
+                  print path at all. */}
+              <button type="button"
+                onClick={() => openEvidenceItemPdf({
+                  item: selected,
+                  preparedBy: user
+                    ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+                    : undefined,
+                })}
+                className="toolbar-btn print:hidden"
+                title="Open a printable chain-of-custody PDF for this item"
+              >
+                <Printer style={{ width: 11, height: 11 }} />
+                <span className="hidden sm:inline">Print</span>
+              </button>
+              <button type="button"
                 onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
-                className="toolbar-btn toolbar-btn-primary"
+                className="toolbar-btn toolbar-btn-primary print:hidden"
               >
                 <ArrowRightLeft style={{ width: 11, height: 11 }} />
                 <span className="hidden sm:inline">Chain Action</span>
@@ -411,21 +797,26 @@ export default function EvidencePropertyPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700 bg-surface-raised">
+            <div className="flex border-b border-rmpg-700 bg-surface-raised" role="tablist" aria-label="Evidence detail tabs">
               {([
                 { id: 'info' as DetailTab, label: 'Details', icon: FileText },
                 { id: 'chain' as DetailTab, label: 'Chain of Custody', icon: ArrowRightLeft },
-                { id: 'bwc' as DetailTab, label: 'BWC Footage', icon: Camera },
+                { id: 'checkout' as DetailTab, label: 'Check Out/In', icon: PackagePlus },
+                { id: 'custody_audit' as DetailTab, label: 'Audit', icon: Shield },
+                { id: 'links' as DetailTab, label: 'Links', icon: Tag },
+                { id: 'bwc' as DetailTab, label: 'BWC', icon: Camera },
               ]).map(tab => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button type="button"
                     key={tab.id}
+                    role="tab"
+                    aria-selected={detailTab === tab.id}
                     onClick={() => setDetailTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                    className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 ${
                       detailTab === tab.id
-                        ? 'text-white border-b-2 border-brand-500 bg-brand-900/10'
-                        : 'text-rmpg-500 hover:text-rmpg-300'
+                        ? 'text-rmpg-100 border-b-2 border-brand-500 bg-brand-900/10'
+                        : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-rmpg-700/20'
                     }`}
                   >
                     <Icon style={{ width: 11, height: 11 }} />
@@ -435,7 +826,7 @@ export default function EvidencePropertyPage() {
               })}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
               {/* ── Details Tab ── */}
               {detailTab === 'info' && (
                 <div className="space-y-4">
@@ -444,11 +835,11 @@ export default function EvidencePropertyPage() {
                     <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
                       {(selected.status || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
-                    <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50 font-semibold">
+                    <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-700/50 font-semibold">
                       {TYPE_LABELS[selected.type] || TYPE_LABELS[selected.evidence_type] || selected.type || selected.evidence_type}
                     </span>
                     {selected.category && (
-                      <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-600/30">
+                      <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-700/30">
                         {selected.category}
                       </span>
                     )}
@@ -466,7 +857,7 @@ export default function EvidencePropertyPage() {
                         ['Serial Number', selected.serial_number || '—'],
                         ['Make / Model', [selected.make || selected.brand, selected.model].filter(Boolean).join(' ') || '—'],
                         ['Quantity', selected.quantity || '1'],
-                        ['Estimated Value', selected.estimated_value ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
+                        ['Estimated Value', selected.estimated_value && !isNaN(Number(selected.estimated_value)) ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
                       ].map(([label, value]) => (
                         <div key={label as string}>
                           <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -503,6 +894,71 @@ export default function EvidencePropertyPage() {
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selected.notes}</div>
                     </div>
                   )}
+
+                  {/* Release Authorization */}
+                  <div className="panel-inset p-3">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Release Authorization</div>
+                    {selected.release_status === 'release_requested' ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 border bg-amber-900/50 text-amber-400 border-amber-700/50 font-bold">RELEASE REQUESTED</span>
+                          {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                        </div>
+                        {selected.release_reason && <div className="text-[10px] text-rmpg-400">Reason: {selected.release_reason}</div>}
+                        {/* Approve/Deny gate: supervisor/manager/admin only — mirrors backend PUT approve-release role check. */}
+                        {canApproveRelease ? (
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => requestApproveRelease('approve')} disabled={releaseSubmitting}
+                              className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
+                              <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
+                            </button>
+                            <button type="button" onClick={() => requestApproveRelease('deny')} disabled={releaseSubmitting}
+                              className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
+                              <X style={{ width: 11, height: 11 }} /> Deny
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-rmpg-500">Awaiting supervisor approval</div>
+                        )}
+                      </div>
+                    ) : selected.release_status === 'released' ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 border bg-green-900/50 text-green-400 border-green-700/50 font-bold">RELEASED</span>
+                          {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                        </div>
+                        {isAdmin && (
+                          <button type="button" onClick={() => setReleaseOpen(true)} className="toolbar-btn text-amber-400 border-amber-700/50 hover:bg-amber-900/30 text-[10px]">
+                            <RefreshCw style={{ width: 10, height: 10 }} /> Re-open Release (Admin)
+                          </button>
+                        )}
+                      </div>
+                    ) : selected.status !== 'released' && selected.status !== 'disposed' || isAdmin ? (
+                      <div>
+                        {!releaseOpen ? (
+                          <button type="button" onClick={() => setReleaseOpen(true)} className="toolbar-btn text-[10px]">
+                            <PackageOpen style={{ width: 10, height: 10 }} /> Request Release
+                          </button>
+                        ) : (
+                          <div className="space-y-2">
+                            <input id="ff-evidencepropertypage-2" value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
+                              className="input-dark w-full min-h-[36px]" />
+                            <RichTextArea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
+                              rows={2} className="textarea-dark w-full" />
+                            <div className="flex gap-1">
+                              <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
+                                {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle style={{ width: 11, height: 11 }} />}
+                                Submit Request
+                              </button>
+                              <button type="button" onClick={() => setReleaseOpen(false)} className="toolbar-btn">Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ')}</div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -513,7 +969,7 @@ export default function EvidencePropertyPage() {
                     <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                       <ArrowRightLeft className="w-8 h-8 mb-2 text-rmpg-600" />
                       <p className="text-xs">No chain of custody entries yet</p>
-                      <button
+                      <button type="button"
                         onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
                         className="toolbar-btn text-[10px] mt-3 text-brand-400"
                       >
@@ -526,12 +982,12 @@ export default function EvidencePropertyPage() {
                       const ActionIcon = actionDef?.icon || ArrowRightLeft;
                       return (
                         <div key={idx} className="panel-beveled p-3 flex gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded-sm">
                             <ActionIcon style={{ width: 14, height: 14 }} className="text-brand-400" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-white">
+                              <span className="text-xs font-bold text-rmpg-100">
                                 {actionDef?.label || entry.action}
                               </span>
                               <span className="text-[9px] font-mono text-rmpg-500 flex-shrink-0">
@@ -559,13 +1015,188 @@ export default function EvidencePropertyPage() {
                 </div>
               )}
 
+              {/* ── Checkout/Checkin Tab ── */}
+              {detailTab === 'checkout' && selected && (
+                <div className="space-y-4">
+                  {selected.checked_out_by ? (
+                    <div className="space-y-3">
+                      <div className="panel-beveled p-3 border-l-2 border-amber-500">
+                        <div className="text-[10px] text-amber-400 font-bold uppercase mb-1">Currently Checked Out</div>
+                        <div className="text-xs text-rmpg-300">Reason: {selected.checkout_reason || 'N/A'}</div>
+                        <div className="text-[10px] text-rmpg-500 mt-1">Since: {selected.checked_out_at || 'Unknown'}</div>
+                        {selected.expected_return_date && (
+                          <div className="text-[10px] text-rmpg-500">Expected return: {selected.expected_return_date}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="ff-evidencepropertypage-3" className="block text-[10px] text-rmpg-400 uppercase tracking-wider">Condition on Return</label>
+                        <select id="ff-evidencepropertypage-3" value={checkinCondition} onChange={e => setCheckinCondition(e.target.value)}
+                          className="input-standard w-full text-xs">
+                          <option value="">Good / Unchanged</option>
+                          <option value="good">Good</option>
+                          <option value="fair">Fair</option>
+                          <option value="damaged">Damaged</option>
+                          <option value="partial">Partial / Missing Items</option>
+                        </select>
+                        <button type="button" onClick={handleCheckin} disabled={checkoutSubmitting}
+                          className="btn-primary w-full flex items-center justify-center gap-2">
+                          {checkoutSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackageOpen style={{ width: 12, height: 12 }} />}
+                          Check In
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="panel-beveled p-3 border-l-2 border-green-500">
+                        <div className="text-[10px] text-green-400 font-bold uppercase mb-1">In Storage</div>
+                        <div className="text-xs text-rmpg-300">Location: {selected.storage_location || 'Not assigned'}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="ff-evidencepropertypage-4" className="block text-[10px] text-rmpg-400 uppercase tracking-wider">Checkout Reason *</label>
+                        <input id="ff-evidencepropertypage-4" type="text" value={checkoutReason} onChange={e => setCheckoutReason(e.target.value)}
+                          className="input-standard w-full text-xs" placeholder="Court presentation, lab analysis, etc." />
+                        <label htmlFor="ff-evidencepropertypage-5" className="block text-[10px] text-rmpg-400 uppercase tracking-wider mt-2">Expected Return Date</label>
+                        <input id="ff-evidencepropertypage-5" type="date" value={checkoutExpectedReturn} onChange={e => setCheckoutExpectedReturn(e.target.value)}
+                          className="input-standard w-full text-xs" />
+                        <button type="button" onClick={handleCheckout} disabled={checkoutSubmitting || !checkoutReason}
+                          className="btn-primary w-full flex items-center justify-center gap-2">
+                          {checkoutSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <PackagePlus style={{ width: 12, height: 12 }} />}
+                          Check Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Disposition */}
+                  <div className="border-t border-rmpg-700 pt-3 mt-3">
+                    <button type="button" onClick={() => setDispositionOpen(!dispositionOpen)}
+                      className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold hover:text-rmpg-100">
+                      {dispositionOpen ? '▾' : '▸'} Evidence Disposition
+                    </button>
+                    {dispositionOpen && (
+                      <div className="space-y-2 mt-2">
+                        <select id="ff-evidencepropertypage-6" value={dispositionType} onChange={e => setDispositionType(e.target.value)}
+                          className="input-standard w-full text-xs">
+                          <option value="pending">Pending</option>
+                          <option value="return_to_owner">Return to Owner</option>
+                          {/* Destroy and forfeit are irreversible — admin/manager only */}
+                          {canDispose && <option value="destroy">Destroy</option>}
+                          <option value="auction">Auction</option>
+                          {canDispose && <option value="forfeit">Forfeit</option>}
+                          <option value="retain">Retain</option>
+                          <option value="transfer_to_agency">Transfer to Agency</option>
+                        </select>
+                        <input id="ff-evidencepropertypage-7" type="text" value={dispositionMethod} onChange={e => setDispositionMethod(e.target.value)}
+                          className="input-standard w-full text-xs" placeholder="Method details..." />
+                        <RichTextArea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)}
+                          className="input-standard w-full text-xs h-16 resize-none" placeholder="Disposition notes..." />
+                        <button type="button" onClick={handleDispositionSubmit} disabled={dispositionSubmitting}
+                          className="btn-warning w-full flex items-center justify-center gap-2 text-xs">
+                          {dispositionSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />}
+                          Record Disposition
+                        </button>
+                        {!canDispose && (
+                          <p className="text-[9px] text-rmpg-500">Destroy and forfeit require admin or manager authority.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Custody Audit Tab ── */}
+              {detailTab === 'custody_audit' && (
+                <div>
+                  {custodyAuditLoading ? (
+                    <div className="flex items-center justify-center h-20"><Loader2 className="w-5 h-5 animate-spin text-brand-400" /></div>
+                  ) : custodyAudit ? (
+                    <div className="space-y-3">
+                      <div className={`panel-beveled p-3 border-l-2 ${custodyAudit.is_valid ? 'border-green-500' : 'border-red-500'}`}>
+                        <div className={`text-[10px] font-bold uppercase ${custodyAudit.is_valid ? 'text-green-400' : 'text-red-400'}`}>
+                          {custodyAudit.is_valid ? 'CHAIN OF CUSTODY VALID' : 'CHAIN OF CUSTODY ISSUES FOUND'}
+                        </div>
+                        <div className="text-[10px] text-rmpg-400 mt-1">
+                          {custodyAudit.chain_length} entries | Status: {custodyAudit.current_status} | Location: {custodyAudit.current_location || 'Unknown'}
+                        </div>
+                      </div>
+                      {custodyAudit.gaps?.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-red-400 font-bold uppercase">Gaps Found ({custodyAudit.gaps.length})</div>
+                          {custodyAudit.gaps.map((gap: any, i: number) => (
+                            <div key={i} className="panel-beveled p-2 text-[10px] text-rmpg-300 border-l-2 border-red-600">
+                              {gap.gap_hours}h gap between "{gap.from_action}" and "{gap.to_action}"
+                              <div className="text-[9px] text-rmpg-500">{gap.from_time} → {gap.to_time}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {custodyAudit.warnings?.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-amber-400 font-bold uppercase">Warnings ({custodyAudit.warnings.length})</div>
+                          {custodyAudit.warnings.map((w: string, i: number) => (
+                            <div key={i} className="text-[10px] text-amber-300 flex items-start gap-1">
+                              <AlertTriangle style={{ width: 10, height: 10, flexShrink: 0, marginTop: 2 }} /> {w}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-rmpg-500 py-8">No audit data available</div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Linked Records Tab ── */}
+              {detailTab === 'links' && (
+                <div>
+                  {linksLoading ? (
+                    <div className="flex items-center justify-center h-20"><Loader2 className="w-5 h-5 animate-spin text-brand-400" /></div>
+                  ) : linkedRecords ? (
+                    <div className="space-y-3">
+                      {linkedRecords.incident && (
+                        <div className="panel-beveled p-2">
+                          <div className="text-[10px] text-rmpg-400 uppercase font-bold">Linked Incident</div>
+                          <div className="text-xs text-rmpg-100">{linkedRecords.incident.incident_number} — {humanizeType(linkedRecords.incident.incident_type)}</div>
+                          <div className="text-[10px] text-rmpg-500">Status: {humanizeStatus(linkedRecords.incident.status, 'incident')}</div>
+                        </div>
+                      )}
+                      {linkedRecords.cases?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
+                          {linkedRecords.cases.map((c: any) => (
+                            <div key={c.id} className="panel-beveled p-2 mb-1">
+                              <div className="text-xs text-rmpg-100">{c.case_number} — {toDisplayLabel(c.case_type || '')}</div>
+                              <div className="text-[10px] text-rmpg-500">Status: {toDisplayLabel(c.status || '')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {linkedRecords.forensic_cases?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Forensic Cases ({linkedRecords.forensic_cases.length})</div>
+                          {linkedRecords.forensic_cases.map((fc: any) => (
+                            <div key={fc.id} className="panel-beveled p-2 mb-1">
+                              <div className="text-xs text-rmpg-100">{fc.lab_number} — {fc.title}</div>
+                              <div className="text-[10px] text-rmpg-500">{toDisplayLabel(fc.case_type || '')} | {toDisplayLabel(fc.status || '')}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!linkedRecords.incident && !linkedRecords.cases?.length && !linkedRecords.forensic_cases?.length && (
+                        <div className="text-center text-xs text-rmpg-500 py-8">No linked records found</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-rmpg-500 py-8">Select evidence to view links</div>
+                  )}
+                </div>
+              )}
+
               {/* ── BWC Footage Tab ── */}
               {detailTab === 'bwc' && (
                 <div>
                   {bwcLoading ? (
-                    <div className="flex items-center justify-center h-32">
-                      <Loader2 className="w-5 h-5 animate-spin text-rmpg-500" />
-                    </div>
+                    <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
                   ) : bwcVideos.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                       <Camera className="w-8 h-8 mb-2 text-rmpg-600" />
@@ -581,11 +1212,11 @@ export default function EvidencePropertyPage() {
                       </div>
                       {bwcVideos.map(vid => (
                         <div key={vid.id} className="panel-beveled p-3 flex items-center gap-3">
-                          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
+                          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded-sm">
                             <Video style={{ width: 16, height: 16 }} className="text-brand-400" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{vid.title}</div>
+                            <div className="text-xs font-bold text-rmpg-100 truncate">{vid.title}</div>
                             <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                               <span className="flex items-center gap-1">
                                 <Shield style={{ width: 9, height: 9 }} />
@@ -610,7 +1241,7 @@ export default function EvidencePropertyPage() {
                               </span>
                             </div>
                           </div>
-                          <button
+                          <button type="button"
                             onClick={() => setPlayingVideo(vid)}
                             className="toolbar-btn toolbar-btn-primary px-2.5 py-1.5 flex items-center gap-1"
                           >
@@ -637,21 +1268,21 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">Record Chain of Custody Action</h2>
               </div>
-              <button onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1">
+              <IconButton onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1" aria-label="Close chain of custody modal">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Action</label>
-                <select
+                <label htmlFor="ff-evidencepropertypage-8" className="field-label">Action</label>
+                <select id="ff-evidencepropertypage-8"
                   value={chainAction}
                   onChange={e => setChainAction(e.target.value)}
                   className="select-dark w-full"
@@ -662,8 +1293,8 @@ export default function EvidencePropertyPage() {
 
               {(chainAction === 'check_in' || chainAction === 'transfer') && (
                 <div>
-                  <label className="field-label">Destination Location</label>
-                  <select
+                  <label htmlFor="ff-evidencepropertypage-9" className="field-label">Destination Location</label>
+                  <select id="ff-evidencepropertypage-9"
                     value={chainLocation}
                     onChange={e => setChainLocation(e.target.value)}
                     className="select-dark w-full"
@@ -676,7 +1307,7 @@ export default function EvidencePropertyPage() {
 
               <div>
                 <label className="field-label">Notes</label>
-                <textarea
+                <RichTextArea
                   value={chainNotes}
                   onChange={e => setChainNotes(e.target.value)}
                   rows={3}
@@ -686,9 +1317,9 @@ export default function EvidencePropertyPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-                <button onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
-                  {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+                <button type="button" onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+                  {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Record Action
                 </button>
               </div>
@@ -699,33 +1330,33 @@ export default function EvidencePropertyPage() {
 
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setNewEvidenceOpen(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">New Evidence Item</h2>
               </div>
-              <button onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1">
+              <IconButton onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1" aria-label="Close new evidence modal">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Description <span className="text-red-400">*</span></label>
-                <input
+                <label htmlFor="ff-evidencepropertypage-10" className="field-label">Description <span className="text-red-400">*</span></label>
+                <input id="ff-evidencepropertypage-10"
                   type="text"
                   value={newEvidence.description}
                   onChange={e => setNewEvidence(p => ({ ...p, description: e.target.value }))}
-                  className="input-dark w-full"
+                  className="input-dark w-full min-h-[36px]"
                   placeholder="Describe the evidence item..."
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Type <span className="text-red-400">*</span></label>
-                  <select
+                  <label htmlFor="ff-evidencepropertypage-11" className="field-label">Type <span className="text-red-400">*</span></label>
+                  <select id="ff-evidencepropertypage-11"
                     value={newEvidence.evidence_type}
                     onChange={e => setNewEvidence(p => ({ ...p, evidence_type: e.target.value }))}
                     className="select-dark w-full"
@@ -734,12 +1365,12 @@ export default function EvidencePropertyPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Category</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-12" className="field-label">Category</label>
+                  <input id="ff-evidencepropertypage-12"
                     type="text"
                     value={newEvidence.category}
                     onChange={e => setNewEvidence(p => ({ ...p, category: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                     placeholder="e.g. Firearm, Drug, etc."
                   />
                 </div>
@@ -747,18 +1378,17 @@ export default function EvidencePropertyPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Incident #</label>
-                  <input
-                    type="text"
-                    value={newEvidence.incident_id}
-                    onChange={e => setNewEvidence(p => ({ ...p, incident_id: e.target.value }))}
-                    className="input-dark w-full"
-                    placeholder="Optional incident ID"
+                  <label className="field-label">Linked Incident</label>
+                  <IncidentPickerInline
+                    id="ff-evidencepropertypage-13"
+                    value={newEvidence.incident_id ? Number(newEvidence.incident_id) : null}
+                    onChange={(id) => setNewEvidence(p => ({ ...p, incident_id: id ? String(id) : '' }))}
+                    placeholder="Optional — search by incident # / type / location…"
                   />
                 </div>
                 <div>
-                  <label className="field-label">Storage Location</label>
-                  <select
+                  <label htmlFor="ff-evidencepropertypage-14" className="field-label">Storage Location</label>
+                  <select id="ff-evidencepropertypage-14"
                     value={newEvidence.storage_location}
                     onChange={e => setNewEvidence(p => ({ ...p, storage_location: e.target.value }))}
                     className="select-dark w-full"
@@ -771,60 +1401,60 @@ export default function EvidencePropertyPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="field-label">Serial #</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-15" className="field-label">Serial #</label>
+                  <input id="ff-evidencepropertypage-15"
                     type="text"
                     value={newEvidence.serial_number}
                     onChange={e => setNewEvidence(p => ({ ...p, serial_number: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
                 <div>
-                  <label className="field-label">Brand</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-16" className="field-label">Brand</label>
+                  <input id="ff-evidencepropertypage-16"
                     type="text"
                     value={newEvidence.brand}
                     onChange={e => setNewEvidence(p => ({ ...p, brand: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
                 <div>
-                  <label className="field-label">Model</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-17" className="field-label">Model</label>
+                  <input id="ff-evidencepropertypage-17"
                     type="text"
                     value={newEvidence.model}
                     onChange={e => setNewEvidence(p => ({ ...p, model: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Estimated Value</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-18" className="field-label">Estimated Value</label>
+                  <input id="ff-evidencepropertypage-18"
                     type="number"
                     step="0.01"
                     value={newEvidence.estimated_value}
                     onChange={e => setNewEvidence(p => ({ ...p, estimated_value: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                     placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="field-label">Collected Date</label>
-                  <input
+                  <label htmlFor="ff-evidencepropertypage-19" className="field-label">Collected Date</label>
+                  <input id="ff-evidencepropertypage-19"
                     type="datetime-local"
                     value={newEvidence.collected_date}
                     onChange={e => setNewEvidence(p => ({ ...p, collected_date: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="field-label">Notes</label>
-                <textarea
+                <RichTextArea
                   value={newEvidence.notes}
                   onChange={e => setNewEvidence(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
@@ -834,13 +1464,13 @@ export default function EvidencePropertyPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-                <button
+                <button type="button" onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+                <button type="button"
                   onClick={handleCreateEvidence}
                   disabled={newEvidenceSubmitting || !newEvidence.description || !newEvidence.evidence_type}
-                  className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+                  className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
                 >
-                  {newEvidenceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
+                  {newEvidenceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Plus style={{ width: 11, height: 11 }} />}
                   Create Evidence
                 </button>
               </div>
@@ -856,6 +1486,43 @@ export default function EvidencePropertyPage() {
         video={playingVideo}
         apiBase={window.location.origin + '/api'}
         getAuthHeaders={getAuthHeaders}
+      />
+
+      {/* ── Confirm: destructive disposition (destroy / forfeit) ── */}
+      <ConfirmDialog
+        isOpen={confirmDispose}
+        onClose={() => setConfirmDispose(false)}
+        onConfirm={handleDispositionConfirmed}
+        title="Confirm Disposition"
+        message={`Record "${dispositionType.replace(/_/g, ' ')}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
+        details={selected && (
+          <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
+        )}
+        confirmLabel="Record Disposition"
+        confirmVariant="danger"
+        isLoading={dispositionSubmitting}
+      />
+
+      {/* ── Confirm: approve / deny release ── */}
+      <ConfirmDialog
+        isOpen={confirmApproveRelease}
+        onClose={() => { setConfirmApproveRelease(false); setPendingReleaseAction(null); }}
+        onConfirm={handleApproveRelease}
+        title={pendingReleaseAction === 'approve' ? 'Approve Release' : 'Deny Release'}
+        message={
+          pendingReleaseAction === 'approve'
+            ? 'Approve this release request? The item will be marked as released and the chain of custody updated.'
+            : 'Deny this release request? The requesting officer will need to resubmit.'
+        }
+        details={selected && (
+          <>
+            <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
+            {selected.release_to && <span>Release to: {selected.release_to}</span>}
+          </>
+        )}
+        confirmLabel={pendingReleaseAction === 'approve' ? 'Approve' : 'Deny'}
+        confirmVariant={pendingReleaseAction === 'approve' ? 'warning' : 'danger'}
+        isLoading={releaseSubmitting}
       />
     </div>
   );

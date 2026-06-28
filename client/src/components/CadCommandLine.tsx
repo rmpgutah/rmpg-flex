@@ -176,7 +176,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       {suggestions.length > 0 && (
         <div className="cad-command-suggestions">
           {suggestions.map(s => (
-            <button
+            <button type="button"
               key={s}
               className="cad-suggestion"
               onMouseDown={(e) => { e.preventDefault(); setInput(s + ' '); setSuggestions([]); inputRef.current?.focus(); }}
@@ -191,15 +191,17 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       <div className="cad-command-input-row">
         <Terminal style={{ width: 12, height: 12, color: '#d4a017', flexShrink: 0 }} />
         <ChevronRight style={{ width: 10, height: 10, color: '#d4a017', flexShrink: 0 }} />
-        <input
+        <input id="ff-cadcommandline-0"
           ref={inputRef}
+          data-cad-input
           type="text"
           className="cad-command-input"
           value={input}
           onChange={e => setInput(e.target.value.toUpperCase())}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
-          placeholder="Type command or press / to focus  (HELP for commands)"
+          placeholder="Type command or press / or F8  (HELP for commands)"
+          aria-label="CAD command line"
           spellCheck={false}
           autoComplete="off"
           autoCapitalize="characters"

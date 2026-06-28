@@ -4,7 +4,7 @@
 
 // --- Auth & Users ---
 
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer' | 'contract_manager';
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer' | 'contract_manager' | 'human_resources';
 
 export interface User {
   id: string;
@@ -50,7 +50,7 @@ export interface User {
   /** PNG base64 data URL of officer's digital signature */
   digital_signature?: string | null;
   /** Server returns status='active'|'inactive'|'terminated' */
-  status?: string;
+  status?: 'active' | 'inactive' | 'terminated';
   is_active: boolean;
   last_login?: string;
   created_at: string;
@@ -92,7 +92,7 @@ export interface SecurityNotification {
   details: string | null;
   ip_address: string | null;
   device_info: string | null;
-  is_read: number;
+  is_read: number | boolean;
   created_at: string;
 }
 
@@ -172,9 +172,40 @@ export interface Property {
   post_orders?: string;
   hazard_notes?: string;
   access_instructions?: string;
+  notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  business_type?: string;
+  structure_type?: string;
+  occupancy_status?: string;
+  year_built?: string;
+  square_footage?: string;
+  number_of_stories?: string;
+  security_features?: string;
+  key_holder_name?: string;
+  key_holder_phone?: string;
+  key_holder_relationship?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  last_inspection_date?: string;
+  inspection_status?: string;
+  alarm_company?: string;
+  alarm_account?: string;
+  camera_system?: string;
+  parking_info?: string;
+  roof_access?: string;
+  utility_shutoffs?: string;
+  known_hazards?: string;
+  previous_incidents_count?: number;
+  // F5 additions (2026-05-04) — were silently dropped on load
+  alarm_system?: string;
+  secondary_contact_name?: string;
+  secondary_contact_phone?: string;
+  contact_email?: string;
+  opening_hours?: string;
+  closing_hours?: string;
+  patrol_frequency?: string;
 }
 
 // --- CAD / Dispatch ---
@@ -209,8 +240,12 @@ export type CallSource =
 export interface CallNote {
   id: string;
   author: string;
+  author_username?: string | null; // server-stamped JWT username; keys note-edit ownership
   text: string;
   timestamp: string;
+  edited_at?: string | null;
+  edited_by?: string | null;
+  broadcast?: boolean;
 }
 
 export interface CallForService {
@@ -228,8 +263,19 @@ export interface CallForService {
   longitude?: number | null;
   property_id?: string;
   property_name?: string;
+  // Premise intel joined from the linked property (call detail GET).
+  property_address?: string;
+  gate_code?: string;
+  post_orders?: string;
+  hazard_notes?: string;
   client_id?: string;
   client_name?: string;
+  /** Contracting-client record fields (from the clients JOIN) — authoritative
+   *  addressee + service-type source for the PSO Notice of Communication. */
+  client_contact_name?: string;
+  client_phone?: string;
+  client_address?: string;
+  client_industry?: string;
   description: string;
   source: CallSource;
   assigned_units: string[];
@@ -241,18 +287,19 @@ export interface CallForService {
   location_floor?: string;
   location_room?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   // Dispatch district data (from geofence auto-fill)
   dispatch_code?: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
   // Case linkage
   case_id?: number;
   case_number?: string;
+  incident_number?: string;
   // Contract ID (PSO Client Request)
   contract_id?: string;
   // Subject/threat info
@@ -299,6 +346,7 @@ export interface CallForService {
   pso_billing_code?: string;
   pso_authorization?: string;
   pso_attempt_number?: number;
+  pso_service_windows?: PsoServiceWindows;
   // Process Service fields
   process_service_type?: string;
   process_served_to?: string;
@@ -306,6 +354,7 @@ export interface CallForService {
   process_attempts?: number;
   process_served_at?: string;
   process_service_result?: string;
+  court_name?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -328,16 +377,28 @@ export interface CallForService {
   archived_at?: string;
   previous_status?: CallStatus;
   created_by: string;
+  dispatcher_name?: string;
   updated_at: string;
+  // Risk assessment
+  risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
+  // Pinned-to-top flag (dispatcher sticky)
+  pinned?: number | boolean;
+}
+
+export interface PsoServiceWindows {
+  early_morning: boolean;  // 6AM-9AM
+  daytime: boolean;        // 9AM-6PM
+  evening: boolean;        // 6PM-9PM
+  weekend: boolean;        // Any attempt on Sat/Sun
 }
 
 export interface VisitHistory {
   id: number;
   call_id: string;
   visit_number: number;
-  status: string;
+  status: CallStatus;
   dispatched_at?: string;
   enroute_at?: string;
   onscene_at?: string;
@@ -351,6 +412,8 @@ export interface VisitHistory {
   note?: string;
   created_by?: string;
   created_at: string;
+  time_window?: 'early_morning' | 'daytime' | 'evening';
+  is_weekend?: number; // 0 or 1
 }
 
 // --- Units ---
@@ -361,7 +424,8 @@ export type UnitStatus =
   | 'enroute'
   | 'onscene'
   | 'busy'
-  | 'off_duty';
+  | 'off_duty'
+  | 'out_of_service';
 
 export interface Unit {
   id: string;
@@ -370,13 +434,39 @@ export interface Unit {
   officer_name: string;
   badge_number?: string;
   status: UnitStatus;
-  current_call_id?: string;
-  current_call_number?: string;
+  current_call_id?: string | null;
+  current_call_number?: string | null;
   location?: string;
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   vehicle?: string;
+  /** Unit setup fields (admin create/edit). capabilities is parsed from the
+   *  units.capabilities JSON text column; assigned_beat is a default patrol
+   *  beat; audio_mode is the MDT default (audible | silent | vibrate). */
+  capabilities?: string[];
+  assigned_beat?: string;
+  audio_mode?: string;
   last_status_change: string;
+  /** Feature 2: GPS timestamp for stale indicator */
+  gps_updated_at?: string;
+  /** Source of the last fix ('gps' | 'manual'); drives the map source badge. */
+  gps_source?: string;
+  /** Heading (deg 0-360) + ground speed (m/s) of the last fix — drives the map
+   *  nav-cursor arrow rotation + speed label. Mirrored onto the unit row from
+   *  the latest breadcrumb (src/routes/dispatch/gps.ts). */
+  gps_heading?: number | null;
+  gps_speed?: number | null;
+  /** Spillman EMERGENCY overlay (panic activation). 1 = the officer has an
+   *  active panic — the unit flashes red on the Status Monitor / map until a
+   *  terminal panic transition clears it. Set/cleared server-side in
+   *  src/routes/dispatch/panic.ts. */
+  emergency_active?: number | boolean | null;
+  emergency_call_id?: number | string | null;
+  emergency_since?: string | null;
+  /** On-foot (walking) detection — orthogonal to status. 1/true while the
+   *  officer is detected out of the vehicle (CoreMotion). */
+  on_foot?: number | boolean | null;
+  on_foot_since?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -428,7 +518,7 @@ export interface Person {
   middle_name?: string;
   alias_nickname?: string;
   date_of_birth?: string;
-  gender?: string;
+  gender?: 'male' | 'female' | 'non_binary' | 'unknown' | string;
   race?: string;
   height?: string;
   height_feet?: number | null;
@@ -441,6 +531,8 @@ export interface Person {
   scars_marks_tattoos?: string;
   clothing_description?: string;
   address?: string;
+  address_2?: string;
+  suffix?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -450,6 +542,9 @@ export interface Person {
   dl_state?: string;
   dl_expiry?: string;
   dl_class?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
@@ -481,9 +576,42 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
+  disability_flags?: string;
+  mental_health_flags?: string;
+  substance_abuse?: string;
+  medication_notes?: string;
+  education_level?: string;
+  military_branch?: string;
+  military_status?: string;
+  tribal_affiliation?: string;
+  identifying_marks_location?: string;
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  distinguishing_features?: string;
+  // Extended contact + activity tracking (jail intake / FI cards)
+  email_secondary?: string;
+  date_last_seen?: string;
+  location_last_seen?: string;
+  alias_dob?: string;
+  home_phone?: string;
+  work_phone?: string;
+  // F3 jail-intake additions (2026-05-04)
+  voice_description?: string;
+  religion?: string;
+  dietary_restrictions?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  flags: string[];
+  photo_url?: string;
+  photo?: string;
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;
@@ -527,7 +655,24 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  flags: string[];
+  title_status?: string;
+  exterior_condition?: string;
+  interior_condition?: string;
+  estimated_value?: string;
+  window_tint?: string;
+  modifications?: string;
+  equipment_notes?: string;
+  registered_owner?: string;
+  registration_state?: string;
+  // F4 additions (2026-05-04) — were silently dropped on load
+  insurance_expiry?: string;
+  ncic_entry_number?: string;
+  tow_location?: string;
+  owner_dl_number?: string;
+  owner_dob?: string;
+  primary_driver_name?: string;
+  vehicle_use?: string;
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;
@@ -540,6 +685,7 @@ export interface Evidence {
   incident_id?: string;
   incident_number?: string;
   type: string;
+  evidence_type?: string;
   description: string;
   location_found: string;
   collected_by: string;
@@ -564,6 +710,11 @@ export interface Evidence {
   estimated_value?: number;
   category?: string;
   notes?: string;
+  condition?: string;
+  quantity?: number;
+  is_biological?: boolean;
+  narcotics_flag?: boolean;
+  temperature_sensitive?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -577,7 +728,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant' | 'business';
 
 export interface RecordLink {
   id: string;
@@ -631,7 +782,7 @@ export interface EmailMessage {
   hasAttachments: boolean;
   isRead: boolean;
   isFlagged: boolean;
-  importance: string;
+  importance: 'low' | 'normal' | 'high';
   receivedAt: string;
   sentAt?: string;
 }
@@ -731,11 +882,20 @@ export interface TimeEntry {
   officer_name: string;
   clock_in: string;
   clock_out?: string;
+  /** Denver wall-clock string mirror of clock_in written by nowDualStamp(). */
+  clock_in_local?: string | null;
+  /** Denver wall-clock string mirror of clock_out written by nowDualStamp(). */
+  clock_out_local?: string | null;
+  /** Denver wall-clock string mirror of break_start written by nowDualStamp(). */
+  break_start_local?: string | null;
   scheduled_start?: string;
   scheduled_end?: string;
   break_start?: string;
   break_minutes: number;
   total_hours?: number;
+  starting_mileage?: number;
+  ending_mileage?: number;
+  total_miles?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
   created_at: string;
@@ -796,7 +956,24 @@ export interface TrainingRequirement {
 
 export type CameraStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'lost';
 export type VideoClassification = 'routine' | 'evidence' | 'flagged' | 'restricted';
-export type VideoRetention = 'active' | 'archived' | 'pending_deletion';
+// The retention vocabulary spans BOTH the original client union
+// (`active`/`archived`/`pending_deletion`) AND the server-side retention
+// dashboard values (`active`/`expired`/`purged`) AND the hold-list
+// values from `utils/evidenceLock.ts`. The 2026-06-21 audit caught
+// that the two vocabularies were silently disagreeing — see
+// utils/evidenceLock.ts for the canonical hold check.
+export type VideoRetention =
+  | 'active'
+  | 'archived'
+  | 'pending_deletion'
+  | 'expired'
+  | 'purged'
+  | 'legal_hold'
+  | 'court_hold'
+  | 'litigation_hold'
+  | 'subpoena_hold'
+  | 'ia_review'
+  | 'open_case';
 
 export interface BodyCamera {
   id: number;
@@ -804,13 +981,13 @@ export interface BodyCamera {
   camera_id: string;
   make: string;
   model: string;
-  firmware_version: string;
-  storage_capacity_gb: number;
+  firmware_version?: string;
+  storage_capacity_gb?: number;
   status: CameraStatus;
-  condition: string;
-  assigned_at: string;
-  returned_at: string;
-  notes: string;
+  condition?: 'new' | 'good' | 'fair' | 'poor' | 'damaged';
+  assigned_at?: string;
+  returned_at?: string | null;
+  notes?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -818,6 +995,12 @@ export interface BodyCamera {
 }
 
 export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
+
+export type BwcInteractionType =
+  | 'routine' | 'enforcement' | 'use_of_force' | 'critical_incident' | 'complaint'
+  | 'traffic_stop' | 'arrest' | 'search_warrant' | 'domestic_violence'
+  | 'welfare_check' | 'community_contact' | 'foot_pursuit' | 'vehicle_pursuit'
+  | 'interview' | 'evidence_collection' | 'field_training' | 'other';
 
 export interface BodyCamVideo {
   id: number;
@@ -829,12 +1012,13 @@ export interface BodyCamVideo {
   duration_seconds: number;
   mime_type: string;
   recorded_at: string;
-  case_number: string;
+  case_number?: string;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
-  overlay_error?: string;
-  notes: string;
+  overlay_error?: string | null;
+  interaction_type?: string;
+  notes?: string;
   uploaded_by: string;
   created_at: string;
   updated_at: string;
@@ -844,6 +1028,27 @@ export interface BodyCamVideo {
 
 // --- Dash Cam Videos ---
 
+export type DashCameraStatus = 'installed' | 'available' | 'maintenance' | 'damaged' | 'lost';
+
+export interface DashCamera {
+  id: number;
+  vehicle_id?: number;
+  vehicle_number?: string;
+  camera_id: string;
+  make?: string;
+  model?: string;
+  firmware_version?: string;
+  storage_capacity_gb?: number;
+  channel_count?: number;
+  status: DashCameraStatus;
+  condition?: string;
+  installed_at?: string;
+  removed_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashCamVideo {
   id: number;
   vehicle_id?: number;
@@ -852,6 +1057,11 @@ export interface DashCamVideo {
   vehicle_model?: string;
   vehicle_year?: number;
   unit_call_sign?: string;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
+  heading?: number;
+  camera_serial?: string;
   title: string;
   file_path: string;
   file_size: number;
@@ -860,25 +1070,34 @@ export interface DashCamVideo {
   recorded_at?: string;
   case_number?: string;
   classification: VideoClassification;
+  // Server returns this via SELECT v.* on /api/fleet/dashcam-videos —
+  // declared explicitly so the evidence-lock guard doesn't silently
+  // degrade if anyone later narrows the SELECT to a column list.
+  retention_status?: VideoRetention;
   speed_mph?: number;
   latitude?: number;
   longitude?: number;
   address?: string;
-  overlay_status?: string;
+  overlay_status?: OverlayStatus;
   overlay_error?: string;
   notes?: string;
-  source?: string;              // 'upload' | 'clearpathgps'
+  source?: 'upload' | 'clearpathgps';
   uploaded_by?: string;
   created_at: string;
   updated_at: string;
   // ClearPathGPS media sync fields
   cpg_device_id?: string;
-  cpg_channel?: string;         // "outside" | "inside"
+  cpg_channel?: 'outside' | 'inside';
   cpg_event_type?: string;
   cpg_thumbnail_url?: string;
   linked_dashcam_event_id?: number;
   /** JSON string of GPS track: [{latitude,longitude,speed,altitude,timestamp},...] */
   cpg_gps_track?: string;
+  // DVD burn / export fields
+  burn_status?: 'pending' | 'burning' | 'complete' | 'error';
+  burn_progress?: number;
+  burn_error?: string;
+  thumbnail_path?: string;
 }
 
 // --- Equipment ---
@@ -970,6 +1189,99 @@ export interface PersonnelAnalytics {
   };
 }
 
+// ─── HR Console Types ─────────────────────────────────────────
+
+export type LeaveType = 'vacation' | 'sick' | 'personal' | 'bereavement' | 'training' | 'unpaid';
+export type LeaveStatus = 'pending' | 'approved' | 'denied' | 'cancelled';
+
+export interface LeaveRequest {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  hours_requested: number;
+  reason: string;
+  status: LeaveStatus;
+  reviewed_by: number | null;
+  reviewer_name?: string;
+  reviewed_at: string | null;
+  denial_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaveBalance {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  year: number;
+  vacation_total: number;
+  vacation_used: number;
+  sick_total: number;
+  sick_used: number;
+  personal_total: number;
+  personal_used: number;
+}
+
+export type DisciplinaryType = 'verbal_warning' | 'written_warning' | 'suspension' | 'termination' | 'commendation' | 'counseling';
+export type DisciplinarySeverity = 'minor' | 'moderate' | 'major' | 'critical';
+export type DisciplinaryStatus = 'open' | 'closed' | 'appealed';
+
+export interface DisciplinaryRecord {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  type: DisciplinaryType;
+  severity: DisciplinarySeverity;
+  incident_date: string;
+  description: string;
+  action_taken: string | null;
+  follow_up_date: string | null;
+  follow_up_notes: string | null;
+  status: DisciplinaryStatus;
+  issued_by: number;
+  issuer_name?: string;
+  witness: string | null;
+  attachments: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewType = 'annual' | 'probationary' | 'quarterly' | 'improvement_plan';
+export type ReviewStatus = 'draft' | 'submitted' | 'acknowledged' | 'completed';
+
+export interface PerformanceReview {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  reviewer_id: number;
+  reviewer_name?: string;
+  review_period_start: string;
+  review_period_end: string;
+  review_date: string | null;
+  type: ReviewType;
+  overall_rating: number | null;
+  categories: Record<string, number>;
+  strengths: string | null;
+  areas_for_improvement: string | null;
+  goals: string | null;
+  officer_comments: string | null;
+  status: ReviewStatus;
+  acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HRDashboardData {
+  headcount: { active: number; new_hires_30d: number; terminations_30d: number; on_leave_today: number };
+  compliance: { training_pct: number; credential_pct: number; overdue_count: number };
+  pending_leave: number;
+  pending_reviews: number;
+  recent_activity: Array<{ id: number; type: string; description: string; officer_name: string; created_at: string }>;
+}
+
 // --- Patrol ---
 
 export interface PatrolCheckpoint {
@@ -1002,8 +1314,9 @@ export interface PatrolScan {
 
 // --- Incident Linking ---
 
-export type PersonRole = 'suspect' | 'victim' | 'witness' | 'reporting_party' | 'involved' | 'other';
-export type VehicleRole = 'suspect_vehicle' | 'victim_vehicle' | 'witness_vehicle' | 'involved' | 'evidence' | 'other';
+// Roles are admin-configurable (open-ended via link_options table) — widened to string.
+export type PersonRole = string;
+export type VehicleRole = string;
 
 export interface IncidentPerson {
   id: string;
@@ -1096,10 +1409,12 @@ export interface Notification {
   type: NotificationType;
   title: string;
   body?: string;
+  /** API may return `message` instead of `body` */
+  message?: string;
   entity_type?: string;
   entity_id?: string;
   priority: NotificationPriority;
-  is_read: boolean;
+  is_read: boolean | number;
   created_at: string;
 }
 
@@ -1108,11 +1423,11 @@ export interface Notification {
 export interface CallTemplate {
   id: string;
   name: string;
-  incident_type: string;
+  incident_type: IncidentType;
   priority: CallPriority;
   description_template?: string;
   default_notes?: string;
-  source: string;
+  source: CallSource;
   is_active: boolean;
   sort_order: number;
   created_by?: string;
@@ -1165,6 +1480,7 @@ export interface FleetVehicle {
   insurance_expiry?: string;
   registration_expiry?: string;
   equipment: string[];
+  take_home?: number;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -1203,6 +1519,22 @@ export interface FleetFuelLog {
   notes?: string;
   created_by?: string;
   created_at: string;
+  distance?: number;
+  efficiency?: number;
+  // Computed efficiency fields from backend
+  mpg?: number | null;
+  calc_distance?: number | null;
+  cost_per_mile?: number | null;
+  running_avg_mpg?: number | null;
+  // Optional backend-attached fields (not always present on every log row)
+  flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
+  driver_officer_id?: string;  // officer who filled the tank (if tracked)
+  // Enhanced capture (2026-05-31)
+  is_full_tank?: number | boolean; // 1/0 from D1; gates MPG attribution
+  payment_method?: string;
+  driver_name?: string;
+  location?: string;
+  odometer?: number;           // live column name (FleetFuelLog also exposes odometer_reading)
 }
 
 export interface FleetFuelSummary {
@@ -1211,6 +1543,140 @@ export interface FleetFuelSummary {
   avg_mpg: number | null;
   avg_cost_per_gallon: number;
   log_count: number;
+  best_mpg?: number | null;
+  worst_mpg?: number | null;
+  total_distance?: number | null;
+  cost_per_mile?: number | null;
+  fuel_cost_per_day?: number | null;
+  full_tank_count?: number;
+}
+
+// --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---
+//
+// These exports exist to satisfy imports in fleet analytics pages/PDFs that
+// were merged to main without accompanying type definitions. The shapes
+// below mirror actual usage but are intentionally permissive (`[key: string]:
+// any`) so future refinement can tighten fields without a breaking migration.
+// TODO: replace with precise interfaces derived from the backend response
+// schemas once the analytics API contracts stabilize.
+
+export interface FuelAnalyticsOverview {
+  vehicles?: Array<Record<string, any>>;
+  top_stations?: Array<Record<string, any>>;
+  flagged_leaderboard?: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByOfficer {
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByCard {
+  [key: string]: any;
+}
+
+export interface FleetFuelBudget {
+  id?: string;
+  // vehicle_id is numeric per the FuelBudgetModal signature (number | null).
+  // Keep this typed precisely — callers pass it to onSave which declares
+  // number | null, so widening to string | number causes assignability errors.
+  vehicle_id?: number | null;
+  period?: string;
+  budget_amount?: number;
+  [key: string]: any;
+}
+
+export type FuelBudgetPeriod = 'weekly' | 'monthly' | 'quarterly' | 'yearly' | string;
+
+export interface FleetFuelBudgetSummary {
+  total_budget?: number;
+  total_spent?: number;
+  variance?: number;
+  [key: string]: any;
+}
+
+export interface FleetLoan {
+  id?: string;
+  vehicle_id?: string;
+  lender?: string;
+  monthly_payment?: number;
+  [key: string]: any;
+}
+
+export interface FleetInsurancePolicy {
+  id?: string;
+  vehicle_id?: string;
+  carrier?: string;
+  policy_number?: string;
+  premium?: number;
+  [key: string]: any;
+}
+
+export interface FleetAccessory {
+  id?: string;
+  vehicle_id?: string;
+  name?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetUtilityCost {
+  id?: string;
+  vehicle_id?: string;
+  kind?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetOtherCost {
+  id?: number;
+  vehicle_id?: number;
+  cost_type?: string;
+  provider?: string;
+  amount?: number;
+  frequency?: string;
+  incurred_date?: string;
+  period_end?: string;
+  status?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface FleetCostBudget {
+  id?: number;
+  vehicle_id?: number;
+  category?: string;
+  monthly_budget?: number;
+  notes?: string;
+  updated_at?: string;
+  [key: string]: any;
+}
+
+export interface FleetCostSummary {
+  total?: number;
+  total_lifetime?: number;
+  cost_per_mile?: number;
+  categories?: {
+    fuel?: number;
+    maintenance?: number;
+    loans?: number;
+    insurance?: number;
+    accessories?: number;
+    utilities?: number;
+    other?: number;
+    [key: string]: number | undefined;
+  };
+  monthly_commitment?: {
+    loan?: number;
+    insurance?: number;
+    utility?: number;
+    other?: number;
+    total?: number;
+    [key: string]: number | undefined;
+  };
+  projected_annual?: number;
+  budgets?: Record<string, { budget: number; actual: number; over: boolean }>;
+  [key: string]: any;
 }
 
 // --- Fleet Inspections ---
@@ -1273,7 +1739,7 @@ export interface FleetPersonnelData {
     clock_in: string;
     clock_out?: string;
     total_hours?: number;
-    status: string;
+    status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   } | null;
   notes: FleetPersonnelNote[];
 }
@@ -1299,11 +1765,52 @@ export interface FleetAnalytics {
   fleet_summary: {
     total_vehicles: number;
     avg_mileage: number;
+    avg_mpg: number | null;
     total_maintenance_cost: number;
     total_fuel_cost: number;
     vehicles_needing_service: number;
     inspections_failing: number;
   };
+  cost_per_mile_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    current_mileage: number; maintenance_cost: number; fuel_cost: number;
+    total_cost: number; cost_per_mile: number | null;
+  }>;
+  service_compliance?: { compliant: number; overdue: number; rate: number };
+  inspection_pass_rate?: { total: number; passed: number; failed: number; rate: number };
+  fuel_economy_ranking?: Array<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    avg_mpg: number; total_gallons: number; total_miles: number;
+  }>;
+  utilization?: { assigned: number; unassigned: number; rate: number };
+  daily_usage?: Array<{ date: string; active_vehicles: number; total_pings: number; moving_pings: number }>;
+  maintenance_forecast?: Array<{
+    id: number; vehicle_number: string; current_mileage: number; next_service_due: number;
+    avg_daily_miles: number; miles_until_service: number; est_days_until_service: number | null;
+  }>;
+  oldest_vehicle_year?: number | null;
+  avg_daily_miles?: number;
+  top_issues?: Array<{ type: string; count: number; total_cost: number }>;
+}
+
+export interface FleetServiceAlert {
+  vehicle_id: number;
+  vehicle_number: string;
+  make: string;
+  model: string;
+  year: number;
+  issue: string;
+  due_date: string;
+  severity: 'critical' | 'warning';
+}
+
+export interface FleetServiceAlerts {
+  overdue_service: FleetServiceAlert[];
+  upcoming_service: FleetServiceAlert[];
+  expired_registration: FleetServiceAlert[];
+  expired_insurance: FleetServiceAlert[];
+  failed_inspections: FleetServiceAlert[];
+  all_alerts: FleetServiceAlert[];
 }
 
 // --- Record Alerts ---
@@ -1381,6 +1888,11 @@ export interface DashboardStats {
   active_bolos: number;
   officers_on_duty: number;
   calls_by_hour: { hour: number; count: number }[];
+  // Optional dashboard stat-card metrics (added by feature waves)
+  active_warrants?: number;
+  pending_serve?: number;
+  open_cases?: number;
+  total_persons?: number;
 }
 
 // --- API Response ---
@@ -1399,6 +1911,18 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+/** Utility: Sort direction for list endpoints */
+export type SortDirection = 'asc' | 'desc';
+
+/** Utility: Paginated list response wrapper */
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
 // --- WebSocket ---
 
 export type WSMessageType =
@@ -1412,12 +1936,29 @@ export type WSMessageType =
   | 'message'
   | 'activity'
   | 'dispatch_alert'
+  | 'call_status_for_officer'
   | 'system_alert'
   | 'notification'
   | 'panic_alert'
   | 'panic_audio'
   | 'panic_audio_response'
+  | 'panic_acknowledged'
+  | 'panic_resolved'
+  | 'panic_cancelled'
+  | 'panic_false_alarm'
+  | 'panic_escalated'
   | 'dispatch_update'
+  // High-frequency GPS pin glide (gps.ts → AlertHubDO). Its OWN type, kept
+  // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
+  // brain fan-in — MapPage moves the marker / rotates the arrow directly.
+  | 'unit_position'
+  // Trip lifecycle (unit_trips → AlertHubDO). Payload:
+  // { type:'trip_update', action:'opened'|'closed', unit_id, trip }.
+  // 'appended' is intentionally NOT broadcast — live distance/duration
+  // rollups come from polling /dispatch/trips/active; the socket only
+  // carries lifecycle (open/close). Feeds the board's current-trip badge.
+  | 'trip_update'
+  | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
   | 'record_update'
@@ -1434,6 +1975,10 @@ export type WSMessageType =
   | 'radio_channel_join'
   | 'radio_channel_leave'
   | 'radio_channel_state'
+  // Radio backend (src/routes/radio.ts) — channel CRUD + new transmissions.
+  // Payload: { action: 'channel_created' | 'channel_updated' |
+  // 'channel_archived' | 'transmission_logged', channel?, channel_id?, transmission? }
+  | 'radio_update'
   // MDC Selcall — unit paging, emergency override, channel scanning
   | 'selcall_page'
   | 'selcall_page_sent'
@@ -1465,7 +2010,54 @@ export type WSMessageType =
   // Process Server
   | 'serve:created'
   | 'serve:updated'
-  | 'serve:attempt';
+  | 'serve:attempt'
+  | 'call:warrant_alert'
+  // Voice dispatch alerts
+  | 'backup_request'
+  | 'pursuit_update'
+  | 'all_units'
+  // Welfare monitoring
+  | 'welfare_check'
+  | 'welfare_alert'
+  | 'welfare_emergency'
+  // Warrant system
+  | 'warrant'
+  | 'warrants_updated'
+  | 'warrant_served'
+  | 'warrant_recalled'
+  | 'scraper_events'
+  // Trespass orders
+  | 'trespass_order_violated'
+  | 'trespass_order_created'
+  | 'trespass_order_served'
+  // Map safety
+  | 'safety:broadcast'
+  // Dispatch broadcasts
+  | 'dispatch_broadcast'
+  // Comms
+  | 'new_message'
+  | 'emergency_message'
+  // Integration health
+  | 'integration_health_alert'
+  // Arrests/citations
+  | 'arrest_created'
+  | 'citation_issued'
+  // Serve manager
+  | 'serve_attempt'
+  | 'serve_created'
+  | 'serve_attempt_reminder'
+  // Radio events (for cross-integration)
+  | 'radio_check'
+  | 'radio_check_ack'
+  | 'radio_transmission'
+  | 'emergency_talkgroup_active'
+  | 'emergency_talkgroup_ended'
+  // Security
+  | 'security:updated'
+  // Speed tracking
+  | 'speed:alert'
+  | 'geofence:alert'
+  | 'officer_on_foot_overdue';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -1492,7 +2084,7 @@ export interface LiveSyncEvent {
 export interface PresenceUser {
   userId: number;
   username: string;
-  role: string;
+  role: UserRole;
 }
 
 export interface PresenceUpdate {
@@ -1748,6 +2340,8 @@ export interface FieldInterview {
   officer_display_name?: string;
   linked_person_first?: string;
   linked_person_last?: string;
+  person_flags?: string;
+  gang_affiliation?: string;
   status: 'active' | 'archived';
   created_at: string;
   archived_at?: string;
@@ -1789,13 +2383,159 @@ export interface TrespassOrder {
   linked_person_last?: string;
   linked_property_name?: string;
   notes?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
   archived_at?: string;
   created_at: string;
   updated_at: string;
+  violation_count?: number;
+  days_remaining?: number;
+}
+
+// --- Person Alias ---
+export interface PersonAlias {
+  id: number;
+  person_id: number;
+  alias_name: string;
+  alias_type: string;
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+}
+
+// --- Person Associate ---
+export interface PersonAssociate {
+  id: number;
+  person_id: number;
+  associate_person_id?: number;
+  associate_name: string;
+  relationship_type: string;
+  notes?: string;
+  assoc_first?: string;
+  assoc_last?: string;
+  assoc_photo?: string;
+  assoc_dob?: string;
+  created_at: string;
+}
+
+// --- Person Address History ---
+export interface PersonAddressHistory {
+  id: number;
+  person_id: number;
+  address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  address_type: string;
+  source: string;
+  verified: boolean;
+  effective_from?: string;
+  effective_to?: string;
+  created_by_name?: string;
+  created_at: string;
+}
+
+// --- Data Completeness ---
+export interface DataCompleteness {
+  score: number;
+  grade: string;
+  max_score?: number;
+  missing_required: string[];
+  missing_recommended: string[];
+  breakdown?: Record<string, { filled: number; total: number; score: number }>;
+}
+
+// --- Warrant Service Attempt ---
+export interface WarrantServiceAttempt {
+  id: number;
+  warrant_id: number;
+  attempted_by: number;
+  attempted_by_name?: string;
+  attempted_at: string;
+  location?: string;
+  method: string;
+  result: string;
+  notes?: string;
+  created_at: string;
+}
+
+// --- Case Person (Role Tracking) ---
+export type CasePersonRole = 'suspect' | 'victim' | 'witness' | 'involved' | 'person_of_interest' | 'informant';
+
+export interface CasePerson {
+  id: number;
+  case_id: number;
+  person_id?: number;
+  person_name: string;
+  role: CasePersonRole;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  dob?: string;
+  photo_url?: string;
+  flags?: string;
+  added_by_name?: string;
+  created_at: string;
+}
+
+// --- Case Timeline Event ---
+export interface CaseTimelineEvent {
+  type: string;
+  date: string;
+  title: string;
+  description?: string;
+  author?: string;
+}
+
+// --- FI Associate ---
+export interface FIAssociate {
+  id: number;
+  fi_id: number;
+  person_id?: number;
+  name: string;
+  relationship: string;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  photo_url?: string;
+  created_at: string;
+}
+
+// --- Trespass Violation ---
+export interface TrespassViolation {
+  id: number;
+  order_id: number;
+  violation_date: string;
+  location?: string;
+  description?: string;
+  officer_id?: number;
+  officer_name?: string;
+  officer_display?: string;
+  linked_incident_id?: number;
+  linked_call_id?: number;
+  notes?: string;
+  created_at: string;
+}
+
+// --- Cross-Entity Search Result ---
+export interface CrossSearchResult {
+  data: Record<string, any[]>;
+  alias_matches: any[];
+  total_results: number;
+  query: string;
+}
+
+// --- Recent Search ---
+export interface RecentSearch {
+  id: number;
+  user_id: number;
+  query: string;
+  entity_types?: string;
+  result_count: number;
+  created_at: string;
 }
 
 // --- Evidence Property Room ---
@@ -1814,7 +2554,7 @@ export interface EvidenceChainEntry {
 
 // --- Case Management ---
 
-export type CaseStatus = 'open' | 'assigned' | 'active' | 'suspended' | 'closed_cleared' | 'closed_unfounded' | 'closed_exception';
+export type CaseStatus = 'open' | 'assigned' | 'active' | 'suspended' | 'under_review' | 'closed_cleared' | 'closed_unfounded' | 'closed_exception';
 export type CaseType = 'general' | 'theft' | 'assault' | 'fraud' | 'narcotics' | 'missing_person' | 'other';
 export type CasePriority = 'low' | 'normal' | 'high' | 'critical';
 export type CaseNoteType = 'general' | 'lead' | 'interview' | 'evidence' | 'followup';
@@ -1839,14 +2579,21 @@ export interface Case {
   priority: CasePriority;
   lead_investigator_id?: number;
   lead_investigator_name?: string;
-  assigned_officers: string; // JSON array
+  /** JSON-encoded array of officer IDs */
+  assigned_officers: string;
   assigned_at?: string;
   solvability_score: number;
-  solvability_factors: string; // JSON
+  /** JSON-encoded SolvabilityFactors */
+  solvability_factors: string;
+  /** JSON-encoded array of incident IDs */
   linked_incidents: string;
+  /** JSON-encoded array of citation IDs */
   linked_citations: string;
+  /** JSON-encoded array of evidence IDs */
   linked_evidence: string;
+  /** JSON-encoded array of person IDs */
   linked_persons: string;
+  /** JSON-encoded array of FI IDs */
   linked_field_interviews: string;
   summary?: string;
   narrative?: string;
@@ -1870,6 +2617,41 @@ export interface CaseNote {
   content: string;
   is_pinned: boolean;
   created_at: string;
+}
+
+// Case Master Folder — linked entity types
+export interface CaseFull {
+  id: number;
+  case_number: string;
+  title: string;
+  case_type: string;
+  status: string;
+  priority: string;
+  lead_investigator_id?: number;
+  lead_investigator_name?: string;
+  summary?: string;
+  narrative?: string;
+  disposition?: string;
+  opened_date?: string;
+  due_date?: string;
+  closed_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Linked entities
+  calls: any[];
+  incidents: any[];
+  persons: any[];
+  vehicles: any[];
+  properties: any[];
+  evidence: any[];
+  warrants: any[];
+  citations: any[];
+  notes: any[];
+  counts: {
+    calls: number; incidents: number; persons: number;
+    vehicles: number; properties: number; evidence: number;
+    warrants: number; citations: number; notes: number; attachments?: number;
+  };
 }
 
 // --- Code Enforcement ---
@@ -1896,7 +2678,7 @@ export interface CodeViolation {
   compliance_deadline?: string;
   resolved_date?: string;
   resolution_notes?: string;
-  fine_amount: number;
+  fine_amount?: number;
   reporting_officer_id: number;
   reporting_officer_name?: string;
   created_at: string;
@@ -1913,7 +2695,7 @@ export interface VehicleTow {
   vehicle_plate?: string;
   vehicle_state?: string;
   vehicle_vin?: string;
-  vehicle_year?: string;
+  vehicle_year?: number;
   vehicle_make?: string;
   vehicle_model?: string;
   vehicle_color?: string;
@@ -1935,8 +2717,8 @@ export interface VehicleTow {
   completed_at?: string;
   released_at?: string;
   released_to?: string;
-  tow_fee: number;
-  storage_fee_daily: number;
+  tow_fee?: number;
+  storage_fee_daily?: number;
   officer_id: number;
   officer_name?: string;
   notes?: string;
@@ -1968,7 +2750,8 @@ export interface CourtEvent {
   defendant_name?: string;
   prosecutor?: string;
   defense_attorney?: string;
-  officers_required: string; // JSON array
+  /** JSON-encoded array of officer IDs */
+  officers_required: string;
   outcome?: CourtOutcome;
   sentence?: string;
   fine_amount?: number;
@@ -2024,7 +2807,7 @@ export interface OffenderAlert {
   person_name?: string; // joined from persons
   dob?: string; // joined from persons
   is_sex_offender?: boolean; // joined from persons
-  gang_affiliation?: string; // joined from persons
+  gang_affiliation?: string; // joined from related records (not a Person interface field)
   alert_type: OffenderAlertType;
   status: OffenderAlertStatus;
   description: string;
@@ -2032,6 +2815,9 @@ export interface OffenderAlert {
   restricted_properties: string; // JSON
   restricted_zones: string; // JSON
   restriction_radius_ft?: number;
+  location_lat?: number;
+  location_lng?: number;
+  location_address?: string;
   effective_date: string;
   expiration_date?: string;
   source_incident_id?: number;
@@ -2070,7 +2856,7 @@ export interface SOROffense {
 }
 
 export interface SORVehicle {
-  year?: string;
+  year?: number | string;
   make: string;
   model: string;
   color?: string;
@@ -2332,6 +3118,8 @@ export interface LeadScrapeSource {
   last_success_at?: string;
   consecutive_failures: number;
   total_leads_imported: number;
+  scraper_type?: 'legacy' | 'firecrawl';
+  extra_config?: string;
 }
 
 export interface PipelineSummary {
@@ -2375,7 +3163,8 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
-  priority: 'low' | 'normal' | 'high' | 'rush';
+  // Matches the serve_queue.priority CHECK constraint.
+  priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';
   deadline: string | null;
   attempt_count: number;
@@ -2384,19 +3173,76 @@ export interface ServeJob {
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
+  // Free-text "next attempt" message the server enters when logging a failed
+  // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
+  // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
+  next_attempt_note: string | null;
   created_at: string;
   updated_at: string;
+  call_id: number | null;
+  // Automation columns (migrations 0140, 0153, 0154)
+  closed_at?: string | null;
+  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  auto_assigned?: number | null;
+  intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+}
+
+// ── Serve folder helpers ───────────────────────────────────────────────────
+
+export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'archived';
+
+/** Map a job's status to its display folder. */
+export function deriveServeFolder(job: ServeJob): ServeFolder {
+  if (job.status === 'in_progress') return 'in_progress';
+  if (job.status === 'pending') return 'pending';
+  if (job.status === 'served') return 'served';
+  if (job.status === 'failed') return 'failed';
+  return 'archived'; // skipped | archived
+}
+
+export interface ServeFolderConfig {
+  label: string;
+  dotClass: string;
+  borderClass: string;
+  bgClass: string;
+  defaultOpen: boolean;
+  order: number;
+  emptyLabel: string;
+}
+
+export const SERVE_FOLDER_CONFIG: Record<ServeFolder, ServeFolderConfig> = {
+  in_progress: { label: 'In Progress', dotClass: 'bg-amber-500 animate-pulse', borderClass: 'border-l-amber-500', bgClass: 'bg-amber-900/10', defaultOpen: true, order: 0, emptyLabel: 'No jobs in progress' },
+  pending:     { label: 'Queue',       dotClass: 'bg-rmpg-500',                 borderClass: 'border-l-rmpg-500',  bgClass: '',                  defaultOpen: true, order: 1, emptyLabel: 'No pending jobs' },
+  served:      { label: 'Served',      dotClass: 'bg-green-500',                borderClass: 'border-l-green-500', bgClass: 'bg-green-900/10',  defaultOpen: false, order: 2, emptyLabel: 'No served jobs today' },
+  failed:      { label: 'Non-Service', dotClass: 'bg-red-500',                  borderClass: 'border-l-red-500',   bgClass: 'bg-red-900/10',    defaultOpen: false, order: 3, emptyLabel: 'No non-service jobs' },
+  archived:    { label: 'Archived',    dotClass: 'bg-rmpg-600',                 borderClass: 'border-l-rmpg-600',  bgClass: 'bg-rmpg-800/20',   defaultOpen: false, order: 4, emptyLabel: 'No archived jobs' },
+};
+
+export interface ServeJobLinkedCall {
+  id: number;
+  call_number: string;
+  status: string;
+  priority: string;
+  assigned_unit_ids: string;
+  pso_requestor_name: string | null;
+  contract_id: string | null;
+  pso_service_windows: string | null;
+  parentCall?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  childCalls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
 }
 
 export interface ServeAttempt {
   id: number;
   serve_queue_id: number;
   officer_id: number;
+  officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
   result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
+  disposition_code?: string | null;
   latitude: number | null;
   longitude: number | null;
   gps_accuracy: number | null;
@@ -2424,6 +3270,14 @@ export interface ServeAttemptData {
   photo_ids?: string[];
   signature_data?: string;
   notes?: string;
+  // Optional operator-set message for the next attempt window — stored on the
+  // parent serve_queue row, not on the attempt itself, so it persists across
+  // attempts and is read at Notice-of-Attempt PDF generation time.
+  next_attempt_note?: string;
+  // Structured PS disposition code (PS/00..PS/45.XX). When supplied, the
+  // server derives the legacy `result` enum from it via codeToLegacyResult
+  // and persists the full code in serve_attempts.disposition_code.
+  disposition_code?: string;
 }
 
 export interface ServeRoute {
@@ -2473,4 +3327,388 @@ export interface ServeSkipAddress {
   zip: string;
   type: string;
   last_seen: string | null;
+}
+
+// --- Dispatch Geography ---
+
+export interface DispatchArea {
+  id: number;
+  area_code: string;
+  area_name: string;
+  color: string;
+  description?: string;
+  commander?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  section_count?: number;
+}
+
+export interface DispatchSection {
+  id: number;
+  sector_code: string;
+  sector_name: string;
+  area_id?: number;
+  area_code?: string;
+  area_name?: string;
+  color: string;
+  description?: string;
+  supervisor?: string;
+  radio_channel?: string;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  zone_count?: number;
+}
+
+export interface DispatchZone {
+  id: number;
+  zone_code: string;
+  zone_name: string;
+  sector_id?: number;
+  sector_code?: string;
+  sector_name?: string;
+  color?: string;
+  description?: string;
+  primary_unit?: string;
+  backup_unit?: string;
+  radio_channel?: string;
+  hazard_notes?: string;
+  notes?: string;
+  population_estimate?: number;
+  sq_miles?: number;
+  sort_order: number;
+  active: number;
+  beat_count?: number;
+  active_calls?: number;
+}
+
+export interface DispatchBeat {
+  id: number;
+  beat_code: string;
+  beat_name: string;
+  beat_descriptor?: string;
+  zone_id?: number;
+  zone_code?: string;
+  zone_name?: string;
+  sector_code?: string;
+  sector_name?: string;
+  dispatch_code?: string;
+  color?: string;
+  assigned_unit?: string;
+  backup_unit?: string;
+  hazard_notes?: string;
+  patrol_frequency?: string;
+  priority_modifier?: number;
+  population_estimate?: number;
+  sq_miles?: number;
+  notes?: string;
+  sort_order: number;
+  active: number;
+  active_calls?: number;
+}
+
+export interface DispatchCodeEntry {
+  id: number;
+  code: string;
+  description: string;
+  category: string;
+  priority: string;
+  color: string;
+  requires_backup: number;
+  officer_safety: number;
+  ems_needed: number;
+  fire_needed: number;
+  notes?: string;
+  active: number;
+}
+
+export interface PremiseAlert {
+  id: number;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  alert_type: string;
+  alert_level: string;
+  title: string;
+  description?: string;
+  flags: string;
+  expires_at?: string;
+  created_by?: number;
+  active: number;
+}
+
+// --- Incident Offenses (Spillman Flex-style) ---
+
+export interface IncidentOffense {
+  id: number;
+  incident_id: number;
+  offense_code: string;
+  statute_id?: number;
+  description: string;
+  offense_date?: string;
+  offense_level: 'infraction' | 'misdemeanor' | 'felony' | 'other';
+  ucr_code?: string;
+  nibrs_code?: string;
+  attempted_completed: 'attempted' | 'completed';
+  suspect_person_id?: number;
+  victim_person_id?: number;
+  suspect_first?: string;
+  suspect_last?: string;
+  victim_first?: string;
+  victim_last?: string;
+  location_type?: string;
+  weapon_force?: string;
+  criminal_activity?: string;
+  bias_motivation?: string;
+  disposition?: string;
+  disposition_date?: string;
+  counts: number;
+  notes?: string;
+  statute_number?: string;
+  statute_title?: string;
+}
+
+export type OfficerIncidentRole = 'primary' | 'responding' | 'backup' | 'supervisor' | 'investigator' | 'evidence_tech' | 'other';
+
+export interface IncidentOfficer {
+  id: number;
+  incident_id: number;
+  officer_id: number;
+  role: OfficerIncidentRole;
+  arrived_at?: string;
+  departed_at?: string;
+  action_taken?: string;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  badge_number?: string;
+  call_sign?: string;
+  rank?: string;
+}
+
+export type IncidentLinkType = 'incident' | 'call' | 'case' | 'warrant' | 'citation' | 'arrest';
+
+export interface IncidentLink {
+  id: number;
+  incident_id: number;
+  linked_type: IncidentLinkType;
+  linked_id: number;
+  link_reason?: string;
+  detail?: Record<string, any>;
+}
+
+export interface MniPersonResult {
+  id: number;
+  first_name: string;
+  last_name: string;
+  dob?: string;
+  date_of_birth?: string;
+  gender?: string;
+  race?: string;
+  dl_number?: string;
+  drivers_license_number?: string;
+  phone?: string;
+  address?: string;
+  flags?: string;
+  incident_count: number;
+  call_count: number;
+  known_roles?: string;
+}
+
+export interface MniPersonDetail {
+  person: Record<string, any>;
+  incidents: { id: number; incident_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  calls: { id: number; call_number: string; incident_type: string; status: string; priority: string; location_address: string; created_at: string; role: string }[];
+  warrants: Record<string, any>[];
+  citations: Record<string, any>[];
+  arrests: Record<string, any>[];
+  trespass: Record<string, any>[];
+  total_records: number;
+}
+
+export interface GeographyTree {
+  areas: (DispatchArea & { sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+}
+
+// --- Integration Hub ---
+
+export interface IntegrationStatus {
+  id: string;
+  name: string;
+  description?: string;
+  health: 'healthy' | 'degraded' | 'error' | 'unconfigured';
+  configured: boolean;
+  lastSync: string | null;
+  lastError?: string;
+  stats: Record<string, number>;
+  uptimePercent: number | null;
+}
+
+// --- ClearPathGPS (Fleet GPS) ---
+
+export interface CpgpsVehicle {
+  id: number;
+  vehicle_id?: number;
+  name?: string;
+  device_serial?: string;
+  vin?: string;
+  odometer?: number;
+  engine_hours?: number;
+  last_lat?: number;
+  last_lon?: number;
+  last_speed?: number;
+  last_heading?: number;
+  last_reported_at?: string;
+  synced_at?: string;
+}
+
+export interface CpgpsTrip {
+  id: number;
+  trip_start?: string;
+  trip_end?: string;
+  distance_miles?: number;
+  drive_duration_seconds?: number;
+  idle_duration_seconds?: number;
+  max_speed?: number;
+  start_address?: string;
+  end_address?: string;
+}
+
+export interface CpgpsAlert {
+  id: number;
+  alert_type?: string;
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+  message?: string;
+  triggered_at?: string;
+  lat?: number;
+  lon?: number;
+}
+
+// ── Nav Trip Log ─────────────────────────────────────────────
+
+export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+
+export interface NavRoutePoint {
+  lat: number;
+  lng: number;
+  ts: string;
+  speed?: number;
+  heading?: number;
+}
+
+export interface NavTrip {
+  id: number;
+  officer_id: number;
+  vehicle_id?: number;
+  unit_id?: number;
+  start_lat: number;
+  start_lng: number;
+  start_accuracy?: number;
+  start_location?: string;
+  start_time: string;
+  end_lat?: number;
+  end_lng?: number;
+  end_accuracy?: number;
+  end_location?: string;
+  end_time?: string;
+  distance_miles?: number;
+  max_speed_mph?: number;
+  duration_seconds?: number;
+  route_points?: NavRoutePoint[];
+  status: NavTripStatus;
+  detected_by: 'auto' | 'manual';
+  purpose?: string;
+  device_type?: string;
+  notes?: string;
+  vehicle_number?: string;
+  make?: string;
+  model?: string;
+  plate_number?: string;
+  unit_call_sign?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NavTripDetectionState {
+  loginPosition: { lat: number; lng: number; accuracy: number } | null;
+  loginTime: number | null;
+  movementConfirmed: boolean;
+  pendingTripId: number | null;
+  activeTripId: number | null;
+  lastMovementAt: number | null;
+  stationarySince: number | null;
+  bufferStartTime: number | null;
+  bufferPosition: { lat: number; lng: number } | null;
+  windowStartTime: number | null;
+  windowStartPosition: { lat: number; lng: number } | null;
+  windowMovementDetected: boolean;
+}
+
+// ── Document subsystem (Phase 2) ──────────────────────────────
+// NOTE: named DocRecord, not Document — `Document` is a DOM global.
+export interface DocLink {
+  id: number;
+  document_id: number;
+  target_type: 'call' | 'incident';
+  target_id: number;
+  linked_by: number | null;
+  linked_at: string;
+}
+
+export interface DocRevisionMeta {
+  id: number;
+  revision_number: number;
+  title: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+// Full revision row returned by GET /docs/:id/revisions/:rev (raw document_revisions row).
+export interface DocRevisionBody {
+  id: number;
+  document_id: number;
+  revision_number: number;
+  title: string;
+  body: string;
+  body_format: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+export interface DocRecord {
+  id: number;
+  title: string;
+  body: string;
+  body_format: string;
+  status: 'draft' | 'finalized';
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  links?: DocLink[];
+}
+
+export interface DocListItem {
+  id: number;
+  title: string;
+  status: 'draft' | 'finalized';
+  body_format: string;
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
 }

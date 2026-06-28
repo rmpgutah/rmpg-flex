@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { User } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { UserRole } from '../../../types';
 import AddressAutocomplete, { type ParsedAddress } from '../../../components/AddressAutocomplete';
+import { formatPhoneInput } from '../../../utils/formatters';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface OfficerFormData {
   // Account (create only)
   username: string;
@@ -27,6 +29,7 @@ export interface OfficerFormData {
   phone: string;
   email: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -72,7 +75,7 @@ const EMPTY: OfficerFormData = {
   username: '', password: '', role: 'officer', full_name: '',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
   badge_number: '', rank: '', department: '', hire_date: '', shift_preference: '', employee_id: '',
-  phone: '', email: '', address: '', city: '', state: '', zip: '',
+  phone: '', email: '', address: '', address_2: '', city: '', state: '', zip: '',
   emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
   blood_type: '', allergies: '', uniform_size: '',
   dl_number: '', dl_state: '', dl_expiry: '',
@@ -92,22 +95,34 @@ function SectionDivider({ label }: { label: string }) {
 export default function OfficerFormModal({
   isOpen, onClose, onSubmit, isSubmitting, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<OfficerFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    signalSaved,
+    snapshot,
+  } = useFormDraft<OfficerFormData>({
+    storageKey: 'rmpg_personnel_officer_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
@@ -125,6 +140,8 @@ export default function OfficerFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Account — create only */}
       {mode === 'create' && (
@@ -133,24 +150,24 @@ export default function OfficerFormModal({
           <div className="panel-inset p-3 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Username <span className="text-red-400">*</span></label>
-                <input type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="Login username" className="input-dark" />
+                <label htmlFor="ff-officerformmodal-0" className="field-label">Username <span className="text-red-400">*</span></label>
+                <input id="ff-officerformmodal-0" type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="Login username" className="input-dark min-h-[36px]" />
               </div>
               <div>
-                <label className="field-label">Password <span className="text-red-400">*</span></label>
-                <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className="input-dark" />
+                <label htmlFor="ff-officerformmodal-1" className="field-label">Password <span className="text-red-400">*</span></label>
+                <input id="ff-officerformmodal-1" type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className="input-dark min-h-[36px]" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Role <span className="text-red-400">*</span></label>
-                <select required value={form.role} onChange={e => set('role', e.target.value)} className="select-dark">
+                <label htmlFor="ff-officerformmodal-2" className="field-label">Role <span className="text-red-400">*</span></label>
+                <select id="ff-officerformmodal-2" required value={form.role} onChange={e => set('role', e.target.value)} className="select-dark">
                   {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Full Name (Display)</label>
-                <input type="text" value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Auto-generated if blank" className="input-dark" />
+                <label htmlFor="ff-officerformmodal-3" className="field-label">Full Name (Display)</label>
+                <input id="ff-officerformmodal-3" type="text" value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Auto-generated if blank" className="input-dark min-h-[36px]" />
               </div>
             </div>
           </div>
@@ -162,27 +179,27 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">First Name <span className="text-red-400">*</span></label>
-            <input type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-4" className="field-label">First Name <span className="text-red-400">*</span></label>
+            <input id="ff-officerformmodal-4" type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Last Name <span className="text-red-400">*</span></label>
-            <input type="text" required value={form.last_name} onChange={e => set('last_name', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-5" className="field-label">Last Name <span className="text-red-400">*</span></label>
+            <input id="ff-officerformmodal-5" type="text" required value={form.last_name} onChange={e => set('last_name', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Middle Name</label>
-            <input type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-6" className="field-label">Middle Name</label>
+            <input id="ff-officerformmodal-6" type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Date of Birth</label>
-            <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-7" className="field-label">Date of Birth</label>
+            <input id="ff-officerformmodal-7" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           {mode === 'edit' && (
             <div>
-              <label className="field-label">Role</label>
-              <select value={form.role} onChange={e => set('role', e.target.value)} className="select-dark">
+              <label htmlFor="ff-officerformmodal-8" className="field-label">Role</label>
+              <select id="ff-officerformmodal-8" value={form.role} onChange={e => set('role', e.target.value)} className="select-dark">
                 {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
@@ -195,32 +212,32 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Badge Number</label>
-            <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-9" className="field-label">Badge Number</label>
+            <input id="ff-officerformmodal-9" type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} pattern="[A-Za-z0-9\-]{1,10}" placeholder="e.g. O-101" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Rank</label>
-            <select value={form.rank} onChange={e => set('rank', e.target.value)} className="select-dark">
+            <label htmlFor="ff-officerformmodal-10" className="field-label">Rank</label>
+            <select id="ff-officerformmodal-10" value={form.rank} onChange={e => set('rank', e.target.value)} className="select-dark">
               {RANKS.map(r => <option key={r} value={r}>{r || '— None —'}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Employee ID</label>
-            <input type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-11" className="field-label">Employee ID</label>
+            <input id="ff-officerformmodal-11" type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Department</label>
-            <input type="text" value={form.department} onChange={e => set('department', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-12" className="field-label">Department</label>
+            <input id="ff-officerformmodal-12" type="text" value={form.department} onChange={e => set('department', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Hire Date</label>
-            <input type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-13" className="field-label">Hire Date</label>
+            <input id="ff-officerformmodal-13" type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Shift Preference</label>
-            <select value={form.shift_preference} onChange={e => set('shift_preference', e.target.value)} className="select-dark">
+            <label htmlFor="ff-officerformmodal-14" className="field-label">Shift Preference</label>
+            <select id="ff-officerformmodal-14" value={form.shift_preference} onChange={e => set('shift_preference', e.target.value)} className="select-dark">
               {SHIFTS.map(s => <option key={s} value={s}>{s ? s.charAt(0).toUpperCase() + s.slice(1) : '— None —'}</option>)}
             </select>
           </div>
@@ -232,22 +249,25 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Phone</label>
-            <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="801-555-0100" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-15" className="field-label">Phone</label>
+            <input id="ff-officerformmodal-15" type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-0100" pattern="[0-9\(\)\-\s+]{7,20}" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Email</label>
-            <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-16" className="field-label">Email</label>
+            <input id="ff-officerformmodal-16" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" className="input-dark min-h-[36px]" />
           </div>
         </div>
-        <div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="sm:col-span-3">
           <label className="field-label">Address</label>
           <AddressAutocomplete
-            className="input-dark"
+            className="input-dark min-h-[36px]"
             placeholder="Street address"
             value={form.address}
             onChange={(val) => set('address', val)}
+            fillWith="street"
             onSelect={(addr: ParsedAddress) => {
+              // Street line only — city/state/zip live in their own fields.
               setForm((prev) => ({
                 ...prev,
                 address: addr.street || addr.formatted,
@@ -257,19 +277,24 @@ export default function OfficerFormModal({
               }));
             }}
           />
+          </div>
+          <div>
+            <label htmlFor="ff-officerformmodal-addr2" className="field-label">Apt / Unit</label>
+            <input id="ff-officerformmodal-addr2" type="text" value={form.address_2} onChange={e => set('address_2', e.target.value)} placeholder="Apt 4B" className="input-dark min-h-[36px]" />
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">City</label>
-            <input type="text" value={form.city} onChange={e => set('city', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-17" className="field-label">City</label>
+            <input id="ff-officerformmodal-17" type="text" value={form.city} onChange={e => set('city', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">State</label>
-            <input type="text" value={form.state} onChange={e => set('state', e.target.value)} maxLength={2} placeholder="UT" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-18" className="field-label">State</label>
+            <input id="ff-officerformmodal-18" type="text" value={form.state} onChange={e => set('state', e.target.value)} maxLength={2} placeholder="UT" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">ZIP</label>
-            <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-19" className="field-label">ZIP</label>
+            <input id="ff-officerformmodal-19" type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" pattern="\d{5}(-\d{4})?" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -279,16 +304,16 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Name</label>
-            <input type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-20" className="field-label">Name</label>
+            <input id="ff-officerformmodal-20" type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Phone</label>
-            <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-21" className="field-label">Phone</label>
+            <input id="ff-officerformmodal-21" type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Relationship</label>
-            <input type="text" value={form.emergency_contact_relationship} onChange={e => set('emergency_contact_relationship', e.target.value)} placeholder="Spouse, Parent, etc." className="input-dark" />
+            <label htmlFor="ff-officerformmodal-22" className="field-label">Relationship</label>
+            <input id="ff-officerformmodal-22" type="text" value={form.emergency_contact_relationship} onChange={e => set('emergency_contact_relationship', e.target.value)} placeholder="Spouse, Parent, etc." className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -298,20 +323,20 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Blood Type</label>
-            <select value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className="select-dark">
+            <label htmlFor="ff-officerformmodal-23" className="field-label">Blood Type</label>
+            <select id="ff-officerformmodal-23" value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className="select-dark">
               {BLOOD_TYPES.map(b => <option key={b} value={b}>{b || '— Unknown —'}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Uniform Size</label>
-            <select value={form.uniform_size} onChange={e => set('uniform_size', e.target.value)} className="select-dark">
+            <label htmlFor="ff-officerformmodal-24" className="field-label">Uniform Size</label>
+            <select id="ff-officerformmodal-24" value={form.uniform_size} onChange={e => set('uniform_size', e.target.value)} className="select-dark">
               {UNIFORM_SIZES.map(s => <option key={s} value={s}>{s || '— None —'}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Allergies</label>
-            <input type="text" value={form.allergies} onChange={e => set('allergies', e.target.value)} placeholder="None known" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-25" className="field-label">Allergies</label>
+            <input id="ff-officerformmodal-25" type="text" value={form.allergies} onChange={e => set('allergies', e.target.value)} placeholder="None known" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -321,16 +346,16 @@ export default function OfficerFormModal({
       <div className="panel-inset p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">DL Number</label>
-            <input type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-26" className="field-label">DL Number</label>
+            <input id="ff-officerformmodal-26" type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">DL State</label>
-            <input type="text" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} maxLength={2} placeholder="UT" className="input-dark" />
+            <label htmlFor="ff-officerformmodal-27" className="field-label">DL State</label>
+            <input id="ff-officerformmodal-27" type="text" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} maxLength={2} placeholder="UT" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">DL Expiry</label>
-            <input type="date" value={form.dl_expiry} onChange={e => set('dl_expiry', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-officerformmodal-28" className="field-label">DL Expiry</label>
+            <input id="ff-officerformmodal-28" type="date" value={form.dl_expiry} onChange={e => set('dl_expiry', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -338,7 +363,8 @@ export default function OfficerFormModal({
       {/* Notes */}
       <SectionDivider label="Notes" />
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={5000} className="textarea-dark" />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
       </div>
     </FormModal>
   );

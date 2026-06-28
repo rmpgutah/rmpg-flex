@@ -1,0 +1,8 @@
+version: 5.8.1
+files:
+  - url: RMPG-Flex-Setup-5.8.1.exe
+    sha512: mDDPsbRVc5Llq2jg11ro+grjCnd5F9qnI7++1nnyoYC+KrrLa/qJ4A94yXvdVHANqiHutqJz9SY14jbyunApIg==
+    size: 101999379
+path: RMPG-Flex-Setup-5.8.1.exe
+sha512: mDDPsbRVc5Llq2jg11ro+grjCnd5F9qnI7++1nnyoYC+KrrLa/qJ4A94yXvdVHANqiHutqJz9SY14jbyunApIg==
+releaseDate: '2026-05-02T22:15:03.508Z'

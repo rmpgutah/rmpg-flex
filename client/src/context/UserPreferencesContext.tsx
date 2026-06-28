@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { apiFetch } from '../hooks/useApi';
+import { applyThemePreference, getStoredThemePreference, resolveCurrentTheme } from '../utils/theme';
 
 interface UserPreferences {
   font_scale: number;
@@ -16,6 +17,7 @@ interface UserPreferences {
   default_map_style: string;
   dispatch_sort: string;
   dispatch_show_cleared: number;
+  theme_preference: 'dark' | 'light';
   [key: string]: any;
 }
 
@@ -26,14 +28,21 @@ const DEFAULTS: UserPreferences = {
   default_map_style: 'dark',
   dispatch_sort: 'priority',
   dispatch_show_cleared: 0,
+  theme_preference: getStoredThemePreference(),
 };
 
-const UserPreferencesContext = createContext<{
+interface UserPreferencesContextValue {
   prefs: UserPreferences;
   reload: () => void;
-}>({
+  isLoading: boolean;
+  error: string | null;
+}
+
+const UserPreferencesContext = createContext<UserPreferencesContextValue>({
   prefs: DEFAULTS,
   reload: () => {},
+  isLoading: false,
+  error: null,
 });
 
 export function useUserPreferences() {
@@ -43,14 +52,23 @@ export function useUserPreferences() {
 export function UserPreferencesProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULTS);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPrefs = useCallback(async () => {
     if (!user) return;
+    setIsLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<UserPreferences>('/user/preferences');
       if (data) setPrefs(data);
-    } catch {
-      // Use defaults on error
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch preferences';
+      console.warn('[UserPreferences] Failed to fetch preferences:', msg);
+      setError(msg);
+      // Keep using defaults on error — don't break the UI
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -74,8 +92,25 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     }
   }, [prefs.compact_mode]);
 
+  // Theme controller: resolve effective theme (legacy → manual override → shift
+  // schedule) and re-apply on a tick + on tab focus/visibility, so the night-shift
+  // auto-switch happens without a reload. Matches the index.html pre-paint boot script.
+  useEffect(() => {
+    const applyNow = () => { applyThemePreference(resolveCurrentTheme(), { persist: false }); };
+    applyNow();
+    const id = window.setInterval(applyNow, 60_000);
+    const onVisibility = () => applyNow();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onVisibility);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onVisibility);
+    };
+  }, []);
+
   return (
-    <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs }}>
+    <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs, isLoading, error }}>
       {children}
     </UserPreferencesContext.Provider>
   );

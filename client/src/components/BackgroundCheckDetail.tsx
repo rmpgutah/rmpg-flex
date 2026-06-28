@@ -6,13 +6,16 @@
 // Shows criminal records, court cases, and sex offender registry
 // data in a structured, readable format.
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   X, FileSearch, AlertTriangle, Shield, Gavel,
   Clock, MapPin, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { BackgroundRecord } from '../utils/ncicFormatter';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 interface BackgroundCheckDetailProps {
   searchId: number;
@@ -63,9 +66,9 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
   } catch { /* */ }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="bg-dark-800 border border-rmpg-700 rounded-lg shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-md w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -79,13 +82,13 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               CONFIDENTIAL
             </span>
           </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {loading && (
             <div className="flex items-center justify-center py-8 gap-2 text-rmpg-400 text-xs">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -107,7 +110,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                 <div className="flex items-center gap-4 text-[10px] text-rmpg-400">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    Searched: {data.search?.created_at ? new Date(data.search.created_at).toLocaleString() : 'N/A'}
+                    Searched: {data.search?.created_at ? parseTimestamp(data.search.created_at).toLocaleString() : 'N/A'}
                   </span>
                   <span>Search ID: #{searchId}</span>
                   <span>{records.length} record(s) found</span>
@@ -154,7 +157,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                                 ? 'bg-red-900/30 text-red-400 border border-red-800/30'
                                 : 'bg-rmpg-700/30 text-rmpg-400 border border-rmpg-600/30'
                             }`}>
-                              {r.status.toUpperCase()}
+                              {formatEnumValue(r.status)}
                             </span>
                           )}
                         </div>
@@ -163,7 +166,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{toDisplayLabel(r.disposition)}</span></div>}
                           {r.sentence && <div>Sentence: <span className="text-rmpg-300">{r.sentence}</span></div>}
                         </div>
                       </div>
@@ -176,20 +179,20 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               {court.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                    <Gavel className="w-3.5 h-3.5 text-blue-400" />
+                    <Gavel className="w-3.5 h-3.5 text-rmpg-400" />
                     Court / Public Records ({court.length})
                   </div>
                   <div className="space-y-1.5">
                     {court.map((r, i) => (
-                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
+                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-rmpg-500/50">
                         <div className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Court Record'}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Filed: <span className="text-rmpg-300">{r.offense_date}</span></div>}
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
                           {r.state && <div>State: <span className="text-rmpg-300">{r.state}</span></div>}
-                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{r.disposition}</span></div>}
-                          {r.status && <div>Status: <span className="text-rmpg-300">{r.status}</span></div>}
+                          {r.disposition && <div>Disposition: <span className="text-rmpg-300">{toDisplayLabel(r.disposition)}</span></div>}
+                          {r.status && <div>Status: <span className="text-rmpg-300">{toDisplayLabel(r.status)}</span></div>}
                         </div>
                       </div>
                     ))}
@@ -217,7 +220,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.state && <div>State: <span className="text-red-300/80">{r.state}</span></div>}
-                          {r.status && <div>Status: <span className="text-red-300/80">{r.status}</span></div>}
+                          {r.status && <div>Status: <span className="text-red-300/80">{toDisplayLabel(r.status)}</span></div>}
                           {r.offense_date && <div>Date: <span className="text-red-300/80">{r.offense_date}</span></div>}
                           {r.court && <div>Jurisdiction: <span className="text-red-300/80">{r.court}</span></div>}
                           {r.registry_address && (

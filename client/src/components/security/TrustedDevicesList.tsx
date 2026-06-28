@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Monitor, Smartphone, Tablet, Globe, Trash2, RefreshCw, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { TrustedDevice } from '../../types';
@@ -15,7 +16,7 @@ function deviceIcon(name: string) {
 }
 
 function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
@@ -23,11 +24,11 @@ function timeAgo(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString();
 }
 
 function daysUntil(dateStr: string): string {
-  const diff = new Date(dateStr).getTime() - Date.now();
+  const diff = parseTimestamp(dateStr).getTime() - Date.now();
   const days = Math.ceil(diff / 86400000);
   if (days <= 0) return 'Expired';
   if (days === 1) return '1 day';
@@ -57,7 +58,7 @@ export default function TrustedDevicesList() {
     try {
       const res = await fetch(`/api/auth/security/trusted-devices/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (res.ok) setDevices(prev => prev.filter(d => d.id !== id));
     } catch { /* ignore */ }
@@ -67,7 +68,7 @@ export default function TrustedDevicesList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
+        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
       </div>
     );
   }
@@ -75,9 +76,9 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
-        <p className="text-[10px]" style={{ color: '#6b7280' }}>No trusted devices</p>
-        <p className="text-[9px] mt-1" style={{ color: '#4b5563' }}>
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+        <p className="text-[10px] text-rmpg-500">No trusted devices</p>
+        <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
       </div>
@@ -90,23 +91,23 @@ export default function TrustedDevicesList() {
         <div
           key={device.id}
           className="flex items-center gap-3 px-3 py-2 panel-beveled"
-          style={{ background: '#141e2b' }}
+          style={{ background:"var(--surface-sunken)" }}
         >
           {/* Device icon */}
-          <div className="p-1.5 panel-inset" style={{ color: '#4a90c4', background: 'rgba(74,144,196,0.1)' }}>
+          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(136,136,136,0.1)' }}>
             {deviceIcon(device.device_name)}
           </div>
 
           {/* Device info */}
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-semibold truncate" style={{ color: '#e5e7eb' }}>
+            <div className="text-[11px] font-semibold truncate text-rmpg-300">
               {device.device_name}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
+              <span className="text-[9px] font-mono text-rmpg-500">
                 {device.ip_address}
               </span>
-              <span className="text-[9px]" style={{ color: '#4b5563' }}>
+              <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                 Last used {timeAgo(device.last_used_at)}
               </span>
             </div>
@@ -114,17 +115,17 @@ export default function TrustedDevicesList() {
 
           {/* Expiry */}
           <div className="text-right flex-shrink-0">
-            <div className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
+            <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
               {daysUntil(device.trusted_until)} left
             </div>
           </div>
 
           {/* Revoke button */}
-          <button
+          <button type="button"
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
             className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? '#4b5563' : '#ef4444' }}
+            style={{ color: revoking === device.id ? 'var(--rmpg-500)' : '#ef4444' }}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />
@@ -132,7 +133,7 @@ export default function TrustedDevicesList() {
         </div>
       ))}
 
-      <div className="text-[9px] pt-1" style={{ color: '#4b5563' }}>
+      <div className="text-[9px] pt-1" style={{ color: 'var(--rmpg-500)' }}>
         {devices.length} trusted device{devices.length !== 1 ? 's' : ''} — revoking a device will require 2FA on next login from it
       </div>
     </div>

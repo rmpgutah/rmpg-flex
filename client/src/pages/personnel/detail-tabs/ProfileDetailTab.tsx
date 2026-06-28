@@ -4,30 +4,26 @@
 //   Left column: Photo + Identity | Center: Employment | Right: Contact
 // ============================================================
 
-import React from 'react';
-import {
-  User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
-  Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,
-  Car,
-} from 'lucide-react';
+import { User, Phone, Briefcase, AlertTriangle, Heart, Award, Paperclip, Car } from 'lucide-react';
 import type { Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
 import FileAttachments from '../../../components/FileAttachments';
 import OfficerAvatar from '../components/OfficerAvatar';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   officer: OfficerWithStatus;
   credentials: Credential[];
 }
 
-/** Dense field row — gold label above compact value */
+/** Field row — gold label above value, with breathing room */
 function Field({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
   return (
-    <div className="py-0.5">
+    <div className="py-1">
       <p className="field-label">{label}</p>
-      <p className={`text-[11px] ${mono ? 'font-mono' : ''} ${value ? 'text-rmpg-100' : 'text-rmpg-500 italic'} break-words leading-tight`}>
+      <p className={`text-[11px] ${mono ? 'font-mono' : ''} ${value ? 'text-rmpg-100' : 'text-rmpg-600 italic'} break-words leading-snug mt-0.5`}>
         {value || '—'}
       </p>
     </div>
@@ -41,7 +37,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
   const formatDate = (d?: string) => {
     if (!d) return undefined;
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const credDotColor = (status: string) => {
@@ -62,28 +58,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
   return (
     <div className="space-y-2">
-      {/* ═══════════════════════════════════════════════════════════
-          OPR IDENTIFIER BANNER
-          ═══════════════════════════════════════════════════════════ */}
-      <div
-        className="panel-beveled px-3 py-2 border-l-2 bg-surface-sunken flex items-center gap-4"
-        style={{ borderLeftColor: '#d4a017' }}
-      >
-        <Shield className="w-4 h-4 text-brand-400 flex-shrink-0" />
-        <div>
-          <p className="field-label text-[8px]">OPR IDENTIFICATION</p>
-          {oprLabel ? (
-            <p className="text-sm font-bold font-mono tracking-wide text-amber-400">{oprLabel}</p>
-          ) : (
-            <p className="text-xs text-rmpg-500 italic">No unit assigned</p>
-          )}
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════
-          DENSE 3-COLUMN LAYOUT (Spillman Personnel style)
-          Left: Photo + Identity | Center: Employment | Right: Contact
-          ═══════════════════════════════════════════════════════════ */}
+      {/* 3-Column Layout — Identity / Employment / Contact */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
 
         {/* ── LEFT COLUMN: Photo + Core Identity ── */}
@@ -158,10 +133,10 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
                 return (
                   <div key={cred.id} className="flex items-center gap-1.5 text-[10px]">
                     <span className={credDotColor(cred.status)} />
-                    <span className="text-rmpg-100 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
+                    <span className="text-rmpg-100 min-w-0 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className="text-rmpg-400 font-mono">
                       {days > 0
-                        ? new Date(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                        ? parseTimestamp(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                         : 'EXP'}
                     </span>
                   </div>

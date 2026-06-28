@@ -2,9 +2,9 @@
 // RMPG Flex — Officer Schedule Detail Tab
 // ============================================================
 
-import React from 'react';
 import { Calendar, Plus, Trash2, MapPin, Sun, Moon } from 'lucide-react';
 import type { Schedule } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   schedules: Schedule[];
@@ -15,19 +15,19 @@ interface Props {
 const STATUS_BADGE: Record<string, string> = {
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   cancelled: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  confirmed: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  confirmed: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   no_show: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 
 function isNightShift(shiftStart: string): boolean {
   if (!shiftStart) return false;
-  const hour = new Date(shiftStart).getHours();
+  const hour = parseTimestamp(shiftStart).getHours();
   return hour >= 18 || hour < 6;
 }
 
 function formatShiftStart(shiftStart: string): string {
   if (!shiftStart) return '-';
-  return new Date(shiftStart).toLocaleString('en-US', {
+  return parseTimestamp(shiftStart).toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -39,7 +39,7 @@ function formatShiftStart(shiftStart: string): string {
 
 function formatShiftEnd(shiftEnd: string): string {
   if (!shiftEnd) return '-';
-  return new Date(shiftEnd).toLocaleString('en-US', {
+  return parseTimestamp(shiftEnd).toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -59,7 +59,7 @@ export default function ScheduleDetailTab({
           <Calendar className="w-3 h-3" />
           Schedules
         </h3>
-        <button
+        <button type="button"
           onClick={onAddSchedule}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -130,7 +130,7 @@ export default function ScheduleDetailTab({
 
                   {/* Delete button (only for scheduled) */}
                   {sched.status === 'scheduled' && (
-                    <button
+                    <button type="button"
                       onClick={() => onDeleteSchedule(sched.id)}
                       className="toolbar-btn toolbar-btn-danger flex-shrink-0"
                       title="Delete schedule"
@@ -144,9 +144,12 @@ export default function ScheduleDetailTab({
           })}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
-          <Calendar className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-          <p className="text-xs text-rmpg-400">No schedules on file</p>
+        <div className="panel-beveled p-10 text-center bg-surface-base" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Calendar className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">No schedules on file</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Schedule" to assign shifts</p>
         </div>
       )}
     </div>

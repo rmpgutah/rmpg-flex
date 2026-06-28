@@ -6,7 +6,7 @@
 // Follows SafetyScreening.tsx pattern for tone + debounce.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Siren, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
@@ -79,9 +79,12 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
 
   if (matches.length === 0) return null;
 
+  // 70: role="alert" for immediate screen reader announcement; 71: aria-live assertive for urgency
   return (
     <div
       className="animate-emergency-blink"
+      role="alert"
+      aria-live="assertive"
       style={{
         background: 'rgba(220, 38, 38, 0.15)',
         border: '1px solid #dc2626',
@@ -110,12 +113,14 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
                 <span className="text-red-400 font-bold font-mono">{bolo.bolo_number}</span>
-                <span className="text-white font-semibold truncate">{bolo.title}</span>
+                <span className="text-rmpg-100 font-semibold truncate">{bolo.title}</span>
+                {/* 72: View BOLO button with hover bg and transition */}
                 {onViewBolo && (
-                  <button
+                  <button type="button"
                     onClick={() => onViewBolo(bolo.id)}
-                    className="text-rmpg-500 hover:text-red-400 flex-shrink-0"
+                    className="text-rmpg-500 hover:text-red-400 hover:bg-red-900/30 p-0.5 rounded-sm flex-shrink-0 transition-colors"
                     title="View BOLO"
+                    aria-label={`View BOLO ${bolo.bolo_number}`}
                   >
                     <ExternalLink style={{ width: 9, height: 9 }} />
                   </button>

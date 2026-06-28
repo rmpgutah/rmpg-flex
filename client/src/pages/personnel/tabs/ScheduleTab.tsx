@@ -7,6 +7,9 @@ import { ChevronLeft, ChevronRight, Calendar, Plus } from 'lucide-react';
 import type { Schedule } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DAYS, getWeekMonday, formatWeekLabel, dateToYMD } from '../utils/personnelFormatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   officers: OfficerWithStatus[];
@@ -35,7 +38,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
     const idsInWeek = new Set<string>();
     for (const s of schedules) {
-      const shiftDate = s.shift_start ? dateToYMD(new Date(s.shift_start)) : '';
+      const shiftDate = s.shift_start ? dateToYMD(parseTimestamp(s.shift_start)) : '';
       if (shiftDate >= weekStart && shiftDate <= weekEnd) {
         idsInWeek.add(s.officer_id);
       }
@@ -53,7 +56,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
     const map = new Map<string, Schedule[]>();
     for (const s of schedules) {
       if (!s.shift_start) continue;
-      const ymd = dateToYMD(new Date(s.shift_start));
+      const ymd = dateToYMD(parseTimestamp(s.shift_start));
       const key = `${s.officer_id}_${ymd}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
@@ -79,32 +82,44 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
   function formatTime(dateStr: string): string {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function isNightShift(s: Schedule): boolean {
     if (!s.shift_start) return false;
-    const hour = new Date(s.shift_start).getHours();
+    const hour = parseTimestamp(s.shift_start).getHours();
     return hour >= 18 || hour < 6;
   }
 
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildShiftMenu = (s: Schedule): ContextMenuItem[] => [
+    m.copy('Copy officer', s.officer_name),
+    ...(s.property_name ? [m.copy('Copy property', s.property_name)] : []),
+    m.separator(),
+    m.copyId(s.id),
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Week Navigation */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Schedule</h2>
+          <span className="text-[11px] font-mono text-rmpg-500">({schedules.length})</span>
         </div>
         <div className="panel-beveled p-2 flex items-center gap-1.5">
-          <button onClick={handlePrevWeek} className="toolbar-btn p-1">
+          <button type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
           <span className="text-xs font-semibold text-rmpg-300 min-w-[180px] text-center">
             {formatWeekLabel(weekMonday)}
           </span>
-          <button onClick={handleNextWeek} className="toolbar-btn p-1">
+          <button type="button" onClick={handleNextWeek} className="toolbar-btn p-1">
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -113,25 +128,25 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Today link */}
       <div className="text-center -mt-1">
-        <button onClick={handleToday} className="toolbar-btn text-brand-400 text-[10px] px-2 py-0.5">
+        <button type="button" onClick={handleToday} className="toolbar-btn text-brand-400 text-[10px] px-2 py-0.5">
           Today
         </button>
       </div>
 
       {/* No officers fallback */}
       {officersWithSchedules.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <Calendar className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Calendar className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No officers or schedules to display.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Add schedules to populate the weekly grid.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No officers or schedules to display</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Add schedules to populate the weekly grid</p>
         </div>
       ) : (
-        <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-          <div className="grid grid-cols-8 min-w-[700px]">
+        <div className="panel-beveled overflow-x-auto bg-surface-sunken scrollbar-dark">
+          <div className="grid grid-cols-8 min-w-[700px]" role="grid" aria-label="Weekly schedule grid">
             {/* Header Row */}
-            <div className="p-2 text-[9px] text-rmpg-400 uppercase font-bold tracking-wider border-b border-rmpg-700 bg-gradient-to-r from-rmpg-800 to-surface-base">
+            <div className="p-2 text-[9px] text-rmpg-400 uppercase font-bold tracking-wider border-b border-rmpg-700 bg-gradient-to-r from-rmpg-800 to-surface-base sticky left-0 z-10" role="columnheader">
               Officer
             </div>
             {weekDates.map((d, i) => {
@@ -158,7 +173,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
             {officersWithSchedules.map((officer) => (
               <React.Fragment key={officer.id}>
                 {/* Officer name cell */}
-                <div className="p-2 border-b border-rmpg-700/50 flex items-center gap-1.5 bg-surface-sunken">
+                <div className="p-2 border-b border-rmpg-700/50 flex items-center gap-1.5 bg-surface-sunken sticky left-0 z-10">
                   <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
                   <span className="text-[10px] text-rmpg-300 font-medium truncate">
                     {officer.last_name}, {officer.first_name?.[0] || ''}.
@@ -184,6 +199,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
                         return (
                           <div
                             key={s.id}
+                            onContextMenu={(e) => openMenu(e, buildShiftMenu(s))}
                             className={`panel-inset px-1.5 py-1 mb-0.5 border ${
                               night
                                 ? 'bg-purple-900/40 border-purple-700/30'
@@ -212,7 +228,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Add Schedule Button */}
       <div className="flex justify-end">
-        <button onClick={onAddSchedule} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddSchedule} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Schedule
         </button>
