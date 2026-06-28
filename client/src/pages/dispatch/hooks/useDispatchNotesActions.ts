@@ -20,10 +20,11 @@
 //   editingTimelineId, editTimelineText (timeline inline-edit)
 //   broadcastNoteText, isBroadcasting (broadcast composer)
 //
-// NOT moved (stays in DispatchPage): renderFormattedText (pure render
-// helper, no state) and wrapNoteSelection (touches a noteTextareaRef
-// owned by DispatchPage). Those access newNote/setNewNote via the
-// hook return like any other JSX consumer.
+// NOT moved (stays in DispatchPage): wrapNoteSelection (touches a
+// noteTextareaRef owned by DispatchPage); it accesses newNote/setNewNote
+// via the hook return like any other JSX consumer. (renderFormattedText was
+// lifted out to utils/renderFormatted.tsx and is now the shared block-aware
+// renderer used by both the note list and the document subsystem.)
 
 import { useCallback, useState } from 'react';
 import type { CallForService, CallNote } from '../../../types';

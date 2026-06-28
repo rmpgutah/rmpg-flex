@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { renderWarrantIntoDoc, type WarrantPdfData } from './recordPdfGenerator';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // Isolated fetch (Pattern E fix, Wave 3.1): the pre-wave-3.1 code used
 // apiFetch from hooks/useApi, which is auth-coupled — on a 401 it
@@ -38,6 +39,7 @@ export async function buildWarrantPacketPdf(
   currentUser?: { full_name?: string; badge_number?: string }
 ): Promise<void> {
   const doc = new jsPDF();
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   let first = true;
   for (const id of warrantIds) {
     // Isolate each warrant — one failed fetch/render must not void the whole

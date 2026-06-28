@@ -114,7 +114,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white">Tire Tracking</h3>
+        <h3 className="text-xs font-bold text-rmpg-100">Tire Tracking</h3>
         <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Tire</button>
       </div>
 
@@ -149,7 +149,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
               <p className="text-[10px] text-rmpg-300 mt-1">{POSITION_LABELS[pos]}</p>
               {tire ? (
                 <>
-                  <p className="text-[10px] text-white font-mono">{tire.brand} {tire.size}</p>
+                  <p className="text-[10px] text-rmpg-100 font-mono">{tire.brand} {tire.size}</p>
                   <p className={`text-[10px] font-bold ${treadColor(tire.tread_depth)}`}>
                     {tire.tread_depth ? `${tire.tread_depth}/32"` : 'N/A'}
                   </p>
@@ -187,7 +187,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
           <tbody>
             {tires.map(t => (
               <tr key={t.id} className="border-b border-rmpg-800 text-rmpg-200">
-                <td className="py-1 text-white">{POSITION_LABELS[t.position] || t.position}</td>
+                <td className="py-1 text-rmpg-100">{POSITION_LABELS[t.position] || t.position}</td>
                 <td>{t.brand} {t.model}</td>
                 <td>{t.size}</td>
                 <td className={`text-right font-mono font-bold ${treadColor(t.tread_depth)}`}>{t.tread_depth ? `${t.tread_depth}/32"` : '-'}</td>

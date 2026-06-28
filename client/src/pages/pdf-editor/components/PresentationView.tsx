@@ -75,17 +75,17 @@ export default function PresentationView({ open, bytes, pageOrder, startPage, fi
 
   return (
     <div className="fixed inset-0 z-[60] bg-black flex flex-col" role="dialog" aria-modal="true" aria-label="Presentation view">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-rmpg-400 bg-[#050505] border-b border-[#1a1a1a]">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-rmpg-400 bg-surface-overlay border-b border-border-default">
         <span className="text-[#d4a017] font-semibold uppercase tracking-wider">Presenting</span>
         <span className="truncate">{fileName}</span>
         <span className="ml-auto">Page {page} / {total}</span>
         <button type="button" onClick={onClose} aria-label="Exit presentation (Esc)" title="Exit (Esc)"
-          className="p-1 text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          className="p-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
       </div>
 
       <div className="flex-1 relative flex items-center justify-center overflow-auto p-4 select-none">
         <button type="button" onClick={() => go(-1)} disabled={page <= 1} aria-label="Previous page"
-          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-[#0d0d0d]/70 text-rmpg-300 hover:text-white disabled:opacity-20 z-10">
+          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-surface-base/70 text-rmpg-300 hover:text-rmpg-100 disabled:opacity-20 z-10">
           <ChevronLeft className="w-6 h-6" />
         </button>
 
@@ -94,12 +94,12 @@ export default function PresentationView({ open, bytes, pageOrder, startPage, fi
           : <canvas ref={canvasRef} className={`bg-white shadow-2xl max-h-full ${rendering ? 'opacity-70' : ''}`} style={{ maxWidth: '100%', height: 'auto' }} />}
 
         <button type="button" onClick={() => go(1)} disabled={page >= total} aria-label="Next page"
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-[#0d0d0d]/70 text-rmpg-300 hover:text-white disabled:opacity-20 z-10">
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-sm bg-surface-base/70 text-rmpg-300 hover:text-rmpg-100 disabled:opacity-20 z-10">
           <ChevronRight className="w-6 h-6" />
         </button>
       </div>
 
-      <div className="px-3 py-1 text-[9px] text-rmpg-600 text-center bg-[#050505] border-t border-[#1a1a1a]">
+      <div className="px-3 py-1 text-[9px] text-rmpg-600 text-center bg-surface-overlay border-t border-border-default">
         ← / → navigate · Space next · Home / End jump · Esc exits
       </div>
     </div>

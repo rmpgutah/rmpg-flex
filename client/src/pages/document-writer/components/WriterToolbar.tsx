@@ -32,7 +32,7 @@ import {
   type SortMode, type SectionBlock,
 } from '../docTools';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
-import { PAGE_PRESETS, isActivePreset } from '../docFeatures';
+import { PAGE_PRESETS, isActivePreset, MARGIN_PRESETS, applyMarginPreset, activeMarginPresetId, DOCUMENT_FORMAT_PRESETS, applyDocumentFormatPreset } from '../docFeatures';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
  *  export, clipboard, media) — bundled to keep the prop list manageable. */
@@ -44,6 +44,7 @@ export interface WriterExtActions {
   onAddComment: () => void;
   onSnapshot: () => void;
   onExport: (format: 'md' | 'txt' | 'rtf' | 'html') => void;
+  onExportDocx: () => void;
   onEmail: () => void;
   onPastePlain: () => void;
   onCopyAs: (format: 'plain' | 'html' | 'md') => void;
@@ -105,6 +106,8 @@ export interface WriterExtActions {
   wordLimitOn: boolean;
   onToggleReorder: () => void;
   onToggleMacro: () => void;
+  onToggleRefiners: () => void;
+  refinersOpen: boolean;
 }
 
 interface Props {
@@ -132,15 +135,15 @@ function ToolBtn({ active, disabled, onClick, children, title }: {
     <button
       type="button" title={title} disabled={disabled} onClick={onClick}
       className={`p-1.5 rounded-[2px] transition-colors ${
-        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-[#1a1a1a]'
+        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
     >
       {children}
     </button>
   );
 }
-function Divider() { return <div className="w-px h-5 bg-[#222] mx-1" />; }
-const selCls = 'bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-[#d4a017]/50';
+function Divider() { return <div className="w-px h-5 bg-surface-raised mx-1" />; }
+const selCls = 'bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-[#d4a017]/50';
 
 export default function WriterToolbar({
   editor, docSettings, setDocSettings, theme, onToggleTheme,
@@ -193,9 +196,9 @@ export default function WriterToolbar({
     setDocSettings((s) => ({ ...s, page: { ...s.page, margins: { ...s.page.margins, [side]: v } } }));
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222] rounded-[2px] p-1.5">
+    <div className="bg-surface-base border border-border-default rounded-[2px] p-1.5">
       {/* Title row */}
-      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
+      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-border-default">
         <FileText className="w-4 h-4 text-[#d4a017] flex-shrink-0" />
         <input
           type="text" value={title} onChange={(e) => onTitleChange(e.target.value)}
@@ -205,37 +208,37 @@ export default function WriterToolbar({
         <button type="button" onClick={ext.onReadAloud}
           title={ext.readingAloud ? 'Stop reading aloud' : 'Read document (or selection) aloud'}
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           {ext.readingAloud ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
           {ext.readingAloud ? 'Stop' : 'Read'}
         </button>
         <button type="button" onClick={ext.onOpenProperties}
           title="Document properties (title, author, subject, keywords)"
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Info className="w-3 h-3" />Props
         </button>
         <button type="button" onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}
           title="Focus / Zen mode — hide panels and chrome for distraction-free writing"
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           <Focus className="w-3 h-3" />Focus
         </button>
         <button type="button" onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
           {theme === 'dark' ? 'Light' : 'Dark'}
         </button>
         <button type="button" onClick={ext.onShortcuts} title="Keyboard shortcuts (press ?)" aria-label="Keyboard shortcuts"
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Keyboard className="w-3 h-3" />?
         </button>
         {/* Server-autosave indicator (appears once a server document id exists) */}
         {ext.serverSaveState !== 'idle' && (
           <span title="Autosave to Documents server"
             className={`text-[9px] px-1.5 py-1 rounded-[2px] border ${
-              ext.serverSaveState === 'saving' ? 'text-rmpg-400 border-[#222] bg-[#141414]'
+              ext.serverSaveState === 'saving' ? 'text-rmpg-400 border-border-default bg-surface-base'
               : ext.serverSaveState === 'saved' ? 'text-green-400/80 border-green-700/30 bg-green-900/10'
               : 'text-red-400/80 border-red-700/30 bg-red-900/10'
             }`}>
@@ -247,11 +250,11 @@ export default function WriterToolbar({
           <Save className="w-3 h-3" />{saving ? 'Saving...' : 'Save'}
         </button>
         <button type="button" onClick={onExportPdf}
-          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Download className="w-3 h-3" />PDF
         </button>
         <button type="button" onClick={onPrint}
-          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
           <Printer className="w-3 h-3" />Print
         </button>
       </div>
@@ -522,7 +525,7 @@ export default function WriterToolbar({
                     {grp.chars.map((ch) => (
                       <button key={ch} type="button" title={ch}
                         onClick={() => { insertSpecialChar(editor, ch); }}
-                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-[#141414] border border-[#222] rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
+                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-surface-base border border-border-default rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
                         {ch}
                       </button>
                     ))}
@@ -747,7 +750,17 @@ export default function WriterToolbar({
               <MenuButton onClick={() => { ext.onInsertCaption('Exhibit'); close(); }}><span className="flex items-center gap-1"><Captions className="w-3 h-3" /> Lettered exhibit caption</span></MenuButton>
               <MenuButton onClick={() => { ext.onInsertSpacer(); close(); }}><span className="flex items-center gap-1"><StretchVertical className="w-3 h-3" /> Vertical spacer…</span></MenuButton>
 
-              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Page setup presets</div>
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Document format presets</div>
+              {DOCUMENT_FORMAT_PRESETS.map((p) => (
+                <MenuButton key={p.id} onClick={() => { setDocSettings((s) => applyDocumentFormatPreset(s, p)); close(); }}>
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{p.label}</span>
+                    <span className="text-[9px] text-rmpg-600 font-normal">{p.description}</span>
+                  </span>
+                </MenuButton>
+              ))}
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Page setup (size only)</div>
               {PAGE_PRESETS.map((p) => (
                 <MenuButton key={p.id} active={isActivePreset(docSettings, p)} onClick={() => ext.onApplyPagePreset(p.id)}>{p.label}</MenuButton>
               ))}
@@ -768,6 +781,11 @@ export default function WriterToolbar({
           )}
         </ToolbarMenu>
 
+        <ToolBtn active={ext.refinersOpen} onClick={ext.onToggleRefiners} title="AI Refiners — rewrite, tone, probable cause, Miranda check">
+          <Sparkles className="w-3.5 h-3.5" />
+        </ToolBtn>
+        <Divider />
+
         {/* View menu — zoom + reading/fullscreen (features 178–185, 50) */}
         <ToolbarMenu label="View" icon={Eye} width={200}>
           <MenuButton onClick={() => ext.setZoom(() => 1)}>Zoom 100%</MenuButton>
@@ -780,13 +798,16 @@ export default function WriterToolbar({
         </ToolbarMenu>
 
         {/* Export menu (features 126–140) */}
-        <ToolbarMenu label="Export" icon={FileDown} width={200}>
-          <MenuButton onClick={onExportPdf}>PDF (print)</MenuButton>
-          <MenuButton onClick={() => ext.onExport('html')}>HTML (raw fragment)</MenuButton>
-          <MenuButton onClick={ext.onExportStandaloneHtml}><span className="flex items-center gap-1"><FileCode2 className="w-3 h-3" /> HTML (styled standalone)</span></MenuButton>
+        <ToolbarMenu label="Export" icon={FileDown} width={210}>
+          <div className="text-[10px] text-rmpg-500">Documents</div>
+          <MenuButton onClick={ext.onExportDocx}>Word (.docx) — editable</MenuButton>
+          <MenuButton onClick={onExportPdf}>PDF</MenuButton>
+          <MenuButton onClick={() => ext.onExport('rtf')}>Rich Text (.rtf)</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Other formats</div>
           <MenuButton onClick={() => ext.onExport('md')}>Markdown</MenuButton>
           <MenuButton onClick={() => ext.onExport('txt')}>Plain text</MenuButton>
-          <MenuButton onClick={() => ext.onExport('rtf')}>RTF (Word)</MenuButton>
+          <MenuButton onClick={() => ext.onExport('html')}>HTML (raw fragment)</MenuButton>
+          <MenuButton onClick={ext.onExportStandaloneHtml}><span className="flex items-center gap-1"><FileCode2 className="w-3 h-3" /> HTML (styled standalone)</span></MenuButton>
           <MenuButton onClick={ext.onEmail}>Email document…</MenuButton>
           <div className="text-[10px] text-rmpg-500 pt-1">Editor document (JSON)</div>
           <MenuButton onClick={ext.onExportJson}>Export as JSON…</MenuButton>
@@ -803,6 +824,18 @@ export default function WriterToolbar({
           <MenuRow label="Orientation">
             <select className={selCls} value={docSettings.page.orientation} onChange={(e) => setPage({ orientation: e.target.value as 'portrait' | 'landscape' })}>
               <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+            </select>
+          </MenuRow>
+          <MenuRow label="Margins">
+            <select
+              className={selCls}
+              value={activeMarginPresetId(docSettings)}
+              onChange={(e) => {
+                const preset = MARGIN_PRESETS.find((p) => p.id === e.target.value);
+                if (preset) setDocSettings((s) => applyMarginPreset(s, preset));
+              }}
+            >
+              {MARGIN_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </MenuRow>
           <div className="text-[10px] text-rmpg-500 pt-1">Margins (px)</div>

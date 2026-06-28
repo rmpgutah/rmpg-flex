@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useState, useEffect, useCallback, useId, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   QrCode,
@@ -18,7 +19,6 @@ import {
   RotateCcw,
   Copy,
   Map as MapIcon,
-  Wrench,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -31,7 +31,8 @@ import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
-import TabBar from '../components/TabBar';
+import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
@@ -41,8 +42,12 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import { toDisplayLabel } from '../utils/formatters';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import MileageAuditTab from './patrol/MileageAuditTab';
+import PricingTab from './patrol/PricingTab';
+import ContractsTab from './patrol/ContractsTab';
+import BillingReviewTab from './patrol/BillingReviewTab';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -179,7 +184,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       hasPoints = true;
 
       const el = document.createElement('div');
-      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? '#22c55e' : '#666666'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
+      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--rmpg-500)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
         .addTo(map);
@@ -201,6 +206,11 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       scansByDate.set(date, list);
     });
 
+    // Officer trail palette — five distinct hues for distinguishing trails on
+    // the map. These ARE deliberately hardcoded constants (trails always look
+    // identical regardless of day/night) so they can't go through --sev-*.
+    // Lifted from raw hex to read against the semantic palette anyway: muted
+    // grey / special purple / warn amber / critical red / ok green.
     const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
@@ -256,11 +266,42 @@ const PatrolPage: React.FC = () => {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
+  // Role gates — matches the admin|manager pattern used across Jail/DashCameras/etc.
+  const canCreate = useMemo(() =>
+    user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor' || user?.role === 'officer',
+    [user?.role],
+  );
+  const canDelete = useMemo(() =>
+    user?.role === 'admin' || user?.role === 'manager',
+    [user?.role],
+  );
+
   // Set document title
-  useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Patrol Tracking — RMPG Flex'; }, []);
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage', 'pricing', 'contracts', 'billing'] as const);
+
+  // ── ?tab=<id> URL deep-link ──
+  // Same contract Dashboard/Dispatch/Map/MDT/NCIC consume. Honors one-shot
+  // tab selection on mount, strips the param so a refresh doesn't override
+  // the operator's subsequent tab clicks. Validates against the persisted-
+  // tab whitelist so a bad URL just lands on the saved default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingTabRef = useRef<string | null>(searchParams.get('tab'));
+  useEffect(() => {
+    const target = pendingTabRef.current;
+    if (!target) return;
+    pendingTabRef.current = null;
+    const valid = ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage', 'pricing', 'contracts', 'billing'] as const;
+    if ((valid as readonly string[]).includes(target)) {
+      setActiveTab(target as typeof valid[number]);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -272,6 +313,9 @@ const PatrolPage: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState('');
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+  const rowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
+  const deepLinkConsumedRef = useRef(false);
   const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
   const EMPTY_CHECKPOINT_FORM = {
     property_id: '',
@@ -298,7 +342,51 @@ const PatrolPage: React.FC = () => {
   // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
   const [shiftSummary, setShiftSummary] = useState<any>(null);
   const [isOnBreak, setIsOnBreak] = useState(false);
+  // Start time of the CURRENT open break (when isOnBreak=true). Drives the
+  // live elapsed counter so the operator sees "Break elapsed 14m" instead of
+  // a binary "you're on break" state. Hydrated from server on mount along
+  // with isOnBreak so a page refresh doesn't lose the timer.
+  const [breakStartIso, setBreakStartIso] = useState<string | null>(null);
+  const [breakElapsedMs, setBreakElapsedMs] = useState(0);
   const [efficiency, setEfficiency] = useState<any>(null);
+
+  // Hydrate isOnBreak + breakStartIso from server on mount + user change.
+  // Previously `isOnBreak` only flipped on local Start/End clicks, so an
+  // operator on break who reloaded the page saw the "Start Break" button
+  // again and a fresh click would race the server into a 2nd break.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const fetchOpenBreak = async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = await apiFetch<Array<{ break_start: string; break_end: string | null }>>(
+          `/patrol/breaks?officer_id=${user.id}&date=${today}`,
+        );
+        if (cancelled) return;
+        const open = (Array.isArray(rows) ? rows : []).find((r) => !r.break_end);
+        if (open) {
+          setIsOnBreak(true);
+          setBreakStartIso(open.break_start);
+        } else {
+          setIsOnBreak(false);
+          setBreakStartIso(null);
+        }
+      } catch { /* silent — toolbar just shows Start buttons */ }
+    };
+    fetchOpenBreak();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // Live elapsed counter — 30s tick is plenty (officer is reading minutes,
+  // not seconds). Pauses cleanly when isOnBreak flips back to false.
+  useEffect(() => {
+    if (!isOnBreak || !breakStartIso) { setBreakElapsedMs(0); return; }
+    const tick = () => setBreakElapsedMs(Date.now() - parseTimestamp(breakStartIso).getTime());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [isOnBreak, breakStartIso]);
 
   const loadShiftSummary = async () => {
     if (!user?.id) return; // handler requires officer_id, else 400
@@ -317,8 +405,14 @@ const PatrolPage: React.FC = () => {
 
   const startBreak = async (breakType = 'break') => {
     try {
-      await apiFetch('/patrol/breaks/start', { method: 'POST', body: JSON.stringify({ break_type: breakType }) });
+      const data = await apiFetch<{ break_start?: string }>(
+        '/patrol/breaks/start',
+        { method: 'POST', body: JSON.stringify({ break_type: breakType }) },
+      );
       setIsOnBreak(true);
+      // Server returns the canonical break_start when available; fall back
+      // to "now" so the elapsed counter starts ticking immediately.
+      setBreakStartIso(data?.break_start ?? new Date().toISOString());
       addToast('Break started', 'success');
     } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
   };
@@ -327,6 +421,7 @@ const PatrolPage: React.FC = () => {
     try {
       const data = await apiFetch<any>('/patrol/breaks/end', { method: 'POST' });
       setIsOnBreak(false);
+      setBreakStartIso(null);
       addToast(`Break ended (${data?.duration_minutes || 0} min)`, 'success');
     } catch (err: any) { addToast(err?.message || 'Failed to end break', 'error'); }
   };
@@ -440,6 +535,37 @@ const PatrolPage: React.FC = () => {
   // Live sync — auto-refresh when any device modifies patrol data (silent to avoid unmounting UI)
   const silentRefreshPatrol = useCallback(() => loadData({ silent: true }), [loadData]);
   useLiveSync('patrol', silentRefreshPatrol);
+
+  // ── ?checkpoint_id=<n> deep-link ──
+  // On first load after checkpoints are available, scroll the matching row
+  // into view, flash-highlight it, and strip the param (replace:true) so a
+  // refresh doesn't re-trigger. Missing target toasts a warning.
+  useEffect(() => {
+    if (loading || deepLinkConsumedRef.current) return;
+    const cpIdParam = searchParams.get('checkpoint_id');
+    if (!cpIdParam) return;
+    deepLinkConsumedRef.current = true;
+    const id = parseInt(cpIdParam, 10);
+    const target = checkpoints.find((c) => c.id === id);
+    if (target) {
+      setActiveTab('checkpoints');
+      setHighlightId(id);
+    } else {
+      addToast(`Checkpoint #${cpIdParam} not found.`, 'warning');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('checkpoint_id');
+    setSearchParams(next, { replace: true });
+  }, [loading, checkpoints, searchParams, setSearchParams, addToast, setActiveTab]);
+
+  // Flash-highlight row — 3 s window, same as Jail/Equipment pattern.
+  useEffect(() => {
+    if (highlightId === null) return;
+    const row = rowRefs.current.get(highlightId);
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const t = setTimeout(() => setHighlightId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const handleCreateCheckpoint = () => {
     setEditingCheckpoint(null);
@@ -559,7 +685,7 @@ const PatrolPage: React.FC = () => {
     ...(cp.archived_at ? [] : [
       m.separator(),
       m.action('Archive', () => handleArchiveCheckpoint(cp.id), { icon: <Archive size={12} /> }),
-      m.action('Delete', () => setDeleteConfirmId(cp.id), { icon: <Trash2 size={12} />, danger: true }),
+      ...(canDelete ? [m.action('Delete', () => setDeleteConfirmId(cp.id), { icon: <Trash2 size={12} />, danger: true })] : []),
     ]),
   ];
 
@@ -687,36 +813,61 @@ const PatrolPage: React.FC = () => {
     } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
   };
 
-  // ── Feature 4: Coverage Heatmap data ──
-  const [coverageData, setCoverageData] = useState<any>(null);
-  const handleLoadCoverage = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/coverage-heatmap?days=7');
-      setCoverageData(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load coverage data', 'error'); }
-  };
+  // ── Esc smart-cascade: dismiss innermost open layer first ──
+  // Priority: deleteConfirmId > QR modal > Checkpoint modal, then stop.
+  // Each branch calls e.stopPropagation() so the event doesn't bubble further.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (deleteConfirmId !== null) { e.stopPropagation(); setDeleteConfirmId(null); return; }
+      if (showQrModal) { e.stopPropagation(); setShowQrModal(false); return; }
+      if (showCheckpointModal) {
+        e.stopPropagation();
+        clearFormDraft();
+        setShowCheckpointModal(false);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [deleteConfirmId, showQrModal, showCheckpointModal, clearFormDraft]);
 
-  const patrolTabs = [
-    { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
-    { id: 'scans' as const, label: 'Scan Log', icon: Clock },
-    { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
-    { id: 'map' as const, label: 'Map', icon: MapIcon },
-    { id: 'summary' as const, label: 'Shift Summary', icon: CheckCircle },
-    { id: 'mileage' as const, label: 'Mileage Audit', icon: Wrench },
-  ];
+  // ── N shortcut: open new Checkpoint form ──
+  // Only active on the Checkpoints tab; suppressed while typing in a field
+  // or when any modal is already open.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (!canCreate) return;
+      if (activeTab !== 'checkpoints') return;
+      if (showCheckpointModal || showQrModal || deleteConfirmId !== null) return;
+      e.preventDefault();
+      handleCreateCheckpoint();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canCreate, activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {isMobile ? (
-        <div className="flex items-center gap-2 px-3 py-2 bg-[#080808] border-b border-[#1a1a1a]">
+        <div className="flex items-center gap-2 px-3 py-2 bg-surface-base border-b border-border-default">
           <RmpgLogo height={24} />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">Patrol Operations</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400">Patrol Operations</span>
         </div>
       ) : (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-sunken), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--surface-sunken))' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
@@ -727,10 +878,10 @@ const PatrolPage: React.FC = () => {
       )}
 
       {isMobile ? (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#060606] border-b border-[#1a1a1a]">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-[#d4a017]">PATROL MANAGEMENT</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-base border-b border-border-default">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-brand-400">PATROL MANAGEMENT</span>
           <div className="flex gap-1 ml-auto">
-            {activeTab === 'checkpoints' && (
+            {activeTab === 'checkpoints' && canCreate && (
               <button type="button" onClick={handleCreateCheckpoint} className="btn-gold btn-xs" aria-label="Create checkpoint"><Plus className="w-3 h-3" /></button>
             )}
             <button type="button" onClick={loadCompliance} className="btn-secondary btn-xs" aria-label="Refresh compliance"><RefreshCw className="w-3 h-3" /></button>
@@ -742,7 +893,7 @@ const PatrolPage: React.FC = () => {
         {activeTab === 'scans' && (
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
         )}
-        {activeTab === 'checkpoints' && (
+        {activeTab === 'checkpoints' && canCreate && (
           <button type="button" onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3.5 h-3.5" /> Add Checkpoint
           </button>
@@ -754,13 +905,46 @@ const PatrolPage: React.FC = () => {
         )}
       </PanelTitleBar>)}
 
-      {/* Tabs */}
-      <TabBar
-        spillman
-        tabs={patrolTabs}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage')}
-      />
+      {/* Tabs — sticky so the section nav stays visible while tab content
+          (esp. the Mileage Audit chain, which can run to hundreds of rows)
+          scrolls underneath. Without this the user loses the way out of
+          MILEAGE AUDIT as soon as they scroll down the chain. */}
+      {/* Tab Navigation (grouped Spillman module strip) */}
+      <div className="sticky top-0 z-30">
+        <SpillmanModuleGroup
+          groups={[
+            {
+              label: 'Field Ops',
+              tone: 'steel',
+              tabs: [
+                { id: 'checkpoints', label: 'Checkpoints' },
+                { id: 'scans',       label: 'Scan Log' },
+                { id: 'compliance',  label: 'Compliance' },
+                { id: 'map',         label: 'Map' },
+              ],
+            },
+            {
+              label: 'Reporting',
+              tone: 'gold',
+              tabs: [
+                { id: 'summary',  label: 'Shift Summary' },
+                { id: 'mileage',  label: 'Mileage Audit' },
+              ],
+            },
+            {
+              label: 'Finance',
+              tone: 'neutral',
+              tabs: [
+                { id: 'pricing',   label: 'Pricing' },
+                { id: 'contracts', label: 'Contracts' },
+                { id: 'billing',   label: 'Billing Review' },
+              ],
+            },
+          ] as ModuleGroupSpec[]}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
+        />
+      </div>
 
       {/* Error Banner */}
       {error && (
@@ -787,9 +971,9 @@ const PatrolPage: React.FC = () => {
             <span className="text-green-400 font-bold">{checkpoints.filter(c => c.is_active).length}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3 text-gray-400" />
+            <Clock className="w-3 h-3 text-rmpg-400" />
             <span className="text-rmpg-400">Scans Today:</span>
-            <span className="text-gray-400 font-bold">
+            <span className="text-rmpg-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
                 return parseTimestamp(s.scanned_at).toDateString() === today;
@@ -825,15 +1009,15 @@ const PatrolPage: React.FC = () => {
       {optimizedRoute && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <span className="font-bold text-brand-gold-500 uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
             <IconButton onClick={() => setOptimizedRoute(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
               <div key={cp.id} className="flex gap-2">
-                <span className="text-gray-500 w-4">{i + 1}.</span>
-                <span className="text-white">{cp.name}</span>
-                <span className="text-gray-500 ml-auto">{cp.distance_from_previous_km} km</span>
+                <span className="text-rmpg-500 w-4">{i + 1}.</span>
+                <span className="text-rmpg-100">{cp.name}</span>
+                <span className="text-rmpg-500 ml-auto">{cp.distance_from_previous_km} km</span>
               </div>
             ))}
           </div>
@@ -844,12 +1028,12 @@ const PatrolPage: React.FC = () => {
       {patrolLog && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
+            <span className="font-bold text-brand-gold-500 uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
             <IconButton onClick={() => setPatrolLog(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
-            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
-            <div><span className="text-rmpg-400">Total Time:</span> <span className="text-white">{patrolLog.total_time_minutes} min</span></div>
+            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-rmpg-100">{patrolLog.total_checkpoints_scanned}</span></div>
+            <div><span className="text-rmpg-400">Total Time:</span> <span className="text-rmpg-100">{patrolLog.total_time_minutes} min</span></div>
             <div><span className="text-rmpg-400">On Time:</span> <span className="text-green-400">{patrolLog.on_time}</span></div>
             <div><span className="text-rmpg-400">Late:</span> <span className="text-amber-400">{patrolLog.late}</span></div>
           </div>
@@ -857,8 +1041,8 @@ const PatrolPage: React.FC = () => {
             {patrolLog.entries?.map((e: any, i: number) => (
               <div key={i} className="flex gap-2">
                 <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
-                <span className="text-white flex-1">{e.checkpoint}</span>
-                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                <span className="text-rmpg-100 flex-1">{e.checkpoint}</span>
+                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : toDisplayLabel(e.status)}</span>
                 {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
               </div>
             ))}
@@ -870,7 +1054,7 @@ const PatrolPage: React.FC = () => {
       {exceptions && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
+            <span className="font-bold text-brand-gold-500 uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
             <IconButton onClick={() => setExceptions(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
           </div>
           {exceptions.missed_checkpoints?.length > 0 && (
@@ -902,13 +1086,13 @@ const PatrolPage: React.FC = () => {
       {timeTracking && (
         <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
+            <span className="font-bold text-brand-gold-500 uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
             <IconButton onClick={() => setTimeTracking(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
-            <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
-            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{timeTracking.total_checkpoints}</span></div>
-            <div><span className="text-rmpg-400">Avg Between:</span> <span className="text-white">{timeTracking.average_between_minutes} min</span></div>
+            <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-rmpg-100">{timeTracking.total_patrol_minutes} min</span></div>
+            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-rmpg-100">{timeTracking.total_checkpoints}</span></div>
+            <div><span className="text-rmpg-400">Avg Between:</span> <span className="text-rmpg-100">{timeTracking.average_between_minutes} min</span></div>
             <div><span className="text-rmpg-400">Longest Gap:</span> <span className="text-amber-400">{timeTracking.longest_gap_minutes} min</span></div>
           </div>
           <div className="max-h-24 overflow-y-auto space-y-0.5">
@@ -916,7 +1100,7 @@ const PatrolPage: React.FC = () => {
               <div key={i} className="text-[10px] flex gap-2">
                 <span className="text-rmpg-500">{s.from}</span>
                 <span className="text-purple-500">→</span>
-                <span className="text-white">{s.to}</span>
+                <span className="text-rmpg-100">{s.to}</span>
                 <span className="text-purple-400 ml-auto">{s.duration_minutes} min</span>
               </div>
             ))}
@@ -948,7 +1132,7 @@ const PatrolPage: React.FC = () => {
                       <div className="flex items-start gap-2 mb-2">
                         <span className={`led-dot mt-1 ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-white truncate">{checkpoint.name}</div>
+                          <div className="text-sm font-medium text-rmpg-100 truncate">{checkpoint.name}</div>
                           <div className="text-[10px] text-rmpg-400 truncate">{checkpoint.property_name}</div>
                         </div>
                         <span className={`text-[9px] font-bold uppercase ${checkpoint.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
@@ -989,14 +1173,16 @@ const PatrolPage: React.FC = () => {
                               >
                                 <Archive className="w-4 h-4" />
                               </IconButton>
-                              <IconButton
-                                onClick={() => setDeleteConfirmId(checkpoint.id)}
-                                className="text-red-400 p-2"
-                                title="Delete"
-                                aria-label={`Delete ${checkpoint.name}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </IconButton>
+                              {canDelete && (
+                                <IconButton
+                                  onClick={() => setDeleteConfirmId(checkpoint.id)}
+                                  className="text-red-400 p-2"
+                                  title="Delete"
+                                  aria-label={`Delete ${checkpoint.name}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </IconButton>
+                              )}
                             </>
                           ) : (
                             <IconButton
@@ -1028,11 +1214,16 @@ const PatrolPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {checkpoints.map((checkpoint) => (
-                    <tr key={checkpoint.id} onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}>
+                    <tr
+                      key={checkpoint.id}
+                      ref={(el) => { rowRefs.current.set(checkpoint.id, el); }}
+                      onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}
+                      className={highlightId === checkpoint.id ? 'bg-brand-400/10 transition-colors' : ''}
+                    >
                       <td>
                         <div className="flex items-center gap-2">
                           <span className={`led-dot ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
-                          <span className="text-white font-medium text-xs">{checkpoint.name}</span>
+                          <span className="text-rmpg-100 font-medium text-xs">{checkpoint.name}</span>
                         </div>
                       </td>
                       <td className="text-xs text-rmpg-200">
@@ -1083,14 +1274,16 @@ const PatrolPage: React.FC = () => {
                               >
                                 <Archive className="w-4 h-4" />
                               </IconButton>
-                              <IconButton
-                                onClick={() => setDeleteConfirmId(checkpoint.id)}
-                                className="text-red-400 hover:text-red-300"
-                                title="Delete"
-                                aria-label={`Delete ${checkpoint.name}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </IconButton>
+                              {canDelete && (
+                                <IconButton
+                                  onClick={() => setDeleteConfirmId(checkpoint.id)}
+                                  className="text-red-400 hover:text-red-300"
+                                  title="Delete"
+                                  aria-label={`Delete ${checkpoint.name}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </IconButton>
+                              )}
                             </>
                           )}
                           {checkpoint.archived_at && (
@@ -1112,8 +1305,14 @@ const PatrolPage: React.FC = () => {
               </div>
               )}
               {checkpoints.length === 0 && (
-                <div className="text-center py-12 text-rmpg-300">
-                  No checkpoints found. Create one to get started.
+                <div className="text-center py-12 text-rmpg-400">
+                  <QrCode className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <div className="text-sm text-rmpg-300 mb-1">No checkpoints configured</div>
+                  <div className="text-[11px] text-rmpg-500">
+                    {canCreate
+                      ? <>Press <kbd className="font-mono bg-rmpg-700 px-1 rounded-sm">N</kbd> or use <span className="text-brand-400">+ Add Checkpoint</span> to create your first checkpoint.</>
+                      : 'No checkpoints have been configured yet. Contact an admin or manager to add checkpoints.'}
+                  </div>
                 </div>
               )}
             </div>
@@ -1126,7 +1325,7 @@ const PatrolPage: React.FC = () => {
               <div className="panel-beveled p-4 mb-4 bg-[var(--surface-base)]">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-0" className="block text-sm font-medium text-rmpg-200 mb-1">
                       Checkpoint:
                     </label>
                     <select id="ff-patrolpage-0"
@@ -1145,7 +1344,7 @@ const PatrolPage: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-1" className="block text-sm font-medium text-rmpg-200 mb-1">
                       Start Date:
                     </label>
                     <input id="ff-patrolpage-1"
@@ -1158,7 +1357,7 @@ const PatrolPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                    <label htmlFor="ff-patrolpage-2" className="block text-sm font-medium text-rmpg-200 mb-1">
                       End Date:
                     </label>
                     <input id="ff-patrolpage-2"
@@ -1207,7 +1406,7 @@ const PatrolPage: React.FC = () => {
                             {formatDateTime(scan.scanned_at)}
                           </span>
                         </div>
-                        <div className="text-sm text-white font-medium truncate">{scan.checkpoint_name}</div>
+                        <div className="text-sm text-rmpg-100 font-medium truncate">{scan.checkpoint_name}</div>
                         <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mb-1 truncate">
                           <span>{scan.property_name}</span>
                           <span className="text-rmpg-600">·</span>
@@ -1239,7 +1438,7 @@ const PatrolPage: React.FC = () => {
                           {formatDateTime(scan.scanned_at)}
                         </td>
                         <td className="text-xs text-rmpg-200">{scan.officer_name}</td>
-                        <td className="text-xs text-white font-medium">{scan.checkpoint_name}</td>
+                        <td className="text-xs text-rmpg-100 font-medium">{scan.checkpoint_name}</td>
                         <td className="text-xs text-rmpg-200">{scan.property_name}</td>
                         <td>
                           <div className={`flex items-center gap-2 text-xs ${getStatusColor(scan.status)}`}>
@@ -1255,8 +1454,19 @@ const PatrolPage: React.FC = () => {
                 </div>
                 )}
                 {scans.length === 0 && (
-                  <div className="text-center py-12 text-rmpg-300">
-                    No scans found matching the filters.
+                  <div className="text-center py-12 text-rmpg-400">
+                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    {scanFilters.checkpointId || scanFilters.officerId || scanFilters.startDate || scanFilters.endDate ? (
+                      <>
+                        <div className="text-sm text-rmpg-300 mb-1">No scans match the current filters</div>
+                        <div className="text-[11px] text-rmpg-500">Try widening the date range or clearing the filters.</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-sm text-rmpg-300 mb-1">No scan records yet</div>
+                        <div className="text-[11px] text-rmpg-500">Scans are logged when officers scan QR codes at checkpoints.</div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1279,11 +1489,22 @@ const PatrolPage: React.FC = () => {
                   <CheckCircle className="w-3 h-3" /> {isMobile ? 'Efficiency' : 'Efficiency Score'}
                 </button>
                 <div className={`${isMobile ? 'w-full' : 'ml-auto'} flex items-center gap-2 ${isMobile ? 'justify-end' : ''}`}>
-                  {/* Feature 13: Break tracking */}
+                  {/* Feature 13: Break tracking — hydrated from /patrol/breaks
+                      on mount so a page refresh keeps the on-break state.
+                      Live elapsed counter at 30s tick (officer reads minutes,
+                      not seconds) so the button isn't just a binary toggle. */}
                   {isOnBreak ? (
-                    <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
-                      <Clock className="w-3 h-3" /> End Break
-                    </button>
+                    <>
+                      <span className="text-[10px] font-mono tabular-nums text-rmpg-400" title="Elapsed since break started">
+                        {(() => {
+                          const totalMin = Math.max(0, Math.floor(breakElapsedMs / 60_000));
+                          return totalMin >= 60 ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m` : `${totalMin}m`;
+                        })()}
+                      </span>
+                      <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
+                        <Clock className="w-3 h-3" /> End Break
+                      </button>
+                    </>
                   ) : (
                     <div className="flex gap-1">
                       <button type="button" onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
@@ -1296,14 +1517,14 @@ const PatrolPage: React.FC = () => {
               {/* Shift Summary Card */}
               {shiftSummary && (
                 <div className="panel-beveled p-4 bg-surface-base space-y-3">
-                  <h3 className="text-sm font-bold text-white mb-3">Shift Summary - {shiftSummary.date}</h3>
+                  <h3 className="text-sm font-bold text-rmpg-100 mb-3">Shift Summary - {shiftSummary.date}</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center">
                       <div className="text-2xl font-bold text-green-400 font-mono">{shiftSummary.scans_total}</div>
                       <div className="text-[10px] text-rmpg-400">Total Scans</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-400 font-mono">{shiftSummary.scans_on_time}</div>
+                      <div className="text-2xl font-bold text-rmpg-400 font-mono">{shiftSummary.scans_on_time}</div>
                       <div className="text-[10px] text-rmpg-400">On Time</div>
                     </div>
                     <div className="text-center">
@@ -1318,15 +1539,15 @@ const PatrolPage: React.FC = () => {
                   <div className="border-t border-rmpg-600 pt-3 grid grid-cols-3 gap-4">
                     <div>
                       <span className="text-[10px] text-rmpg-400">Est. Mileage</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.estimated_mileage} mi</div>
+                      <div className="text-sm font-mono text-rmpg-100">{shiftSummary.estimated_mileage} mi</div>
                     </div>
                     <div>
                       <span className="text-[10px] text-rmpg-400">Break Time</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.total_break_minutes} min</div>
+                      <div className="text-sm font-mono text-rmpg-100">{shiftSummary.total_break_minutes} min</div>
                     </div>
                     <div>
                       <span className="text-[10px] text-rmpg-400">Properties</span>
-                      <div className="text-sm font-mono text-white">{shiftSummary.properties_visited?.length || 0}</div>
+                      <div className="text-sm font-mono text-rmpg-100">{shiftSummary.properties_visited?.length || 0}</div>
                     </div>
                   </div>
                 </div>
@@ -1335,7 +1556,7 @@ const PatrolPage: React.FC = () => {
               {/* Feature 15: Efficiency Score Card */}
               {efficiency && (
                 <div className="panel-beveled p-4 bg-surface-base">
-                  <h3 className="text-sm font-bold text-white mb-3">Patrol Efficiency</h3>
+                  <h3 className="text-sm font-bold text-rmpg-100 mb-3">Patrol Efficiency</h3>
                   <div className="flex items-center gap-6">
                     <div className="text-center">
                       <div className={`text-4xl font-bold font-mono ${efficiency.efficiency_score >= 80 ? 'text-green-400' : efficiency.efficiency_score >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -1346,14 +1567,14 @@ const PatrolPage: React.FC = () => {
                     <div className="flex-1 space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-rmpg-400">Completion</span>
-                        <span className="text-white font-mono">{efficiency.completion_rate}%</span>
+                        <span className="text-rmpg-100 font-mono">{efficiency.completion_rate}%</span>
                       </div>
                       <div className="h-2 bg-rmpg-700 overflow-hidden">
                         <div className="h-full bg-brand-500" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-rmpg-400">On-Time Rate</span>
-                        <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
+                        <span className="text-rmpg-100 font-mono">{efficiency.on_time_rate}%</span>
                       </div>
                       <div className="h-2 bg-rmpg-700 overflow-hidden">
                         <div className="h-full bg-green-500" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
@@ -1379,7 +1600,7 @@ const PatrolPage: React.FC = () => {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="min-w-0">
-                        <h3 className="text-xs font-bold text-white uppercase tracking-wide truncate">
+                        <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wide truncate">
                           {item.checkpoint_name}
                         </h3>
                         <p className="text-[10px] text-rmpg-400 truncate">{item.property_name}</p>
@@ -1392,15 +1613,15 @@ const PatrolPage: React.FC = () => {
                     <div className="space-y-1 text-[11px]">
                       <div className="flex items-center justify-between">
                         <span className="text-rmpg-400">Scans Today</span>
-                        <span className="text-white font-mono">{item.scans_today}</span>
+                        <span className="text-rmpg-100 font-mono">{item.scans_today}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-rmpg-400">Last Scan</span>
-                        <span className="text-white font-mono">{formatTimeAgo(item.last_scan_time)}</span>
+                        <span className="text-rmpg-100 font-mono">{formatTimeAgo(item.last_scan_time)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-rmpg-400">Interval</span>
-                        <span className="text-white font-mono">{item.scan_interval_minutes} min</span>
+                        <span className="text-rmpg-100 font-mono">{item.scan_interval_minutes} min</span>
                       </div>
                       <div className="pt-2 mt-1 border-t border-rmpg-700 flex items-center justify-between">
                         <span className="text-rmpg-400">Next Due</span>
@@ -1417,8 +1638,10 @@ const PatrolPage: React.FC = () => {
                 );
               })}
               {compliance.length === 0 && (
-                <div className="col-span-3 text-center py-12 text-rmpg-300">
-                  No active checkpoints found.
+                <div className="col-span-3 text-center py-12 text-rmpg-400">
+                  <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <div className="text-sm text-rmpg-300 mb-1">No active checkpoints</div>
+                  <div className="text-[11px] text-rmpg-500">Compliance data appears here once checkpoints are marked active. Create or activate checkpoints on the Checkpoints tab.</div>
                 </div>
               )}
             </div>
@@ -1430,6 +1653,15 @@ const PatrolPage: React.FC = () => {
               <MileageAuditTab />
             </div>
           )}
+
+          {/* Pricing Tab */}
+          {activeTab === 'pricing' && <PricingTab />}
+
+          {/* Contracts Tab */}
+          {activeTab === 'contracts' && <ContractsTab />}
+
+          {/* Billing Review Tab */}
+          {activeTab === 'billing' && <BillingReviewTab />}
         </>
       )}
 
@@ -1438,21 +1670,21 @@ const PatrolPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white">
+              <h2 id={checkpointModalTitleId} className="text-xl font-bold text-rmpg-100">
                 {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
               </h2>
               <div className="flex items-center gap-2">
                 {formIsDirty && (
                   <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
                 )}
-                <IconButton onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close">
+                <IconButton onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close">
                   <X className="w-5 h-5" />
                 </IconButton>
               </div>
             </div>
 
             {formWasRestored && (
-              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: '#1a1500' }}>
+              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
                 <div className="flex items-center gap-2">
                   <Clock size={14} className="text-amber-400" />
                   <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -1465,7 +1697,7 @@ const PatrolPage: React.FC = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-3" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Property: *
                 </label>
                 <select id="ff-patrolpage-3"
@@ -1484,7 +1716,7 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-4" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Checkpoint Name: *
                 </label>
                 <input id="ff-patrolpage-4"
@@ -1511,7 +1743,7 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                <label htmlFor="ff-patrolpage-5" className="block text-sm font-medium text-rmpg-200 mb-1">
                   Scan Interval (minutes): *
                 </label>
                 <input id="ff-patrolpage-5"
@@ -1531,7 +1763,7 @@ const PatrolPage: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                  <label htmlFor="ff-patrolpage-6" className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
                   </label>
                   <input id="ff-patrolpage-6"
@@ -1544,7 +1776,7 @@ const PatrolPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-rmpg-200 mb-1">
+                  <label htmlFor="ff-patrolpage-7" className="block text-sm font-medium text-rmpg-200 mb-1">
                     Longitude:
                   </label>
                   <input id="ff-patrolpage-7"
@@ -1600,10 +1832,10 @@ const PatrolPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={qrModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-lg w-full mx-4">
             <div className="flex justify-between items-center mb-4">
-              <h2 id={qrModalTitleId} className="text-xl font-bold text-white">QR Code</h2>
+              <h2 id={qrModalTitleId} className="text-xl font-bold text-rmpg-100">QR Code</h2>
               <IconButton
                 onClick={() => setShowQrModal(false)}
-                className="text-rmpg-300 hover:text-white"
+                className="text-rmpg-300 hover:text-rmpg-100"
                 aria-label="Close"
               >
                 <X className="w-6 h-6" />
@@ -1613,7 +1845,7 @@ const PatrolPage: React.FC = () => {
             <div className="bg-surface-sunken panel-inset p-8 text-center">
               <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" />
               <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
-              <p className="text-2xl font-mono text-white break-all">{selectedQrCode}</p>
+              <p className="text-2xl font-mono text-rmpg-100 break-all">{selectedQrCode}</p>
             </div>
 
             <p className="text-sm text-rmpg-300 mt-4">

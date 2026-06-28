@@ -30,7 +30,7 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
   };
 
   return (
-    <div className="w-56 sm:w-72 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-56 sm:w-72 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <ListChecks className="w-3 h-3" /> Sections
@@ -44,10 +44,10 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
 
       <div className="space-y-1.5">
         {sections.map((s, i) => (
-          <div key={`${s.title}-${i}`} className="border border-[#1a1a1a] rounded-[2px] px-1.5 py-1">
+          <div key={`${s.title}-${i}`} className="border border-border-default rounded-[2px] px-1.5 py-1">
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => goTo(s)} title="Scroll to section"
-                className="flex-1 text-left text-[10px] text-rmpg-200 hover:text-[#d4a017] truncate"
+                className="min-w-0 flex-1 text-left text-[10px] text-rmpg-200 hover:text-[#d4a017] truncate"
                 style={{ paddingLeft: `${Math.max(0, s.level - 1) * 8}px` }}>
                 {s.title}
               </button>
@@ -57,7 +57,7 @@ export default function SectionsPanel({ editor, onClose }: { editor: Editor; onC
             </div>
             {s.goal > 0 && (
               <div className="flex items-center gap-1.5 mt-1">
-                <span className="flex-1 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <span className="flex-1 h-1.5 bg-surface-raised rounded-full overflow-hidden">
                   <span className="block h-full bg-[#d4a017]" style={{ width: `${s.pct}%` }} />
                 </span>
                 <span className="text-[9px] text-rmpg-500 tabular-nums">{s.pct}% / {s.goal}</span>

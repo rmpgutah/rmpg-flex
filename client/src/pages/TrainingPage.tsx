@@ -5,18 +5,21 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock, BookOpen,
   Loader2, X, Edit2, Trash2, Archive, Users, Shield, Calendar, BarChart3, Target,
-  FileText, ChevronRight, RefreshCw,
+  FileText, ChevronRight, RefreshCw, Printer, FilterX,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { formatDate, parseTimestamp } from '../utils/dateUtils';
+import { openTrainingCertificatePdf } from '../utils/trainingCertificatePdf';
 import type {
   TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
 } from '../types';
@@ -32,9 +35,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   defensive_tactics: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  communication: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  driving: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+  technology: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -42,7 +45,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   completed: { bg: 'bg-green-900/50', text: 'text-green-400', border: 'border-green-700/50' },
-  in_progress: { bg: 'bg-gray-900/50', text: 'text-gray-400', border: 'border-gray-700/50' },
+  in_progress: { bg: 'bg-surface-sunken/50', text: 'text-rmpg-400', border: 'border-border-default/50' },
   scheduled: { bg: 'bg-amber-900/50', text: 'text-amber-400', border: 'border-amber-700/50' },
   overdue: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
   expired: { bg: 'bg-red-900/50', text: 'text-red-400', border: 'border-red-700/50' },
@@ -51,6 +54,9 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }
 const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 type Tab = 'dashboard' | 'records' | 'requirements' | 'calendar';
+const VALID_TABS: Tab[] = ['dashboard', 'records', 'requirements', 'calendar'];
+const isValidTab = (s: string | null | undefined): s is Tab =>
+  !!s && (VALID_TABS as string[]).includes(s);
 
 interface Officer {
   id: string;
@@ -65,8 +71,22 @@ export default function TrainingPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  // (Was: isGodMode — unused; removed in v1054 audit. Admin role gates the
+  // existing isAdmin path. Recovering it would require a follow-up PR for
+  // an actual god-mode surface; the variable was previously dead.)
+
+  // ── URL deep-link contract (v1239) ────────────────────
+  //   /training?tab=<tab>            — switches the active tab on mount
+  //   /training?cert_id=<id>         — open the matching training record for edit
+  //   /training?session_id=<id>      — alias for cert_id (same record modal)
+  //   /training?officer_id=<id>      — pre-filter Records tab to one officer
+  //   /training?course_id=<reqId>    — open the matching requirement for edit
+  //   /training?status=expiring_soon — pre-filter Records tab to expiring certs
+  // Cross-page links from personnel detail / dashboard / N-day alert can
+  // hand a supervisor straight to the right row without round-tripping.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<Tab>(isValidTab(urlTab) ? urlTab : 'dashboard');
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [requirements, setRequirements] = useState<TrainingRequirement[]>([]);
   const [officers, setOfficers] = useState<Officer[]>([]);
@@ -85,7 +105,21 @@ export default function TrainingPage() {
   const [bulkHours, setBulkHours] = useState('0');
   const [bulkOfficerIds, setBulkOfficerIds] = useState<string[]>([]);
   const [bulkSaving, setBulkSaving] = useState(false);
-  const [trainingCompletion, setTrainingCompletion] = useState<any>(null);
+
+  // ConfirmDialog state (v1054) — replaces window.confirm() for the two
+  // destructive flows. The native confirm() can't be themed, can't be
+  // Esc-cascaded, and tanks the dashcam HUD on iPad — same finding as the
+  // page-1…36 native-dialog kills (sw.js v1024–v1048).
+  const [recordToDelete, setRecordToDelete] = useState<TrainingRecord | null>(null);
+  const [requirementToDelete, setRequirementToDelete] = useState<TrainingRequirement | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Officer pre-filter, externally driven by ?officer_id=<id> deep-link
+  // (and by the Records tab's own picker). Lifted so the deep-link side-
+  // effect below can write it before RecordsTab mounts.
+  const [officerFilter, setOfficerFilter] = useState<string>('all');
+  // Status pre-filter, externally driven by ?status=<status> deep-link.
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -119,10 +153,12 @@ export default function TrainingPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('training', fetchData);
 
-  // Fetch training completion data
-  useEffect(() => {
-    apiFetch('/personnel/training-completion').then(d => setTrainingCompletion(d)).catch(() => {});
-  }, [records]);
+  // v1054: was `apiFetch('/personnel/training-completion')` fetched on every
+  // records change and stored into `trainingCompletion` state that nothing
+  // ever read. Audit removed the dead state + dead fetch — it ran for free
+  // on every poll tick and on every CRUD because /personnel/training is
+  // useLiveSync-driven. The dashboard derives the same numbers (`stats`)
+  // from records + requirements in-page already.
 
   const handleBulkAssign = async () => {
     if (!bulkCourseName || bulkOfficerIds.length === 0) return;
@@ -166,14 +202,25 @@ export default function TrainingPage() {
     }
   };
 
-  const handleDeleteRecord = async (id: string) => {
-    if (!confirm('Delete this training record? This cannot be undone.')) return;
+  // v1054: kill window.confirm() — open ConfirmDialog with row context
+  // (officer, course, completion date) so a misclick can't quietly destroy
+  // a court-discoverable training record. Performed-on-confirm by the
+  // dialog's onConfirm wiring below.
+  const requestDeleteRecord = (record: TrainingRecord) => {
+    setRecordToDelete(record);
+  };
+  const confirmDeleteRecord = async () => {
+    if (!recordToDelete) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/personnel/training/${id}`, { method: 'DELETE' });
+      await apiFetch(`/personnel/training/${recordToDelete.id}`, { method: 'DELETE' });
+      setRecordToDelete(null);
       fetchData();
     } catch (err: any) {
       console.error('Delete record error:', err);
       addToast(err?.message || 'Failed to delete record', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -194,14 +241,21 @@ export default function TrainingPage() {
     }
   };
 
-  const handleDeleteRequirement = async (id: string) => {
-    if (!confirm('Delete this training requirement?')) return;
+  const requestDeleteRequirement = (req: TrainingRequirement) => {
+    setRequirementToDelete(req);
+  };
+  const confirmDeleteRequirement = async () => {
+    if (!requirementToDelete) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/personnel/training-requirements/${id}`, { method: 'DELETE' });
+      await apiFetch(`/personnel/training-requirements/${requirementToDelete.id}`, { method: 'DELETE' });
+      setRequirementToDelete(null);
       fetchData();
     } catch (err: any) {
       console.error('Delete requirement error:', err);
       addToast(err?.message || 'Failed to delete requirement', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -215,21 +269,133 @@ export default function TrainingPage() {
   // Set document title
   useEffect(() => { document.title = 'Training Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // v1054: Keyboard shortcuts \u2014
+  //   Escape \u2014 smart-cascade close (smallest-open-first). The previous
+  //            implementation only cleared the Record modal, so the
+  //            Requirement modal, the Bulk Assign modal, and the two new
+  //            confirm dialogs were all blind to Esc.
+  //   N      \u2014 open the New Training Record modal (admin/manager tier;
+  //            mirrors the New-X binding on Dispatch / FI / Patrol /
+  //            Evidence / Dash Cameras). Suppressed while typing into any
+  //            input / textarea / select / contenteditable.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowRecordModal(false); setEditRecord(null); }
+      if (e.key === 'Escape') {
+        // Close-smallest-open-first cascade. Each branch returns after
+        // closing so a single Esc doesn't blast multiple layers at once.
+        if (recordToDelete) { setRecordToDelete(null); return; }
+        if (requirementToDelete) { setRequirementToDelete(null); return; }
+        if (showBulkAssign) { setShowBulkAssign(false); return; }
+        if (showRequirementModal) { setShowRequirementModal(false); setEditRequirement(null); return; }
+        if (showRecordModal) { setShowRecordModal(false); setEditRecord(null); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && isAdmin) {
+        e.preventDefault();
+        setEditRecord(null);
+        setShowRecordModal(true);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [recordToDelete, requirementToDelete, showBulkAssign, showRequirementModal, showRecordModal, isAdmin]);
+
+  // v1054: keep the URL tab in sync when the user clicks a tab (so a
+  // refresh / browser-back / paste-into-MDT lands on the same view).
+  const handleTabClick = useCallback((tab: Tab) => {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // v1239: ?cert_id=<id> / ?session_id=<id> / ?course_id=<reqId> /
+  // ?officer_id=<id> / ?status=<status> deep-link auto-resolve.
+  // ?session_id is an alias for ?cert_id — both open the matching training
+  // record in the edit modal. One-shot per page load; each param is stripped
+  // from the URL after applying so a follow-up refresh doesn't reopen the
+  // modal. Falls through gracefully when the target id isn't in the current
+  // dataset (records returns up to ~1k rows so this is almost always a hit).
+  const pendingCertIdRef = useRef<string | null>(
+    searchParams.get('cert_id') ?? searchParams.get('session_id')
+  );
+  const pendingCourseIdRef = useRef<string | null>(searchParams.get('course_id'));
+  const pendingOfficerIdRef = useRef<string | null>(searchParams.get('officer_id'));
+  const pendingStatusRef = useRef<string | null>(searchParams.get('status'));
+  useEffect(() => {
+    if (loading) return;
+    const next = new URLSearchParams(searchParams);
+    let touched = false;
+    const certId = pendingCertIdRef.current;
+    if (certId) {
+      pendingCertIdRef.current = null;
+      const hit = records.find(r => String(r.id) === String(certId));
+      if (hit) {
+        setEditRecord(hit);
+        setShowRecordModal(true);
+        if (activeTab === 'dashboard') setActiveTab('records');
+      } else {
+        addToast(`Training record ${certId} not found`, 'warning');
+      }
+      next.delete('cert_id');
+      next.delete('session_id');
+      touched = true;
+    }
+    const courseId = pendingCourseIdRef.current;
+    if (courseId) {
+      pendingCourseIdRef.current = null;
+      const hit = requirements.find(r => String(r.id) === String(courseId));
+      if (hit) {
+        setEditRequirement(hit);
+        setShowRequirementModal(true);
+        if (activeTab !== 'requirements') setActiveTab('requirements');
+      } else {
+        addToast(`Training requirement ${courseId} not found`, 'warning');
+      }
+      next.delete('course_id'); touched = true;
+    }
+    const officerId = pendingOfficerIdRef.current;
+    if (officerId) {
+      pendingOfficerIdRef.current = null;
+      const hit = officers.find(o => String(o.id) === String(officerId));
+      if (hit) {
+        setOfficerFilter(String(officerId));
+        if (activeTab === 'dashboard' || activeTab === 'calendar') setActiveTab('records');
+      } else {
+        addToast(`Officer ${officerId} not found`, 'warning');
+      }
+      next.delete('officer_id'); touched = true;
+    }
+    const statusParam = pendingStatusRef.current;
+    if (statusParam) {
+      pendingStatusRef.current = null;
+      const allowed = ['completed', 'in_progress', 'scheduled', 'overdue', 'expired', 'expiring_soon'];
+      if (allowed.includes(statusParam)) {
+        setStatusFilter(statusParam);
+        if (activeTab === 'dashboard' || activeTab === 'calendar') setActiveTab('records');
+      }
+      next.delete('status'); touched = true;
+    }
+    if (touched) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, records, requirements, officers]);
 
   return (
     <div className="flex flex-col h-full bg-surface-sunken">
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>{fetchError}</span>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error">
+            <X className="w-3 h-3" />
+          </IconButton>
         </div>
       )}
       {/* Header */}
@@ -258,7 +424,7 @@ export default function TrainingPage() {
               </button>
               <button type="button"
                 onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
-                className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" />
                 Add Record
@@ -275,9 +441,9 @@ export default function TrainingPage() {
             key={key}
             role="tab"
             aria-selected={activeTab === key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => handleTabClick(key)}
             className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors duration-150 ${
-              activeTab === key ? 'toolbar-btn-primary' : 'toolbar-btn'
+              activeTab === key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             <Icon className="w-3 h-3" aria-hidden="true" />
@@ -287,7 +453,7 @@ export default function TrainingPage() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="tabpanel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
@@ -301,10 +467,24 @@ export default function TrainingPage() {
             {activeTab === 'records' && (
               <RecordsTab
                 records={records}
+                requirements={requirements}
                 officers={officers}
                 isAdmin={isAdmin}
                 onEdit={(r) => { setEditRecord(r); setShowRecordModal(true); }}
-                onDelete={handleDeleteRecord}
+                onDelete={requestDeleteRecord}
+                onPrint={(r) => {
+                  const req = requirements.find(q => q.course_name === r.course_name) || null;
+                  openTrainingCertificatePdf({
+                    record: r,
+                    requirement: req,
+                    preparedBy: user?.full_name || user?.username,
+                  });
+                }}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                officerFilter={officerFilter}
+                setOfficerFilter={setOfficerFilter}
+                onAdd={isAdmin ? () => { setEditRecord(null); setShowRecordModal(true); } : undefined}
               />
             )}
             {activeTab === 'requirements' && (
@@ -315,7 +495,7 @@ export default function TrainingPage() {
                 isAdmin={isAdmin}
                 onAdd={() => { setEditRequirement(null); setShowRequirementModal(true); }}
                 onEdit={(r) => { setEditRequirement(r); setShowRequirementModal(true); }}
-                onDelete={handleDeleteRequirement}
+                onDelete={requestDeleteRequirement}
               />
             )}
             {activeTab === 'calendar' && (
@@ -343,6 +523,67 @@ export default function TrainingPage() {
         />
       )}
 
+      {/* v1054: Delete-record confirm — replaces native window.confirm.
+          Includes officer + course + completion-date context so a misclick
+          on a similar-named row can't quietly destroy a court-discoverable
+          training certificate. */}
+      <ConfirmDialog
+        isOpen={recordToDelete !== null}
+        onClose={() => setRecordToDelete(null)}
+        onConfirm={confirmDeleteRecord}
+        title="Delete training record?"
+        message="This permanently removes a training / qualification record. Discovery requests rely on these rows — destruction cannot be undone."
+        details={
+          recordToDelete && (
+            <div className="space-y-0.5">
+              <div className="font-medium text-rmpg-100">{recordToDelete.course_name}</div>
+              <div>Officer: {recordToDelete.officer_name || '—'}</div>
+              {recordToDelete.completed_date && (
+                <div className="text-rmpg-500">Completed {formatDate(recordToDelete.completed_date)}</div>
+              )}
+              {recordToDelete.expiry_date && (
+                <div className="text-rmpg-500">Expires {formatDate(recordToDelete.expiry_date)}</div>
+              )}
+              {recordToDelete.certificate_number && (
+                <div className="text-rmpg-500">Cert #{recordToDelete.certificate_number}</div>
+              )}
+              <div className="text-rmpg-500">Status: {String(recordToDelete.status).replace(/_/g, ' ')}</div>
+            </div>
+          )
+        }
+        confirmLabel="Delete record"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
+
+      {/* v1054: Delete-requirement confirm. */}
+      <ConfirmDialog
+        isOpen={requirementToDelete !== null}
+        onClose={() => setRequirementToDelete(null)}
+        onConfirm={confirmDeleteRequirement}
+        title="Delete training requirement?"
+        message="This removes a course requirement from the catalog. Any existing training records for this course remain intact, but the compliance dashboard will no longer flag missing officers."
+        details={
+          requirementToDelete && (
+            <div className="space-y-0.5">
+              <div className="font-medium text-rmpg-100">{requirementToDelete.course_name}</div>
+              <div>Category: {String(requirementToDelete.category).replace(/_/g, ' ')}</div>
+              {requirementToDelete.is_mandatory ? (
+                <div className="text-red-400">Mandatory — deleting drops the compliance gate</div>
+              ) : (
+                <div className="text-rmpg-500">Non-mandatory</div>
+              )}
+              {requirementToDelete.minimum_hours ? (
+                <div className="text-rmpg-500">Minimum {requirementToDelete.minimum_hours}h</div>
+              ) : null}
+            </div>
+          )
+        }
+        confirmLabel="Delete requirement"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
+
       {/* Bulk Assignment Modal */}
       {showBulkAssign && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowBulkAssign(false)}>
@@ -357,30 +598,30 @@ export default function TrainingPage() {
             </div>
             <div className="space-y-2">
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
+                <label htmlFor="ff-trainingpage-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
                 <input id="ff-trainingpage-0" type="text" value={bulkCourseName} onChange={e => setBulkCourseName(e.target.value)}
                   className="input-dark w-full mt-1 text-xs" placeholder="e.g. Annual Firearms Qualification" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
+                  <label htmlFor="ff-trainingpage-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
                   <select id="ff-trainingpage-1" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
                     {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
+                  <label htmlFor="ff-trainingpage-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
                   <input id="ff-trainingpage-2" type="number" value={bulkHours} onChange={e => setBulkHours(e.target.value)}
                     className="input-dark w-full mt-1 text-xs" />
                 </div>
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
+                <label htmlFor="ff-trainingpage-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
                 <input id="ff-trainingpage-3" type="text" value={bulkProvider} onChange={e => setBulkProvider(e.target.value)}
                   className="input-dark w-full mt-1 text-xs" placeholder="Optional" />
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">
+                <label htmlFor="ff-trainingpage-5" className="text-[9px] text-rmpg-400 uppercase font-bold">
                   Select Officers ({bulkOfficerIds.length} selected)
                   <button type="button" className="ml-2 text-brand-400 hover:text-brand-300"
                     onClick={() => setBulkOfficerIds(bulkOfficerIds.length === officers.length ? [] : officers.map(o => o.id))}>
@@ -389,8 +630,8 @@ export default function TrainingPage() {
                 </label>
                 <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
                   {officers.map(o => (
-                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
-                      <input id="ff-trainingpage-4" type="checkbox"
+                    <label key={o.id} htmlFor={`ff-bulk-officer-${o.id}`} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                      <input id={`ff-bulk-officer-${o.id}`} type="checkbox"
                         checked={bulkOfficerIds.includes(o.id)}
                         onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
                         className="w-3 h-3" />
@@ -403,7 +644,7 @@ export default function TrainingPage() {
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setShowBulkAssign(false)} className="toolbar-btn text-[10px] px-3 py-1.5">Cancel</button>
               <button type="button" onClick={handleBulkAssign} disabled={bulkSaving || !bulkCourseName || bulkOfficerIds.length === 0}
-                className="toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
                 {bulkSaving ? 'Assigning...' : `Assign to ${bulkOfficerIds.length} Officer(s)`}
               </button>
             </div>
@@ -492,7 +733,7 @@ function DashboardTab({ records, requirements, officers }: {
             <p className="text-[8px] uppercase font-bold text-rmpg-500">Total Personnel</p>
           </div>
           <div>
-            <p className="text-lg font-bold font-mono" style={{ color: stats.overduePersonnel.length > 0 ? '#ef4444' : '#22c55e' }}>{stats.overduePersonnel.length}</p>
+            <p className={`text-lg font-bold font-mono ${stats.overduePersonnel.length > 0 ? 'text-red-400' : 'text-green-400'}`}>{stats.overduePersonnel.length}</p>
             <p className="text-[8px] uppercase font-bold text-rmpg-500">Overdue Personnel ({stats.overduePercent}%)</p>
           </div>
           <div>
@@ -500,41 +741,44 @@ function DashboardTab({ records, requirements, officers }: {
             <p className="text-[8px] uppercase font-bold text-rmpg-500">Certs Expiring (30d)</p>
           </div>
           <div>
-            <p className="text-lg font-bold font-mono" style={{ color: stats.avgCompliance >= 90 ? '#22c55e' : stats.avgCompliance >= 70 ? '#f59e0b' : '#ef4444' }}>{stats.avgCompliance}%</p>
+            <p className={`text-lg font-bold font-mono ${stats.avgCompliance >= 90 ? 'text-green-400' : stats.avgCompliance >= 70 ? 'text-amber-400' : 'text-red-400'}`}>{stats.avgCompliance}%</p>
             <p className="text-[8px] uppercase font-bold text-rmpg-500">Avg Compliance</p>
           </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards — v1054 theme sweep: hex literals lifted to
+          Tailwind semantic-color tokens (text-brand-*, text-red-*, etc.)
+          so day/night themes re-color the numbers without code changes. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
-        <StatCard value={records.length} label="Total Records" color="#6b8aad" borderColor="#4a6a8a" />
-        <StatCard value={stats.completed} label="Completed" color="#22c55e" borderColor="#15803d" />
-        <StatCard value={stats.inProgress} label="In Progress" color="#888888" borderColor="#666666" />
-        <StatCard value={stats.scheduled} label="Scheduled" color="#f59e0b" borderColor="#b45309" />
-        <StatCard value={stats.overdue} label="Overdue" color="#ef4444" borderColor="#b91c1c" />
-        <StatCard value={stats.expiringSoon} label="Expiring (30d)" color="#f97316" borderColor="#c2410c" />
-        <StatCard value={`${stats.totalHours}h`} label="Total Hours" color="#8b5cf6" borderColor="#6d28d9" />
+        <StatCard value={records.length} label="Total Records" tone="brand" />
+        <StatCard value={stats.completed} label="Completed" tone="green" />
+        <StatCard value={stats.inProgress} label="In Progress" tone="neutral" />
+        <StatCard value={stats.scheduled} label="Scheduled" tone="amber" />
+        <StatCard value={stats.overdue} label="Overdue" tone="red" />
+        <StatCard value={stats.expiringSoon} label="Expiring (30d)" tone="orange" />
+        <StatCard value={`${stats.totalHours}h`} label="Total Hours" tone="purple" />
       </div>
 
-      {/* Compliance Rate */}
+      {/* Compliance Rate — v1054: severity color via semantic Tailwind
+          tokens. Background of the progress bar comes from the same green/
+          amber/red bg-* class instead of inline hex. */}
       <div className="panel-beveled p-3">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="w-4 h-4 text-brand-400" />
           <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Organization Compliance</span>
-          <span className="ml-auto text-lg font-black font-mono" style={{
-            color: stats.avgCompliance >= 90 ? '#22c55e' : stats.avgCompliance >= 70 ? '#f59e0b' : '#ef4444'
-          }}>
+          <span className={`ml-auto text-lg font-black font-mono ${
+            stats.avgCompliance >= 90 ? 'text-green-400' : stats.avgCompliance >= 70 ? 'text-amber-400' : 'text-red-400'
+          }`}>
             {stats.avgCompliance}%
           </span>
         </div>
         <div className="h-2 bg-rmpg-700 rounded-sm overflow-hidden">
           <div
-            className="h-full transition-all duration-500"
-            style={{
-              width: `${stats.avgCompliance}%`,
-              background: stats.avgCompliance >= 90 ? '#22c55e' : stats.avgCompliance >= 70 ? '#f59e0b' : '#ef4444',
-            }}
+            className={`h-full transition-all duration-500 ${
+              stats.avgCompliance >= 90 ? 'bg-green-500' : stats.avgCompliance >= 70 ? 'bg-amber-500' : 'bg-red-500'
+            }`}
+            style={{ width: `${stats.avgCompliance}%` }}
           />
         </div>
       </div>
@@ -556,11 +800,10 @@ function DashboardTab({ records, requirements, officers }: {
                   </span>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div
-                      className="h-full transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        background: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
-                      }}
+                      className={`h-full transition-all ${
+                        pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
                   <span className="text-[10px] font-mono text-rmpg-300 w-16 text-right">
@@ -584,22 +827,21 @@ function DashboardTab({ records, requirements, officers }: {
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
               <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
-                <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
+                <span className="text-[11px] text-rmpg-100 min-w-0 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
                 )}
                 <div className="w-16 h-1 bg-rmpg-700 rounded-sm overflow-hidden">
                   <div
-                    className="h-full"
-                    style={{
-                      width: `${o.compliance}%`,
-                      background: o.compliance >= 90 ? '#22c55e' : o.compliance >= 70 ? '#f59e0b' : '#ef4444',
-                    }}
+                    className={`h-full ${
+                      o.compliance >= 90 ? 'bg-green-500' : o.compliance >= 70 ? 'bg-amber-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${o.compliance}%` }}
                   />
                 </div>
-                <span className="text-[10px] font-mono w-10 text-right" style={{
-                  color: o.compliance >= 90 ? '#22c55e' : o.compliance >= 70 ? '#f59e0b' : '#ef4444',
-                }}>
+                <span className={`text-[10px] font-mono w-10 text-right ${
+                  o.compliance >= 90 ? 'text-green-400' : o.compliance >= 70 ? 'text-amber-400' : 'text-red-400'
+                }`}>
                   {o.compliance}%
                 </span>
               </div>
@@ -652,9 +894,9 @@ function DashboardTab({ records, requirements, officers }: {
                 <span className="text-[11px] text-rmpg-100 font-medium w-32 truncate">{o.full_name}</span>
                 {o.badge_number && <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>}
                 <span className="text-[9px] text-red-400 font-bold">{o.overdue} missing</span>
-                <span className="ml-auto text-[9px] font-mono" style={{
-                  color: o.compliance >= 90 ? '#22c55e' : o.compliance >= 70 ? '#f59e0b' : '#ef4444',
-                }}>{o.compliance}%</span>
+                <span className={`ml-auto text-[9px] font-mono ${
+                  o.compliance >= 90 ? 'text-green-400' : o.compliance >= 70 ? 'text-amber-400' : 'text-red-400'
+                }`}>{o.compliance}%</span>
               </div>
             ))}
           </div>
@@ -786,7 +1028,7 @@ function MandatoryTrainingAlerts() {
                       a.alert_type === 'expired' ? 'bg-red-500' : a.alert_type === 'expiring_soon' ? 'bg-amber-500' : 'bg-rmpg-500'
                     }`} />
                     <span className="text-rmpg-200 w-28 truncate">{a.officer_name}</span>
-                    <span className="text-rmpg-400 flex-1 truncate">{a.course_name}</span>
+                    <span className="text-rmpg-400 min-w-0 flex-1 truncate">{a.course_name}</span>
                     <span className={`text-[9px] font-bold ${
                       a.alert_type === 'expired' ? 'text-red-400' : a.alert_type === 'expiring_soon' ? 'text-amber-400' : 'text-rmpg-500'
                     }`}>
@@ -805,27 +1047,55 @@ function MandatoryTrainingAlerts() {
   );
 }
 
-function StatCard({ value, label, color, borderColor }: { value: string | number; label: string; color: string; borderColor: string }) {
+// v1054: rewritten to use semantic-color Tailwind tokens (text-brand-*,
+// border-red-*, etc.) instead of inline hex literals — re-themes between
+// night and day with zero code changes. The previous prop shape ({ color,
+// borderColor }) baked in a single hex per card.
+type StatTone = 'brand' | 'green' | 'amber' | 'red' | 'orange' | 'purple' | 'neutral';
+
+const STAT_TONE: Record<StatTone, { text: string; label: string; border: string }> = {
+  brand:   { text: 'text-brand-400',   label: 'text-brand-500/80',   border: 'border-t-brand-600' },
+  green:   { text: 'text-green-400',   label: 'text-green-500/80',   border: 'border-t-green-700' },
+  amber:   { text: 'text-amber-400',   label: 'text-amber-500/80',   border: 'border-t-amber-700' },
+  red:     { text: 'text-red-400',     label: 'text-red-500/80',     border: 'border-t-red-700' },
+  orange:  { text: 'text-orange-400',  label: 'text-orange-500/80',  border: 'border-t-orange-700' },
+  purple:  { text: 'text-purple-400',  label: 'text-purple-500/80',  border: 'border-t-purple-700' },
+  neutral: { text: 'text-rmpg-300',    label: 'text-rmpg-500',       border: 'border-t-rmpg-600' },
+};
+
+function StatCard({ value, label, tone = 'brand' }: { value: string | number; label: string; tone?: StatTone }) {
+  const t = STAT_TONE[tone];
   return (
-    <div className="panel-beveled p-2.5 text-center" style={{ borderTopWidth: 2, borderTopColor: borderColor }}>
-      <p className="text-lg font-bold font-mono" style={{ color }}>{value}</p>
-      <p className="text-[8px] uppercase font-bold tracking-wider" style={{ color: `${color}99` }}>{label}</p>
+    <div className={`panel-beveled p-2.5 text-center border-t-2 ${t.border}`}>
+      <p className={`text-lg font-bold font-mono ${t.text}`}>{value}</p>
+      <p className={`text-[8px] uppercase font-bold tracking-wider ${t.label}`}>{label}</p>
     </div>
   );
 }
 
 // ── RECORDS TAB ────────────────────────────────────────────
-function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
+function RecordsTab({
+  records, requirements, officers, isAdmin, onEdit, onDelete, onPrint,
+  statusFilter, setStatusFilter, officerFilter, setOfficerFilter, onAdd,
+}: {
   records: TrainingRecord[];
+  requirements: TrainingRequirement[];
   officers: Officer[];
   isAdmin: boolean;
   onEdit: (r: TrainingRecord) => void;
-  onDelete: (id: string) => void;
+  onDelete: (r: TrainingRecord) => void;
+  onPrint: (r: TrainingRecord) => void;
+  // Lifted to the parent for ?officer_id= / ?status= deep-links (v1054).
+  statusFilter: string;
+  setStatusFilter: (s: string) => void;
+  officerFilter: string;
+  setOfficerFilter: (s: string) => void;
+  // Empty-state CTA hook — when isAdmin and there are zero records.
+  onAdd?: () => void;
 }) {
+  void requirements; // currently unused at this layer; reserved for join
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | TrainingStatus | 'expiring_soon'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | TrainingCategory>('all');
-  const [officerFilter, setOfficerFilter] = useState<string>('all');
 
   const filtered = useMemo(() => {
     let result = records;
@@ -909,9 +1179,34 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
         <span className="text-[10px] text-rmpg-500 ml-auto">{filtered.length} records</span>
       </div>
 
-      {/* Records Table */}
+      {/* Records Table — empty-state distinction (v1054):
+          • Zero records in the whole DB → "No records yet" + Add CTA (admin).
+          • Records exist but all filtered out → "No records match" + Clear filters.
+          Previously rendered the same generic line regardless, so an
+          operator with active filters couldn't tell if it was a server
+          error / no data / over-filtered. */}
       {filtered.length === 0 ? (
-        <EmptyState icon={FileText} message="No training records found." />
+        records.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            message="No training records yet."
+            cta={onAdd ? { label: 'Add training record', onClick: onAdd } : undefined}
+          />
+        ) : (
+          <EmptyState
+            icon={FileText}
+            message="No records match your filters."
+            cta={(search || statusFilter !== 'all' || categoryFilter !== 'all' || officerFilter !== 'all') ? {
+              label: 'Clear filters',
+              onClick: () => {
+                setSearch('');
+                setStatusFilter('all');
+                setCategoryFilter('all');
+                setOfficerFilter('all');
+              },
+            } : undefined}
+          />
+        )
       ) : (
         <div className="panel-beveled overflow-x-auto">
           <table className="table-dark w-full text-[11px]">
@@ -969,10 +1264,18 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   {isAdmin && (
                     <td className="py-1.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <IconButton
+                          onClick={() => onPrint(record)}
+                          className="toolbar-btn p-1"
+                          title="Print court-ready training certificate PDF"
+                          aria-label={`Print training certificate for record ${record.id}`}
+                        >
+                          <Printer className="w-3 h-3" />
+                        </IconButton>
                         <IconButton onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit training record ${record.id}`}>
                           <Edit2 className="w-3 h-3" />
                         </IconButton>
-                        <IconButton onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete" aria-label={`Delete training record ${record.id}`}>
+                        <IconButton onClick={() => onDelete(record)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete" aria-label={`Delete training record ${record.id}`}>
                           <Trash2 className="w-3 h-3" />
                         </IconButton>
                       </div>
@@ -996,7 +1299,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
   isAdmin: boolean;
   onAdd: () => void;
   onEdit: (r: TrainingRequirement) => void;
-  onDelete: (id: string) => void;
+  onDelete: (r: TrainingRequirement) => void;
 }) {
   return (
     <div className="p-4 space-y-3">
@@ -1005,7 +1308,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
           {requirements.length} Training Requirements
         </span>
         {isAdmin && (
-          <button type="button" onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+          <button type="button" onClick={onAdd} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <Plus className="w-3 h-3" />
             Add Requirement
           </button>
@@ -1047,7 +1350,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                       <IconButton onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit requirement ${req.id}`}>
                         <Edit2 className="w-3 h-3" />
                       </IconButton>
-                      <IconButton onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete" aria-label={`Delete requirement ${req.id}`}>
+                      <IconButton onClick={() => onDelete(req)} className="toolbar-btn p-1 text-red-400" title="Delete" aria-label={`Delete requirement ${req.id}`}>
                         <Trash2 className="w-3 h-3" />
                       </IconButton>
                     </div>
@@ -1077,11 +1380,10 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div
-                      className="h-full transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        background: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
-                      }}
+                      className={`h-full transition-all ${
+                        pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
                   <span className="text-[10px] font-mono text-rmpg-300">
@@ -1249,13 +1551,31 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
+function EmptyState({
+  icon: Icon, message, cta,
+}: {
+  icon: React.ElementType;
+  message: string;
+  // v1054: optional CTA — used by RecordsTab to disambiguate "no data" vs
+  // "no match for current filters".
+  cta?: { label: string; onClick: () => void };
+}) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
       <div className="w-14 h-14 bg-rmpg-700/20 border border-rmpg-700/30 flex items-center justify-center mb-4 panel-inset">
         <Icon className="w-7 h-7 text-rmpg-500" style={{ opacity: 0.7 }} />
       </div>
       <p className="text-sm text-rmpg-300">{message}</p>
+      {cta && (
+        <button
+          type="button"
+          onClick={cta.onClick}
+          className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 mt-3 flex items-center gap-1.5"
+        >
+          {cta.label.toLowerCase().includes('filter') ? <FilterX className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+          {cta.label}
+        </button>
+      )}
     </div>
   );
 }
@@ -1317,7 +1637,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
         <div className="p-4 space-y-3">
           {/* Officer */}
           <div>
-            <label className="field-label mb-1 block">Officer *</label>
+            <label htmlFor="ff-trainingpage-9" className="field-label mb-1 block">Officer *</label>
             <select id="ff-trainingpage-9"
               value={form.officer_id}
               onChange={e => update('officer_id', e.target.value)}
@@ -1332,7 +1652,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
           {/* Course Name (with requirement suggestions) */}
           <div>
-            <label className="field-label mb-1 block">Course Name *</label>
+            <label htmlFor="ff-trainingpage-10" className="field-label mb-1 block">Course Name *</label>
             <input id="ff-trainingpage-10"
               list="course-suggestions"
               type="text"
@@ -1351,7 +1671,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Category */}
             <div>
-              <label className="field-label mb-1 block">Category</label>
+              <label htmlFor="ff-trainingpage-11" className="field-label mb-1 block">Category</label>
               <select id="ff-trainingpage-11"
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
@@ -1365,7 +1685,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
             {/* Status */}
             <div>
-              <label className="field-label mb-1 block">Status</label>
+              <label htmlFor="ff-trainingpage-12" className="field-label mb-1 block">Status</label>
               <select id="ff-trainingpage-12"
                 value={form.status}
                 onChange={e => update('status', e.target.value)}
@@ -1382,7 +1702,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
 
           {/* Provider */}
           <div>
-            <label className="field-label mb-1 block">Provider</label>
+            <label htmlFor="ff-trainingpage-13" className="field-label mb-1 block">Provider</label>
             <input id="ff-trainingpage-13"
               type="text"
               value={form.provider}
@@ -1395,7 +1715,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Completed Date */}
             <div>
-              <label className="field-label mb-1 block">Completed Date</label>
+              <label htmlFor="ff-trainingpage-14" className="field-label mb-1 block">Completed Date</label>
               <input id="ff-trainingpage-14"
                 type="date"
                 value={form.completed_date}
@@ -1405,7 +1725,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Expiry Date */}
             <div>
-              <label className="field-label mb-1 block">Expiry Date</label>
+              <label htmlFor="ff-trainingpage-15" className="field-label mb-1 block">Expiry Date</label>
               <input id="ff-trainingpage-15"
                 type="date"
                 value={form.expiry_date}
@@ -1418,7 +1738,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <div className="grid grid-cols-3 gap-3">
             {/* Hours */}
             <div>
-              <label className="field-label mb-1 block">Hours</label>
+              <label htmlFor="ff-trainingpage-16" className="field-label mb-1 block">Hours</label>
               <input id="ff-trainingpage-16"
                 type="number"
                 value={form.hours}
@@ -1430,7 +1750,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Score */}
             <div>
-              <label className="field-label mb-1 block">Score</label>
+              <label htmlFor="ff-trainingpage-17" className="field-label mb-1 block">Score</label>
               <input id="ff-trainingpage-17"
                 type="number"
                 value={form.score}
@@ -1442,7 +1762,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             </div>
             {/* Certificate Number */}
             <div>
-              <label className="field-label mb-1 block">Cert #</label>
+              <label htmlFor="ff-trainingpage-18" className="field-label mb-1 block">Cert #</label>
               <input id="ff-trainingpage-18"
                 type="text"
                 value={form.certificate_number}
@@ -1468,7 +1788,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <button type="button"
             onClick={handleSubmit}
             disabled={!form.officer_id || !form.course_name}
-            className="toolbar-btn-primary text-[10px] px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5"
           >
             {isEdit ? 'Save Changes' : 'Add Record'}
           </button>
@@ -1528,7 +1848,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
         <div className="p-4 space-y-3">
           {/* Course Name */}
           <div>
-            <label className="field-label mb-1 block">Course Name *</label>
+            <label htmlFor="ff-trainingpage-19" className="field-label mb-1 block">Course Name *</label>
             <input id="ff-trainingpage-19"
               type="text"
               value={form.course_name}
@@ -1541,7 +1861,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Category */}
             <div>
-              <label className="field-label mb-1 block">Category</label>
+              <label htmlFor="ff-trainingpage-20" className="field-label mb-1 block">Category</label>
               <select id="ff-trainingpage-20"
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
@@ -1576,7 +1896,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                   key={role}
                   onClick={() => toggleRole(role)}
                   className={`text-[10px] px-2 py-1 capitalize ${
-                    form.required_for_roles.includes(role) ? 'toolbar-btn-primary' : 'toolbar-btn'
+                    form.required_for_roles.includes(role) ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}
                 >
                   {role.replace(/_/g, ' ')}
@@ -1588,7 +1908,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {/* Renewal Period */}
             <div>
-              <label className="field-label mb-1 block">Renewal (months)</label>
+              <label htmlFor="ff-trainingpage-22" className="field-label mb-1 block">Renewal (months)</label>
               <input id="ff-trainingpage-22"
                 type="number"
                 value={form.renewal_period_months}
@@ -1601,7 +1921,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
 
             {/* Minimum Hours */}
             <div>
-              <label className="field-label mb-1 block">Minimum Hours</label>
+              <label htmlFor="ff-trainingpage-23" className="field-label mb-1 block">Minimum Hours</label>
               <input id="ff-trainingpage-23"
                 type="number"
                 value={form.minimum_hours}
@@ -1630,7 +1950,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <button type="button"
             onClick={handleSubmit}
             disabled={!form.course_name}
-            className="toolbar-btn-primary text-[10px] px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5"
           >
             {isEdit ? 'Save Changes' : 'Add Requirement'}
           </button>

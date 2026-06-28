@@ -56,7 +56,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
         );
       case 'in_progress':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-gray-900/50 text-gray-400 border border-gray-700/50">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50">
             <Clock className="w-2.5 h-2.5" />
             In Progress
           </span>
@@ -106,7 +106,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <GraduationCap className="w-4 h-4 text-brand-400" />
@@ -124,9 +124,9 @@ export default function TrainingTab({ training, requirements, officers, loading,
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-gray-500 transition-colors duration-200 hover:brightness-110">
-          <p className="text-lg font-bold font-mono text-gray-400">{inProgress}</p>
-          <p className="text-[8px] uppercase text-gray-400/70 font-bold tracking-wider">In Progress</p>
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500 transition-colors duration-200 hover:brightness-110">
+          <p className="text-lg font-bold font-mono text-rmpg-400">{inProgress}</p>
+          <p className="text-[8px] uppercase text-rmpg-400/70 font-bold tracking-wider">In Progress</p>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-amber-400">{scheduled}</p>
@@ -144,7 +144,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
           <button type="button"
             onClick={() => setCategoryFilter('all')}
             className={`text-[10px] px-2.5 py-1 ${
-              categoryFilter === 'all' ? 'toolbar-btn-primary' : 'toolbar-btn'
+              categoryFilter === 'all' ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
             All
@@ -154,14 +154,14 @@ export default function TrainingTab({ training, requirements, officers, loading,
               key={cat}
               onClick={() => setCategoryFilter(cat)}
               className={`text-[10px] px-2.5 py-1 capitalize ${
-                categoryFilter === cat ? 'toolbar-btn-primary' : 'toolbar-btn'
+                categoryFilter === cat ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
               {cat.replace(/_/g, ' ')}
             </button>
           ))}
         </div>
-        <button type="button" onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddTraining} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Training
         </button>

@@ -347,4 +347,53 @@ folders.post('/folders/:id/move-file', async (c) => {
   }
 });
 
+// ── Entity attachments (mounted at /api/documents) ─────────────
+// GET /api/documents/:entityType/:entityId/attachments — the file
+// bytes for a person/case/etc. The client (pdfImageHelpers,
+// FileAttachments) calls this generic shape; behaviour mirrors the
+// canonical /api/uploads/entity/:type/:id handler, including the
+// access_sig/access_exp HMAC so authedImageUrl/authUrl consumers can
+// render the bytes without a bearer header.
+async function signAttachment(fileId: string, secret: string, ttlSeconds = 31536000): Promise<{ sig: string; exp: number }> {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const data = `file:${fileId}:${exp}`;
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+  const sig = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return { sig, exp };
+}
+
+folders.get('/:entityType/:entityId/attachments', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const entityType = c.req.param('entityType');
+    const entityId = parseInt(c.req.param('entityId'), 10);
+    if (!entityType || Number.isNaN(entityId)) {
+      return c.json({ error: 'Invalid entity', code: 'INVALID_ENTITY' }, 400);
+    }
+    const rows = await query<any>(
+      db,
+      `SELECT a.*, u.full_name as uploader_name
+         FROM attachments a
+         LEFT JOIN users u ON a.uploaded_by = u.id
+        WHERE a.entity_type = ? AND a.entity_id = ?
+        ORDER BY a.created_at DESC
+        LIMIT 1000`,
+      entityType, entityId,
+    );
+    const enriched = await Promise.all(
+      rows.map(async (att) => {
+        const { sig, exp } = await signAttachment(att.file_id, c.env.JWT_SECRET);
+        return { ...att, access_sig: sig, access_exp: exp };
+      }),
+    );
+    return c.json(enriched);
+  } catch (err) {
+    console.error('List entity attachments error:', err);
+    return c.json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' }, 500);
+  }
+});
+
 export default folders;

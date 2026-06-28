@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { registerArialFont } from '../../fonts/registerArial';
 import { LayoutEngine } from './layout';
 import { Primitives } from './primitives';
 import { SPACING } from './style';
@@ -6,8 +7,9 @@ import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection } from './context';
 import { drawBlankFormWatermark, drawDraftWatermark } from './watermark';
+import { renderFixedLayoutSection } from './fixedLayout';
 import type {
-  FormSchema, SchemaSection, RenderCallback, FieldSpec, LabeledField,
+  FormSchema, SchemaSection, FixedLayoutSection, RenderCallback, FieldSpec, LabeledField,
 } from './types';
 
 function drawWatermarkIfAny(doc: jsPDF, mode: string | undefined): void {
@@ -21,6 +23,12 @@ export interface RenderOptions {
    * `new Date()`. Tests pin this so snapshot byte output is stable.
    */
   generatedAt?: Date;
+  /**
+   * Skip embedding the Arial TTF and use jsPDF's core fonts instead. Embedded
+   * fonts encode page text as glyph-ID hex in the content stream; tests that
+   * grep raw stream text set this to keep output ASCII. Never set in prod.
+   */
+  coreFontsOnly?: boolean;
 }
 
 export async function renderPdfV2<T>(
@@ -30,6 +38,7 @@ export async function renderPdfV2<T>(
 ): Promise<jsPDF> {
   // mm units so v1 helpers (drawNibrsHeader, etc.) render at their designed scale.
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  if (!options?.coreFontsOnly) registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
 
   // Watermark is drawn BEFORE the header so header text sits on top of it.
   if (schema.watermark) drawWatermarkIfAny(doc, schema.watermark);
@@ -55,6 +64,10 @@ export async function renderPdfV2<T>(
     if (isCallback<T>(section)) {
       const ctx = makeRenderContext(doc, layout, prims, data);
       section(ctx, data);
+    } else if ((section as FixedLayoutSection<T>).kind === 'fixed-layout') {
+      const fixed = section as FixedLayoutSection<T>;
+      if (fixed.visibleIf && !fixed.visibleIf(data)) continue;
+      renderFixedLayoutSection(doc, layout, fixed, data);
     } else {
       const schemaSec = section as SchemaSection<T>;
       if (schemaSec.visibleIf && !schemaSec.visibleIf(data)) continue;

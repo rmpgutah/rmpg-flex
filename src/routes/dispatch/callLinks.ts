@@ -16,6 +16,9 @@ import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
+import { findOrCreateBusiness } from '../../utils/serveIntakeRecords';
+import { screenPersonForSor } from '../../utils/screening/nsopwAdapter';
+import { log } from '../../utils/logger';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
 // flags. isFlagSet() (shared) treats those sentinels as absent.
@@ -134,15 +137,28 @@ links.post('/calls/:id/persons', async (c) => {
       });
     }
   } catch (err) {
-    console.warn('warrant-alert check failed (non-fatal):', err);
+    log.warn('warrant-alert check failed (non-fatal)', { err });
   }
+
+  // OFFICER SAFETY: also screen this subject against NSOPW. Fires
+  // in the background; a confirmed national SOR hit lands in
+  // screening_hits, which the dispatch board picks up via the existing
+  // call:warrant_alert / dispatch_update channels through the dossier
+  // integration. A pre-existing `is_sex_offender=1` flag on the local
+  // persons row already triggers the caution-flag voice cue below;
+  // the NSOPW path supplements that with up-to-date cross-jurisdiction
+  // data for subjects who were registered out of state.
+  c.executionCtx.waitUntil(
+    screenPersonForSor(c.env, body.person_id, { triggeredBy: 'cfs_subject_add' })
+      .catch((err) => log.warn('[nsopw] cfs_subject_add screen failed', { err })),
+  );
 
   // Officer MDT voice — "Subject added: <last name>". Person flags
   // (caution / sex_offender / gang) deserve an officer-safety push,
   // not a generic "person added" prompt.
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0) {
-    const flag = created as any;
+    const flag = created;
     const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${person.last_name}`
@@ -214,8 +230,8 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
 // Returns 409 with the candidate list. Caller picks via merge_into_id
 // (link the existing record) or force_create:true (create new anyway).
 //
-// Static segment beats :linkId in Hono's router, so this path takes
-// precedence over PATCH /calls/:id/persons/:linkId without explicit order.
+// Static segment beats :linkId in Hono's router without explicit ordering
+// because it's registered first. Keep static routes above parameterized ones.
 links.post('/calls/:id/persons/quick-add', async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id');
@@ -306,7 +322,7 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
   // shouldn't bypass the MDT voice warning.
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0 && link) {
-    const flag = link as any;
+    const flag = link;
     const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
@@ -526,7 +542,7 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
 
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0 && link) {
-    const v = link as any;
+    const v = link;
     const short = v.plate_number
       ? `Vehicle added: plate ${v.plate_number}`
       : (`Vehicle added: ${v.make || ''} ${v.model || ''}`.trim() || 'Vehicle added');
@@ -607,7 +623,7 @@ links.put('/calls/:id/property', async (c) => {
 
   // If the property carries hazard_notes, push them as an officer-safety
   // flag to each assigned officer's MDT — mirrors the legacy warnings path.
-  if ((updated as any)?.hazard_notes) {
+  if ((updated as Record<string, unknown>)?.hazard_notes) {
     const officerIds = await getOfficerUserIdsForCall(db, callId);
     for (const uid of officerIds) {
       await emitAlert(c.env, 'dispatch_alert', {
@@ -638,6 +654,134 @@ links.delete('/calls/:id/property', async (c) => {
     action: 'call_property_detached', call_id: Number(callId),
   });
   return c.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// BUSINESSES  (call_businesses → businesses table; FK-correct, consistent
+// with serve-intake. NOT the properties-backed /records/businesses.)
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /dispatch/business-search?q= — typeahead against the businesses table.
+links.get('/business-search', async (c) => {
+  const db = getDb(c.env);
+  const q = (c.req.query('q') || '').trim().toLowerCase();
+  if (q.length < 2) return c.json([]);
+  const rows = await query<Record<string, unknown>>(
+    db,
+    `SELECT id, name, address, city, state, phone, business_type
+       FROM businesses
+      WHERE archived_at IS NULL AND LOWER(name) LIKE ?
+      ORDER BY name LIMIT 10`,
+    `%${q}%`,
+  );
+  return c.json(rows);
+});
+
+// GET /dispatch/calls/:id/businesses — joined with businesses for one-fetch render.
+links.get('/calls/:id/businesses', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(
+    db,
+    `SELECT cb.id, cb.call_id, cb.business_id, cb.role, cb.notes, cb.created_at,
+            b.name, b.address, b.city, b.state, b.phone, b.business_type
+       FROM call_businesses cb
+       JOIN businesses b ON cb.business_id = b.id
+      WHERE cb.call_id = ?
+      ORDER BY cb.created_at DESC LIMIT 200`,
+    c.req.param('id'),
+  );
+  return c.json(rows);
+});
+
+// POST /dispatch/calls/:id/businesses  body { business_id, role?, notes? }
+links.post('/calls/:id/businesses', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ business_id: number; role?: string; notes?: string }>();
+  if (!body.business_id) return c.json({ error: 'business_id required' }, 400);
+  const biz = await queryFirst<{ id: number }>(db, 'SELECT id FROM businesses WHERE id = ?', body.business_id);
+  if (!biz) return c.json({ error: 'Business not found' }, 404);
+  await execute(
+    db,
+    `INSERT OR IGNORE INTO call_businesses (call_id, business_id, role, notes, added_by, created_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    callId, body.business_id, body.role || 'involved', body.notes ?? null, userId,
+  );
+  const created = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT cb.*, b.name, b.address, b.city, b.state, b.phone, b.business_type
+       FROM call_businesses cb JOIN businesses b ON cb.business_id = b.id
+      WHERE cb.call_id = ? AND cb.business_id = ? AND cb.role = ?`,
+    callId, body.business_id, body.role || 'involved',
+  );
+  await emitAlert(c.env, 'dispatch_update', {
+    action: 'call_business_added', call_id: Number(callId), link: created,
+  });
+  return c.json(created, 201);
+});
+
+// POST /dispatch/calls/:id/businesses/quick-add  body { name, address?, city?, state?, zip?, phone?, role? }
+links.post('/calls/:id/businesses/quick-add', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ name: string; address?: string; city?: string; state?: string; zip?: string; phone?: string; role?: string }>();
+  if (!body.name || !body.name.trim()) return c.json({ error: 'name required' }, 400);
+  const ref = await findOrCreateBusiness(db, {
+    name: body.name.trim(), address: body.address || null, city: body.city || null,
+    state: body.state || null, zip: body.zip || null, phone: body.phone || null,
+    business_type: 'other', notes: 'Added via dispatch call linkage',
+  });
+  await execute(
+    db,
+    `INSERT OR IGNORE INTO call_businesses (call_id, business_id, role, added_by, created_at)
+     VALUES (?, ?, ?, ?, datetime('now'))`,
+    callId, ref.id, body.role || 'involved', userId,
+  );
+  const created = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT cb.*, b.name, b.address, b.city, b.state, b.phone, b.business_type
+       FROM call_businesses cb JOIN businesses b ON cb.business_id = b.id
+      WHERE cb.call_id = ? AND cb.business_id = ? AND cb.role = ?`,
+    callId, ref.id, body.role || 'involved',
+  );
+  await emitAlert(c.env, 'dispatch_update', { action: 'call_business_added', call_id: Number(callId), link: created });
+  return c.json({ created: true, business_id: ref.id, link: created }, 201);
+});
+
+// DELETE /dispatch/calls/:id/businesses/:linkId
+links.delete('/calls/:id/businesses/:linkId', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const linkId = c.req.param('linkId');
+  await execute(db, 'DELETE FROM call_businesses WHERE id = ? AND call_id = ?', linkId, callId);
+  await emitAlert(c.env, 'dispatch_update', {
+    action: 'call_business_removed', call_id: Number(callId), link_id: Number(linkId),
+  });
+  return c.json({ success: true });
+});
+
+// PATCH /dispatch/calls/:id/businesses/:linkId — change role / notes
+links.patch('/calls/:id/businesses/:linkId', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const linkId = c.req.param('linkId');
+  const body = await c.req.json<{ role?: string; notes?: string }>();
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (body.role !== undefined) { sets.push('role = ?'); params.push(body.role); }
+  if (body.notes !== undefined) { sets.push('notes = ?'); params.push(body.notes); }
+  if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
+  params.push(linkId, callId);
+  await execute(db, `UPDATE call_businesses SET ${sets.join(', ')} WHERE id = ? AND call_id = ?`, ...params);
+  const updated = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT cb.*, b.name FROM call_businesses cb JOIN businesses b ON cb.business_id = b.id WHERE cb.id = ?`,
+    linkId,
+  );
+  await emitAlert(c.env, 'dispatch_update', { action: 'call_business_updated', call_id: Number(callId), link: updated });
+  return c.json(updated);
 });
 
 export default links;

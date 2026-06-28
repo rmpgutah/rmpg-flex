@@ -90,13 +90,13 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
           <Eye className="w-3.5 h-3.5 text-brand-400" />
-          <span className="text-[11px] font-bold text-rmpg-200 uppercase tracking-widest flex-1 truncate">
+          <span className="text-[11px] font-bold text-rmpg-200 uppercase tracking-widest min-w-0 flex-1 truncate">
             Street View{target.label ? ` — ${target.label}` : ''}
           </span>
           {target.imageId && (
             <button
               onClick={() => setForcePerspective((v) => !v)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-rmpg-300 hover:text-white bg-rmpg-800/60 hover:bg-rmpg-700/60 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-rmpg-300 hover:text-rmpg-100 bg-rmpg-800/60 hover:bg-rmpg-700/60 transition-colors"
               style={{ borderRadius: 2 }}
               title="Switch between Mapillary street imagery and the Mapbox oblique perspective"
             >

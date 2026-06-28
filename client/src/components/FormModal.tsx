@@ -108,7 +108,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} onClick={guardedClose} style={{ touchAction: 'manipulation' }}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
-      <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background: '#0a0a0a', maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
+      <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background:"var(--surface-sunken)", maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#888888' }} />
@@ -126,7 +126,7 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn flex items-center justify-center"
               style={{ minWidth: 44, minHeight: 44, padding: '4px 8px', touchAction: 'manipulation' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#444444'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
               aria-label="Close"
             >
@@ -166,11 +166,11 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+              style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <h2 className="text-xs font-bold text-white uppercase tracking-wider">Unsaved Changes</h2>
+                <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Unsaved Changes</h2>
               </div>
             </div>
             <div className="p-5">
@@ -188,7 +188,7 @@ export default function FormModal({
                 <button
                   type="button"
                   onClick={handleConfirmDiscard}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100 transition-colors"
                 >
                   Discard Changes
                 </button>

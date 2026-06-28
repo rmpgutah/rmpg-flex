@@ -110,7 +110,7 @@ export function Combobox<T>(props: ComboboxProps<T>) {
         <ul
           id={`${inputId}-listbox`}
           role="listbox"
-          className="absolute z-50 mt-1 w-full max-h-60 overflow-auto border border-[#222] bg-[#0a0a0a] shadow-lg"
+          className="absolute z-50 mt-1 w-full max-h-60 overflow-auto border border-border-default bg-surface-sunken shadow-lg"
         >
           {filtered.map((opt, i) => {
             const isActive = i === highlight;
@@ -126,7 +126,7 @@ export function Combobox<T>(props: ComboboxProps<T>) {
                   setQuery(getLabel(opt));
                   setOpen(false);
                 }}
-                className={`px-3 py-2 text-xs text-white hover:bg-[#1a1a1a] cursor-pointer ${isActive ? 'bg-[#1a1a1a]' : ''}`}
+                className={`px-3 py-2 text-xs text-rmpg-100 hover:bg-surface-raised cursor-pointer ${isActive ? 'bg-surface-raised' : ''}`}
               >
                 {renderOption(opt)}
               </li>

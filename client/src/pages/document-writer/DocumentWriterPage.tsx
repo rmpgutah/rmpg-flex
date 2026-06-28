@@ -36,6 +36,7 @@ import DocPropertiesDialog from './components/DocPropertiesDialog';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import RecentDocsPanel from './components/RecentDocsPanel';
 import MergePanel from './components/MergePanel';
+import RefinersPanel from './components/RefinersPanel';
 import ProofreadPanel from './components/ProofreadPanel';
 import SectionsPanel from './components/SectionsPanel';
 import TrackChangesPanel from './components/TrackChangesPanel';
@@ -69,6 +70,7 @@ import Redaction from './extensions/redaction';
 import Suggestion from './extensions/suggestion';
 import { loadAppearance, saveAppearance, applyAppearance, type EditorAppearance } from './appearance';
 import { htmlToMarkdown, htmlToPlainText, htmlToRtf, downloadFile, copyRich, copyText } from './exporters';
+import { htmlToDocxBlob } from './docxExport';
 import { writeDraft, readDraft, clearDraft, saveSnapshot } from './autosave';
 import { PAGE_SIZES, DEFAULT_DOC_SETTINGS, type DocumentTemplate, type DocSettings, type WriterTheme } from './types';
 import './writer.css';
@@ -141,6 +143,7 @@ export default function DocumentWriterPage() {
   const [suggestMode, setSuggestMode] = useState(false);
   const [autocompleteOn, setAutocompleteOn] = useState(() => localStorage.getItem('rmpg_writer_autocomplete') !== 'off');
   const [appearance, setAppearance] = useState<EditorAppearance>(loadAppearance);
+  const [showRefiners, setShowRefiners] = useState(false);
   // Final wave: word-limit indicator, section reorder, macro recorder.
   const [showReorder, setShowReorder] = useState(false);
   const [showMacro, setShowMacro] = useState(false);
@@ -153,6 +156,9 @@ export default function DocumentWriterPage() {
   });
   const pageRef = useRef<HTMLDivElement>(null);
   const documentIdRef = useRef<string | null>(null);
+  // Mirror of docSettings so the debounced autosave can read current page
+  // geometry/properties without re-subscribing on every settings change.
+  const docSettingsRef = useRef<DocSettings>(DEFAULT_DOC_SETTINGS);
   const recentIdRef = useRef<string>(`doc-${new Date().toISOString()}`);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
@@ -218,11 +224,18 @@ export default function DocumentWriterPage() {
     setSaving(true);
     setErrorNotice(null);
     try {
-      const html = editor.getHTML();
       const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
-      const blob = new Blob([html], { type: 'text/html' });
+      // Persist a real, editable Word document (.docx) — Word/Pages/Docs all
+      // open it — instead of a raw .html file. Edit round-trips still come from
+      // the local autosave/JSON snapshot, so the Documents copy is the writable
+      // deliverable.
+      const blob = htmlToDocxBlob(editor.getHTML(), docSettings.page, {
+        title: docSettings.properties.title || title,
+        author,
+      });
+      const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const formData = new FormData();
-      formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
+      formData.append('files', new File([blob], `${safeName}.docx`, { type: docxType }));
       const folderId = searchParams.get('folderId');
       if (folderId) formData.append('folder_id', folderId);
       const token = localStorage.getItem('rmpg_token');
@@ -249,7 +262,7 @@ export default function DocumentWriterPage() {
     } finally {
       setSaving(false);
     }
-  }, [editor, title, searchParams]);
+  }, [editor, title, author, docSettings.page, docSettings.properties.title, searchParams]);
 
   const handleExportPdf = useCallback(() => {
     if (!editor) return;
@@ -289,7 +302,10 @@ export default function DocumentWriterPage() {
       '.rlh-name{font-size:15pt;font-weight:700;letter-spacing:0.03em}.rlh-sub{font-size:9pt;color:#444}',
       `.body-cols{column-count:${columns};column-gap:24px}`,
       'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}p{margin:0 0 0.5em}a{color:#000}',
-      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}img{max-width:100%}',
+      // table-layout:fixed + cell overflow:hidden stop multi-column rows (the
+      // signature block's unbreakable underscore "line" especially) from
+      // overflowing the page — they divide the width evenly and clip instead.
+      'table{border-collapse:collapse;width:100%;table-layout:fixed}td,th{border:1px solid #333;padding:6px;overflow:hidden}img{max-width:100%}',
       'blockquote{border-left:3px solid #000;padding-left:1em;font-style:italic}',
       'p.drop-cap::first-letter{float:left;font-size:3.4em;line-height:0.8;font-weight:700;padding-right:6px}',
       '.doc-page-break{break-after:page}.doc-section-break{break-after:column}',
@@ -321,6 +337,23 @@ export default function DocumentWriterPage() {
     else if (format === 'rtf') downloadFile(`${safe}.rtf`, htmlToRtf(html), 'application/rtf');
     else downloadFile(`${safe}.html`, html, 'text/html');
   }, [editor, title]);
+
+  // Download the document as a real, editable Word (.docx) file — opens in
+  // Word, Pages, Google Docs, and LibreOffice. Carries the current page size +
+  // margins into the file's section properties.
+  const handleExportDocx = useCallback(() => {
+    if (!editor) return;
+    const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
+    const blob = htmlToDocxBlob(editor.getHTML(), docSettings.page, {
+      title: docSettings.properties.title || title,
+      author,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${safe}.docx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }, [editor, title, author, docSettings.page, docSettings.properties.title]);
 
   const handleEmailDoc = useCallback(() => {
     if (!editor) return;
@@ -394,6 +427,7 @@ export default function DocumentWriterPage() {
   // Keep a ref of the current server document id so the debounced autosave
   // effect can read it without resetting on every id change.
   useEffect(() => { documentIdRef.current = documentId; }, [documentId]);
+  useEffect(() => { docSettingsRef.current = docSettings; }, [docSettings]);
 
   // Insert an officer signature block auto-filled from the logged-in user
   // (name / badge / rank / department + today's date).
@@ -416,10 +450,11 @@ export default function DocumentWriterPage() {
       bodyHtml: editor.getHTML(),
       author,
       letterhead: docSettings.letterhead,
+      margins: docSettings.page.margins,
     });
     const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
     downloadFile(`${safe}.html`, html, 'text/html');
-  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead]);
+  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead, docSettings.page.margins]);
 
   // "New from current" — duplicate the document into a fresh, unsaved copy.
   const handleDuplicate = useCallback(() => {
@@ -576,13 +611,13 @@ export default function DocumentWriterPage() {
     if (!sel) { flashError('Select some text first.'); return; }
     if (target === 'file') {
       const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'selection';
-      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author }), 'text/html');
+      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author, margins: docSettings.page.margins }), 'text/html');
       flashNotice('Exported the selection as HTML.');
     } else {
       try { await copyRich(sel.html); flashNotice('Copied the selection (rich text).'); }
       catch { flashError('Clipboard write blocked.'); }
     }
-  }, [editor, title, author, flashNotice, flashError]);
+  }, [editor, title, author, flashNotice, flashError, docSettings.page.margins]);
 
   // Clear the document back to a blank page (with confirm).
   const handleClearDocument = useCallback(() => {
@@ -682,9 +717,14 @@ export default function DocumentWriterPage() {
         setServerSaveState('saving');
         try {
           const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
-          const blob = new Blob([editor.getHTML()], { type: 'text/html' });
+          // Keep the server copy as an editable .docx, matching the Save path.
+          const blob = htmlToDocxBlob(editor.getHTML(), docSettingsRef.current.page, {
+            title: docSettingsRef.current.properties.title || title,
+            author,
+          });
+          const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
           const formData = new FormData();
-          formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
+          formData.append('files', new File([blob], `${safeName}.docx`, { type: docxType }));
           const folderId = searchParams.get('folderId');
           if (folderId) formData.append('folder_id', folderId);
           const token = localStorage.getItem('rmpg_token');
@@ -701,7 +741,7 @@ export default function DocumentWriterPage() {
     };
     editor.on('update', schedule);
     return () => { editor.off('update', schedule); window.clearTimeout(timer); };
-  }, [mode, editor, title, searchParams]);
+  }, [mode, editor, title, author, searchParams]);
 
   // Track the document in the local "recent documents" history (debounced).
   useEffect(() => {
@@ -784,7 +824,11 @@ export default function DocumentWriterPage() {
   }, [mode, editor, suggestMode]);
 
   if (mode === 'choose') {
-    return <div className="p-3 h-[calc(100vh-140px)] overflow-auto"><TemplateChooser onSelect={handleTemplateSelect} /></div>;
+    return (
+      <div className="h-[calc(100vh-140px)] overflow-hidden border border-border-default rounded-[2px]">
+        <TemplateChooser onSelect={handleTemplateSelect} />
+      </div>
+    );
   }
 
   const dim = PAGE_SIZES[docSettings.page.size];
@@ -792,7 +836,7 @@ export default function DocumentWriterPage() {
   const pageW = landscape ? dim.height : dim.width;
   const pageH = landscape ? dim.width : dim.height;
   const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
-  const textColor = theme === 'dark' ? '#e8e8e8' : '#111111';
+  const textColor = theme === 'dark' ? '#e8e8e8' : 'var(--surface-base)';
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';
@@ -803,7 +847,7 @@ export default function DocumentWriterPage() {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen || focusMode ? 'fixed inset-0 z-[60] bg-[#050505] h-screen' : ''}`}>
+    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen || focusMode ? 'fixed inset-0 z-[60] bg-surface-overlay h-screen' : ''}`}>
       {!reading && !focusMode && <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />}
 
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
@@ -813,20 +857,20 @@ export default function DocumentWriterPage() {
       {recovery && (
         <div className="bg-amber-900/20 border border-amber-700/40 text-amber-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>Recovered an unsaved draft ("{recovery.title}").</span>
-          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-white text-[10px] underline">Restore</button>
-          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-white text-[10px]">Discard</button>
+          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-rmpg-100 text-[10px] underline">Restore</button>
+          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-rmpg-100 text-[10px]">Discard</button>
         </div>
       )}
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{savedNotice}</span>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
         </div>
       )}
       {errorNotice && (
         <div className="bg-red-900/20 border border-red-700/40 text-red-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{errorNotice}</span>
-          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-white text-[10px]">Dismiss</button>
+          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-rmpg-100 text-[10px]">Dismiss</button>
         </div>
       )}
 
@@ -842,7 +886,7 @@ export default function DocumentWriterPage() {
               onFind: () => setFindMode('find'), onReplace: () => setFindMode('replace'),
               onToggleOutline: () => setShowOutline((v) => !v), onToggleComments: () => setShowComments((v) => !v),
               onAddComment: handleAddComment, onSnapshot: handleSnapshot,
-              onExport: handleExport, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
+              onExport: handleExport, onExportDocx: handleExportDocx, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
               onInsertEmbed: handleInsertEmbed, zoom, setZoom, viewMode, setViewMode,
               language, setLanguage, autoSavedAt,
               onToggleSnapshots: () => setShowSnapshots((v) => !v),
@@ -885,6 +929,8 @@ export default function DocumentWriterPage() {
               wordLimitOn,
               onToggleReorder: () => setShowReorder((v) => !v),
               onToggleMacro: () => setShowMacro((v) => !v),
+              onToggleRefiners: () => setShowRefiners((v) => !v),
+              refinersOpen: showRefiners,
             }}
           />
         </div>
@@ -898,7 +944,7 @@ export default function DocumentWriterPage() {
         <div className="mt-2 flex justify-center"><div className="writer-ruler" style={{ width: pageW }} /></div>
       )}
 
-      <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex gap-2 p-2 relative">
+      <div className="flex-1 mt-3 overflow-auto bg-surface-overlay border border-border-default rounded-[2px] flex gap-2 p-2 relative">
         {showOutline && !focusMode && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
 
         <div className="writer-scroll flex-1 overflow-auto flex justify-center relative">
@@ -960,6 +1006,10 @@ export default function DocumentWriterPage() {
             onClose={() => setShowTrackChanges(false)} flash={(msg) => flashNotice(msg)} />
         )}
 
+        {showRefiners && !focusMode && editor && (
+          <RefinersPanel editor={editor} onClose={() => setShowRefiners(false)} flash={(msg) => flashNotice(msg)} />
+        )}
+
         {showMinimap && !focusMode && editor && <Minimap editor={editor} scrollSelector=".writer-scroll" onClose={() => setShowMinimap(false)} />}
 
         {showReorder && !focusMode && editor && <OutlineReorder editor={editor} onClose={() => setShowReorder(false)} flash={(msg) => flashNotice(msg)} />}
@@ -980,14 +1030,14 @@ export default function DocumentWriterPage() {
             type="button"
             title="Open Tools, Snippets, Statutes, Persons, CFS, and more (140+ snippets, 25+ insert tools)"
             onClick={() => setShowFeatures(true)}
-            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-[#0d0d0d] border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
           >
             <Sparkles className="w-3 h-3" /> Tools
           </button>
         )}
 
         {/* Zoom controls + reading-mode exit */}
-        <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-[#0d0d0d]/90 border border-[#222] rounded-[2px] px-1.5 py-1">
+        <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-surface-base/90 border border-border-default rounded-[2px] px-1.5 py-1">
           <button type="button" title="Zoom out (Ctrl+-)" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomOut className="w-3.5 h-3.5" /></button>
           <span className="text-[10px] text-rmpg-400 w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
           <button type="button" title="Zoom in (Ctrl+=)" onClick={() => setZoom((z) => Math.min(2, z + 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomIn className="w-3.5 h-3.5" /></button>
@@ -1030,5 +1080,8 @@ export default function DocumentWriterPage() {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Escape quotes too — escapeHtml() output is interpolated into HTML attributes
+  // (meta content="…", titles, header/footer/watermark text).
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
