@@ -390,7 +390,12 @@ export default function AdminSystemTab({
     setLoadingConfig(true);
     setError(null);
     try {
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // /admin/config-items returns the Record<category, ConfigItem[]> shape this
+      // tab needs for inline Add/Edit/Delete (each row has id + category). The
+      // sibling /admin/config returns a FLAT key/value map used by DispatchPage
+      // and IncidentsPage; calling it here yielded undefined for every category
+      // (only `dispositions` matched the shape), so every editor was empty.
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       setIncidentTypes(grouped.incident_types || []);
       setDispositionCodes(grouped.dispositions || []);
 
@@ -519,8 +524,12 @@ export default function AdminSystemTab({
   const saveJsonConfig = async (key: string, category: string, value: unknown) => {
     const jsonVal = JSON.stringify(value);
     try {
+      // Guard against `undefined` interpolating into the URL — the old code
+      // shipped `PUT /admin/config/undefined 404` whenever a prior POST silently
+      // returned no id and we re-tried the save (visible in the prod console).
+      // Always require a Number id before using the PUT path.
       const cachedId = configIdCacheRef.current[`${category}:${key}`];
-      if (cachedId) {
+      if (typeof cachedId === 'number' && Number.isFinite(cachedId) && cachedId > 0) {
         await apiFetch(`/admin/config/${cachedId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
@@ -528,11 +537,14 @@ export default function AdminSystemTab({
         return;
       }
 
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // Look up the row id from the grouped endpoint (matches the fetch above
+      // — the flat /admin/config doesn't return per-row ids).
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       const existing = (grouped[category] || []).find((i) => i.config_key === key);
-      if (existing) {
-        configIdCacheRef.current[`${category}:${key}`] = existing.id;
-        await apiFetch(`/admin/config/${existing.id}`, {
+      const existingId = existing?.id;
+      if (typeof existingId === 'number' && Number.isFinite(existingId) && existingId > 0) {
+        configIdCacheRef.current[`${category}:${key}`] = existingId;
+        await apiFetch(`/admin/config/${existingId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
         });
@@ -541,7 +553,12 @@ export default function AdminSystemTab({
           method: 'POST',
           body: JSON.stringify({ config_key: key, config_value: jsonVal, category }),
         });
-        if (created?.id) configIdCacheRef.current[`${category}:${key}`] = created.id;
+        // Only cache a real numeric id — never `undefined`, never the literal
+        // string 'undefined'. A bad cache here is what produced the prod URL
+        // `/admin/config/undefined`.
+        if (typeof created?.id === 'number' && Number.isFinite(created.id) && created.id > 0) {
+          configIdCacheRef.current[`${category}:${key}`] = created.id;
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to save ${category}`);
@@ -574,6 +591,12 @@ export default function AdminSystemTab({
   };
 
   const removeConfigItem = async (id: number) => {
+    // Same `undefined`-in-URL guard as saveJsonConfig — never fire DELETE
+    // /admin/config/undefined when an id is missing or malformed.
+    if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+      setError('Cannot remove: missing or invalid id');
+      return;
+    }
     try {
       await apiFetch(`/admin/config/${id}`, { method: 'DELETE' });
       await fetchConfig();
@@ -1525,7 +1548,7 @@ export default function AdminSystemTab({
                         <span className="text-sm font-bold text-rmpg-100 font-mono">{p.level}</span>
                       </div>
                       <div>
-                        <label className="text-[9px] text-rmpg-400 uppercase">Label</label>
+                        <label htmlFor="ff-adminsystemtab-7" className="text-[9px] text-rmpg-400 uppercase">Label</label>
                         <input id="ff-adminsystemtab-7"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
@@ -1534,7 +1557,7 @@ export default function AdminSystemTab({
                         />
                       </div>
                       <div>
-                        <label className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
+                        <label htmlFor="ff-adminsystemtab-8" className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
                         <input id="ff-adminsystemtab-8"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
@@ -2033,7 +2056,7 @@ export default function AdminSystemTab({
                                       tpl.priority === 'P2' ? 'text-amber-400' :
                                       tpl.priority === 'P3' ? 'text-rmpg-400' :
                                       'text-rmpg-400'
-                                    }`}>{tpl.priority}</span>
+                                    }`}>{(tpl.priority || '').toUpperCase()}</span>
                                   </td>
                                   <td className="text-xs text-rmpg-300 max-w-xs truncate">{tpl.description_template || '--'}</td>
                                   <td>
@@ -2090,11 +2113,11 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
+                      <label htmlFor="ff-adminsystemtab-37" className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
                       <input id="ff-adminsystemtab-37" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
+                      <label htmlFor="ff-adminsystemtab-38" className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
                       <input id="ff-adminsystemtab-38" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
                     </div>
                     <div className="space-y-2">
@@ -2125,16 +2148,16 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Lockout & Sessions</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
+                      <label htmlFor="ff-adminsystemtab-39" className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
                       <input id="ff-adminsystemtab-39" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts.</p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
+                      <label htmlFor="ff-adminsystemtab-40" className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
                       <input id="ff-adminsystemtab-40" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
+                      <label htmlFor="ff-adminsystemtab-41" className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
                       <input id="ff-adminsystemtab-41" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum concurrent sessions per user.</p>
                     </div>
@@ -2163,21 +2186,21 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Brand Colors</div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
+                        <label htmlFor="ff-adminsystemtab-42" className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-42" type="color" value={brandingConfig.primary_color} onChange={(e) => updateBranding('primary_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.primary_color}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent</label>
+                        <label htmlFor="ff-adminsystemtab-43" className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-43" type="color" value={brandingConfig.accent_color} onChange={(e) => updateBranding('accent_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.accent_color}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Header BG</label>
+                        <label htmlFor="ff-adminsystemtab-44" className="text-[10px] text-rmpg-400 uppercase block mb-1">Header BG</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-44" type="color" value={brandingConfig.header_bg_color} onChange={(e) => updateBranding('header_bg_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.header_bg_color}</span>
@@ -2324,15 +2347,15 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
+                      <label htmlFor="ff-adminsystemtab-47" className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
                       <input id="ff-adminsystemtab-47" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
+                      <label htmlFor="ff-adminsystemtab-48" className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
                       <input id="ff-adminsystemtab-48" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
+                      <label htmlFor="ff-adminsystemtab-49" className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
                       <select id="ff-adminsystemtab-49" className="select-dark text-xs w-full" value={systemSettings.default_timezone} onChange={(e) => updateSetting('default_timezone', e.target.value)}>
                         <option value="America/New_York">Eastern (America/New_York)</option>
                         <option value="America/Chicago">Central (America/Chicago)</option>
@@ -2347,12 +2370,12 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">System Parameters</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
+                      <label htmlFor="ff-adminsystemtab-50" className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
                       <input id="ff-adminsystemtab-50" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Closed calls are auto-archived after this many days. 0 = disabled.</p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
+                      <label htmlFor="ff-adminsystemtab-51" className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
                       <input id="ff-adminsystemtab-51" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Inactive sessions are logged out after this duration.</p>
                     </div>

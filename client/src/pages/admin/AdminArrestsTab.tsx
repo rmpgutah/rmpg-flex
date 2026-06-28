@@ -7,6 +7,7 @@ import {
   Activity, RotateCcw, Pencil, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -448,7 +449,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               { key: 'release_date', label: 'Release Date', ph: '', type: 'date' },
             ].map(f => (
               <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-3' : ''}>
-                <label className="text-[9px] text-rmpg-400 uppercase">{f.label}</label>
+                <label htmlFor="ff-adminarreststab-2" className="text-[9px] text-rmpg-400 uppercase">{f.label}</label>
                 {f.select ? (
                   <select id="ff-adminarreststab-2"
                     value={(form as any)[f.key]}
@@ -483,7 +484,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           </div>
 
           <div>
-            <label className="text-[9px] text-rmpg-400 uppercase">Notes</label>
+            <label htmlFor="ff-adminarreststab-7" className="text-[9px] text-rmpg-400 uppercase">Notes</label>
             <RichTextArea
               value={form.notes}
               onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
@@ -524,7 +525,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase">Default County</label>
+              <label htmlFor="ff-adminarreststab-4" className="text-[9px] text-rmpg-400 uppercase">Default County</label>
               <select id="ff-adminarreststab-4"
                 value={csvCounty}
                 onChange={e => setCsvCounty(e.target.value)}
@@ -535,7 +536,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase">Default Agency</label>
+              <label htmlFor="ff-adminarreststab-5" className="text-[9px] text-rmpg-400 uppercase">Default Agency</label>
               <input id="ff-adminarreststab-5"
                 value={csvAgency}
                 onChange={e => setCsvAgency(e.target.value)}
@@ -623,7 +624,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                       rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
                       rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
                       'bg-rmpg-700 text-rmpg-400'
-                    }`}>{(rec.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    }`}>{toDisplayLabel(rec.status || '')}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-rmpg-500">
                     {rec.booking_date && <span>Booked: {rec.booking_date.split('T')[0]}</span>}
@@ -639,7 +640,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                   <button type="button" onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
                     <Edit2 className="w-3 h-3" />
                   </button>
@@ -683,14 +684,17 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               </div>
             )}
 
+            <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
             <div className="space-y-1.5 mt-2">
-              <label className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
+              <label htmlFor="ff-adminarreststab-6" className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
               <div className="relative">
                 <input id="ff-adminarreststab-6"
                   type={showKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={e => setApiKey(e.target.value)}
                   placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter RapidAPI key...'}
+                  autoComplete="new-password"
+                  spellCheck={false}
                   className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
                 />
                 <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
@@ -720,6 +724,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 </>
               )}
             </div>
+            </form>
 
             {status?.lastError && (
               <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-red-950/30 border border-red-800/40 text-red-400">

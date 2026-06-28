@@ -58,7 +58,10 @@ interface AuthContextType {
   requiresPasswordChange: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Exported (v1047) so opt-in consumers like IntelProvider can read the
+// current user safely without requiring an AuthProvider wrapper in unit
+// tests. Most callers should still use the throwing `useAuth()` hook.
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';

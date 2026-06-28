@@ -17,7 +17,7 @@ import {
   CalendarDays, Clipboard, MapPin, Package, UserCheck, FileSearch, PenTool,
   HeartPulse, ShieldAlert, GraduationCap, Server, Palette, Bug, Sparkles, Mic,
   MicOff, Video, ClipboardCheck, Contrast, Droplets, Flame, Leaf, Tv, Brain,
-  SlidersHorizontal, AudioLines, Network, CreditCard, DollarSign, Route,
+  SlidersHorizontal, AudioLines, Network, CreditCard, DollarSign, Route, Film,
 } from 'lucide-react';
 import {
   setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts,
@@ -503,8 +503,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry (NSOPW)', icon: ShieldAlert, action: () => navigate('/nsopw') },
           { type: 'action', label: 'National Warrant Search', icon: Search, action: () => navigate('/national-warrant-search') },
           { type: 'separator' },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
@@ -517,6 +516,7 @@ export default function MenuBar({
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
           { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
           { type: 'separator' },
@@ -699,8 +699,7 @@ export default function MenuBar({
           { type: 'action', label: 'DL Search', icon: CreditCard, action: () => navigate('/dl-search') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
           { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry (NSOPW)', icon: ShieldAlert, action: () => navigate('/nsopw') },
           { type: 'action', label: 'National Warrant Search', icon: Search, action: () => navigate('/national-warrant-search') },
           { type: 'separator' },
           { type: 'action', label: 'Skip Tracer', icon: Search, action: () => navigate('/skip-tracer') },
@@ -743,6 +742,7 @@ export default function MenuBar({
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
           { type: 'separator' },
           { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
@@ -877,6 +877,23 @@ export default function MenuBar({
                 await generateDispatchGuidePdf();
               } catch (err) {
                 console.error('[DispatchGuide] Generation failed:', err);
+              }
+            },
+          },
+          {
+            // Two-page tear-off card with shortcuts, priorities, statuses,
+            // and CAD commands — meant to live taped to the console.
+            // Reuses the same generator the Help page exposes, lazy-imported
+            // so jsPDF only loads when the menu item is actually clicked.
+            type: 'action',
+            label: 'Quick Reference Card (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                const { generateHelpQuickReferencePdfWithDefaults } = await import('../utils/helpQuickReferencePdf');
+                await generateHelpQuickReferencePdfWithDefaults();
+              } catch (err) {
+                console.error('[QuickReferenceCard] Generation failed:', err);
               }
             },
           },
@@ -1228,7 +1245,7 @@ export default function MenuBar({
               <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
             </div>
             <div className="p-4 space-y-3">
-              <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
+              <label htmlFor="ff-menubar-0" className="block text-xs text-rmpg-300">Duration (minutes)</label>
               <input id="ff-menubar-0"
                 ref={timerInputRef}
                 type="number"

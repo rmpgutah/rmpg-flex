@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../../components/RichTextArea';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
@@ -22,6 +22,8 @@ import { businessIcon } from '../../components/records/recordIcons';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
+import { useAssessorLookup } from '../../hooks/useAssessorLookup';
+import { AssessorSuggestionPanel } from '../../components/AssessorSuggestionPanel';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -141,7 +143,9 @@ export function useBusinessTab(props: {
   const fetchBusinesses = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`));
+      // directWorker: bypass the strangler dispatcher, which currently mis-routes
+      // businesses writes to the legacy Worker (404). See useApi.ts. TEMPORARY.
+      const data = await withOneRetry(() => apiFetch<any[]>(`/records/businesses?archived=${showArchived}`, { directWorker: true }));
       setBusinesses((data || []).map(mapDbBusiness));
     } catch (err: any) {
       reportError(err.message || 'Failed to load businesses', () => { void fetchBusinesses(); });
@@ -168,9 +172,9 @@ export function useBusinessTab(props: {
     setFormSubmitting(true);
     try {
       if (editingBusiness) {
-        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data) });
+        await apiFetch(`/records/businesses/${editingBusiness.id}`, { method: 'PUT', body: JSON.stringify(data), directWorker: true });
       } else {
-        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data) });
+        await apiFetch('/records/businesses', { method: 'POST', body: JSON.stringify(data), directWorker: true });
       }
       setShowFormModal(false);
       setEditingBusiness(null);
@@ -285,7 +289,20 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
         {displayBusinesses.length === 0 && (
           <div className="text-center py-16">
             <Briefcase className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No businesses match.' : 'No business records found.'}</p>
+            <p className="text-sm text-rmpg-400">
+              {searchQuery
+                ? 'No businesses match.'
+                : showArchived
+                  ? 'No archived business records.'
+                  : 'No business records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Business" to add a record.'}
+            </p>
           </div>
         )}
         {displayBusinesses.map((b, idx) => (
@@ -309,7 +326,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
                   {b.status === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Active" />}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {b.business_type && <span>{b.business_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>}
+                  {b.business_type && <span>{toDisplayLabel(b.business_type)}</span>}
                   {b.industry && <span>{b.industry}</span>}
                   {b.phone && <span className="flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{b.phone}</span>}
                 </div>
@@ -369,7 +386,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           subtitle={
             <span className="flex flex-col gap-0.5">
               {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
-              <span>{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</span>
+              <span>{toDisplayLabel(b.business_type)} · {b.industry || 'N/A'}</span>
             </span>
           }
           flags={b.flags}
@@ -422,7 +439,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           <RecordField label="Industry" value={b.industry} showEmpty />
           <RecordField label="Employees" value={b.employee_count} showEmpty />
           <RecordField label="Revenue" value={b.annual_revenue} showEmpty />
-          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? '#4ade80' : undefined} />
+          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? 'var(--sev-ok-soft)' : undefined} />
         </FieldGrid>
       </CollapsibleSection>
 
@@ -447,11 +464,11 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
       {b.notes && (
         <CollapsibleSection title="Notes" icon={Shield} defaultOpen={false}>
-          <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{b.notes}</p>
+          <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{b.notes}</p>
         </CollapsibleSection>
       )}
 
-      <LinkedRecordsSection key={`biz-links-${b.id}-${linkRefreshKey}`} entityType="business" entityId={b.id} onOpenLinkModal={() => openLinkModal('business' as any, b.id)} />
+      <LinkedRecordsSection key={`biz-links-${b.id}-${linkRefreshKey}`} entityType="business" entityId={b.id} onOpenLinkModal={() => openLinkModal('business', b.id)} />
 
       <div className="panel-beveled p-3 bg-surface-base">
         <FileAttachments entityType="business" entityId={b.id} />
@@ -494,6 +511,44 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
+  // ── Salt Lake County Assessor on-blur lookup ──
+  // Panel renders below the address input. Apply is gated on `initial?.id`
+  // because the server PATCH writes to an existing row — we need the id.
+  const assessor = useAssessorLookup();
+  const recordId = initial?.id;
+  const recordSaved = !!recordId;
+  const [skippedCount, setSkippedCount] = useState(0);
+  const skippedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
+
+  const onApplyAssessor = useCallback(async (parcelNumber: string) => {
+    if (!recordId) return; // Apply button is disabled in this branch; defensive guard.
+    try {
+      const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
+        '/assessor/apply',
+        {
+          method: 'POST',
+          body: JSON.stringify({ record_type: 'business', record_id: recordId, parcel_number: parcelNumber }),
+          directWorker: true,
+        },
+      );
+      // Merge the server's never-clobber patch into the local form state. The
+      // patch only contains values for fields the server actually changed, so
+      // unrelated keys stay intact. Spread covers any new assessor_* columns
+      // the form doesn't currently render — they're still sent on next save.
+      setForm(prev => ({ ...prev, ...(res.patch as Record<string, string>) }));
+      const skipped = Array.isArray(res.skipped) ? res.skipped.length : 0;
+      setSkippedCount(skipped);
+      if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+      if (skipped > 0) {
+        skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+      }
+      assessor.dismiss();
+    } catch (err) {
+      console.error('Assessor apply failed', err);
+    }
+  }, [recordId, assessor]);
+
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
@@ -508,7 +563,35 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
 
       <FormSection title="Contact & Address" icon={Phone}>
         <div className="grid grid-cols-1 md:grid-cols-6 gap-2.5">
-          <FormField label="Address" className="col-span-6"><input id="ff-businesstab-6" className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></FormField>
+          <FormField label="Address" className="col-span-6">
+            <input
+              id="ff-businesstab-6"
+              className="input-dark text-xs w-full"
+              value={form.address}
+              onChange={e => set('address', e.target.value)}
+              onBlur={e => assessor.lookup(e.target.value)}
+            />
+            <AssessorSuggestionPanel
+              parcels={assessor.parcels}
+              cached={assessor.cached}
+              loading={assessor.loading}
+              error={assessor.error}
+              code={assessor.code}
+              source={assessor.source}
+              degraded={assessor.degraded}
+              manualUrl={assessor.manualUrl}
+              onApply={onApplyAssessor}
+              onDismiss={assessor.dismiss}
+              onRetry={assessor.retry}
+              onRefresh={assessor.refresh}
+            />
+            {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+            )}
+            {skippedCount > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
+            )}
+          </FormField>
           <FormField label="City" className="col-span-3"><input id="ff-businesstab-7" className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></FormField>
           <FormField label="State" className="col-span-1"><input id="ff-businesstab-8" className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></FormField>
           <FormField label="ZIP" className="col-span-2"><input id="ff-businesstab-9" className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></FormField>

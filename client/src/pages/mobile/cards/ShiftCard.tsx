@@ -269,7 +269,7 @@ export default function ShiftCard() {
             <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
               {state.available_vehicles.map((v) => (
                 <button key={v.id} type="button" disabled={busy} onClick={() => promptStartingMileage(v)}
-                  className="flex items-center justify-between min-h-[40px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-[#d4a017]">
+                  className="flex items-center justify-between min-h-[44px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-[#d4a017]">
                   <span className="truncate">{vehicleLabel(v)}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</span>
                   {v.is_take_home ? <span className="text-[#d4a017] text-[9px] uppercase shrink-0">Take-home</span> : null}
                 </button>
@@ -279,7 +279,7 @@ export default function ShiftCard() {
             <div className="text-rmpg-500 text-[11px]">No in-service vehicles available.</div>
           )}
           <button type="button" onClick={() => setPicking(false)}
-            className="mt-2 w-full h-9 bg-surface-raised border border-border-default text-rmpg-400 text-[10px] uppercase tracking-widest">
+            className="mt-2 w-full h-11 bg-surface-raised border border-border-default text-rmpg-400 text-[10px] uppercase tracking-widest">
             Cancel
           </button>
         </div>

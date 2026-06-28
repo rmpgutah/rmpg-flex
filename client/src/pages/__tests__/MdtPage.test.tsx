@@ -29,6 +29,18 @@ vi.mock('../../context/WebSocketContext', () => ({
 vi.mock('../../components/ToastProvider', () => ({
   useToast: () => ({ addToast: (...a: any[]) => mockAddToast(...a) }),
 }));
+// useAuth is a new dependency (was localStorage.getItem('rmpg_user_id') before
+// 2026-06-22). Mock returns a stable user so the shift-report + FI handlers
+// route user.id through the auth context the way the live app does.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '42', username: 'jdoe', first_name: 'J', last_name: 'Doe', role: 'admin' } }),
+}));
+// useSearchParams is used by the new ?call_id= deep-link effect. Mock returns
+// an empty URLSearchParams so the effect is a no-op in tests that don't
+// exercise the deep-link path.
+vi.mock('react-router-dom', () => ({
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+}));
 // The always-mounted modals subscribe to WS events we don't exercise here.
 vi.mock('../../components/PremiseAlertModal', () => ({ default: () => null }));
 vi.mock('../../components/WelfareCheckModal', () => ({ default: () => null }));
@@ -74,9 +86,11 @@ describe('MdtPage — duty boundary routing', () => {
     expect(mod.default).toBeDefined();
   });
 
-  it('OFF → POST /dispatch/duty/end (clock out + release vehicle), not legacy status', async () => {
+  it('OFF → ConfirmDialog → POST /dispatch/duty/end (clock out + release vehicle), not legacy status', async () => {
     await renderMdt();
     fireEvent.click(screen.getByRole('button', { name: 'OFF' }));
+    // OFF triggers a ConfirmDialog — must confirm before API is called.
+    fireEvent.click(screen.getByRole('button', { name: /go off duty/i }));
 
     await waitFor(() => expect(calledWith('/dispatch/duty/end', 'POST')).toBe(true));
     // OFF must NOT take the legacy units/:id/status path.

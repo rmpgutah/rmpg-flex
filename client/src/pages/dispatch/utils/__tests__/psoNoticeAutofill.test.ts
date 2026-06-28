@@ -53,7 +53,10 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     const d = buildNoticeOfCommunicationFromCall(failedPsoCall, ctx);
     expect(d.attempts).toHaveLength(1);
     expect(d.attempts[0].number).toBe(2);
-    expect(d.attempts[0].date).toBe('2026-06-09');
+    // splitStamp now returns MM/DD/YYYY (US legal-document convention)
+    // so the table column matches the notice-date format. Raw ISO was
+    // leaking through to the recipient copy.
+    expect(d.attempts[0].date).toBe('06/09/2026');
     expect(d.attempts[0].time).toBe('03:15');
     expect(d.attempts[0].result).toBe('no_contact');
     expect(d.attempts[0].notes).toContain('No answer');
@@ -113,5 +116,67 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     expect(d.clientContact).toBe('Michael Currie');
     expect(d.clientPhone).toBe('(435) 462-1200');
     expect(d.clientAddress).toContain('Red Cliffs');
+  });
+
+  it('surfaces every visit in the PSO chain as its own attempt row', () => {
+    // When the same recipient has been attempted multiple times, every prior
+    // visit in visit_history becomes an attempt row alongside the closing
+    // attempt. Recipient's second / third notice reads as a coherent record
+    // of ALL attempts, not just the latest.
+    const d = buildNoticeOfCommunicationFromCall(
+      {
+        ...failedPsoCall,
+        pso_attempt_number: 3,
+        // First two attempts came from the chain; this call is the 3rd.
+        visit_history: [
+          {
+            id: 30, call_id: '30', visit_number: 1, status: 'cleared',
+            disposition: 'no_contact', note: 'No answer; lights off',
+            onscene_at: '2026-06-07 14:00:00', created_at: '2026-06-07 13:55:00',
+          } as any,
+          {
+            id: 36, call_id: '36', visit_number: 2, status: 'cleared',
+            disposition: 'no_contact', note: 'Gate locked',
+            onscene_at: '2026-06-08 18:30:00', created_at: '2026-06-08 18:20:00',
+          } as any,
+        ],
+      } as CallForService,
+      ctx,
+    );
+    expect(d.attempts).toHaveLength(3);
+    // Sorted ascending by visit_number — recipient reads the chain in order.
+    expect(d.attempts.map((a) => a.number)).toEqual([1, 2, 3]);
+    expect(d.attempts[0].date).toBe('06/07/2026');
+    expect(d.attempts[0].time).toBe('14:00');
+    expect(d.attempts[0].notes).toContain('No answer');
+    expect(d.attempts[1].notes).toContain('Gate locked');
+    expect(d.attempts[2].number).toBe(3);
+    expect(d.attempts[2].notes).toContain('No answer at door');
+  });
+
+  it('dedups attempts by visit_number so the same row never lists twice', () => {
+    // Guard against a server-side change that includes the current call in
+    // visit_history — the dedup keeps the merged set honest.
+    const d = buildNoticeOfCommunicationFromCall(
+      {
+        ...failedPsoCall,
+        pso_attempt_number: 2,
+        visit_history: [
+          {
+            id: 30, call_id: '30', visit_number: 1, status: 'cleared',
+            disposition: 'no_contact', note: 'First',
+            onscene_at: '2026-06-07 14:00:00', created_at: '2026-06-07 13:55:00',
+          } as any,
+          {
+            id: 42, call_id: '42', visit_number: 2, status: 'cleared',
+            disposition: 'no_contact', note: 'Should be deduped',
+            onscene_at: '2026-06-09 03:00:00', created_at: '2026-06-09 02:55:00',
+          } as any,
+        ],
+      } as CallForService,
+      ctx,
+    );
+    expect(d.attempts).toHaveLength(2);
+    expect(d.attempts.map((a) => a.number)).toEqual([1, 2]);
   });
 });

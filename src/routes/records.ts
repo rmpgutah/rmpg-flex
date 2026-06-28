@@ -5,6 +5,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
+import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
 
 const records = new Hono<Env>();
 
@@ -36,6 +37,23 @@ async function ensureSentinelClient(db: D1Database, name: string, notes: string)
 const ensureScanSentinelClient = (db: D1Database) =>
   ensureSentinelClient(db, 'Field Intelligence — Scanned',
     'Auto-created for scan/field-imported property rows (DL scanner). Do not delete — used as the default client_id for those rows.');
+// Sentinel for hand-entered property rows with no parent client (the Records
+// "Add property" form sends client_id: null when the user leaves the client
+// blank). Without this, the NOT NULL properties.client_id constraint 500s the
+// create/update — the twin of the DL-scan path above.
+const ensureUnaffiliatedSentinelClient = (db: D1Database) =>
+  ensureSentinelClient(db, 'Unaffiliated — No Client',
+    'Auto-created for hand-entered property records with no parent client. Do not delete — used as the default client_id for those rows.');
+
+// Resolve a usable client_id for a properties write: the supplied positive
+// numeric id, else the reusable "Unaffiliated" sentinel. properties.client_id
+// is NOT NULL + FKs clients(id), so null/0/'' would otherwise trip the
+// constraint at write time rather than at validation time.
+async function resolvePropertyClientId(db: D1Database, raw: unknown): Promise<number> {
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  return ensureUnaffiliatedSentinelClient(db);
+}
 
 // GET /records/properties
 records.get('/properties', async (c) => {
@@ -68,6 +86,12 @@ const PROPERTY_WRITABLE_COLUMNS = new Set([
   'parking_info', 'roof_access', 'utility_shutoffs', 'known_hazards',
   'contact_email', 'secondary_contact_name', 'secondary_contact_phone',
   'patrol_frequency', 'opening_hours', 'closing_hours',
+  // Assessor-sourced columns (migration 0142). `year_built` was already
+  // writable above (pre-existing column from 0037); the rest are new.
+  'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+  'total_market_value', 'land_sqft',
+  'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+  'assessor_last_synced_at', 'assessor_source_url',
 ]);
 
 // POST /records/properties
@@ -76,9 +100,14 @@ records.post('/properties', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name) return c.json({ error: 'name is required' }, 400);
-    const cols: string[] = ['created_at']; const vals: unknown[] = [];
-    const placeholders: string[] = ["datetime('now')"];
+    // properties.client_id is NOT NULL — fall back to the Unaffiliated sentinel
+    // when no valid client is supplied so a parentless property still saves.
+    const clientId = await resolvePropertyClientId(db, body.client_id);
+    const cols: string[] = ['created_at', 'client_id'];
+    const vals: unknown[] = [clientId];
+    const placeholders: string[] = ["datetime('now')", '?'];
     for (const [key, val] of Object.entries(body)) {
+      if (key === 'client_id') continue; // resolved above
       if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(key); vals.push(val ?? null); placeholders.push('?'); }
     }
     const result = await execute(db, `INSERT INTO properties (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
@@ -97,7 +126,11 @@ records.put('/properties/:id', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) {
-      if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+      if (!PROPERTY_WRITABLE_COLUMNS.has(key)) continue;
+      // client_id is NOT NULL: clearing the client on edit must resolve to the
+      // Unaffiliated sentinel, not UPDATE ... SET client_id = NULL (would 500).
+      if (key === 'client_id') { cols.push('client_id = ?'); params.push(await resolvePropertyClientId(db, val)); }
+      else { cols.push(`${key} = ?`); params.push(val ?? null); }
     }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
@@ -177,6 +210,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'address', 'address_2', 'city', 'state', 'zip', 'phone', 'phone_secondary',
   'home_phone', 'work_phone', 'email', 'email_secondary',
   'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'dl_issue_date', 'dl_restrictions', 'dl_endorsements',
   'ssn_last4', 'ssn_full',
   'photo_url', 'photo', 'id_image_url',
   'id_type', 'id_number', 'id_state', 'id_expiry',
@@ -211,6 +245,8 @@ const PERSON_WRITABLE_COLUMNS = new Set([
 const PERSON_EXT_COLUMNS = new Set([
   'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
+  // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
+  'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
@@ -290,6 +326,13 @@ records.post('/persons', async (c) => {
     const newId = Number(result.meta.last_row_id);
     await writePersonExt(db, newId, body);
     const person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', newId));
+    // Auto-screen new persons against NSOPW. Fire-and-forget: a SOR
+    // miss/timeout must NOT block person creation. Confirmed hits land
+    // in screening_hits and surface on PersonIntelPanel + dossier.
+    c.executionCtx.waitUntil(
+      screenPersonForSor(c.env, newId, { triggeredBy: 'person_create' })
+        .catch((err) => console.warn('[nsopw] person_create screen failed:', err)),
+    );
     return c.json(person, 201);
   } catch (err) {
     console.error('POST /records/persons failed:', err);
@@ -343,17 +386,33 @@ records.post('/from-dl-scan', async (c) => {
         : 'Created from DL scan';
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
-          eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
+          dl_expiry, dl_class, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
+        str(scan.dl_expiry), str(scan.dl_class),
         JSON.stringify(['dl_scan_imported']), note);
-      person = await queryFirst<Record<string, unknown>>(db,
-        'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+      const newPersonId = Number(result.meta.last_row_id);
+      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      await writePersonExt(db, newPersonId, {
+        dl_restrictions: str(scan.dl_restrictions),
+        dl_endorsements: str(scan.dl_endorsements),
+        dl_issue_date:   str(scan.dl_issue_date),
+      });
+      person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM persons WHERE id = ?', newPersonId));
       personCreated = true;
     }
     const personId = Number(person!.id);
+    if (personCreated) {
+      // Auto-screen DL-scanned persons too. Same fire-and-forget posture.
+      c.executionCtx.waitUntil(
+        screenPersonForSor(c.env, personId, { triggeredBy: 'dl_scan_create' })
+          .catch((err) => console.warn('[nsopw] dl_scan screen failed:', err)),
+      );
+    }
 
     // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
     let vehicle: Record<string, unknown> | null = null;
@@ -691,7 +750,7 @@ records.get('/persons/:id/system-history', async (c) => {
     const id = c.req.param('id');
     const [warrants, incidents, calls, citations] = await Promise.all([
       query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE (person_id = ? OR subject_person_id = ?) ORDER BY created_at DESC LIMIT 50`, id, id),
-      query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
+      query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address, ip.role FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
     ]);
@@ -1161,6 +1220,13 @@ const BUSINESS_WRITABLE_COLUMNS = new Set([
   'phone', 'email', 'website', 'owner_name', 'owner_phone',
   'contact_name', 'contact_phone', 'contact_email',
   'industry', 'employee_count', 'annual_revenue', 'status', 'flags', 'notes',
+  // Assessor-sourced columns (migration 0142). Autofill writes these via
+  // /api/assessor/apply, but a manual save through the records PATCH/POST
+  // must travel the same allow-list.
+  'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+  'year_built', 'total_market_value', 'land_sqft',
+  'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+  'assessor_last_synced_at', 'assessor_source_url',
 ]);
 
 // GET /records/businesses — list businesses.
@@ -1494,6 +1560,281 @@ records.delete('/evidence/:id', async (c) => {
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+// ── Evidence sub-resource endpoints ──────────────────────────────────────────
+// These were called by EvidencePropertyPage but never mounted, causing all
+// chain-action / checkout / checkin / disposition / release / audit / links
+// button actions to 404 silently. Added 2026-06-22 (page 65 audit).
+
+// POST /records/evidence/:id/chain-action
+// Appends an entry to the JSON chain_of_custody column and updates item status.
+records.post('/evidence/:id/chain-action', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const row = await queryFirst<{ id: number; chain_of_custody: string | null }>(db, 'SELECT id, chain_of_custody FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const action = String(body.action || 'check_in');
+    const entry = {
+      action,
+      user_id: user?.id ?? null,
+      user_name: (user as any)?.full_name || (user as any)?.username || null,
+      by_name: (user as any)?.full_name || (user as any)?.username || null,
+      timestamp: new Date().toISOString(),
+      to_location: body.to_location ? String(body.to_location) : undefined,
+      from_location: body.from_location ? String(body.from_location) : undefined,
+      notes: body.notes ? String(body.notes) : undefined,
+    };
+    let chain: unknown[] = [];
+    if (row.chain_of_custody) {
+      try { chain = JSON.parse(row.chain_of_custody) as unknown[]; } catch { chain = []; }
+    }
+    chain.push(entry);
+    // Map action to status
+    const STATUS_MAP: Record<string, string> = {
+      check_in: 'checked_in', check_out: 'checked_out', transfer: 'in_storage',
+      lab_submit: 'submitted_to_le', release: 'released', dispose: 'disposed',
+    };
+    const newStatus = STATUS_MAP[action];
+    const updates: string[] = ['chain_of_custody = ?'];
+    const values: unknown[] = [JSON.stringify(chain)];
+    if (newStatus) { updates.push('status = ?'); values.push(newStatus); }
+    values.push(id);
+    await execute(db, `UPDATE evidence SET ${updates.join(', ')} WHERE id = ?`, ...values);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/checkout
+records.post('/evidence/:id/checkout', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const row = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const now = new Date().toISOString();
+    await execute(db,
+      `UPDATE evidence SET status = 'checked_out', checked_out_by = ?, checked_out_at = ?,
+        checkout_reason = ?, expected_return_date = ? WHERE id = ?`,
+      user?.id ?? null, now,
+      body.reason ? String(body.reason) : null,
+      body.expected_return_date ? String(body.expected_return_date) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/checkin
+records.post('/evidence/:id/checkin', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    await execute(db,
+      `UPDATE evidence SET status = 'checked_in', checked_out_by = NULL, checked_out_at = NULL,
+        checkout_reason = NULL, expected_return_date = NULL,
+        condition_on_return = ? WHERE id = ?`,
+      body.condition_on_return ? String(body.condition_on_return) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/evidence/:id/disposition
+records.put('/evidence/:id/disposition', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const disposition = String(body.disposition || 'pending');
+    const newStatus = disposition === 'pending' ? 'pending_disposition'
+      : ['destroy', 'forfeit', 'auction'].includes(disposition) ? 'disposed'
+      : disposition === 'return_to_owner' ? 'released'
+      : 'pending_disposition';
+    await execute(db,
+      `UPDATE evidence SET disposition = ?, disposal_method = ?,
+        disposal_date = CASE WHEN ? != 'pending' THEN date('now') ELSE NULL END,
+        status = ? WHERE id = ?`,
+      disposition,
+      body.disposition_method ? String(body.disposition_method) : null,
+      disposition, newStatus, id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/request-release
+records.post('/evidence/:id/request-release', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number } | undefined;
+    const row = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const now = new Date().toISOString();
+    await execute(db,
+      `UPDATE evidence SET release_status = 'release_requested',
+        release_requested_by = ?, release_requested_at = ?,
+        release_to = ?, release_reason = ? WHERE id = ?`,
+      user?.id ?? null, now,
+      body.release_to ? String(body.release_to) : null,
+      body.reason ? String(body.reason) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/evidence/:id/approve-release (admin/supervisor only)
+records.put('/evidence/:id/approve-release', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number } | undefined;
+    const row = await queryFirst<{ id: number; release_status: string | null }>(db, 'SELECT id, release_status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const action = String(body.action || 'approve');
+    const now = new Date().toISOString();
+    if (action === 'approve') {
+      await execute(db,
+        `UPDATE evidence SET release_status = 'released', status = 'released',
+          release_approved_by = ?, release_approved_at = ? WHERE id = ?`,
+        user?.id ?? null, now, id,
+      );
+    } else {
+      await execute(db,
+        `UPDATE evidence SET release_status = NULL,
+          release_requested_by = NULL, release_requested_at = NULL,
+          release_to = NULL, release_reason = NULL WHERE id = ?`,
+        id,
+      );
+    }
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/evidence/:id/custody-validation
+// Validates chain of custody integrity — looks for gaps > 48h and warnings.
+records.get('/evidence/:id/custody-validation', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; status: string; storage_location: string | null; chain_of_custody: string | null }>(
+      db, 'SELECT id, status, storage_location, chain_of_custody FROM evidence WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    let chain: Array<{ action?: string; timestamp?: string; at?: string; user_name?: string; by_name?: string }> = [];
+    if (row.chain_of_custody) {
+      try { chain = JSON.parse(row.chain_of_custody); } catch { chain = []; }
+    }
+    const gaps: Array<{ from_action: string; to_action: string; from_time: string; to_time: string; gap_hours: number }> = [];
+    const warnings: string[] = [];
+    for (let i = 1; i < chain.length; i++) {
+      const prev = chain[i - 1];
+      const curr = chain[i];
+      const t1 = prev.timestamp || prev.at;
+      const t2 = curr.timestamp || curr.at;
+      if (t1 && t2) {
+        const gapH = (new Date(t2).getTime() - new Date(t1).getTime()) / 3_600_000;
+        if (gapH > 48) {
+          gaps.push({
+            from_action: prev.action || '?', to_action: curr.action || '?',
+            from_time: t1, to_time: t2, gap_hours: Math.round(gapH),
+          });
+        }
+      }
+    }
+    if (row.status === 'checked_out' && chain.length > 0) warnings.push('Item is currently checked out');
+    if (chain.length === 0) warnings.push('No chain of custody entries — evidence intake was not recorded');
+    return c.json({
+      data: {
+        is_valid: gaps.length === 0,
+        chain_length: chain.length,
+        current_status: row.status,
+        current_location: row.storage_location,
+        gaps,
+        warnings,
+      },
+    });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/evidence/:id/linked-records
+// Returns the incident, cases, and forensic cases linked to this evidence item.
+records.get('/evidence/:id/linked-records', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; incident_id: number | null; case_id: number | null }>(
+      db, 'SELECT id, incident_id, case_id FROM evidence WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    // Incident
+    const incident = row.incident_id
+      ? await queryFirst<Record<string, unknown>>(db, 'SELECT id, incident_number, incident_type, status FROM incidents WHERE id = ?', row.incident_id).catch(() => null)
+      : null;
+    // Cases linked via evidence_case_links or directly via case_id
+    const cases = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(db,
+          `SELECT c.id, c.case_number, c.case_type, c.status FROM cases c
+           INNER JOIN evidence_case_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
+           UNION
+           SELECT c.id, c.case_number, c.case_type, c.status FROM cases c WHERE c.id = ?`,
+          id, row.case_id ?? -1,
+        );
+      } catch { return []; }
+    })();
+    // Forensic cases
+    const forensicCases = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(db,
+          `SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.status
+           FROM forensic_cases fc
+           INNER JOIN forensic_case_evidence fce ON fce.forensic_case_id = fc.id
+           WHERE fce.evidence_id = ?`,
+          id,
+        );
+      } catch { return []; }
+    })();
+    return c.json({ data: { incident, cases, forensic_cases: forensicCases } });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
 // POST /records/evidence/:id/archive — not applicable (evidence uses status transitions).
 records.post('/evidence/:id/archive', async (c) => {
   try {
@@ -1690,22 +2031,34 @@ records.get('/search', async (c) => {
       }));
     }
 
-    if (type === 'business' || type === 'property') {
+    if (type === 'business') {
+      // businesses live in the dedicated `businesses` table (migration 0125);
+      // `properties` is real-estate only. LINK_ENTITY_TABLE and recordExists
+      // both target `businesses`, so search must return IDs from that table.
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, name, dba_name, business_type, address, city, state, phone, owner_name FROM businesses
+        WHERE name LIKE ? OR dba_name LIKE ? OR address LIKE ? OR owner_name LIKE ?
+        ORDER BY name LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows.map((r) => {
+        const name = (r.name as string | null) || '';
+        const dba = (r.dba_name as string | null) || '';
+        const address = (r.address as string | null) || '';
+        const label = dba ? `${name} (${dba})` : (name || address || `Business #${r.id}`);
+        return { ...r, label };
+      }));
+    }
+
+    if (type === 'property') {
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM properties
         WHERE name LIKE ? OR address LIKE ?
         ORDER BY name LIMIT 50
       `, like, like);
       return c.json(rows.map((r) => {
-        // If `business_type` is populated the property is a business → name first;
-        // otherwise treat as residential → address first. Falls back the other
-        // direction if the chosen field is empty so we never return just the id.
-        const isBusiness = Boolean((r.business_type as string | null) || '');
         const name = (r.name as string | null) || '';
         const address = (r.address as string | null) || '';
-        const label = isBusiness
-          ? (name || address || `Property #${r.id}`)
-          : (address || name || `Property #${r.id}`);
+        const label = address || name || `Property #${r.id}`;
         return { ...r, label };
       }));
     }
@@ -1862,6 +2215,51 @@ records.get('/reports/approval-queue', async (c) => {
   } catch (err) {
     console.error('GET /records/reports/approval-queue error:', err);
     return c.json([], 200);
+  }
+});
+
+// POST /api/records/reports/:id/approve — supervisor approves a pending report.
+// Proxy to the incidents approve logic: updates status → 'approved'.
+records.post('/reports/:id/approve', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    if (!['submitted', 'pending_approval', 'returned'].includes(report.status)) {
+      return c.json({ error: 'Report is not in a reviewable status', code: 'INVALID_STATUS' }, 409);
+    }
+    await db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, id).run();
+    return c.json({ success: true, id: Number(id), status: 'approved' });
+  } catch (err) {
+    console.error('POST /records/reports/:id/approve error:', err);
+    return c.json({ error: 'Failed to approve report' }, 500);
+  }
+});
+
+// POST /api/records/reports/:id/return — supervisor returns a report for revision.
+records.post('/reports/:id/return', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const body = await c.req.json() as { reason?: string };
+    const reason = (body.reason ?? '').trim();
+    if (!reason) return c.json({ error: 'Return reason is required' }, 400);
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, reason, id).run();
+    return c.json({ success: true, id: Number(id), status: 'returned', reason });
+  } catch (err) {
+    console.error('POST /records/reports/:id/return error:', err);
+    return c.json({ error: 'Failed to return report' }, 500);
   }
 });
 
@@ -2022,11 +2420,35 @@ records.get('/links', async (c) => {
       const isSource = link.source_type === type && String(link.source_id) === String(id);
       const linkedType = isSource ? link.target_type : link.source_type;
       const linkedId = isSource ? link.target_id : link.source_id;
+      // For vehicle links, include structured metadata so the PDF's VEHICLE /
+      // COLOR / YEAR columns populate instead of parsing a label string.
+      // For person links, include DOB + active-warrant flag for PS-203 table.
+      let linked_meta: Record<string, unknown> | undefined;
+      if (linkedType === 'vehicle') {
+        const veh = await queryFirst<{ year?: number; color?: string; make?: string; model?: string; plate_number?: string }>(
+          db, 'SELECT year, color, make, model, plate_number FROM vehicles_records WHERE id = ?', linkedId,
+        );
+        if (veh) linked_meta = veh as Record<string, unknown>;
+      } else if (linkedType === 'person') {
+        const per = await queryFirst<{ dob?: string }>(
+          db, 'SELECT dob FROM persons WHERE id = ?', linkedId,
+        );
+        const wRow = await queryFirst<{ cnt: number }>(
+          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,
+        );
+        if (per || (wRow && wRow.cnt > 0)) {
+          linked_meta = {
+            ...(per || {}),
+            active_warrants: (wRow?.cnt ?? 0) > 0 ? 1 : 0,
+          };
+        }
+      }
       return {
         ...link,
         linked_type: linkedType,
         linked_id: linkedId,
         linked_label: await getRecordLabel(db, linkedType, linkedId),
+        ...(linked_meta ? { linked_meta } : {}),
       };
     }));
     return c.json(enriched);
@@ -2171,7 +2593,7 @@ records.delete('/links/:id', async (c) => {
 const PERSONS_BULK_COLUMNS = `id, first_name, middle_name, last_name, alias_nickname, dob, ssn_last4, dl_number, dl_state,
   phone, phone_secondary, email, address, city, state, zip, height_feet, height_inches, weight, race, gender, build,
   complexion, hair_color, hair_length, hair_style, facial_hair, eye_color, glasses, scars_marks_tattoos,
-  is_sex_offender, is_veteran, occupation, employer, photo, caution_flags, flags, notes,
+  is_sex_offender, is_veteran, occupation, employer, photo, photo_url, id_image_url, caution_flags, flags, notes,
   created_at, updated_at`;
 
 const VEHICLES_BULK_COLUMNS = `id, vin, plate_number, state, make, model, year, color, body_style,

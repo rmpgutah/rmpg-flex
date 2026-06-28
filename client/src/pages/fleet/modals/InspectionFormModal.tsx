@@ -171,24 +171,24 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           {/* Top form fields */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type *</label>
+              <label htmlFor="ff-inspectionformmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type *</label>
               <select id="ff-inspectionformmodal-0" className="select-dark w-full text-[11px] min-h-[36px]" value={form.inspection_type}
                 onChange={(e) => setField('inspection_type', e.target.value)}>
                 {INSPECTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Inspector *</label>
+              <label htmlFor="ff-inspectionformmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Inspector *</label>
               <input id="ff-inspectionformmodal-1" className="input-dark w-full text-[11px] min-h-[36px]" value={form.inspector_name}
                 onChange={(e) => setField('inspector_name', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
+              <label htmlFor="ff-inspectionformmodal-2" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
               <input id="ff-inspectionformmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.inspection_date}
                 onChange={(e) => setField('inspection_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage</label>
+              <label htmlFor="ff-inspectionformmodal-3" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage</label>
               <input id="ff-inspectionformmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.mileage}
                 onChange={(e) => setField('mileage', e.target.value)} />
             </div>
@@ -228,7 +228,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
 
           {/* Overall notes */}
           <div>
-            <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
+            <label htmlFor="ff-inspectionformmodal-6" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
             <textarea id="ff-inspectionformmodal-6" className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>

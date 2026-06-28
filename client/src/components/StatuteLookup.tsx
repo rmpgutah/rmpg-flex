@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Scale, Car, X, BookOpen } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface StatuteResult {
   id: number;
@@ -83,11 +84,10 @@ const OFFENSE_COLORS: Record<string, string> = {
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 
+// Delegates to the shared toDisplayLabel helper for acronym-aware Title Case
+// (e.g. dui_enhancement → "DUI Enhancement", not "Dui Enhancement").
 function formatOffenseLevel(level: string | null): string {
-  if (!level) return '';
-  return level
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return toDisplayLabel(level || '');
 }
 
 export default function StatuteLookup({

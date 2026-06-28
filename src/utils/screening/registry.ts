@@ -3,6 +3,7 @@ import { interpolAdapter } from './interpolAdapter';
 import { ofacAdapter } from './ofacAdapter';
 import { utahSorAdapter } from './utahSorAdapter';
 import { udcAdapter } from './udcAdapter';
+import { nsopwAdapter } from './nsopwAdapter';
 
 const ADAPTERS: ScreeningAdapter[] = [
   interpolAdapter('red'),
@@ -10,6 +11,7 @@ const ADAPTERS: ScreeningAdapter[] = [
   interpolAdapter('un'),
   ofacAdapter,
   utahSorAdapter,
+  nsopwAdapter,
   udcAdapter,
 ];
 

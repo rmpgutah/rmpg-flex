@@ -2,7 +2,8 @@
 // RMPG Flex — Training & Docs: Company Policies, SOPs, Manuals
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2, Edit2,
@@ -19,6 +20,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { safeDateStr, parseTimestamp } from '../utils/dateUtils';
 
 // ── Category config ─────────────────────────────────────────
@@ -79,30 +81,27 @@ export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ?category= deep-link — seed initial tab from URL param (once, on mount)
+  const initCategory = (searchParams.get('category') as CompanyDocCategory | 'all') || 'all';
+  const validCategory = CATEGORIES.some(c => c.key === initCategory) ? initCategory : 'all';
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<CompanyDocCategory | 'all'>('all');
+  const [category, setCategory] = useState<CompanyDocCategory | 'all'>(validCategory);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
   const [showBlankForms, setShowBlankForms] = useState(false);
 
-  // Document title
-  useEffect(() => { document.title = 'Policies & Training Docs \u2014 RMPG Flex'; }, []);
+  // ConfirmDialog state — replaces window.confirm() for delete
+  const [docToDelete, setDocToDelete] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === 'Escape') { setShowModal(false); setEditDoc(null); }
-      if ((e.key === 'n' || e.key === 'N') && isAdmin) { setEditDoc(null); setShowModal(true); }
-      if (e.key === 'r' || e.key === 'R') { loadDocuments(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isAdmin]);
+  // Document title
+  useEffect(() => { document.title = 'Policies & Training Docs — RMPG Flex'; }, []);
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -120,6 +119,61 @@ export default function TrainingDocsPage() {
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
   useLiveSync('company-documents', loadDocuments);
 
+  // ?doc_id=<id> deep-link — open edit modal for matching document after load
+  const pendingDocIdRef = useRef<string | null>(searchParams.get('doc_id'));
+  // Strip ?category= from URL after seeding state (one-shot on mount)
+  const categoryStripRef = useRef(!!searchParams.get('category'));
+  useEffect(() => {
+    if (!categoryStripRef.current) return;
+    categoryStripRef.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete('category');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const docId = pendingDocIdRef.current;
+    if (!docId) return;
+    pendingDocIdRef.current = null;
+    const hit = documents.find(d => String(d.id) === String(docId));
+    if (hit) {
+      setEditDoc(hit);
+      setShowModal(true);
+    } else {
+      addToast(`Document ${docId} not found`, 'warning');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('doc_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, documents]);
+
+  // Keyboard shortcuts — Esc cascade + N (add) + R (refresh)
+  // loadDocuments is included in deps so R always calls the current version.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Escape') {
+        // Cascade: close confirm → modal
+        if (docToDelete) { e.stopPropagation(); setDocToDelete(null); return; }
+        if (showModal) { e.stopPropagation(); setShowModal(false); setEditDoc(null); return; }
+        return;
+      }
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && isAdmin) { setEditDoc(null); setShowModal(true); }
+      if (e.key === 'r' || e.key === 'R') { loadDocuments(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isAdmin, docToDelete, showModal, loadDocuments]);
+
   const filtered = useMemo(() => {
     if (!search.trim()) return documents;
     const q = search.toLowerCase();
@@ -128,15 +182,21 @@ export default function TrainingDocsPage() {
     );
   }, [documents, search]);
 
-  const handleDelete = async (doc: any) => {
-    if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
+  const requestDeleteDoc = (doc: any) => setDocToDelete(doc);
+
+  const confirmDeleteDoc = async () => {
+    if (!docToDelete) return;
+    setDeleting(true);
     try {
-      await apiDeleteCompanyDocument(doc.id);
+      await apiDeleteCompanyDocument(docToDelete.id);
       addToast('Document deleted successfully', 'success');
+      setDocToDelete(null);
       loadDocuments();
     } catch (err) {
       console.error('Delete failed:', err);
       addToast('Failed to delete document', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -181,7 +241,7 @@ export default function TrainingDocsPage() {
               className="input-dark text-[11px] pl-6 pr-2 py-1 w-48 min-h-[36px]"
             />
             {search && (
-              <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
+              <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2" aria-label="Clear search">
                 <X className="w-3 h-3 text-rmpg-500 hover:text-rmpg-300" />
               </button>
             )}
@@ -266,11 +326,29 @@ export default function TrainingDocsPage() {
             <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
               <BookOpen className="w-8 h-8 text-rmpg-600" />
             </div>
-            <p className="text-sm text-rmpg-400 font-medium">
-              {search ? 'No documents match your search' : 'No documents have been added yet'}
-            </p>
-            {isAdmin && !search && (
-              <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Document" to upload the first policy or training manual</p>
+            {search ? (
+              <>
+                <p className="text-sm text-rmpg-400 font-medium">No documents match your search</p>
+                <button type="button" onClick={() => setSearch('')}
+                  className="toolbar-btn text-[10px] px-3 py-1.5 mt-3">
+                  Clear search
+                </button>
+              </>
+            ) : documents.length > 0 ? (
+              <>
+                <p className="text-sm text-rmpg-400 font-medium">No documents in this category</p>
+                <button type="button" onClick={() => setCategory('all')}
+                  className="toolbar-btn text-[10px] px-3 py-1.5 mt-3">
+                  Show all categories
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-rmpg-400 font-medium">No documents have been added yet</p>
+                {isAdmin && (
+                  <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Document" to upload the first policy or training manual</p>
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -317,7 +395,9 @@ export default function TrainingDocsPage() {
                   )}
 
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500">
-                    {doc.creator_name && <span>By {doc.creator_name}</span>}
+                    {(doc.created_by_name || doc.creator_name) && (
+                      <span>By {doc.created_by_name || doc.creator_name}</span>
+                    )}
                     <span title={safeDateStr(doc.created_at)}>{timeAgo(doc.created_at)}</span>
                     {doc.file_size > 0 && <span>{formatFileSize(doc.file_size)}</span>}
                   </div>
@@ -346,7 +426,7 @@ export default function TrainingDocsPage() {
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button type="button"
-                        onClick={() => handleDelete(doc)}
+                        onClick={() => requestDeleteDoc(doc)}
                         className="toolbar-btn p-1.5 text-red-400 hover:text-red-300"
                         title="Delete"
                       >
@@ -369,6 +449,28 @@ export default function TrainingDocsPage() {
           onSaved={() => { setShowModal(false); setEditDoc(null); loadDocuments(); }}
         />
       )}
+
+      {/* Delete confirm — replaces window.confirm() */}
+      <ConfirmDialog
+        isOpen={docToDelete !== null}
+        onClose={() => setDocToDelete(null)}
+        onConfirm={confirmDeleteDoc}
+        title="Delete document?"
+        message="This permanently removes the document and cannot be undone."
+        details={
+          docToDelete && (
+            <div className="space-y-0.5">
+              <div className="font-medium text-rmpg-100">{docToDelete.title}</div>
+              {docToDelete.category && (
+                <div className="text-rmpg-500">{String(docToDelete.category).replace(/_/g, ' ')}</div>
+              )}
+            </div>
+          )
+        }
+        confirmLabel="Delete document"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
@@ -462,7 +564,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Title */}
           <div>
-            <label className="field-label mb-1 block">Title *</label>
+            <label htmlFor="ff-trainingdocspage-1" className="field-label mb-1 block">Title *</label>
             <input id="ff-trainingdocspage-1"
               type="text"
               value={title}
@@ -485,7 +587,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
           {/* Category */}
           <div>
-            <label className="field-label mb-1 block">Category</label>
+            <label htmlFor="ff-trainingdocspage-2" className="field-label mb-1 block">Category</label>
             <select id="ff-trainingdocspage-2"
               value={category}
               onChange={(e) => setCategory(e.target.value as CompanyDocCategory)}
@@ -549,7 +651,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
             </div>
           ) : (
             <div>
-              <label className="field-label mb-1 block">URL *</label>
+              <label htmlFor="ff-trainingdocspage-4" className="field-label mb-1 block">URL *</label>
               <input id="ff-trainingdocspage-4"
                 type="url"
                 value={externalUrl}

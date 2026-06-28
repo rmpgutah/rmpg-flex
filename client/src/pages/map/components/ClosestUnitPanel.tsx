@@ -108,7 +108,7 @@ export default function ClosestUnitPanel({
               letterSpacing: '0.5px',
             }}
           >
-            {call.priority}
+            {(call.priority || '').toUpperCase()}
           </span>
           <span className="text-[11px] font-bold" style={{ color: pColor }}>
             {call.call_number}

@@ -20,6 +20,8 @@
 // it can be unit-tested in isolation — see tests/analytics.test.ts.
 // ============================================================
 
+import { log } from './logger';
+
 /** A single analytics event. Keep it FLAT — each key becomes one Iceberg
  *  column, so values must be JSON-serialisable scalars and a given key must
  *  carry a consistent type across every event (mixed types break the schema). */
@@ -41,10 +43,17 @@ export interface AnalyticsPipeline {
 }
 
 /** Minimal structural shape — just the (lazily-accessed, possibly-absent)
- *  execution context. Typed structurally so this util needn't import Hono. */
+ *  execution context. Typed structurally so this util needn't import Hono.
+ *
+ *  Pinned to the only method we actually call (`waitUntil`) rather than the
+ *  full `ExecutionContext` so a `@cloudflare/workers-types` minor bump (e.g.
+ *  4.20260601 → 4.20260617 adds a required `tracing` property and makes the
+ *  type generic as `ExecutionContext<unknown>`) doesn't break every caller's
+ *  typecheck. Hono's `c.executionCtx` getter satisfies this structural shape
+ *  on either workers-types version. */
 interface ExecutionCtxHolder {
   /** Hono's `c.executionCtx` — a getter that THROWS when there is none. */
-  executionCtx?: ExecutionContext;
+  executionCtx?: { waitUntil(p: Promise<unknown>): void };
 }
 
 /**
@@ -73,12 +82,11 @@ export function emitAnalytics(
 ): void {
   if (!stream || events.length === 0) return;
   const work = stream.send(events).catch((err: unknown) => {
-    console.error(
-      '[analytics] emit failed:',
-      err instanceof Error ? err.message : String(err),
-    );
+    log.error('emit failed', { err: err instanceof Error ? err.message : String(err) });
   });
-  let exec: ExecutionContext | undefined;
+  // Structural shape (waitUntil-only) so we don't have to mirror every
+  // `@cloudflare/workers-types` bump — see ExecutionCtxHolder above.
+  let exec: { waitUntil(p: Promise<unknown>): void } | undefined;
   try { exec = c.executionCtx; } catch { exec = undefined; }
   if (exec) exec.waitUntil(work);
   else void work; // no execution context — let the send run un-awaited

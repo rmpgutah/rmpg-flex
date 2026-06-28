@@ -7,8 +7,8 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
@@ -20,6 +20,7 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
@@ -34,7 +35,7 @@ function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
   return (
     <div className="relative flex-shrink-0">
       {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-rmpg-700 rounded-sm bg-black" />}
-      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-[#d4a017] text-center uppercase">{label}</span>
+      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-brand-gold-500 text-center uppercase">{label}</span>
     </div>
   );
 }
@@ -117,12 +118,18 @@ export default function DlSearchPage() {
   const [state, setState] = useState('');
   const [dob, setDob] = useState('');
   const [results, setResults] = useState<DlSubject[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<DlSubject | null>(null);
   const [source, setSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
+  // Ref for the first search field — used by the N shortcut to focus it
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Set to true when an auto-search is triggered by a deep-link so that
+  // handleSearch can fire a toast when the query returns no results.
+  const fromDeepLinkRef = useRef(false);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();
@@ -187,6 +194,8 @@ export default function DlSearchPage() {
   const [clToken, setClToken] = useState('');
   const [sorImportText, setSorImportText] = useState('');
   const [sorImporting, setSorImporting] = useState(false);
+  // Confirm before bulk-importing SOR records (hard-to-undo write op)
+  const [confirmSorImport, setConfirmSorImport] = useState(false);
 
   const loadSources = useCallback(() => {
     apiFetch<any>('/dl-records/sources-config')
@@ -259,9 +268,26 @@ export default function DlSearchPage() {
       .catch(() => setScanHistory([]))
       .finally(() => setScanHistoryLoading(false));
   }, []);
-  const [recentScans, setRecentScans] = useState<any[]>(() => {
-    try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
-  });
+  // Recent-scans memory is now USER-SCOPED. Previously the key
+  // 'rmpg-dl-recent-scans' was global — two officers sharing a workstation
+  // saw each other's last DL scans (names + DL numbers visible). Bumped to
+  // a per-user storage key + hydrated by an effect once user.id is known.
+  // useState starts empty; the hydration effect runs after auth resolves.
+  const recentScansKey = user?.id ? `rmpg-dl-recent-scans:${user.id}` : null;
+  const [recentScans, setRecentScans] = useState<any[]>([]);
+  useEffect(() => {
+    if (!recentScansKey) return;
+    try {
+      const raw = localStorage.getItem(recentScansKey);
+      setRecentScans(raw ? JSON.parse(raw) : []);
+    } catch {
+      setRecentScans([]);
+    }
+    // One-time cleanup of the legacy global key — purges any pre-2026-06-22
+    // entries left from before this PR. Safe to run on every user switch
+    // since the legacy key was never per-user.
+    try { localStorage.removeItem('rmpg-dl-recent-scans'); } catch { /* storage unavailable */ }
+  }, [recentScansKey]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Always-fresh handle for the shared barcode pipeline — the relay-poll
   // effect runs on a stable interval and must not capture a stale closure.
@@ -273,10 +299,14 @@ export default function DlSearchPage() {
         { ...entry, ts: Date.now() },
         ...prev.filter((s: any) => !(s.dl_number === entry.dl_number && s.dl_state === entry.dl_state)),
       ].slice(0, 10);
-      try { localStorage.setItem('rmpg-dl-recent-scans', JSON.stringify(next)); } catch { /* storage full */ }
+      // Write to the user-scoped key if available; skip on guest/uninitialized
+      // auth rather than fall back to the legacy global key.
+      if (recentScansKey) {
+        try { localStorage.setItem(recentScansKey, JSON.stringify(next)); } catch { /* storage full */ }
+      }
       return next;
     });
-  }, []);
+  }, [recentScansKey]);
 
   // ── Phone → desktop relay ──
   // Phone: push every successful scan to the relay so the officer's
@@ -484,9 +514,33 @@ export default function DlSearchPage() {
     } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
   };
 
+  // ── ?dl= / ?dl_number= / ?last= / ?person_id= URL deep-link ──
+  // Supports: ?dl=<number>&state=<XX> (legacy short form), ?dl_number=<number>&state=<XX>
+  // (canonical form used by scan-history links + NCIC QD popouts),
+  // ?last=&first=&dob= (name-based pre-fills), and ?person_id=<id>
+  // (navigates directly to the person record in /records).
+  // Pre-fills inputs + auto-runs the search; params are stripped after
+  // applying so a refresh doesn't loop.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingDeepLinkRef = useRef<{
+    dl: string | null; state: string | null;
+    last: string | null; first: string | null; dob: string | null;
+    person_id: string | null;
+  } | null>((() => {
+    const dl = searchParams.get('dl_number') || searchParams.get('dl');
+    const state = searchParams.get('state');
+    const last = searchParams.get('last');
+    const first = searchParams.get('first');
+    const dob = searchParams.get('dob');
+    const person_id = searchParams.get('person_id');
+    if (!dl && !last && !first && !dob && !person_id) return null;
+    return { dl, state, last, first, dob, person_id };
+  })());
+
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;
     setLoading(true);
+    setHasSearched(true);
     setSelected(null);
     setFetchError('');
     try {
@@ -506,15 +560,46 @@ export default function DlSearchPage() {
         (!st || r.dl_state === st));
       setResults(rows);
       setSource('LOCAL');
+      if (rows.length === 0 && fromDeepLinkRef.current) {
+        addToast('No DL records found for the linked query', 'warning');
+      }
+      fromDeepLinkRef.current = false;
     } catch (err: any) {
       console.error('DL search error:', err);
       setFetchError(err?.message || 'Failed to load data');
       addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
+      fromDeepLinkRef.current = false;
     }
     setLoading(false);
-  }, [firstName, lastName, dlNumber, state, dob]);
+  }, [firstName, lastName, dlNumber, state, dob, addToast]);
+
+  // Apply pending deep-link once handleSearch is stable. One-shot — clears
+  // the ref after first run so subsequent input edits don't get clobbered.
+  useEffect(() => {
+    const pending = pendingDeepLinkRef.current;
+    if (!pending) return;
+    pendingDeepLinkRef.current = null;
+    // Strip the query so a refresh doesn't re-apply.
+    const next = new URLSearchParams(searchParams);
+    ['dl', 'dl_number', 'state', 'last', 'first', 'dob', 'person_id'].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+    // ?person_id= — navigate directly to the person record without running a search.
+    if (pending.person_id) {
+      navigate(`/records?tab=persons&personId=${pending.person_id}`);
+      return;
+    }
+    if (pending.dl) setDlNumber(pending.dl);
+    if (pending.state) setState(pending.state);
+    if (pending.last) setLastName(pending.last);
+    if (pending.first) setFirstName(pending.first);
+    if (pending.dob) setDob(pending.dob);
+    // Auto-run the search next tick once state has flushed.
+    fromDeepLinkRef.current = true;
+    setTimeout(() => { handleSearch(); }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSearch]);
 
   const handleManualSubmit = useCallback(async (data: ManualDlFormData) => {
     setIsManualSubmitting(true);
@@ -777,7 +862,7 @@ export default function DlSearchPage() {
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <input id="ff-dlsearchpage-0" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
+      <input id="ff-dlsearchpage-0" ref={firstFieldRef} className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
         onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input id="ff-dlsearchpage-1" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -812,6 +897,40 @@ export default function DlSearchPage() {
 
   // Set document title
   useEffect(() => { document.title = 'DL Search \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 N shortcut \u2014 focus the first search field \u2500\u2500
+  // \u2500\u2500 Esc cascade \u2014 clear results \u2192 deselect \u2192 close scanner preview \u2500\u2500
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // N \u2014 focus search when not already in an input/textarea/select
+      if (e.key === 'n' || e.key === 'N') {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        firstFieldRef.current?.focus();
+        return;
+      }
+      // Esc cascade: scanner modal \u2192 scan history \u2192 sources \u2192 detail panel \u2192 results
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showScanHistory) { e.stopPropagation(); setShowScanHistory(false); return; }
+        if (showSources) { e.stopPropagation(); setShowSources(false); return; }
+        if (showManualEntry) { e.stopPropagation(); setShowManualEntry(false); return; }
+        if (showLiveScanner) { e.stopPropagation(); setShowLiveScanner(false); return; }
+        if (selected) { e.stopPropagation(); setSelected(null); return; }
+        if (results.length > 0) {
+          e.stopPropagation();
+          setResults([]);
+          setHasSearched(false);
+          setFetchError('');
+          setSource('');
+          return;
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [showOcrPreview, showScanHistory, showSources, showManualEntry, showLiveScanner, selected, results.length]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
@@ -869,7 +988,14 @@ export default function DlSearchPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Results List */}
         <div className={`${isMobile ? (selected ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
-          {results.length === 0 && !loading && (
+          {results.length === 0 && !loading && hasSearched && (
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-3">
+              <Search className="w-8 h-8 text-rmpg-600" />
+              <p className="font-semibold text-rmpg-400">No records found</p>
+              <p className="text-[9px] text-rmpg-600 text-center">No DL records match your search. Try a different name, DL number, or state.</p>
+            </div>
+          )}
+          {results.length === 0 && !loading && !hasSearched && (
             <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-4">
               <div className="text-center">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
@@ -879,8 +1005,8 @@ export default function DlSearchPage() {
               {/* ── Driver's License Scanner ── */}
               <div className="border border-rmpg-700 rounded-sm bg-surface-sunken w-full max-w-sm">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-deep">
-                  <ScanLine size={14} className="text-[#d4a017]" />
-                  <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Driver's License Scanner</span>
+                  <ScanLine size={14} className="text-brand-gold-500" />
+                  <span className="text-[10px] font-bold text-brand-gold-500 uppercase tracking-widest">Driver's License Scanner</span>
                 </div>
                 <div className="p-3 space-y-3">
                   <div className="border border-dashed border-rmpg-700 rounded-sm py-5 flex flex-col items-center gap-2 bg-surface-deep">
@@ -889,7 +1015,7 @@ export default function DlSearchPage() {
                       type="button"
                       onClick={() => setShowLiveScanner(true)}
                       disabled={ocrLoading}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
                     >
                       {ocrLoading ? <Loader2 size={15} className="animate-spin" /> : <ScanLine size={15} />}
                       {ocrLoading ? 'Reading Barcode...' : 'Scan License'}
@@ -1156,7 +1282,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-lg w-full max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <Database size={14} className="text-[#d4a017]" />
+                <Database size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Data Sources</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">admin</span>
               </div>
@@ -1176,7 +1302,7 @@ export default function DlSearchPage() {
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" placeholder="https://..." value={sorUrl} onChange={e => setSorUrl(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Key {sourcesCfg?.sor_feed_key_set && <span className="text-[#7fb069]">· set ({sourcesCfg.sor_feed_key_mask})</span>}</label>
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Key {sourcesCfg?.sor_feed_key_set && <span className="text-[var(--sev-ok-soft)]">· set ({sourcesCfg.sor_feed_key_mask})</span>}</label>
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
                   </div>
                   {sourcesCfg?.sor_last_run && (
@@ -1197,7 +1323,7 @@ export default function DlSearchPage() {
                     />
                     <button
                       type="button"
-                      onClick={importSor}
+                      onClick={() => setConfirmSorImport(true)}
                       disabled={sorImporting || !sorImportText.trim()}
                       className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100 disabled:opacity-40"
                     >{sorImporting ? 'Importing…' : 'Import records'}</button>
@@ -1214,7 +1340,7 @@ export default function DlSearchPage() {
                 <div className="p-3 space-y-2">
                   <p className="text-[9px] text-rmpg-500 leading-relaxed">Optional token raises the rate limit — federal court lookups work anonymously without one. Get a free token at courtlistener.com.</p>
                   <div>
-                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {sourcesCfg?.courtlistener_token_set && <span className="text-[#7fb069]">· set ({sourcesCfg.courtlistener_token_mask})</span>}</label>
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {sourcesCfg?.courtlistener_token_set && <span className="text-[var(--sev-ok-soft)]">· set ({sourcesCfg.courtlistener_token_mask})</span>}</label>
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.courtlistener_token_set ? 'leave blank to keep current' : 'optional token'} value={clToken} onChange={e => setClToken(e.target.value)} />
                   </div>
                 </div>
@@ -1223,7 +1349,7 @@ export default function DlSearchPage() {
               <p className="text-[8px] text-rmpg-500 leading-relaxed">DMV/MVR (MicroBilt) and RapidAPI DL require a licensed broker contract and are configured separately under Admin → Integrations. Utah UCJIS/BCI requires a credentialed terminal connection.</p>
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle bg-surface-sunken">
-              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
+              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
                 {sourcesSaving ? <Loader2 size={13} className="animate-spin" /> : null} Save
               </button>
               <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100">Close</button>
@@ -1237,7 +1363,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-2xl w-full max-h-[88vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <History size={14} className="text-[#d4a017]" />
+                <History size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Scan History</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">audit log</span>
               </div>
@@ -1245,7 +1371,7 @@ export default function DlSearchPage() {
                 <button
                   type="button"
                   onClick={() => { const n = !scanHistoryMine; setScanHistoryMine(n); loadScanHistory(n); }}
-                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
+                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-brand-gold-500 text-black border-brand-gold-500' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
                 >
                   {scanHistoryMine ? 'My Scans' : 'All Scans'}
                 </button>
@@ -1282,7 +1408,7 @@ export default function DlSearchPage() {
                           <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
-                              ? <button type="button" className="hover:text-[#d4a017] hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
+                              ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
                               : (s.subject_name || 'unknown')}
                           </td>
                           <td className="px-3 py-[3px] text-rmpg-400 font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
@@ -1310,7 +1436,6 @@ export default function DlSearchPage() {
       {showLiveScanner && (
         <LiveDlScanner
           onComplete={async ({ barcodeText, frontImage, backImage }) => {
-            setShowLiveScanner(false);
             // Retain both card images for filing under the person record.
             setCardImages({ front: frontImage, back: backImage });
             setCardSavedTo(null);
@@ -1318,13 +1443,27 @@ export default function DlSearchPage() {
               const ok = await processBarcodeText(barcodeText);
               if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
             } else if (frontImage || backImage) {
-              // No barcode — fall back to OCR on the captured front image.
+              // Try re-decoding the back image still with the thorough
+              // decoder (tryHarder + multi-scale + contrast boost) before
+              // falling back to OCR on the front image.
+              if (backImage) {
+                try {
+                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
+                  if (decoded && await processBarcodeText(decoded.text)) {
+                    setShowLiveScanner(false);
+                    return;
+                  }
+                } catch { /* fall through to OCR */ }
+              }
+              // Fall back to OCR on the captured front image.
               if (frontImage) {
                 await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
               } else {
                 addToast('Captured images — no barcode read; review and upload', 'warning');
               }
             }
+            setShowLiveScanner(false);
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
@@ -1344,7 +1483,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <ScanLine size={14} className="text-[#d4a017]" />
+                <ScanLine size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">
                   {scanReadout ? 'DL Scanner — PDF417 Read' : 'DL Scanner — OCR Read'}
                 </span>
@@ -1415,7 +1554,7 @@ export default function DlSearchPage() {
                   {cardImages.back && <ImgThumb blob={cardImages.back} label="BACK" />}
                   <span className="text-[9px] text-rmpg-400 leading-snug">
                     ID card image{cardImages.front && cardImages.back ? 's' : ''} captured —
-                    {cardSavedTo ? <span className="text-[#7fb069]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
+                    {cardSavedTo ? <span className="text-[var(--sev-ok-soft)]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
                   </span>
                 </div>
               )}
@@ -1450,7 +1589,7 @@ export default function DlSearchPage() {
                           <div className="text-[11px] text-rmpg-100 font-bold truncate">
                             {p.last_name}, {p.first_name} <span className="text-rmpg-500 font-normal">#{p.id}</span>
                           </div>
-                          <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <div className="text-[8px] text-brand-gold-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
                             {p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}
                             {p.active_warrants > 0 && (
                               <span className="px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 font-bold">{p.active_warrants} ACTIVE WARRANT{p.active_warrants > 1 ? 'S' : ''}</span>
@@ -1463,7 +1602,7 @@ export default function DlSearchPage() {
                         <button
                           type="button"
                           onClick={async () => { await fileCardImagesTo(p.id); setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[10px] font-bold text-black flex-shrink-0"
                           title="Open the matched record and file the captured ID images to it"
                         >
                           <UserCheck size={12} /> Pull Record
@@ -1485,7 +1624,7 @@ export default function DlSearchPage() {
                     <Search size={11} /> Deep Records Sweep
                     {deepSweepLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[#d4a017]">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
+                      : <span className="text-brand-gold-500">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
                   </div>
                   {deepSweep && deepSweep.sources.map((src: any) => (
                     <div key={src.key} className="border-b border-border-subtle last:border-b-0">
@@ -1496,7 +1635,7 @@ export default function DlSearchPage() {
                           <a
                             href="https://www.communitynotification.com/cap_main.php?office=54438"
                             target="_blank" rel="noopener noreferrer"
-                            className="ml-auto text-[8px] font-bold text-[#d4a017] hover:underline normal-case tracking-normal"
+                            className="ml-auto text-[8px] font-bold text-brand-gold-500 hover:underline normal-case tracking-normal"
                           >Open official registry ↗</a>
                         )}
                       </div>
@@ -1507,7 +1646,7 @@ export default function DlSearchPage() {
                           )}
                           <span className="flex-1 leading-snug">{row.summary}</span>
                           {row.dob_match === true && <span className="text-[7px] font-bold px-1 py-px bg-green-900/50 text-green-400 border border-green-700/50 flex-shrink-0 uppercase">DOB ✓</span>}
-                          {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-surface-raised text-[#888888] border border-rmpg-700 flex-shrink-0 uppercase">DOB differs</span>}
+                          {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-surface-raised text-[var(--spm-text-muted)] border border-rmpg-700 flex-shrink-0 uppercase">DOB differs</span>}
                         </div>
                       ))}
                     </div>
@@ -1551,7 +1690,7 @@ export default function DlSearchPage() {
                 if (chips.length === 0 && lists.length === 0) return null;
                 return (
                   <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                    <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                    <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <User size={11} /> Subject Profile — Full Detail (#{p.id} {p.last_name}, {p.first_name})
                     </div>
                     {(p.photo_url || p.photo || p.id_image_url) && (
@@ -1606,8 +1745,8 @@ export default function DlSearchPage() {
                           {r.warning && <span className="text-[7px] font-bold px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 uppercase">{r.warning}</span>}
                         </div>
                         <div className="text-rmpg-400 mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
-                        {r.caution && <div className="text-[#a89878] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">FBI bulletin ↗</a>}
+                        {r.caution && <div className="text-[var(--spm-text-muted)] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">FBI bulletin ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1621,7 +1760,7 @@ export default function DlSearchPage() {
                     <Database size={11} /> Federal Court Records
                     {courtLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[#d4a017]">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
+                      : <span className="text-brand-gold-500">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
                   </div>
                   {courtRecords && courtRecords.length > 0 && (
                     <div className="px-3 py-1 text-[8px] text-amber-500 bg-amber-950/30 border-b border-amber-900/40">
@@ -1636,7 +1775,7 @@ export default function DlSearchPage() {
                       </div>
                       <div className="text-rmpg-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         {[r.court, r.docket_number, r.date_filed].filter(Boolean).join(' · ')}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">view ↗</a>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">view ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1651,7 +1790,7 @@ export default function DlSearchPage() {
                     <span className="text-rmpg-500 normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
                   </div>
                   <div className="p-2 flex flex-wrap gap-1">
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-surface-raised text-[#7fb069] border-rmpg-700' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
                       DL# {scanEval.dlValid ? 'valid format' : 'format mismatch'}
                     </span>
                     {scanEval.jurisdictionName && (
@@ -1662,8 +1801,8 @@ export default function DlSearchPage() {
                     )}
                     {scanEval.eligibility.minor && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-red-900/40 text-red-300 border-red-600/70">MINOR</span>}
                     {!scanEval.eligibility.minor && scanEval.eligibility.under21 && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-amber-900/30 text-amber-400 border-amber-700/50">UNDER 21</span>}
-                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[#7fb069] border-rmpg-700">21+</span>}
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-surface-raised text-[#7fb069] border-rmpg-700'}`}>
+                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700">21+</span>}
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700'}`}>
                       License {scanEval.expiry}
                     </span>
                     {scanEval.badges.map((b: string) => (
@@ -1686,7 +1825,7 @@ export default function DlSearchPage() {
               {leFields && leFields.length > 0 && (
                 <div className="border border-border-subtle rounded-sm bg-surface-deep">
                   <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
-                    <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Shield size={11} /> Law Enforcement Format — NCIC/NLETS
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -1709,7 +1848,7 @@ export default function DlSearchPage() {
                           setShowOcrPreview(false);
                           navigate(`/ncic?q=${encodeURIComponent(nam.split(' ')[0] || nam)}&type=xref`);
                         }}
-                        className="px-2 py-1 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[9px] font-bold text-black"
+                        className="px-2 py-1 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[9px] font-bold text-black"
                       >
                         Run NCIC QX
                       </button>
@@ -1718,7 +1857,7 @@ export default function DlSearchPage() {
                   <div className="p-2 grid grid-cols-2 gap-x-4 gap-y-px font-mono">
                     {leFields.map((f) => (
                       <div key={f.tag} className="flex items-baseline gap-1.5 text-[10px]" title={f.label}>
-                        <span className="text-[#7fb069] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
+                        <span className="text-[var(--sev-ok-soft)] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
                         <span className="text-rmpg-200 break-all">{f.value}</span>
                       </div>
                     ))}
@@ -1790,7 +1929,7 @@ export default function DlSearchPage() {
                         <tbody>
                           {scanReadout.map((row) => (
                             <tr key={row.code} className="border-t border-border-subtle text-[10px] align-top">
-                              <td className="px-2 py-[2px] font-mono text-[#d4a017] text-[9px]">{row.code}</td>
+                              <td className="px-2 py-[2px] font-mono text-brand-gold-500 text-[9px]">{row.code}</td>
                               <td className="px-2 py-[2px] text-rmpg-400">{row.label}</td>
                               <td className="px-2 py-[2px] text-rmpg-100">
                                 {row.english}
@@ -1830,7 +1969,7 @@ export default function DlSearchPage() {
                   <button
                     type="button"
                     onClick={handleCreateLinkedFromOcr}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#e0ac1d] rounded-sm text-[11px] font-bold text-black transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-400 rounded-sm text-[11px] font-bold text-black transition-colors"
                   >
                     <Database size={14} />
                     Create &amp; Link Person + Vehicle + Property
@@ -1852,7 +1991,7 @@ export default function DlSearchPage() {
                     addToast(err?.message || 'Failed to generate safety sheet', 'error');
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[11px] font-bold text-black transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[11px] font-bold text-black transition-colors"
               >
                 <Shield size={14} /> Safety Sheet
               </button>
@@ -1867,6 +2006,17 @@ export default function DlSearchPage() {
           </div>
         </div>
       )}
+
+      {/* SOR bulk-import confirmation */}
+      <ConfirmDialog
+        isOpen={confirmSorImport}
+        onClose={() => setConfirmSorImport(false)}
+        onConfirm={() => { setConfirmSorImport(false); importSor(); }}
+        title="Import SOR Records"
+        message="This will bulk-import the pasted offender records into the local DL database. Existing records are deduped by registry_id. This action cannot be easily undone."
+        confirmLabel="Import records"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

@@ -608,9 +608,19 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         {displayVehicles.length === 0 && (
           <div className="text-center py-16">
             <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No vehicles match your search.'
+                : showArchived
+                  ? 'No archived vehicle records.'
+                  : 'No vehicle records found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try adjusting your search terms.' : 'Click "New Vehicle" to add a record.'}
+              {searchQuery
+                ? 'Try adjusting your search terms.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Vehicle" to add a record.'}
             </p>
           </div>
         )}
@@ -945,7 +955,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Notes (conditional) ──────────────── */}
         {selectedVehicle.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedVehicle.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedVehicle.notes}</p>
           </CollapsibleSection>
         )}
 
