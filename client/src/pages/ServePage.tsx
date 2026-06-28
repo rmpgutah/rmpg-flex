@@ -882,7 +882,7 @@ export default function ServePage() {
 
     let cancelled = false;
 
-    const initMap = () => {
+    const initMap = async () => {
       if (cancelled || !mapContainerRef.current) return;
 
       if (mapRef.current) {
@@ -937,7 +937,9 @@ export default function ServePage() {
       } catch {
         if (!cancelled) setMapReady(false);
       }
-    })();
+    };
+
+    initMap();
 
     return () => {
       cancelled = true;
@@ -957,7 +959,8 @@ export default function ServePage() {
 
   // Update markers when jobs change or map becomes ready
   const updateMapMarkers = useCallback(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
     // Clear old markers
     markersRef.current.forEach(m => m.remove());
@@ -1006,7 +1009,7 @@ export default function ServePage() {
       markersRef.current.push(marker);
     });
 
-    // Draw polyline if route planned
+    // Draw trail if route planned
     if (routeData && routeData.orderedIds.length > 1) {
       const coords: [number, number][] = routeData.orderedIds
         .map(id => jobs.find(j => j.id === id))

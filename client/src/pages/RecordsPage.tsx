@@ -59,6 +59,20 @@ import { RECORD_FORM_SECTIONS } from './records/spillman/recordFormSections';
 type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 
 // ============================================================
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 // Component
 // ============================================================
 
@@ -461,7 +475,7 @@ export default function RecordsPage() {
   // ── Derived ──────────────────────────────────────────
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
-    { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
+    { id: 'persons', label: 'Individuals', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
     { id: 'businesses', label: 'Business', icon: Briefcase, count: businessState.businesses.length },
@@ -524,6 +538,10 @@ export default function RecordsPage() {
     if (activeTab === 'properties' && propertiesState.selectedProperty) {
       const p = propertiesState.selectedProperty;
       return { recordType: 'property' as const, recordData: p, identifier: p.name, entityType: 'property' as const, entityId: p.id };
+    }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      const b = businessState.selectedBusiness;
+      return { recordType: 'business' as const, recordData: b, identifier: b.name, entityType: 'business' as const, entityId: b.id };
     }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       const e = evidenceState.selectedEvidence;
