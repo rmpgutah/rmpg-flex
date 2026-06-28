@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -57,7 +57,6 @@
 /* Begin PBXFrameworksBuildPhase section */
 		80A322414B4F160C2F2B662F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				2C5555CA845BC44E708365AA /* CoreAPI in Frameworks */,
 				E8A427A5E6A0B8E5D8F5A170 /* CoreAuth in Frameworks */,
@@ -77,7 +76,6 @@
 				39FADE99DEB7260981D286B6 /* FeatureLiveActivity in Frameworks */,
 				F257934C2A6CE641A6F82B0E /* FeatureWidgets in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -229,23 +227,19 @@
 /* Begin PBXResourcesBuildPhase section */
 		D910C049E7763B21543D1B9C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				B58189010961A5CC5CCF9487 /* Assets.xcassets in Resources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		EC71D0A486EA94994068E684 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				CE5FE58CA4571A402AADB9D7 /* ContentView.swift in Sources */,
 				92F3C59419AE940AE902A900 /* RMPGFlexConnectApp.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
