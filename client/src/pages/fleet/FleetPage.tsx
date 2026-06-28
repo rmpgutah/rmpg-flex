@@ -79,6 +79,20 @@ function parseEquipment(eq: unknown): string[] {
   return [];
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FleetPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -1178,6 +1192,15 @@ export default function FleetPage() {
               )}
             </>
           )}
+          {/* Daily patrol reports archive — month/day tree of auto-generated PDFs */}
+          <button
+            type="button"
+            className="toolbar-btn"
+            onClick={() => { window.location.href = '/fleet/reports'; }}
+            title="Daily Patrol Reports Archive"
+          >
+            <Calendar className="w-3 h-3" /> Daily Reports
+          </button>
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>
@@ -1655,7 +1678,7 @@ export default function FleetPage() {
         onClose={() => setDeletingMaintenance(null)}
         onConfirm={handleDeleteMaintenance}
         title="Delete Maintenance Record"
-        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ') || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
+        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ').toUpperCase() || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
