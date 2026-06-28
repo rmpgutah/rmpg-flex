@@ -58,28 +58,17 @@ export default function StatuteAnalyticsPage() {
     const parsed = raw ? parseInt(raw, 10) : NaN;
     return [30, 60, 90, 180, 365].includes(parsed) ? parsed : 90;
   })();
-  // ?statute_id= and ?section= pre-fill the search filter; ?statute= is legacy alias
-  const initStatute =
-    searchParams.get('statute_id') ??
-    searchParams.get('section') ??
-    searchParams.get('statute') ??
-    '';
+  const initStatute = searchParams.get('statute') ?? '';
 
   const [days, setDays] = useState(initDays);
   const [search, setSearch] = useState(initStatute);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  // Map from statute_number → row DOM element, for deep-link scroll-to-highlight
-  const rowRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
-  // Guard: run deep-link scroll only once per mount
-  const deepLinkHandled = useRef(false);
 
   // Strip deep-link params after mount so they don't persist in history
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     let dirty = false;
     if (next.has('statute'))    { next.delete('statute');    dirty = true; }
-    if (next.has('statute_id')) { next.delete('statute_id'); dirty = true; }
-    if (next.has('section'))    { next.delete('section');    dirty = true; }
     if (next.has('date_range')) { next.delete('date_range'); dirty = true; }
     if (dirty) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,6 +88,17 @@ export default function StatuteAnalyticsPage() {
 
   // ── Feature 37: Top Charged ──────────────────────────────────
   const [topCharged, setTopCharged] = useState<any[]>([]);
+
+  // ── Feature 39: Enhancement Calculator ──────────────────────
+  const [enhancementResult, setEnhancementResult] = useState<any>(null);
+  const [enhancementFactors, setEnhancementFactors] = useState({
+    repeat_offender: false, weapon_used: false, vulnerable_victim: false,
+    gang_related: false, domestic_violence: false,
+  });
+
+  // ── Feature 40: Statute Comparison ───────────────────────────
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [comparisonResult, setComparisonResult] = useState<any>(null);
 
   // ── Clear cache confirm (admin/manager only) ─────────────────
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -125,21 +125,6 @@ export default function StatuteAnalyticsPage() {
   }, [fetchData]);
 
   useLiveSync('incidents', fetchData);
-
-  // ── Deep-link: scroll to + highlight matching statute row after data loads ──
-  useEffect(() => {
-    if (!hasLoaded || deepLinkHandled.current || !initStatute) return;
-    deepLinkHandled.current = true;
-    const el = rowRefsMap.current.get(initStatute);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('ring-1', 'ring-brand-400/60');
-      setTimeout(() => el.classList.remove('ring-1', 'ring-brand-400/60'), 2000);
-      addToast(`Statute ${initStatute} highlighted`, 'info');
-    } else {
-      addToast(`Statute "${initStatute}" not found in current data`, 'warning');
-    }
-  }, [hasLoaded, initStatute, addToast]);
 
   // ── Keyboard: N focuses search; Esc cascades ─────────────────
   useEffect(() => {
@@ -195,6 +180,33 @@ export default function StatuteAnalyticsPage() {
       setTopCharged(data?.data ?? []);
     } catch (err) {
       console.warn('[StatuteAnalytics] top charged load failed:', err);
+    }
+  };
+
+  const handleCalculateEnhancement = async (citation: string) => {
+    try {
+      const data = await apiFetch<any>('/statutes/calculate-enhancement', {
+        method: 'POST',
+        body: JSON.stringify({ citation, factors: enhancementFactors }),
+      });
+      setEnhancementResult(data?.data ?? data);
+    } catch (err) {
+      console.warn('[StatuteAnalytics] enhancement calculation failed:', err);
+      addToast('Enhancement calculation failed', 'error');
+    }
+  };
+
+  const handleCompareStatutes = async () => {
+    if (compareIds.length < 2) { addToast('Select at least 2 statutes', 'error'); return; }
+    try {
+      const data = await apiFetch<any>('/statutes/compare', {
+        method: 'POST',
+        body: JSON.stringify({ statute_ids: compareIds }),
+      });
+      setComparisonResult(data?.data ?? data);
+    } catch (err) {
+      console.warn('[StatuteAnalytics] statute comparison failed:', err);
+      addToast('Comparison failed', 'error');
     }
   };
 
@@ -269,7 +281,7 @@ export default function StatuteAnalyticsPage() {
           <div className="flex items-center gap-2 text-[10px] ml-2">
             <span className="text-rmpg-100 font-bold">{penaltyResult.citation}</span>
             <span className="text-rmpg-400">{penaltyResult.short_title}</span>
-            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
+            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ').toUpperCase()}</span>
             <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
             <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
             <button type="button" onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">×</button>
@@ -291,6 +303,45 @@ export default function StatuteAnalyticsPage() {
                 <span className="text-rmpg-100 font-mono w-24">{s.citation}</span>
                 <span className="text-rmpg-300 min-w-0 flex-1 truncate">{s.short_title}</span>
                 <span className="text-brand-400 font-bold">{s.total_count ?? s.citation_count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 36: Penalty Lookup Bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 flex items-center gap-2 bg-surface-sunken flex-shrink-0">
+        <Search className="w-3 h-3 text-rmpg-500" />
+        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs min-h-[36px]"
+          value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
+        <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
+        {penaltyResult && (
+          <div className="flex items-center gap-2 text-[10px] ml-2">
+            <span className="text-white font-bold">{penaltyResult.citation}</span>
+            <span className="text-rmpg-400">{penaltyResult.short_title}</span>
+            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
+            <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
+            <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
+            <button type="button" onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
+          </div>
+        )}
+      </div>
+
+      {/* Feature 37: Top Charged Panel */}
+      {topCharged.length > 0 && (
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs flex-shrink-0">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button type="button" onClick={() => setTopCharged([])} className="text-gray-500 hover:text-gray-300 text-[10px]">Close</button>
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {topCharged.map((s, i) => (
+              <div key={i} className="text-[10px] flex gap-2 items-center">
+                <span className="text-rmpg-500 w-5">{i + 1}.</span>
+                <span className="text-white font-mono w-24">{s.citation}</span>
+                <span className="text-rmpg-300 flex-1 truncate">{s.short_title}</span>
+                <span className="text-brand-400 font-bold">{s.total_count || s.citation_count}</span>
               </div>
             ))}
           </div>
@@ -381,11 +432,7 @@ export default function StatuteAnalyticsPage() {
               <div className="space-y-1.5 max-h-80 overflow-auto">
                 {filteredStatutes.length > 0 ? (
                   filteredStatutes.map((s, i) => (
-                    <div
-                      key={i}
-                      ref={el => { if (el) rowRefsMap.current.set(s.statute_number, el); else rowRefsMap.current.delete(s.statute_number); }}
-                      className="flex items-center gap-2 transition-all duration-300"
-                    >
+                    <div key={i} className="flex items-center gap-2">
                       <span className="text-[9px] font-mono text-rmpg-400 w-24 shrink-0 truncate">{s.statute_number}</span>
                       <div className="flex-1 relative h-5 bg-rmpg-800/50">
                         <div

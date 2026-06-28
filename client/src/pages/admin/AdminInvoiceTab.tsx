@@ -66,6 +66,20 @@ function formatCurrency(n: number | undefined | null): string {
 // Component
 // ============================================================
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
   const { addToast } = useToast();
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
@@ -373,7 +387,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {(inv.status || '').replace(/_/g, ' ')}
+                      {(inv.status || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-1.5 text-right font-mono text-rmpg-100">{formatCurrency(inv.total)}</td>
