@@ -103,6 +103,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           <input id="ff-totpcodeinput-0"
             key={i}
             ref={(el) => { inputRefs.current[i] = el; }}
+            name={`totp-digit-${i}`}
             type="text"
             inputMode="numeric"
             maxLength={1}

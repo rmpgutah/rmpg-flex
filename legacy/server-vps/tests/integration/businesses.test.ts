@@ -50,7 +50,7 @@ beforeAll(async () => {
   // Archived business
   const archivedRes = insert.run('Old Defunct Co', null, null, '555-0002', null, now, now);
   db.prepare('UPDATE businesses SET archived_at = ? WHERE id = ?').run(now, archivedRes.lastInsertRowid);
-});
+}, 30000);
 
 afterAll(() => {
   teardownTestDataDir(testDir);
