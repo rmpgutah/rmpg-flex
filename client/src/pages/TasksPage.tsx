@@ -138,12 +138,11 @@ export default function TasksPage() {
   // Backend role gates:
   //   DELETE — admin | manager only
   //   PUT    — admin | manager | supervisor | officer
-  //   POST   — admin | manager | supervisor (checklist: create gated)
+  //   POST   — admin | manager | supervisor | officer
   // Mirror these client-side so a dispatcher/viewer doesn't see actions
   // that will 403 on the server.
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
-  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
-  const canAssign = canCreate;
+  const canAssign = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
   // ── State ──────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);

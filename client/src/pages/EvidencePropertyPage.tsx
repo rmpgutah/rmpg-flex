@@ -18,7 +18,6 @@ import { openEvidenceItemPdf } from '../utils/evidenceItemPdf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { toDisplayLabel } from '../utils/formatters';
 import VideoPlayer from '../components/VideoPlayer';
 import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
@@ -956,7 +955,7 @@ export default function EvidencePropertyPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ')}</div>
+                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ').toUpperCase()}</div>
                     )}
                   </div>
                 </div>

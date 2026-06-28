@@ -23,7 +23,6 @@ import TrustBadge from '../components/TrustBadge';
 import { openPlateCapturePdf, type PlateCaptureForPdf } from '../utils/plateCapturePdf';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/ToastProvider';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -119,9 +118,7 @@ const DELETE_ROLES = new Set(['admin', 'manager']);
 
 export default function PlateLogPage() {
   const { user } = useAuth();
-  const { addToast } = useToast();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
-  const canDelete = DELETE_ROLES.has(user?.role ?? '');
 
   const [plate, setPlate] = useState('');
   const [location, setLocation] = useState('');
@@ -147,8 +144,6 @@ export default function PlateLogPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   // ConfirmDialog state for bulk destructive actions
   const [confirmBulk, setConfirmBulk] = useState<'confirm' | 'reject' | null>(null);
-  // ConfirmDialog state for dismissing the current scan tile (admin/manager)
-  const [confirmDismissScan, setConfirmDismissScan] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
   // Ref for the scan tile — used to scroll into view after a deep-link load.
@@ -498,7 +493,7 @@ export default function PlateLogPage() {
       )}
 
       {scan && (
-        <div ref={scanTileRef} className="border border-border-default bg-surface-sunken">
+        <div className="border border-border-default bg-surface-sunken">
           <div className="px-2 py-[3px] text-[9px] font-semibold text-brand-gold-500 border-b border-border-default flex items-center gap-2">
             <span>ALPR CAPTURE</span>
             {scan.capture.confidence != null && (
@@ -762,16 +757,6 @@ export default function PlateLogPage() {
         confirmLabel={confirmBulk === 'confirm' ? 'Confirm All' : 'Reject All'}
         confirmVariant={confirmBulk === 'reject' ? 'danger' : 'default'}
         isLoading={bulkBusy}
-      />
-      {/* Dismiss scan tile confirmation (admin/manager) */}
-      <ConfirmDialog
-        isOpen={confirmDismissScan}
-        onClose={() => setConfirmDismissScan(false)}
-        onConfirm={() => { setConfirmDismissScan(false); setScan(null); setScanErr(null); }}
-        title="Dismiss capture"
-        message="Clear this capture from view? The record is not deleted — it remains in the ALPR history and can be accessed via the Captures tab."
-        confirmLabel="Dismiss"
-        confirmVariant="danger"
       />
     </div>
   );

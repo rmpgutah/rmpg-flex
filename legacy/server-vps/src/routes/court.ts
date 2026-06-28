@@ -1062,4 +1062,481 @@ router.get('/events/:id/linked-records', (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// Admin-editable lookups (court_lookups table)
+// ============================================================
+// Generic CRUD for every Court-Tracker dropdown — courts, judges,
+// prosecutors, defense attorneys, event types, outcomes, pleas, bond
+// statuses, witness types, officer roles, charge codes. Categories are
+// free strings, so adding a new dropdown surface doesn't require a
+// server change — just insert a row with a new category.
+// See server/src/models/courtSchema.ts for the schema + seed data.
+
+router.get('/lookups/categories', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    res.json(db.prepare('SELECT category, COUNT(*) AS count FROM court_lookups GROUP BY category ORDER BY category').all());
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/lookups', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cat = req.query.category ? String(req.query.category) : null;
+    const includeInactive = String(req.query.includeInactive ?? '') === 'true';
+    const where: string[] = [];
+    const args: any[] = [];
+    if (cat) { where.push('category = ?'); args.push(cat); }
+    if (!includeInactive) where.push('is_active = 1');
+    const sql = `SELECT id, category, value, display_label, meta, display_order, is_active, created_by, created_at, updated_at
+                 FROM court_lookups
+                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                 ORDER BY category ASC, display_order ASC, value ASC`;
+    res.json(db.prepare(sql).all(...args));
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.post('/lookups', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { category, value, display_label, meta, display_order, is_active } = req.body ?? {};
+    if (!category || !value) { res.status(400).json({ error: 'category and value required' }); return; }
+    const db = getDb();
+    const r = db.prepare(
+      `INSERT INTO court_lookups (category, value, display_label, meta, display_order, is_active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      String(category), String(value),
+      display_label != null ? String(display_label) : null,
+      meta != null ? String(meta) : null,
+      typeof display_order === 'number' ? display_order : 100,
+      is_active === false ? 0 : 1,
+      req.user!.userId,
+    );
+    auditLog(req, 'CREATE', 'court_lookup', Number(r.lastInsertRowid), null, req.body);
+    res.json({ success: true, id: Number(r.lastInsertRowid) });
+  } catch (err: any) {
+    if (String(err?.message ?? '').includes('UNIQUE')) {
+      res.status(409).json({ error: 'A lookup with that category + value already exists' }); return;
+    }
+    res.status(500).json({ error: err?.message || 'Failed' });
+  }
+});
+
+router.put('/lookups/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const db = getDb();
+    const before = db.prepare('SELECT * FROM court_lookups WHERE id = ?').get(id);
+    if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+    const { value, display_label, meta, display_order, is_active } = req.body ?? {};
+    db.prepare(
+      `UPDATE court_lookups SET
+         value = COALESCE(?, value),
+         display_label = ?, meta = ?,
+         display_order = COALESCE(?, display_order),
+         is_active = COALESCE(?, is_active),
+         updated_at = datetime('now','localtime')
+       WHERE id = ?`
+    ).run(
+      value != null ? String(value) : null,
+      display_label != null ? String(display_label) : null,
+      meta != null ? String(meta) : null,
+      typeof display_order === 'number' ? display_order : null,
+      is_active === undefined ? null : (is_active ? 1 : 0),
+      id,
+    );
+    auditLog(req, 'UPDATE', 'court_lookup', id, before, req.body);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.delete('/lookups/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const db = getDb();
+    const before = db.prepare('SELECT * FROM court_lookups WHERE id = ?').get(id);
+    if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+    db.prepare('DELETE FROM court_lookups WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'court_lookup', id, before, null);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+// ============================================================
+// Witnesses CRUD
+// ============================================================
+
+router.get('/events/:id/witnesses-list', (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const rows = getDb().prepare(
+      `SELECT w.*, u.full_name AS served_by_name
+       FROM court_witnesses w LEFT JOIN users u ON w.served_by_user_id = u.id
+       WHERE w.event_id = ? ORDER BY w.id`
+    ).all(id);
+    res.json(rows);
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.post('/events/:id/witnesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const eventId = parseInt(String(req.params.id), 10);
+    const b = req.body ?? {};
+    if (!b.witness_name) { res.status(400).json({ error: 'witness_name required' }); return; }
+    const r = getDb().prepare(
+      `INSERT INTO court_witnesses (event_id, person_id, witness_name, witness_type, contact_phone,
+        contact_email, address, appearance_required, witness_fee, mileage_miles, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      eventId, b.person_id ?? null, String(b.witness_name), b.witness_type ?? null,
+      b.contact_phone ?? null, b.contact_email ?? null, b.address ?? null,
+      b.appearance_required === false ? 0 : 1,
+      typeof b.witness_fee === 'number' ? b.witness_fee : null,
+      typeof b.mileage_miles === 'number' ? b.mileage_miles : null,
+      b.notes ?? null,
+    );
+    auditLog(req, 'CREATE', 'court_witness', Number(r.lastInsertRowid), null, b);
+    res.json({ success: true, id: Number(r.lastInsertRowid) });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.put('/witnesses/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const db = getDb();
+    const before = db.prepare('SELECT * FROM court_witnesses WHERE id = ?').get(id);
+    if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+    const b = req.body ?? {};
+    db.prepare(
+      `UPDATE court_witnesses SET
+         witness_name = COALESCE(?, witness_name),
+         witness_type = ?, contact_phone = ?, contact_email = ?, address = ?,
+         subpoena_served = COALESCE(?, subpoena_served),
+         served_at = ?, served_by_user_id = ?,
+         appearance_required = COALESCE(?, appearance_required),
+         appeared = COALESCE(?, appeared),
+         testified = COALESCE(?, testified),
+         witness_fee = ?, mileage_miles = ?, reimbursement_total = ?, notes = ?,
+         updated_at = datetime('now','localtime')
+       WHERE id = ?`
+    ).run(
+      b.witness_name ?? null, b.witness_type ?? null, b.contact_phone ?? null,
+      b.contact_email ?? null, b.address ?? null,
+      typeof b.subpoena_served === 'boolean' ? (b.subpoena_served ? 1 : 0) : null,
+      b.served_at ?? null, b.served_by_user_id ?? null,
+      typeof b.appearance_required === 'boolean' ? (b.appearance_required ? 1 : 0) : null,
+      typeof b.appeared === 'boolean' ? (b.appeared ? 1 : 0) : null,
+      typeof b.testified === 'boolean' ? (b.testified ? 1 : 0) : null,
+      typeof b.witness_fee === 'number' ? b.witness_fee : null,
+      typeof b.mileage_miles === 'number' ? b.mileage_miles : null,
+      typeof b.reimbursement_total === 'number' ? b.reimbursement_total : null,
+      b.notes ?? null,
+      id,
+    );
+    auditLog(req, 'UPDATE', 'court_witness', id, before, b);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.delete('/witnesses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const before = db.prepare('SELECT * FROM court_witnesses WHERE id = ?').get(id);
+  if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+  db.prepare('DELETE FROM court_witnesses WHERE id = ?').run(id);
+  auditLog(req, 'DELETE', 'court_witness', id, before, null);
+  res.json({ success: true });
+});
+
+// ============================================================
+// Sentence / pleas / restitution / officer assignments
+// ============================================================
+
+router.get('/events/:id/sentence', (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  res.json(getDb().prepare('SELECT * FROM court_sentences WHERE event_id = ?').get(id) ?? null);
+});
+
+router.put('/events/:id/sentence', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const b = req.body ?? {};
+    getDb().prepare(
+      `INSERT INTO court_sentences (event_id, incarceration_days, incarceration_facility, probation_months,
+         probation_terms, community_service_hours, fine_amount, court_costs, restitution_amount, restitution_payee,
+         protective_order, no_contact_order, treatment_required, license_suspended, license_suspension_months,
+         additional_terms, sentenced_at, sentencing_judge)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(event_id) DO UPDATE SET
+         incarceration_days = excluded.incarceration_days,
+         incarceration_facility = excluded.incarceration_facility,
+         probation_months = excluded.probation_months,
+         probation_terms = excluded.probation_terms,
+         community_service_hours = excluded.community_service_hours,
+         fine_amount = excluded.fine_amount, court_costs = excluded.court_costs,
+         restitution_amount = excluded.restitution_amount, restitution_payee = excluded.restitution_payee,
+         protective_order = excluded.protective_order, no_contact_order = excluded.no_contact_order,
+         treatment_required = excluded.treatment_required,
+         license_suspended = excluded.license_suspended, license_suspension_months = excluded.license_suspension_months,
+         additional_terms = excluded.additional_terms, sentenced_at = excluded.sentenced_at,
+         sentencing_judge = excluded.sentencing_judge,
+         updated_at = datetime('now','localtime')`
+    ).run(
+      id,
+      b.incarceration_days ?? null, b.incarceration_facility ?? null,
+      b.probation_months ?? null, b.probation_terms ?? null,
+      b.community_service_hours ?? null, b.fine_amount ?? null,
+      b.court_costs ?? null, b.restitution_amount ?? null, b.restitution_payee ?? null,
+      b.protective_order ? 1 : 0, b.no_contact_order ? 1 : 0,
+      b.treatment_required ?? null,
+      b.license_suspended ? 1 : 0, b.license_suspension_months ?? null,
+      b.additional_terms ?? null, b.sentenced_at ?? null, b.sentencing_judge ?? null,
+    );
+    auditLog(req, 'UPSERT', 'court_sentence', id, null, b);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/events/:id/pleas', (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  res.json(getDb().prepare(
+    `SELECT p.*, u.full_name AS entered_by_name
+     FROM court_pleas p LEFT JOIN users u ON p.entered_by_user_id = u.id
+     WHERE p.event_id = ? ORDER BY p.plea_date DESC, p.id DESC`
+  ).all(id));
+});
+
+router.post('/events/:id/pleas', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const b = req.body ?? {};
+    if (!b.plea || !b.plea_date) { res.status(400).json({ error: 'plea + plea_date required' }); return; }
+    const r = getDb().prepare(
+      `INSERT INTO court_pleas (event_id, plea, plea_date, charge, notes, entered_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, String(b.plea), String(b.plea_date), b.charge ?? null, b.notes ?? null, req.user!.userId);
+    auditLog(req, 'CREATE', 'court_plea', Number(r.lastInsertRowid), null, b);
+    res.json({ success: true, id: Number(r.lastInsertRowid) });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.delete('/pleas/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const before = db.prepare('SELECT * FROM court_pleas WHERE id = ?').get(id);
+  if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+  db.prepare('DELETE FROM court_pleas WHERE id = ?').run(id);
+  auditLog(req, 'DELETE', 'court_plea', id, before, null);
+  res.json({ success: true });
+});
+
+router.get('/events/:id/restitution', (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const payments = db.prepare(
+    `SELECT r.*, u.full_name AS received_by_name
+     FROM court_restitution_payments r LEFT JOIN users u ON r.received_by_user_id = u.id
+     WHERE r.event_id = ? ORDER BY r.paid_at DESC`
+  ).all(id);
+  const sentence = db.prepare('SELECT restitution_amount FROM court_sentences WHERE event_id = ?').get(id) as { restitution_amount?: number } | undefined;
+  const totalPaid = (payments as Array<{ amount: number }>).reduce((s, p) => s + (p.amount || 0), 0);
+  const owed = sentence?.restitution_amount ?? 0;
+  res.json({ owed, totalPaid, balance: owed - totalPaid, payments });
+});
+
+router.post('/events/:id/restitution', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const b = req.body ?? {};
+    if (typeof b.amount !== 'number' || !b.paid_at) { res.status(400).json({ error: 'amount (number) + paid_at required' }); return; }
+    const r = getDb().prepare(
+      `INSERT INTO court_restitution_payments (event_id, amount, paid_at, method, reference_number, received_by_user_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, b.amount, String(b.paid_at), b.method ?? null, b.reference_number ?? null, req.user!.userId, b.notes ?? null);
+    auditLog(req, 'CREATE', 'court_restitution_payment', Number(r.lastInsertRowid), null, b);
+    res.json({ success: true, id: Number(r.lastInsertRowid) });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.delete('/restitution/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const before = db.prepare('SELECT * FROM court_restitution_payments WHERE id = ?').get(id);
+  if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+  db.prepare('DELETE FROM court_restitution_payments WHERE id = ?').run(id);
+  auditLog(req, 'DELETE', 'court_restitution_payment', id, before, null);
+  res.json({ success: true });
+});
+
+router.get('/events/:id/assignments', (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  res.json(getDb().prepare(
+    `SELECT a.*, u.full_name, u.username
+     FROM court_officer_assignments a JOIN users u ON a.user_id = u.id
+     WHERE a.event_id = ? ORDER BY a.created_at`
+  ).all(id));
+});
+
+router.post('/events/:id/assignments', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const eventId = parseInt(String(req.params.id), 10);
+    const { user_id, role } = req.body ?? {};
+    if (!user_id) { res.status(400).json({ error: 'user_id required' }); return; }
+    getDb().prepare(
+      `INSERT INTO court_officer_assignments (event_id, user_id, role) VALUES (?, ?, ?)
+       ON CONFLICT(event_id, user_id) DO UPDATE SET role = excluded.role, updated_at = datetime('now','localtime')`
+    ).run(eventId, user_id, role ?? null);
+    auditLog(req, 'UPSERT', 'court_officer_assignment', 0, null, req.body);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.put('/assignments/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const before = db.prepare('SELECT * FROM court_officer_assignments WHERE id = ?').get(id);
+  if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+  const b = req.body ?? {};
+  db.prepare(
+    `UPDATE court_officer_assignments SET
+       role = COALESCE(?, role),
+       confirmed = COALESCE(?, confirmed), confirmed_at = ?,
+       appeared = COALESCE(?, appeared), testified = COALESCE(?, testified),
+       mileage_miles = ?, hours_billed = ?, reimbursement_total = ?, notes = ?,
+       updated_at = datetime('now','localtime')
+     WHERE id = ?`
+  ).run(
+    b.role ?? null,
+    typeof b.confirmed === 'boolean' ? (b.confirmed ? 1 : 0) : null,
+    b.confirmed_at ?? null,
+    typeof b.appeared === 'boolean' ? (b.appeared ? 1 : 0) : null,
+    typeof b.testified === 'boolean' ? (b.testified ? 1 : 0) : null,
+    typeof b.mileage_miles === 'number' ? b.mileage_miles : null,
+    typeof b.hours_billed === 'number' ? b.hours_billed : null,
+    typeof b.reimbursement_total === 'number' ? b.reimbursement_total : null,
+    b.notes ?? null, id,
+  );
+  auditLog(req, 'UPDATE', 'court_officer_assignment', id, before, b);
+  res.json({ success: true });
+});
+
+router.delete('/assignments/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id), 10);
+  const db = getDb();
+  const before = db.prepare('SELECT * FROM court_officer_assignments WHERE id = ?').get(id);
+  if (!before) { res.status(404).json({ error: 'Not found' }); return; }
+  db.prepare('DELETE FROM court_officer_assignments WHERE id = ?').run(id);
+  auditLog(req, 'DELETE', 'court_officer_assignment', id, before, null);
+  res.json({ success: true });
+});
+
+// ============================================================
+// New views: officer-schedule, defendant-timeline, ical, search,
+// bulk-reschedule
+// ============================================================
+
+router.get('/officer-schedule', (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId ? parseInt(String(req.query.userId), 10) : req.user!.userId;
+    const from = req.query.from ? String(req.query.from) : new Date().toISOString().slice(0, 10);
+    res.json(getDb().prepare(
+      `SELECT e.*, a.role AS officer_role, a.confirmed, a.appeared
+       FROM court_events e
+       JOIN court_officer_assignments a ON a.event_id = e.id
+       WHERE a.user_id = ? AND e.event_date >= ?
+       ORDER BY e.event_date ASC, e.event_time ASC`
+    ).all(userId, from));
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/defendant-timeline', (req: Request, res: Response) => {
+  try {
+    const personId = req.query.personId ? parseInt(String(req.query.personId), 10) : null;
+    const name = req.query.name ? String(req.query.name) : null;
+    if (!personId && !name) { res.status(400).json({ error: 'personId or name required' }); return; }
+    const where: string[] = [];
+    const args: any[] = [];
+    if (personId) { where.push('defendant_person_id = ?'); args.push(personId); }
+    if (name) { where.push('LOWER(defendant_name) LIKE ?'); args.push(`%${name.toLowerCase()}%`); }
+    res.json(getDb().prepare(
+      `SELECT * FROM court_events WHERE ${where.join(' OR ')} ORDER BY event_date ASC, event_time ASC`
+    ).all(...args));
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/calendar/ical', (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId ? parseInt(String(req.query.userId), 10) : req.user!.userId;
+    const onlyMine = String(req.query.onlyMine ?? 'false') === 'true';
+    const events = onlyMine
+      ? getDb().prepare(
+          `SELECT e.* FROM court_events e
+           JOIN court_officer_assignments a ON a.event_id = e.id
+           WHERE a.user_id = ? AND e.event_date >= date('now', '-7 days')
+           ORDER BY e.event_date`
+        ).all(userId)
+      : getDb().prepare(`SELECT * FROM court_events WHERE event_date >= date('now', '-7 days') ORDER BY event_date`).all();
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//RMPG Flex//Court Tracker//EN', 'CALSCALE:GREGORIAN'];
+    for (const e of events as any[]) {
+      const datePart = String(e.event_date || '').replace(/-/g, '');
+      const timePart = String(e.event_time || '0900').replace(/:/g, '').padEnd(6, '0');
+      const start = `${datePart}T${timePart}`;
+      const summary = `${(e.event_type || '').toUpperCase()} — ${e.defendant_name ?? 'Unknown'}`;
+      const desc = [e.court_name, e.judge_name ? `Judge ${e.judge_name}` : null, e.notes].filter(Boolean).join('\\n');
+      lines.push('BEGIN:VEVENT');
+      lines.push(`UID:court-${e.id}@rmpgutah.us`);
+      lines.push(`DTSTAMP:${new Date().toISOString().replace(/-|:/g, '').replace(/\.\d{3}/, '')}`);
+      lines.push(`DTSTART:${start}`);
+      lines.push(`SUMMARY:${summary}`);
+      if (e.courtroom) lines.push(`LOCATION:${e.court_name ?? ''} ${e.courtroom}`);
+      if (desc) lines.push(`DESCRIPTION:${desc}`);
+      lines.push('END:VEVENT');
+    }
+    lines.push('END:VCALENDAR');
+    res.set('Content-Type', 'text/calendar; charset=utf-8');
+    res.set('Content-Disposition', 'attachment; filename="rmpg-court.ics"');
+    res.send(lines.join('\r\n'));
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/search', (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q ?? '').trim().toLowerCase();
+    if (!q) { res.json({ count: 0, events: [] }); return; }
+    const like = `%${q}%`;
+    const events = getDb().prepare(
+      `SELECT id, event_number, event_type, status, event_date, defendant_name, court_name, judge_name, notes
+       FROM court_events
+       WHERE LOWER(event_number) LIKE ? OR LOWER(defendant_name) LIKE ?
+          OR LOWER(court_name) LIKE ? OR LOWER(judge_name) LIKE ?
+          OR LOWER(prosecutor) LIKE ? OR LOWER(defense_attorney) LIKE ?
+          OR LOWER(notes) LIKE ? OR LOWER(sentence) LIKE ?
+       ORDER BY event_date DESC LIMIT 200`
+    ).all(like, like, like, like, like, like, like, like);
+    res.json({ count: (events as any[]).length, events });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.post('/events/bulk-reschedule', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { from_date, to_date, ids } = req.body ?? {};
+    const db = getDb();
+    if (Array.isArray(ids) && ids.length > 0 && to_date) {
+      const stmt = db.prepare(`UPDATE court_events SET event_date = ?, updated_at = datetime('now','localtime') WHERE id = ?`);
+      const tx = db.transaction((rows: number[]) => { for (const id of rows) stmt.run(String(to_date), id); });
+      tx(ids);
+      auditLog(req, 'BULK_RESCHEDULE', 'court_event', 0, null, { ids, to_date });
+      res.json({ success: true, count: ids.length });
+      return;
+    }
+    if (from_date && to_date) {
+      const r = db.prepare(`UPDATE court_events SET event_date = ?, updated_at = datetime('now','localtime') WHERE event_date = ?`).run(String(to_date), String(from_date));
+      auditLog(req, 'BULK_RESCHEDULE_DATE', 'court_event', 0, null, { from_date, to_date });
+      res.json({ success: true, count: r.changes });
+      return;
+    }
+    res.status(400).json({ error: '{from_date+to_date} or {ids+to_date} required' });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
 export default router;
