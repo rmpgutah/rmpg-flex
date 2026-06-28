@@ -11,8 +11,43 @@
 // out of the main page chunk for record types that aren't yet
 // migrated — only the citation print site (which renders <50
 // times per shift in practice) pays the load cost.
+//
+// ISOLATION (Wave 3.1 follow-on): the pre-wave-3.1 code imported
+// apiFetch from hooks/useApi, which is auth-coupled and redirects
+// to /login on 401, tearing down the app mid-PDF-generation.
+// Same pattern as c0f34f20 (pdfStaticMap), pdfImageHelpers.ts,
+// and warrantPacket.ts. Now uses raw fetch + localStorage JWT.
 
-import { apiFetch } from '../../hooks/useApi';
+// Isolated fetch — mirrors the getAuthToken + fetch pattern from
+// pdfImageHelpers.ts & pdfIntegrity.ts, but inlined here to keep
+// the v2 adapter self-contained (no shared fetch util yet).
+function getAuthToken(): string {
+  try {
+    if (typeof localStorage === 'undefined') return '';
+    return localStorage.getItem('rmpg_token') || '';
+  } catch { return ''; }
+}
+
+async function isolatedFetch<T>(url: string, opts: RequestInit = {}): Promise<T | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...((opts.headers as Record<string, string>) || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(url, { ...opts, headers, signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+
+const API_BASE = (() => {
+  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
+  const h = window.location.hostname;
+  if (h === 'localhost') return 'http://localhost:8787';
+  return 'https://api.rmpgutah.us';
+})();
 
 export interface V2DispatchOptions {
   recordType: string;
@@ -37,7 +72,7 @@ async function signPayload(
   formKey: string, caseNumber: string, payloadHash: string,
 ): Promise<SignPayloadResponse | null> {
   try {
-    const res = await apiFetch<SignPayloadResponse>('/pdf-tools/sign-payload', {
+    const res = await isolatedFetch<SignPayloadResponse>(`${API_BASE}/api/pdf-tools/sign-payload`, {
       method: 'POST',
       body: JSON.stringify({ formKey, caseNumber, payloadHash }),
     });
@@ -85,7 +120,7 @@ async function prepareCitationDispatch(opts: V2DispatchOptions) {
   let data = opts.recordData ?? {};
   if (data.id != null) {
     try {
-      const full = await apiFetch<any>(`/citations/${data.id}/full`);
+      const full = await isolatedFetch<any>(`${API_BASE}/api/citations/${data.id}/full`);
       data = { ...full, ...data };
       data.violations = mapServerViolations(full.violations);
     } catch { /* fall through to back-compat flat fields */ }

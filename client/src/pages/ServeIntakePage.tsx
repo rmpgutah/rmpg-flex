@@ -1,12 +1,21 @@
-import { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
+import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
+import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
+import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDefendants';
+import type { FieldVerdict } from '../types/serveIntakeJudge';
+import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
+import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -22,7 +31,49 @@ interface UploadedFile {
   // pdfjs text extraction stays as a fast preview; the server re-runs
   // its own extraction on submit for accuracy.
   file?: File;
+  // Set when this entry is a rasterized page synthesized from a scanned
+  // (no text layer) PDF. The original PDF has no extractable text, so we
+  // render its pages to images here and let the server's Vision OCR read
+  // them. Carries the source PDF's filename for the UI to group under.
+  // These entries are NOT shown in the document list (they're internal OCR
+  // inputs) but DO ride along in the upload payload — see the render filter.
+  derivedFrom?: string;
+  // Set on an ORIGINAL scanned PDF whose pages we rasterized for Vision OCR.
+  // Lets the list show a "Scan OCR" badge + a normal (non-error) status even
+  // though the PDF itself yielded no extractable text — the OCR happens on the
+  // derived images server-side on submit.
+  scanned?: boolean;
+  // Pre-upload metadata shown in the loaded-files list so the operator can
+  // sanity-check a document (size/page-count/date) BEFORE committing the
+  // batch. Captured in handleFiles when the file is read.
+  size?: number;          // bytes (File.size)
+  pages?: number;         // PDF page count (pdfjs numPages); undefined for images
+  lastModified?: number;  // File.lastModified epoch ms
 }
+
+// A PDF whose pdfjs text layer yields fewer than this many characters is
+// treated as a scan (image-only) and rasterized to images for Vision OCR.
+// Matches the server's MIN_CLIENT_TEXT_CHARS so the two ends agree on what
+// "born-digital" means.
+const SCANNED_PDF_TEXT_THRESHOLD = 200;
+// Mirror the server caps (src/routes/serveIntake.ts: MAX_UPLOAD_BYTES /
+// MAX_FILES_PER_UPLOAD) so the operator is warned BEFORE a long upload that's
+// doomed to 400. The server rejects the WHOLE batch if any single file exceeds
+// 25 MB or the file count exceeds 30 — and a scanned PDF fans out into several
+// rasterized page-images, each of which counts toward that 30.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_FILES = 30;
+// Pages to rasterize from a scanned PDF. Recipient/service data on civil
+// papers lives in the first few pages (cover sheet, summons face, field
+// sheet); rendering every page of a 40-page docket would blow the 12-file
+// upload cap and the Vision latency budget for no extraction gain. 6 gives a
+// margin for packets where a cover/notice page pushes the info form to p3-5,
+// while staying well under the upload cap.
+const MAX_RASTER_PAGES = 6;
+// Render scale — 2x device pixels keeps small print legible to the OCR
+// model while JPEG q0.82 holds a letter page well under the 4 MB Vision cap.
+const RASTER_SCALE = 2;
+const RASTER_JPEG_QUALITY = 0.82;
 
 interface IntakeResult {
   success: boolean;
@@ -53,6 +104,18 @@ interface IntakeResult {
     deadlineStr: string;
     serverName: string;
   };
+  // /upload-only extras: per-document OCR provenance + the critical fields
+  // the extractor could NOT find (rendered as a verify-before-service strip).
+  documents?: Array<{
+    file_name: string; doc_type?: string | null; ocr_engine?: string | null;
+    confidence?: number; success?: boolean; page_count?: number | null;
+  }>;
+  missing_critical?: string[];
+  // Diligence planner output — dated attempt windows computed at intake.
+  attempt_plan?: Array<{ attempt: number; date: string; weekday: string; window: string; focus: string }>;
+  // Set when this packet matched an existing ACTIVE queue entry: documents
+  // were attached to it and no new call/queue records were created.
+  duplicate_of?: { serve_queue_id: number; status: string; case_number: string | null } | null;
 }
 
 interface OcrScanResult {
@@ -69,14 +132,14 @@ const DOCUMENT_TYPES = [
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
-  { value: 'summons', label: 'Summons', color: 'bg-blue-900/40 text-blue-400 border-blue-700/40' },
+  { value: 'summons', label: 'Summons', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
   { value: 'subpoena', label: 'Subpoena', color: 'bg-pink-900/40 text-pink-400 border-pink-700/40' },
   { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
   { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
-  { value: 'identification', label: 'ID/Passport', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
-  { value: 'correspondence', label: 'Correspondence', color: 'bg-slate-900/40 text-slate-400 border-slate-700/40' },
-  { value: 'other', label: 'Other', color: 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40' },
+  { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'correspondence', label: 'Correspondence', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
 function confidenceColor(conf: number): string {
@@ -91,20 +154,309 @@ function confidenceBar(conf: number): string {
   return 'bg-red-500';
 }
 
+// Live upload telemetry for the progress bar. `total` is the FULL multipart
+// body size (files + form overhead) as reported by the browser, NOT the sum
+// of file sizes — they differ by the multipart boundaries/headers.
+interface UploadStat {
+  loaded: number;       // bytes sent so far
+  total: number;        // total bytes to send
+  pct: number;          // 0-100
+  etaMs: number | null; // estimated ms remaining, null until measurable
+}
+
+// Human-readable byte size. One decimal under 10 units, none above, so the
+// readout stays compact in the tiny Spillman row ("2.4 MB", "640 KB", "18 MB").
+function formatBytes(n: number): string {
+  if (!n || n < 1024) return `${n || 0} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
+// "~12s left" / "~1m 04s left". Returns '' when the estimate isn't usable yet
+// (no samples, or non-finite from a divide-by-zero early in the upload).
+function formatEta(ms: number | null): string {
+  if (ms == null || !isFinite(ms) || ms <= 0) return '';
+  const s = Math.ceil(ms / 1000);
+  if (s < 60) return `~${s}s left`;
+  const m = Math.floor(s / 60);
+  return `~${m}m ${String(s % 60).padStart(2, '0')}s left`;
+}
+
+// Compact "2.4 MB · 12 pages · May 28" line shown under each loaded filename.
+function fileMeta(f: UploadedFile): string {
+  const parts: string[] = [];
+  if (f.size != null) parts.push(formatBytes(f.size));
+  if (f.pages && f.pages > 0) parts.push(`${f.pages} page${f.pages > 1 ? 's' : ''}`);
+  if (f.lastModified) parts.push(new Date(f.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); // new-date-ok: File.lastModified is epoch ms (number), not a naive server timestamp string
+  return parts.join(' · ');
+}
+
+// fetch() can't surface upload progress (the Fetch API has no request-body
+// progress hook), so the multipart submit goes through XMLHttpRequest — its
+// `upload` object emits byte-level progress events. onProgress(loaded, total)
+// drives the % + ETA; onSent fires when the last byte leaves the browser so
+// the caller can flip the bar from determinate % to an indeterminate
+// "analyzing" state while the server runs OCR + extraction. Resolves with the
+// raw status/text the caller needs (mirrors what it used from the Response).
+// Read the bytes into an in-memory File so the eventual upload doesn't fail
+// with ERR_UPLOAD_FILE_CHANGED when something touches the disk file between
+// pick and submit. The intake flow holds files in state for seconds-to-
+// minutes while the operator reviews OCR — plenty of time for iCloud Drive
+// / OneDrive / Spotlight / anti-virus to bump lastModified on the original.
+// The snapshot is backed by an ArrayBuffer the browser owns, so a disk
+// change can no longer abort the multipart send. Preserves name/type/
+// lastModified so the rest of the page (status badges, dedupe heuristics,
+// scan-OCR docType inference) is unaffected.
+async function snapshotFile(f: File): Promise<File> {
+  const bytes = await f.arrayBuffer();
+  return new File([bytes], f.name, { type: f.type, lastModified: f.lastModified });
+}
+
+function xhrUpload(
+  url: string,
+  body: FormData,
+  token: string | null,
+  onProgress: (loaded: number, total: number) => void,
+  onSent: () => void,
+  register: (xhr: XMLHttpRequest) => void,
+): Promise<{ ok: boolean; status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    // Hand the XHR back to the caller so it can abort() on a Cancel click.
+    register(xhr);
+    xhr.open('POST', url);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+    xhr.upload.onload = () => onSent();
+    xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+    // XHR onerror doesn't surface the underlying browser code (ERR_UPLOAD_FILE_CHANGED,
+    // ERR_INTERNET_DISCONNECTED, ERR_HTTP2_PROTOCOL_ERROR, etc.) — the spec
+    // gives us nothing. We can at least disambiguate the offline case via
+    // navigator.onLine, and tell the operator what to check next; the
+    // ERR_UPLOAD_FILE_CHANGED race is now defended at the snapshotFile() seam
+    // in handleFiles, so a generic network failure here is most likely a real
+    // connectivity / firewall issue.
+    xhr.onerror = () => {
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      reject(new Error(
+        offline
+          ? 'Upload failed: device is offline. Reconnect and try again.'
+          : 'Upload failed: network error. Check your connection or VPN/firewall; if the file is in iCloud/OneDrive, copy it to a local folder first and retry.',
+      ));
+    };
+    // Distinguish a user cancel from a real failure (the `aborted` flag) so
+    // the caller resets quietly instead of flashing a scary red error.
+    xhr.onabort = () => reject(Object.assign(new Error('Upload canceled'), { aborted: true }));
+    xhr.send(body);
+  });
+}
+
+// Recursively collect every File from a dropped FileSystemEntry (a dropped
+// FOLDER is a directory entry, not a flat file). Best-effort — unreadable
+// entries resolve to [].
+async function readEntryFiles(entry: any): Promise<File[]> {
+  if (!entry) return [];
+  if (entry.isFile) {
+    return new Promise<File[]>((res) => entry.file((f: File) => res([f]), () => res([])));
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    const readBatch = () => new Promise<any[]>((res) => reader.readEntries((e: any[]) => res(e), () => res([])));
+    const all: File[] = [];
+    // readEntries returns at most ~100 entries per call — loop until drained.
+    for (let batch = await readBatch(); batch.length; batch = await readBatch()) {
+      for (const child of batch) all.push(...await readEntryFiles(child));
+    }
+    return all;
+  }
+  return [];
+}
+
+// Resolve the files from a drop, expanding any dropped FOLDERS. dataTransfer.files
+// is EMPTY for a folder drop — the contents only exist as webkitGetAsEntry()
+// entries, which must be captured synchronously during the drop event (the item
+// list is invalidated once we await). Falls back to .files when entries aren't
+// available (older browsers / plain multi-file drops).
+async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
+  const entries = dt.items
+    ? Array.from(dt.items).map((it) => (it as any).webkitGetAsEntry?.()).filter(Boolean)
+    : [];
+  if (entries.length) {
+    const nested = await Promise.all(entries.map(readEntryFiles));
+    const files = nested.flat();
+    if (files.length) return files;
+  }
+  return Array.from(dt.files);
+}
+
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [processing, setProcessing] = useState(false);
+  // Upload telemetry. `uploadPhase` distinguishes the byte-transfer phase
+  // (determinate %) from the server-side OCR/extraction phase (indeterminate)
+  // so the bar never parks at 100% looking hung. See xhrUpload.
+  const [uploadStat, setUploadStat] = useState<UploadStat | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocrPreview, setOcrPreview] = useState<OcrScanResult | null>(null);
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
+  // Pre-submission field overrides: operator edits BEFORE clicking Create.
+  // Keys match the server's field key names (e.g. `recipient_first_name`).
+  const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  // Active clients for the client selector dropdown.
+  const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  // Audit caught (2026-06-21): bare .catch(() => {}) left the clients
+  // dropdown empty when the load failed. Operator couldn't tell whether
+  // there were no clients or whether the load broke — they then created
+  // intakes with no client attached, breaking downstream billing
+  // auto-assign. Surface the failure and block submit.
+  const [clientLoadError, setClientLoadError] = useState<string | null>(null);
+  const [detectedDefendants, setDetectedDefendants] = useState<DetectedDefendant[]>([]);
+  const [selectedDefendants, setSelectedDefendants] = useState<string[]>([]);
+  const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
+  // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
+  const [confirmReset, setConfirmReset] = useState(false);
+  // ConfirmDialog for removing a single document from the pre-submit list.
+  const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  useEffect(() => {
+    setClientsLoading(true);
+    apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
+      .then((data) => { setClients(data); setClientLoadError(null); })
+      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
+      .finally(() => setClientsLoading(false));
+  }, []);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  // Roles that may create new intake records.
+  const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-link: ?intake_id= jumps to the intake result indicated.
+  // ?case_id= navigates to the dispatch call for that case.
+  // Both captured at mount via ref so the values survive later setSearchParams strips.
+  const pendingIntakeIdRef = useRef<string | null>(searchParams.get('intake_id'));
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
+
+  const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
+  // Live upload XHR, held so the Cancel button can abort() it mid-transfer.
+  const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
 
-  const extractPdfText = useCallback(async (file: File): Promise<string> => {
+  // Window-level drag/drop guard. Without this, a file/folder dropped even a
+  // few pixels OUTSIDE the drop zone makes the browser (and especially the
+  // Electron desktop shell) try to navigate to the dropped file — the page
+  // reloads or "nothing happens" and the drop is lost. We preventDefault at the
+  // window so stray drops are swallowed harmlessly; the drop zone's own handler
+  // stopPropagation()s, so in-zone drops still reach it normally.
+  useEffect(() => {
+    const stop = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener('dragover', stop);
+    window.addEventListener('drop', stop);
+    return () => {
+      window.removeEventListener('dragover', stop);
+      window.removeEventListener('drop', stop);
+    };
+  }, []);
+
+  // Deep-link: strip ?intake_id= / ?case_id= after mount (no-ops if absent).
+  // ?case_id= redirects to /dispatch immediately; ?intake_id= just toasts the id.
+  useEffect(() => {
+    const intakeId = pendingIntakeIdRef.current;
+    const caseId = pendingCaseIdRef.current;
+    pendingIntakeIdRef.current = null;
+    pendingCaseIdRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    if (caseId) {
+      next.delete('case_id');
+      setSearchParams(next, { replace: true });
+      navigate(`/dispatch?call_id=${caseId}`);
+      return;
+    }
+    if (intakeId) {
+      next.delete('intake_id');
+      setSearchParams(next, { replace: true });
+      addToast(`Viewing intake #${intakeId}`, 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Keyboard shortcuts:
+  //   N  — start a new intake (focus the file picker); gated by canManage
+  //   Esc — cascade: OCR preview → attempt modal → confirmReset → confirmRemoveFileIdx
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showAttemptModal) { e.stopPropagation(); setShowAttemptModal(false); return; }
+        if (confirmReset) { e.stopPropagation(); setConfirmReset(false); return; }
+        if (confirmRemoveFileIdx !== null) { e.stopPropagation(); setConfirmRemoveFileIdx(null); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        if (isTyping(e.target)) return;
+        if (!canManage) return;
+        e.preventDefault();
+        fileInputRef.current?.click();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showOcrPreview, showAttemptModal, confirmReset, confirmRemoveFileIdx, canManage]);
+
+  // Merge OCR field values from newly-loaded images into editOverrides.
+  // "Fill empty slots" strategy: only writes keys not already set by the
+  // operator (or a prior file), so manual edits and earlier-file values
+  // are never overwritten when a second document is added to the batch.
+  // Takes the highest-confidence value per field across all image files.
+  useEffect(() => {
+    const best: Record<string, { value: string; conf: number }> = {};
+    for (const f of files) {
+      if (!f.ocrResult?.fields) continue;
+      for (const [k, v] of Object.entries(f.ocrResult.fields as Record<string, { value: string; confidence: number }>)) {
+        if (v.value && v.confidence > (best[k]?.conf ?? 0)) {
+          best[k] = { value: v.value, conf: v.confidence };
+        }
+      }
+    }
+    if (Object.keys(best).length === 0) return;
+    setEditOverrides(prev => {
+      const next = { ...prev };
+      for (const [k, { value }] of Object.entries(best)) {
+        if (!next[k]) next[k] = value;
+      }
+      return next;
+    });
+    let bestDefendant = '';
+    let bestConf = 0;
+    for (const f of files) {
+      const v = f.ocrResult?.fields?.defendant;
+      if (v?.value && v.confidence > bestConf) { bestDefendant = v.value; bestConf = v.confidence; }
+    }
+    const detected = parseDefendants(bestDefendant);
+    setDetectedDefendants(detected);
+    setSelectedDefendants(prev => {
+      if (prev.length === 0 && detected.length > 0) return detected.map(d => d.name);
+      return prev.filter(n => detected.some(d => d.name === n));
+    });
+  }, [files]);
+
+  const extractPdfText = useCallback(async (file: File): Promise<{ text: string; pages: number }> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       // verbosity: 0 = errors-only. Court packets often embed TrueType
@@ -115,22 +467,66 @@ export default function ServeIntakePage() {
       // keeps the console clean during intake; if a real PDF parse error
       // happens it still surfaces as a thrown promise rejection.
       const pdf = await getDocument({ data: arrayBuffer, verbosity: 0 }).promise;
-      const pages: string[] = [];
-      for (let i = 1; i <= pdf.numPages; i++) {
+      const numPages = pdf.numPages;
+      const pageTexts: string[] = [];
+      for (let i = 1; i <= numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        pages.push(content.items.map(item => (item as any).str).join(' '));
+        pageTexts.push(content.items.map(item => (item as any).str).join(' '));
       }
-      return pages.join('\n');
+      return { text: pageTexts.join('\n'), pages: numPages };
     } catch {
-      return '';
+      return { text: '', pages: 0 };
     }
   }, []);
 
-  const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
+  // Render the first MAX_RASTER_PAGES pages of a scanned (no text layer)
+  // PDF to JPEG image Files. These get uploaded alongside the originals so
+  // the server's Workers AI Vision path can OCR them — the container
+  // Tesseract path is NOT rolled out in prod, so without this a scanned
+  // PDF extracts nothing at all. Best-effort: any failure returns [] and
+  // the original PDF is still uploaded (server falls back to its own path).
+  const rasterizePdf = useCallback(async (file: File): Promise<File[]> => {
+    const out: File[] = [];
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await getDocument({ data: arrayBuffer, verbosity: 0 }).promise;
+      const pageCount = Math.min(pdf.numPages, MAX_RASTER_PAGES);
+      const base = file.name.replace(/\.pdf$/i, '');
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: RASTER_SCALE });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        // White background before rasterizing: JPEG has no alpha, so a
+        // transparent-background scanned PDF would render its transparent
+        // regions as black and tank Vision-OCR contrast/recognition. Mirrors
+        // the engine backend's pre-render fill (rmpg-pdf-engine/backends/pdfjs.ts).
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas, canvasContext: ctx, viewport } as any).promise;
+        const blob = await new Promise<Blob | null>((res) =>
+          canvas.toBlob(res, 'image/jpeg', RASTER_JPEG_QUALITY));
+        // Free the canvas backing store before the next (potentially large) page.
+        canvas.width = 0; canvas.height = 0;
+        if (blob) out.push(new File([blob], `${base}-scan-p${i}.jpg`, { type: 'image/jpeg' }));
+      }
+    } catch {
+      /* best-effort — empty list means "no rasterized pages added" */
+    }
+    return out;
+  }, []);
+
+  const ocrScanImage = useCallback(async (file: File, docType: string = 'auto'): Promise<OcrScanResult | null> => {
     try {
       const formData = new FormData();
       formData.append('image', file);
+      // 'auto' → the server's Claude-vision engine classifies the image (ID card /
+      // license plate / serve document) AND extracts its fields in one call.
+      formData.append('docType', docType);
       const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/ocr/scan-document', {
         method: 'POST',
@@ -140,23 +536,68 @@ export default function ServeIntakePage() {
       if (resp.ok) {
         return await resp.json();
       }
-    } catch { }
+    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
     return null;
+  }, []);
+
+  // Server-side field extraction for born-digital PDFs. The client already
+  // extracted the text via pdfjs; we send that text alongside the file so the
+  // Worker skips the OCR container (not rolled out in prod) and runs the LLM
+  // extraction directly. When the scan resolves, the file entry is updated with
+  // the ocrResult so the useEffect below can merge fields into editOverrides.
+  // Fire-and-forget — errors are silent so they don't block the UI.
+  const scanPdfOcr = useCallback(async (file: File, text: string) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('client_text', text);
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/serve-intake/scan-document', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!resp.ok) return;
+      const scanResult: OcrScanResult = await resp.json();
+      if (scanResult?.fields) {
+        setFiles(prev => prev.map(f =>
+          f.file === file ? { ...f, ocrResult: scanResult } : f,
+        ));
+      }
+    } catch { /* best-effort pre-fill — silent on error */ }
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
     const newFiles: UploadedFile[] = [];
-    for (const file of Array.from(fileList)) {
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf';
+    // Born-digital PDFs queued for server-side LLM field extraction after setFiles.
+    const pdfScans: Array<{ file: File; text: string }> = [];
+    for (const rawFile of Array.from(fileList)) {
+      const isImage = rawFile.type.startsWith('image/');
+      const isPdf = rawFile.type === 'application/pdf';
       if (!isImage && !isPdf) continue;
+
+      // Snapshot to in-memory bytes immediately so the eventual upload
+      // can't abort with ERR_UPLOAD_FILE_CHANGED if the disk file is
+      // touched while the operator reviews OCR. See snapshotFile() above.
+      let file: File;
+      try {
+        file = await snapshotFile(rawFile);
+      } catch {
+        // arrayBuffer() can throw if the underlying file vanished between
+        // pick and read (rare). Skip the file rather than wedge the batch.
+        continue;
+      }
 
       let text = '';
       let ocrResult: any = null;
       let type = 'info_page';
+      let scanned = false;
+      let pageCount = 0;
 
       if (isPdf) {
-        text = await extractPdfText(file);
+        const extracted = await extractPdfText(file);
+        text = extracted.text;
+        pageCount = extracted.pages;
         const name = file.name.toLowerCase();
         type = name.includes('court') || name.includes('docket') ? 'court_filing'
           : name.includes('field') ? 'field_sheet'
@@ -168,6 +609,38 @@ export default function ServeIntakePage() {
           : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
           : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
           : 'info_page';
+
+        // Scanned PDF (no usable text layer): rasterize its pages to images
+        // so the server's Vision OCR can read them. The original PDF is still
+        // uploaded too (audit trail + server fallback), but these images are
+        // what actually carry the recipient/service data through extraction.
+        // We also run ocrScanImage on each page immediately so editOverrides
+        // gets pre-filled from the scanned content — same path as dropped images.
+        if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
+          const pages = await rasterizePdf(file);
+          for (let p = 0; p < pages.length; p++) {
+            const pageOcr = await ocrScanImage(pages[p], type);
+            newFiles.push({
+              name: pages[p].name,
+              type,
+              text: pageOcr?.rawText || '',
+              status: 'extracted',
+              file: pages[p],
+              derivedFrom: file.name,
+              ocrResult: pageOcr ?? undefined,
+            });
+          }
+          // A scanned PDF that rasterized OK isn't an error — its OCR rides on
+          // the derived images. Mark it so the row shows "Scan OCR" + a green
+          // check instead of a misleading ⚠️ "no text" warning.
+          scanned = pages.length > 0;
+        } else {
+          // Born-digital PDF with a text layer: queue for server-side LLM
+          // field extraction so the review panel pre-fills with extracted values.
+          // Fired after setFiles so the file is already in state when the result
+          // arrives and updates it. Same flow as ocrScanImage for image files.
+          pdfScans.push({ file, text });
+        }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
         if (scan?.success) {
@@ -181,29 +654,65 @@ export default function ServeIntakePage() {
 
       newFiles.push({
         name: file.name, type, text,
-        status: text.length > 50 || ocrResult?.success ? 'extracted' : 'error',
+        status: text.length > 50 || ocrResult?.success || scanned ? 'extracted' : 'error',
+        scanned,
         ocrResult,
         file,
+        size: file.size,
+        pages: pageCount || undefined,
+        lastModified: file.lastModified,
       });
     }
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
     setResult(null);
     setOcrPreview(null);
-  }, [extractPdfText, ocrScanImage]);
+    // Fire server-side extraction for born-digital PDFs in parallel (best-effort).
+    // Results trickle back and update the file entries, which triggers the
+    // useEffect below to merge fields into editOverrides.
+    pdfScans.forEach(({ file, text }) => scanPdfOcr(file, text));
+  }, [extractPdfText, ocrScanImage, scanPdfOcr]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+    setDragActive(false);
+    // Expand any dropped folders. filesFromDrop must read the entry list
+    // before the first await (the DataTransfer is invalidated after), so we
+    // hand it the event's dataTransfer synchronously and resolve async.
+    filesFromDrop(e.dataTransfer).then((files) => {
+      if (files.length > 0) handleFiles(files);
+      else setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+    }).catch(() => {
+      if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+    });
   }, [handleFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  }, [dragActive]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear when the pointer actually leaves the drop zone (dragleave also
+    // fires when crossing onto child elements — relatedTarget stays inside).
+    if (!dropRef.current?.contains(e.relatedTarget as Node)) setDragActive(false);
   }, []);
 
-  const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+  // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
+  // (derivedFrom === the removed file's name) so they don't upload orphaned.
+  // Gated to canManage — non-managers cannot remove documents.
+  const removeFile = (idx: number) => setFiles(prev => {
+    const target = prev[idx];
+    return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
+  });
+  const requestRemoveFile = (idx: number) => {
+    if (!canManage) return;
+    setConfirmRemoveFileIdx(idx);
+  };
   const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
@@ -229,9 +738,15 @@ export default function ServeIntakePage() {
   // failure (e.g. all files exceed the per-file 25 MB cap).
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
+    if (detectedDefendants.length > 1 && selectedDefendants.length === 0) {
+      setError('Pick at least one defendant to serve.');
+      return;
+    }
     setProcessing(true);
     setError(null);
     setResult(null);
+    setUploadStat(null);
+    setUploadPhase('uploading');
     const token = localStorage.getItem('rmpg_token');
     try {
       const filesWithBlobs = files.filter(f => !!f.file);
@@ -242,24 +757,81 @@ export default function ServeIntakePage() {
         for (const f of filesWithBlobs) {
           if (f.file) formData.append('files[]', f.file, f.name);
         }
-        const resp = await fetch('/api/serve-intake/upload', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: formData,
-        });
-        if (!resp.ok) {
-          throw new Error(`Server returned ${resp.status}: ${await resp.text().catch(() => '')}`);
+        // Send the browser pdfjs text alongside the files. The server
+        // uses it for born-digital PDFs so it doesn't have to round-trip
+        // through the OCR container (which isn't rolled out in prod).
+        // Only empty/scanned PDFs fall through to the container path.
+        if (selectedDefendants.length > 0 || detectedDefendants.length > 1) {
+          formData.append('defendants_selected', JSON.stringify(selectedDefendants));
         }
-        const body = await resp.json() as IntakeResult;
+        formData.append('client_text', JSON.stringify(
+          filesWithBlobs.map(f => ({ name: f.name, type: f.type, text: f.text || '' })),
+        ));
+        // Send operator overrides from the pre-submission review panel.
+        // Server applies them at confidence 1.0 after its own extraction,
+        // so they win over any AI-extracted value.
+        const nonEmptyOverrides = Object.fromEntries(
+          Object.entries(editOverrides).filter(([, v]) => v.trim()),
+        );
+        if (Object.keys(nonEmptyOverrides).length > 0) {
+          formData.append('field_overrides', JSON.stringify(nonEmptyOverrides));
+        }
+        if (selectedClientId) {
+          formData.append('client_id', String(selectedClientId));
+        }
+        // performance.now() (monotonic, immune to wall-clock jumps) anchors
+        // the ETA. Speed is averaged over the whole transfer so far — see the
+        // smoothing note where setUploadStat is called.
+        const startedAt = performance.now();
+        const resp = await xhrUpload(
+          '/api/serve-intake/upload',
+          formData,
+          token,
+          (loaded, total) => {
+            const elapsedSec = (performance.now() - startedAt) / 1000;
+            const pct = total > 0 ? (loaded / total) * 100 : 0;
+            // Average speed since start (bytes/sec). Averaging over the whole
+            // transfer keeps the ETA stable on a flaky cellular link, where an
+            // instantaneous sample would jitter wildly between readings. The
+            // trade-off: it's slow to react if bandwidth genuinely changes
+            // mid-upload. Good enough for the 1-12 file civil-paper batches here.
+            const speed = elapsedSec > 0 ? loaded / elapsedSec : 0;
+            const etaMs = speed > 0 ? ((total - loaded) / speed) * 1000 : null;
+            setUploadStat({ loaded, total, pct, etaMs });
+          },
+          () => setUploadPhase('analyzing'),
+          (xhr) => { uploadXhrRef.current = xhr; },
+        );
+        if (!resp.ok) {
+          // The server rejects with { error } / { warning } + a 4xx/5xx. Surface
+          // that message (e.g. "field-sheet.pdf exceeds … bytes", "Too many
+          // files (max 30)") instead of dumping the raw status + JSON blob.
+          let msg = `Upload failed (${resp.status})`;
+          try {
+            const j = JSON.parse(resp.text);
+            msg = j?.error || j?.warning || msg;
+          } catch { /* non-JSON body — keep the generic status message */ }
+          throw new Error(msg);
+        }
+        const body = JSON.parse(resp.text) as IntakeResult & { warning?: string };
         if (body.success) {
           setResult(body);
+          if ((body as any).judge_verdicts) {
+            setJudgeVerdicts((body as any).judge_verdicts);
+          }
         } else {
-          setError('Intake processed but no records were created (check that the documents contain a recipient name or address)');
+          // Surface the server's specific reason (e.g. "Documents stored
+          // but no recipient could be extracted (…)") rather than a
+          // generic message, so the operator knows whether to retry,
+          // fix the docs, or create the entry manually.
+          setError(body.warning || 'Intake processed but no records were created (check that the documents contain a recipient name or address)');
         }
       } else {
         // Fallback: only the pdfjs-extracted text is available (no File
         // blobs). Goes to /intake which runs LLM extraction over the
-        // already-extracted browser text.
+        // already-extracted browser text. There's no measurable upload (a
+        // small JSON body), so jump straight to the analyzing phase.
+        setUploadPhase('analyzing');
         const documents = files.map(f => ({ type: f.type, text: f.text }));
         const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
           method: 'POST',
@@ -272,36 +844,95 @@ export default function ServeIntakePage() {
         }
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to process documents');
+      // A user-initiated cancel isn't an error — reset quietly without the
+      // red banner. Everything else surfaces its message.
+      if (!err?.aborted) setError(err?.message || 'Failed to process documents');
     }
+    uploadXhrRef.current = null;
     setProcessing(false);
-  }, [files]);
+    setUploadPhase('idle');
+    setUploadStat(null);
+  }, [files, editOverrides, detectedDefendants, selectedDefendants]);
+
+  // Abort an in-flight upload. Only offered during the byte-transfer phase —
+  // once the server is analyzing it may already be committing records, so
+  // canceling then would leave the operator unsure what was created.
+  const cancelUpload = useCallback(() => {
+    uploadXhrRef.current?.abort();
+  }, []);
 
   const previewFields = ocrPreview?.fields
     ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
     : [];
 
+  // Operator-facing batch summary: count + combined size of the documents the
+  // user actually dropped (rasterized scan pages are excluded — they're hidden
+  // internal OCR inputs, see the render filter below).
+  const visibleFiles = files.filter(f => !f.derivedFrom);
+  const totalBytes = visibleFiles.reduce((sum, f) => sum + (f.size || 0), 0);
+
+  // Pre-upload guards mirroring the server caps. Oversize is checked on the
+  // visible docs (what the operator can act on); the file-count cap is checked
+  // on the ACTUAL upload payload — files.length includes the hidden rasterized
+  // scan pages, which is exactly what the server counts.
+  const oversizeFiles = visibleFiles.filter(f => (f.size || 0) > MAX_UPLOAD_BYTES);
+  const uploadItemCount = files.filter(f => !!f.file).length;
+  const tooManyFiles = uploadItemCount > MAX_UPLOAD_FILES;
+  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles;
+
   return (
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
+
+      {/* Tab strip */}
+      <div className="flex gap-0 border-b border-surface-border">
+        {(['intake', 'schedule'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex items-center gap-1.5 px-4 py-[6px] text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-brand-400 text-brand-300'
+                : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
+            }`}
+          >
+            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
+            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
+          </button>
+        ))}
+      </div>
+
+      {/* Schedule calendar view */}
+      {activeTab === 'schedule' && (
+        <ServeAttemptCalendar />
+      )}
+
+      {/* Intake upload flow — hidden when on schedule tab */}
+      {activeTab === 'intake' && <>
 
       <div
         ref={dropRef}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         role="button"
         tabIndex={0}
         aria-label="Upload documents: drag and drop or press Enter to browse"
-        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-rmpg-400 focus:ring-2 focus:ring-[#d4a017]/40 transition-all"
-        style={{ background: 'var(--surface-sunken)' }}
+        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-400/40 transition-all ${
+          dragActive
+            ? 'border-brand-400 bg-brand-400/10 ring-2 ring-brand-400/40'
+            : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-surface-raised/50 focus:border-rmpg-400'
+        }`}
+        style={dragActive ? undefined : { background: 'var(--surface-sunken)' }}
       >
-        <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
-        <p className="text-sm font-bold text-rmpg-300">DRAG & DROP DOCUMENTS</p>
-        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images (Court Filing, Field Sheet, ID, Passport)</p>
+        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
+        <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
+        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
-        <input
+        <input id="ff-serveintakepage-0"
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
@@ -311,17 +942,56 @@ export default function ServeIntakePage() {
         />
       </div>
 
-      {files.length > 0 && (
+      {/* Empty state — no files loaded, not processing, no completed result */}
+      {!processing && !result && files.length === 0 && (
+        <p className="text-center text-[10px] text-rmpg-600 py-2">
+          {canManage
+            ? 'Drop a job packet above or press N to browse — PDF, images, or a whole folder.'
+            : 'Contact a supervisor to process service intakes.'}
+        </p>
+      )}
+
+      {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
           <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
-            {files.length} Document{files.length > 1 ? 's' : ''} Loaded
-            <span className="text-rmpg-600 font-normal ml-2">(OCR confidence shown per document)</span>
+            {visibleFiles.length} Document{visibleFiles.length > 1 ? 's' : ''} Loaded
+            <span className="text-rmpg-600 font-normal ml-2">
+              {totalBytes > 0
+                ? `(${formatBytes(totalBytes)} total · OCR confidence per document)`
+                : '(OCR confidence shown per document)'}
+            </span>
           </p>
-          {files.map((f, i) => (
+          {/* Show only the files the user actually dropped. Rasterized scan
+              pages (derivedFrom) are internal Vision-OCR inputs — they still
+              ride along in the upload payload, but listing them made one
+              scanned PDF look like 5 separate documents. Keep the real index
+              for the row handlers. */}
+          {files.map((f, i) => ({ f, i })).filter(({ f }) => !f.derivedFrom).map(({ f, i }) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
-              <span className="text-white font-medium truncate flex-1">{f.name}</span>
-              <select
+              <div className="flex-1 min-w-0">
+                <span className="text-rmpg-100 font-medium truncate block">{f.name}</span>
+                {fileMeta(f) && (
+                  <span className={`text-[9px] font-mono truncate block ${(f.size || 0) > MAX_UPLOAD_BYTES ? 'text-red-400' : 'text-rmpg-600'}`}>{fileMeta(f)}</span>
+                )}
+              </div>
+              {(f.size || 0) > MAX_UPLOAD_BYTES && (
+                <span
+                  className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-red-900/40 text-red-400 border-red-700/40 whitespace-nowrap"
+                  title={`Exceeds the ${formatBytes(MAX_UPLOAD_BYTES)} per-file limit — remove or split this file before processing`}
+                >
+                  Too large
+                </span>
+              )}
+              {f.scanned && (
+                <span
+                  className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-rmpg-900/40 text-rmpg-300 border-rmpg-700/40 whitespace-nowrap"
+                  title="Scanned PDF — its pages are read by Vision OCR on submit"
+                >
+                  Scan OCR
+                </span>
+              )}
+              <select id="ff-serveintakepage-1"
                 value={f.type}
                 onChange={e => changeFileType(i, e.target.value)}
                 onClick={e => e.stopPropagation()}
@@ -331,7 +1001,7 @@ export default function ServeIntakePage() {
                 aria-label={`Document type for ${f.name}`}
               >
                 {DOCUMENT_TYPES.map(dt => (
-                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-white text-[9px]">{dt.label}</option>
+                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-rmpg-100 text-[9px]">{dt.label}</option>
                 ))}
               </select>
               {f.ocrResult && (
@@ -353,20 +1023,175 @@ export default function ServeIntakePage() {
                   <Eye className="w-3 h-3" /> Review
                 </button>
               )}
-              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              {canManage && (
+                <IconButton onClick={() => requestRemoveFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pre-submission review panel — editable fields populated from
+          client-side OCR (image files) so the operator can correct/
+          supplement extracted values before records are created. */}
+      {files.some(f => !f.derivedFrom) && !result && (
+        <div className="panel-beveled bg-surface-raised">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
+            <Edit3 className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300">Review &amp; Edit Before Creating Records</span>
+            <span className="text-[9px] text-rmpg-500 ml-1">— Fields pre-filled from OCR. Edit any value before submitting.</span>
+          </div>
+          <div className="p-3">
+            <DefendantsPicker
+              detected={detectedDefendants}
+              selected={selectedDefendants}
+              onChange={setSelectedDefendants}
+            />
+            {/* Recipient identity */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              {[
+                { key: 'recipient_first_name', label: 'First Name' },
+                { key: 'recipient_last_name',  label: 'Last Name' },
+                { key: 'recipient_middle_name',label: 'Middle Name' },
+                { key: 'recipient_dob',         label: 'Date of Birth' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                </div>
+              ))}
+            </div>
+            {/* Address */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+              <div className="md:col-span-2">
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Street</label>
+                <input
+                  id="ff-intake-override-recipient_address"
+                  type="text"
+                  value={editOverrides['recipient_address'] ?? ''}
+                  onChange={e => setEditOverrides(prev => ({ ...prev, recipient_address: e.target.value }))}
+                  placeholder="—"
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                />
+                {judgeVerdicts['recipient_address'] && <JudgeFlagChip verdict={judgeVerdicts['recipient_address']} />}
+              </div>
+              {[
+                { key: 'recipient_city',  label: 'City' },
+                { key: 'recipient_state', label: 'State' },
+                { key: 'recipient_zip',   label: 'Zip' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label htmlFor="ff-intake-client" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                </div>
+              ))}
+            </div>
+            {/* Client selector — links the serve to an active RMPG client */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Client</p>
+            <div className="mb-3">
+              {clientLoadError ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/30 border border-red-700/50 rounded-sm text-[10px] text-red-300">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  {clientLoadError}
+                </div>
+              ) : (
+                <select
+                  id="ff-intake-client"
+                  value={selectedClientId ?? ''}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    setSelectedClientId(id);
+                    const name = clients.find(c => c.id === id)?.name ?? '';
+                    setEditOverrides(prev => ({ ...prev, client_name: name }));
+                  }}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
+                  {clients.map(cl => (
+                    <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {/* Case details */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+              {[
+                { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'court_name',        label: 'Court' },
+                { key: 'case_number',       label: 'Case #' },
+                { key: 'job_number',        label: 'Job #' },
+                { key: 'service_deadline',  label: 'Due Date' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Service */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { key: 'attorney_name',   label: 'Attorney' },
+                { key: 'attorney_phone',  label: 'Attorney Phone' },
+                { key: 'fee_amount',      label: 'Fee' },
+                { key: 'service_windows', label: 'Service Windows' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label htmlFor="ff-serveintakepage-2" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            <ServeRecordMatchPanel
+              address={editOverrides['recipient_address'] || ''}
+              businessName={editOverrides['recipient_last_name'] || ''}
+            />
+          </div>
         </div>
       )}
 
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrPreview && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowOcrPreview(false)}>
-          <div className="bg-surface-base border border-[#222] rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
+          <div className="bg-surface-base border border-border-default rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase">OCR Extraction Review</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
                 <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
                   Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
                 </span>
@@ -377,10 +1202,10 @@ export default function ServeIntakePage() {
             </div>
             <div className="p-4 space-y-2">
               <div className="text-[10px] text-rmpg-400 mb-2">
-                Document Type: <span className="text-white font-bold">{ocrPreview.documentType}</span>
-                {' | '} Extracted Fields: <span className="text-white font-bold">{previewFields.length}</span>
+                Document Type: <span className="text-rmpg-100 font-bold">{ocrPreview.documentType}</span>
+                {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
-              <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+              <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
                 <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
                   style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
               </div>
@@ -395,16 +1220,16 @@ export default function ServeIntakePage() {
                         </span>
                       </div>
                       {editingFields[key] !== undefined ? (
-                        <input
+                        <input id="ff-serveintakepage-2"
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-white mt-0.5"
+                          className="w-full bg-surface-overlay border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-white truncate">{field.value}</span>
+                          <span className="text-xs text-rmpg-100 truncate">{field.value}</span>
                           <IconButton
                             onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
                             aria-label={`Edit ${key}`}
@@ -424,19 +1249,93 @@ export default function ServeIntakePage() {
         </div>
       )}
 
+      {/* Upload progress — determinate % + ETA while bytes transfer, then an
+          indeterminate pulse while the server runs OCR + extraction so the bar
+          never sits parked at 100% looking hung. */}
+      {processing && (
+        <div className="panel-beveled bg-surface-raised p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300 flex items-center gap-1.5">
+              {uploadPhase === 'analyzing' ? (
+                <><Loader2 className="w-3 h-3 animate-spin text-brand-400" /> Analyzing Documents</>
+              ) : (
+                <><Upload className="w-3 h-3 text-brand-400" /> Uploading Documents</>
+              )}
+            </span>
+            <span className="flex items-center gap-2">
+              {uploadPhase === 'uploading' && uploadStat && (
+                <span className="text-[10px] font-bold font-mono text-brand-400">{uploadStat.pct.toFixed(0)}%</span>
+              )}
+              {uploadPhase === 'uploading' && (
+                <button
+                  onClick={cancelUpload}
+                  className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-red-400 flex items-center gap-0.5"
+                  aria-label="Cancel upload"
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </button>
+              )}
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
+            <div
+              className={`h-full bg-brand-400 ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
+              style={{ width: uploadPhase === 'analyzing' ? '100%' : `${uploadStat?.pct ?? 0}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono">
+            <span>
+              {uploadStat && uploadStat.total > 0
+                ? `${formatBytes(uploadStat.loaded)} / ${formatBytes(uploadStat.total)}`
+                : ''}
+            </span>
+            <span className="flex items-center gap-1">
+              {uploadPhase === 'analyzing' ? (
+                'Running OCR + extraction…'
+              ) : uploadStat && formatEta(uploadStat.etaMs) ? (
+                <><Clock className="w-2.5 h-2.5" /> {formatEta(uploadStat.etaMs)}</>
+              ) : null}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-upload guards — block (don't silently skip) a batch the server
+          would reject, naming exactly what to fix. Silently dropping an
+          oversize legal document could mean dropping the actual summons. */}
+      {!processing && !result && oversizeFiles.length > 0 && (
+        <div className="bg-red-900/30 border border-red-700/50 rounded-sm p-2.5 text-[10px] text-red-300">
+          <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+          {oversizeFiles.length} file{oversizeFiles.length > 1 ? 's' : ''} exceed the {formatBytes(MAX_UPLOAD_BYTES)} per-file limit
+          ({oversizeFiles.map(f => f.name).join(', ')}). Remove or split {oversizeFiles.length > 1 ? 'them' : 'it'} — the server rejects the whole batch otherwise.
+        </div>
+      )}
+      {!processing && !result && tooManyFiles && (
+        <div className="bg-red-900/30 border border-red-700/50 rounded-sm p-2.5 text-[10px] text-red-300">
+          <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+          This batch expands to {uploadItemCount} upload items (limit {MAX_UPLOAD_FILES}). Scanned PDFs each split into several page-images —
+          remove some documents or process them in two passes.
+        </div>
+      )}
+
       {/* Process Button */}
       {files.length > 0 && !result && (
-        <button
-          onClick={processIntake}
-          disabled={processing || files.every(f => f.status === 'error')}
-          className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
-        >
-          {processing ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Processing Documents...</>
-          ) : (
-            <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+        <>
+          <button
+            onClick={processIntake}
+            disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
+            className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
+          >
+            {processing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPhase === 'analyzing' ? 'Analyzing Documents…' : 'Uploading Documents…'}</>
+            ) : (
+              <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+            )}
+          </button>
+          {!canManage && (
+            <p className="text-[10px] text-rmpg-500 text-center">Contact a supervisor to process intakes.</p>
           )}
-        </button>
+        </>
       )}
 
       {error && (
@@ -453,13 +1352,22 @@ export default function ServeIntakePage() {
               <span className="text-sm font-bold text-green-400">INTAKE COMPLETE</span>
             </div>
 
+            {result.duplicate_of && (
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <User className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Person Created</span>
                 </div>
-                <p className="text-sm font-bold text-white">
+                <p className="text-sm font-bold text-rmpg-100">
                   {result.extracted?.name?.first} {result.extracted?.name?.middle} {result.extracted?.name?.last}
                 </p>
                 {result.extracted?.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
@@ -474,7 +1382,7 @@ export default function ServeIntakePage() {
                   <Building2 className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Document Link</span>
                 </div>
-                <p className="text-xs text-white">{result.extracted?.address || 'No address extracted'}</p>
+                <p className="text-xs text-rmpg-100">{result.extracted?.address || 'No address extracted'}</p>
                 {result.latitude && result.longitude && (
                   <p className="text-[9px] text-green-400 mt-1">
                     <MapPin className="w-3 h-3 inline" /> {result.latitude.toFixed(6)}, {result.longitude.toFixed(6)}
@@ -487,7 +1395,7 @@ export default function ServeIntakePage() {
                   <Phone className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
-                <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
+                <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
@@ -505,6 +1413,52 @@ export default function ServeIntakePage() {
               {result.extracted?.fee && <div><span className="text-rmpg-500">Fee:</span> <span className="text-rmpg-300">{result.extracted.fee}</span></div>}
               {result.extracted?.serviceWindows && <div className="col-span-2"><span className="text-rmpg-500">Service Windows:</span> <span className="text-rmpg-300">{result.extracted.serviceWindows}</span></div>}
             </div>
+
+            {/* OCR & extraction context — per-document provenance + the
+                critical fields OCR couldn't find. Mirrors the 'OCR' note
+                filed on the call's Notes tab so the uploader sees what to
+                verify without opening dispatch. */}
+            {(result.documents?.length || result.missing_critical?.length) ? (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Extraction Context</p>
+                {result.documents?.map((d) => (
+                  <div key={d.file_name} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-300 truncate max-w-[260px]">{d.file_name}</span>
+                    {d.success !== false ? (
+                      <>
+                        <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
+                        <span className="text-rmpg-500">{d.ocr_engine === 'pdfjs-client' ? 'PDF text' : d.ocr_engine === 'workers-ai-vision' ? 'Vision OCR' : d.ocr_engine || ''}</span>
+                        <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
+                      </>
+                    ) : (
+                      <span className="text-red-400 font-bold">extraction failed — review manually</span>
+                    )}
+                  </div>
+                ))}
+                {result.missing_critical && result.missing_critical.length > 0 && (
+                  <p className="text-[10px] text-amber-400 mt-1.5">
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />
+                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {/* Diligence planner — dated attempt windows. Mirrors the
+                RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
+            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
+                {result.attempt_plan.map((w) => (
+                  <div key={w.attempt} className="flex items-center gap-2 text-[10px] py-[2px]">
+                    <span className="text-rmpg-500 font-bold">#{w.attempt}</span>
+                    <span className="text-rmpg-100 font-mono">{w.weekday} {w.date}</span>
+                    <span className="text-brand-400 font-mono">{w.window}</span>
+                    <span className="text-rmpg-500">{w.focus}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -520,7 +1474,7 @@ export default function ServeIntakePage() {
               </button>
             )}
             <button
-              onClick={() => { setFiles([]); setResult(null); }}
+              onClick={() => setConfirmReset(true)}
               className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
@@ -545,6 +1499,34 @@ export default function ServeIntakePage() {
           callNumber={result.call_number}
         />
       )}
+      <ConfirmDialog
+        isOpen={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); }}
+        title="Start New Intake?"
+        message="This will clear all loaded documents and results."
+        confirmLabel="Clear & Start New"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={confirmRemoveFileIdx !== null}
+        onClose={() => setConfirmRemoveFileIdx(null)}
+        onConfirm={() => {
+          if (confirmRemoveFileIdx !== null) {
+            removeFile(confirmRemoveFileIdx);
+            setConfirmRemoveFileIdx(null);
+          }
+        }}
+        title="Remove Document?"
+        message={
+          confirmRemoveFileIdx !== null && files[confirmRemoveFileIdx]
+            ? `Remove "${files[confirmRemoveFileIdx].name}" from this batch?`
+            : 'Remove this document from the intake batch?'
+        }
+        confirmLabel="Remove"
+        confirmVariant="danger"
+      />
+      </>}
     </div>
   );
 }
@@ -557,7 +1539,7 @@ function rawTextPreview(text: string): React.ReactNode {
       <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300 uppercase tracking-wider">
         Raw OCR Text ({text.length} chars)
       </summary>
-      <pre className="mt-1 p-2 bg-[#050505] border border-[#1a1a1a] rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+      <pre className="mt-1 p-2 bg-surface-overlay border border-border-default rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
         {preview}
         {text.length > 1000 && <span className="text-red-400">\n...truncated ({text.length - 1000} more chars)</span>}
       </pre>

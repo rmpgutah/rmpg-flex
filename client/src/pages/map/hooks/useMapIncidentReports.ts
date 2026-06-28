@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { buildIncidentReportMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
@@ -39,7 +40,7 @@ interface UseMapIncidentReportsReturn {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: '#666666',
+  draft: 'var(--rmpg-500)',
   submitted: '#888888',
   under_review: '#f59e0b',
   approved: '#22c55e',
@@ -58,13 +59,13 @@ const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
   P3: '#888888',
-  P4: '#666666',
+  P4: 'var(--rmpg-500)',
 };
 
 function formatDate(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const d = parseTimestamp(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
@@ -127,12 +128,12 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         paint: {
           'circle-color': [
             'case',
-            ['==', ['get', 'status'], 'draft'], '#666666',
+            ['==', ['get', 'status'], 'draft'], 'var(--rmpg-500)',
             ['==', ['get', 'status'], 'submitted'], '#888888',
             ['==', ['get', 'status'], 'under_review'], '#f59e0b',
             ['==', ['get', 'status'], 'approved'], '#22c55e',
             ['==', ['get', 'status'], 'returned'], '#ef4444',
-            '#666666',
+            'var(--rmpg-500)',
           ],
           'circle-radius': 8,
           'circle-stroke-color': '#fff',
@@ -144,8 +145,8 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
-      const sColor = STATUS_COLORS[p.status as string] || '#666666';
-      const pColor = PRIORITY_COLORS[p.priority as string] || '#666666';
+      const sColor = STATUS_COLORS[p.status as string] || 'var(--rmpg-500)';
+      const pColor = PRIORITY_COLORS[p.priority as string] || 'var(--rmpg-500)';
       const sLabel = STATUS_LABELS[p.status as string] || p.status;
 
       const html = `

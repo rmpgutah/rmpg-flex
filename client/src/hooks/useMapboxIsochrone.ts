@@ -4,6 +4,8 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getIsochrone, type IsochroneContour } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 const SOURCE_ID = 'rmpg-isochrone-source';
 const LAYER_ID_PREFIX = 'rmpg-isochrone-layer-';
@@ -41,10 +43,10 @@ export function useMapboxIsochrone(map: mapboxgl.Map | null) {
     try {
       Object.keys(MINUTE_COLORS).forEach((min) => {
         const id = LAYER_ID_PREFIX + min;
-        if (m.getLayer(id)) m.removeLayer(id);
+        safeRemoveLayer(m, id);
       });
-      if (m.getLayer(FILL_LAYER_ID)) m.removeLayer(FILL_LAYER_ID);
-      if (m.getSource(SOURCE_ID)) m.removeSource(SOURCE_ID);
+      safeRemoveLayer(m, FILL_LAYER_ID);
+      safeRemoveSource(m, SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, []);
 
@@ -113,9 +115,9 @@ export function useMapboxIsochrone(map: mapboxgl.Map | null) {
     try {
       const data = await getIsochrone(lng, lat, minutes, profile);
       const contours = data.features || [];
-      if (activeRef.current && map.loaded()) {
-        renderOnMap(contours, map);
-      }
+      whenStyleReady(map, () => {
+        if (activeRef.current) renderOnMap(contours, map);
+      });
       setResult({ contours, center: [lng, lat], minutes, loading: false });
     } catch (err) {
       console.warn('[useMapboxIsochrone] failed:', err);

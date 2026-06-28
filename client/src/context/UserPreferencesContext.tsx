@@ -8,7 +8,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { apiFetch } from '../hooks/useApi';
-import { applyThemePreference, getStoredThemePreference } from '../utils/theme';
+import { applyThemePreference, getStoredThemePreference, resolveCurrentTheme } from '../utils/theme';
 
 interface UserPreferences {
   font_scale: number;
@@ -92,10 +92,22 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     }
   }, [prefs.compact_mode]);
 
-  // Apply theme preference to browser/native chrome and cache it for boot-time restore.
+  // Theme controller: resolve effective theme (legacy → manual override → shift
+  // schedule) and re-apply on a tick + on tab focus/visibility, so the night-shift
+  // auto-switch happens without a reload. Matches the index.html pre-paint boot script.
   useEffect(() => {
-    applyThemePreference(prefs.theme_preference);
-  }, [prefs.theme_preference]);
+    const applyNow = () => { applyThemePreference(resolveCurrentTheme(), { persist: false }); };
+    applyNow();
+    const id = window.setInterval(applyNow, 60_000);
+    const onVisibility = () => applyNow();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onVisibility);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onVisibility);
+    };
+  }, []);
 
   return (
     <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs, isLoading, error }}>
