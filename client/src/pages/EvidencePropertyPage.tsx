@@ -18,7 +18,6 @@ import { openEvidenceItemPdf } from '../utils/evidenceItemPdf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { toDisplayLabel } from '../utils/formatters';
 import VideoPlayer from '../components/VideoPlayer';
 import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
