@@ -3699,7 +3699,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
     y += 4;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
-    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
+    const gangAffiliation = getMeaningfulPersonStatus(data.gang_affiliation) || '';
+    const probationParoleStatus = getMeaningfulPersonStatus(data.probation_parole) || '';
+    const probParole = `${probationParoleStatus}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
     // Render gang_affiliation verbatim — explicit "None" from the dropdown
     // is a legitimate operator choice that should appear on the PDF, not be

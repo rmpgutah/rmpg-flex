@@ -157,7 +157,7 @@ export function drawFormCell(
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
-    doc.text(cleanLabel, x + pad, labelBaseY);
+    doc.text(fitPdfText(doc, cleanLabel, w - 2 * pad), x + pad, labelBaseY);
   }
 
   // Value area starts below label strip — 2mm gap between label and value
@@ -190,7 +190,7 @@ export function drawFormCell(
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(cell.value, cbX + cbSize + 1, cbY + cbSize - 0.3);
+      doc.text(fitPdfText(doc, cell.value, w - (cbX - x) - cbSize - 2), cbX + cbSize + 1, cbY + cbSize - 0.3);
     }
   } else if (cell.value) {
     doc.setFont(PDF_VALUE_FONT, cell.valueBold ? 'bold' : 'normal');
@@ -734,7 +734,6 @@ export function drawNibrsHeader(
   doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
 
   if (config.caseNumber) {
-    const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;
