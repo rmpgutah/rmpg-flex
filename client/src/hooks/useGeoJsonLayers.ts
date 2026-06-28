@@ -18,8 +18,6 @@ import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource
 const COLOR_FALLBACK_FILL = '#0d1722';
 const COLOR_FALLBACK_STROKE = '#444444';
 
-// ── Layer Configuration ──────────────────────────────────────
-
 export interface GeoLayerConfig {
   id: string;
   label: string;
@@ -636,7 +634,7 @@ export function useGeoJsonLayers({
       }
       labelMarkerRefs.current = {};
     };
-  }, []);
+  }, [map]);
 
   // Reset per-map registration tracking when the map instance changes.
   // Mapbox handlers live on the map; a new map needs fresh bindings.

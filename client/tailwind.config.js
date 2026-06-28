@@ -47,22 +47,21 @@ export default {
         'display': ['24px', { lineHeight: '32px' }],
       },
       colors: {
-        // ── Surface tokens (CSS variable backed, alpha-capable) ──
-        // Uses rgb(<channels> / <alpha-value>) so Tailwind's /NN opacity
-        // modifier works (e.g. bg-surface-sunken/50). RGB channels are
-        // declared in index.css as --surface-*-rgb (space-separated).
+        // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          // Dark Mode colors:  #000000 #0b0b0b #000000 #030303 #000000
-          // Light Mode colors: #0d2a4d #153a6a #081e3d #061630 #041022
-          base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',
-          raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',
-          sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',
-          overlay: 'rgb(var(--surface-overlay-rgb) / <alpha-value>)',
-          deep:    'rgb(var(--surface-deep-rgb) / <alpha-value>)',
+          base:    'var(--surface-base)',     // #141e2b
+          raised:  'var(--surface-raised)',   // #1a2636
+          sunken:  'var(--surface-sunken)',   // #0d1520
+          overlay: 'var(--surface-overlay)',  // #0a1018
+          deep:    'var(--surface-deep)',     // #060c14
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Pure black shell with neutral metallic accents
+        // Spillman Flex / Motorola Solutions blue theme
+        //   Primary blue (toolbar / accents):   #1a5a9e
+        //   Logo charcoal (body / base):        #303030
+        //   Logo gold (field labels / accents):  #d4a017
+        //   Logo light grey (text):              #d0d0d0
 
         brand: {
           50:  'rgb(var(--brand-50-rgb) / <alpha-value>)',
@@ -124,10 +123,10 @@ export default {
         },
 
         dispatch: {
-          emergency: '#dc2626',    // Safety red (not brand)
-          urgent:    '#d4a017',    // Brand gold
-          routine:   '#a7b1bc',
-          scheduled: '#6b7280',
+          emergency: '#dc2626',
+          urgent:    '#d4a017',
+          routine:   '#888888',
+          scheduled: '#666666',
         },
         success: {
           400: '#34d399',
@@ -139,11 +138,25 @@ export default {
         },
         status: {
           available:  '#22c55e',
-          dispatched: '#d4a017',   // Brand gold
-          enroute:    '#d5dde6',
+          dispatched: '#d4a017',
+          enroute:    '#888888',
           onscene:    '#a855f7',
-          busy:       '#dc2626',   // Safety red
-          offduty:    '#6b7280',
+          busy:       '#dc2626',
+          offduty:    '#666666',
+        },
+        // Override Tailwind default blue to gray (kills ALL text-blue-*, bg-blue-*, border-blue-*)
+        blue: {
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',
+          500: '#888888',
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
+          950: '#111111',
         },
       },
     },

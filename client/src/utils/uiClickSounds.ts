@@ -114,4 +114,34 @@ export function initUiClickSounds(): void {
     },
     { capture: true, passive: true }
   );
+
+  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
+  // only when something dismissable is actually open (a dialog or a
+  // full-screen overlay), so bare Escape presses in a grid stay silent.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape' || e.repeat) return;
+      if (document.querySelector(DIALOG_SELECTOR)) playUiClose();
+    },
+    { capture: true, passive: true }
+  );
+
+  // Key-up on every dialog/overlay mount, app-wide. Observing childList on
+  // body is cheap (no attribute/characterData churn) and the matches()
+  // check only runs on added element nodes.
+  try {
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches(DIALOG_SELECTOR) || node.querySelector(DIALOG_SELECTOR)) {
+            playUiOpen();
+            return;
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  } catch { /* observer unavailable — opens stay silent */ }
 }

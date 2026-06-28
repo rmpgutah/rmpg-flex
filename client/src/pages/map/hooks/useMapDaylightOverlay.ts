@@ -102,9 +102,9 @@ export function useMapDaylightOverlay(
       const phase = getPhase(elevation);
 
       const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${Math.floor(now.getHours() / 2)}`;
+
       let minutesToSunset: number | null;
       let minutesToSunrise: number | null;
-
       if (dateKey !== lastDateKeyRef.current) {
         minutesToSunset = findNextEvent(now, lat, lng, 0, 'setting');
         minutesToSunrise = findNextEvent(now, lat, lng, 0, 'rising');
