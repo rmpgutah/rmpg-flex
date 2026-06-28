@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import { beforeEach } from 'vitest';
+// Match production: pin all date/time display to Mountain Time so tests
+// behave identically regardless of the CI runner's timezone (CI is UTC).
+import '../src/utils/enforceMountainTime';
 
 // Node 25 injects an experimental bare `localStorage` global that shadows
 // jsdom's Storage instance with a plain empty object (no getItem/setItem/clear).

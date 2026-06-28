@@ -34,7 +34,18 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 200);
     camera.position.set(0, 0.4, 5.4);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    // Creating a WebGL renderer can throw synchronously when the GPU is
+    // unavailable (driver blocklisted, the browser's live-context cap reached on
+    // a busy in-vehicle Toughbook, or a context-creation failure). This globe is
+    // purely decorative and sits on the login screen, so a failure here must
+    // never block sign-in — degrade silently to no globe instead of letting the
+    // throw bubble to React's error boundary and white-screen the page.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    } catch {
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
@@ -203,11 +214,12 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
     requestAnimationFrame(handleResize);
 
     // ── Pause when tab hidden ──
+    let contextLost = false;
     const handleVisibility = () => {
       if (document.hidden) {
         active = false;
         cancelAnimationFrame(rafId);
-      } else if (!reduceMotion) {
+      } else if (!reduceMotion && !contextLost) {
         active = true;
         clock.start();
         tick();
@@ -215,11 +227,39 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // ── WebGL context loss recovery ──
+    // The in-vehicle GPU can reset and the browser caps live WebGL contexts, so
+    // the globe can lose its context at runtime. Three.js does NOT call
+    // preventDefault for us, and rendering to a dead context throws every frame.
+    // Halt the loop on loss (preventDefault keeps the canvas restorable) and
+    // resume on restore — Three.js re-uploads its GPU resources on the next
+    // render() itself.
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      contextLost = true;
+      active = false;
+      cancelAnimationFrame(rafId);
+    };
+    const handleContextRestored = () => {
+      contextLost = false;
+      if (reduceMotion) {
+        renderer.render(scene, camera);
+      } else if (!document.hidden) {
+        active = true;
+        clock.start();
+        tick();
+      }
+    };
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
+
     return () => {
       active = false;
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibility);
+      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost, false);
+      renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored, false);
       resizeObserver.disconnect();
       renderer.dispose();
       starGeom.dispose();

@@ -40,11 +40,15 @@ export async function syncAudioModeFromServer(): Promise<AudioMode> {
 
 /** PUT new mode to server AND mirror to localStorage. */
 export async function persistAudioMode(unitId: string | number, mode: AudioMode): Promise<void> {
-  await apiFetch(`/api/dispatch/units/${unitId}/audio-mode`, {
-    method: 'PUT',
-    body: JSON.stringify({ audio_mode: mode }),
-  });
-  setLocalAudioMode(mode);
+  try {
+    await apiFetch(`/api/dispatch/units/${unitId}/audio-mode`, {
+      method: 'PUT',
+      body: JSON.stringify({ audio_mode: mode }),
+    });
+    setLocalAudioMode(mode);
+  } catch {
+    console.warn('[audioMode] PUT failed — audio mode not persisted to server');
+  }
 }
 
 /**

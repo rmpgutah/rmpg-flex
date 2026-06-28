@@ -121,7 +121,7 @@ export function useMapMarkers({
 
         if (existingMarker) {
           try {
-            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
+            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
             const el = existingMarker.getElement();
             if (el) {
               el.innerHTML = '';
@@ -139,7 +139,7 @@ export function useMapMarkers({
           }
         } else {
           try {
-            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
 
             const marker = createMapboxMarker(
               map,

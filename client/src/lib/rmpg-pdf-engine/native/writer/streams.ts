@@ -16,6 +16,14 @@ export class ContentStreamBuilder {
   /** Restore the graphics state. */
   restoreState(): this { this.parts.push('Q'); return this; }
 
+  /** Concatenate an affine matrix [a b c d e f] onto the CTM (the PDF `cm`
+   *  operator). Used to pre-compensate for a page's /Rotate so annotations
+   *  drawn in displayed-frame coordinates land correctly after rotation. */
+  transform(a: number, b: number, c: number, d: number, e: number, f: number): this {
+    this.parts.push(`${fmt(a)} ${fmt(b)} ${fmt(c)} ${fmt(d)} ${fmt(e)} ${fmt(f)} cm`);
+    return this;
+  }
+
   /** Set fill color in DeviceRGB (0..1 components). */
   setFillRgb(r: number, g: number, b: number): this {
     this.parts.push(`${fmt(r)} ${fmt(g)} ${fmt(b)} rg`); return this;
@@ -26,6 +34,13 @@ export class ContentStreamBuilder {
   }
   /** Set line width. */
   setLineWidth(w: number): this { this.parts.push(`${fmt(w)} w`); return this; }
+  /** Set the line dash pattern via the `d` operator. Pass an empty array to
+   *  reset to a solid line. Phase defaults to 0. */
+  setLineDash(pattern: number[], phase = 0): this {
+    const arr = pattern.map(fmt).join(' ');
+    this.parts.push(`[${arr}] ${fmt(phase)} d`);
+    return this;
+  }
   /** Set fill opacity via an inline ExtGState — caller must provide a registered name. */
   setExtGState(name: string): this { this.parts.push(`/${name} gs`); return this; }
 

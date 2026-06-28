@@ -1,27 +1,67 @@
 // ============================================================
 // RMPG Flex — Help & Documentation Page
 // System reference, keyboard shortcuts, module guides, FAQ
+//
+// URL deep-linking (so /help?topic=shortcuts loads straight
+// into the shortcuts tab and pastes well into chat/email):
+//   ?topic=overview|shortcuts|modules|dispatch|faq|system
+//   ?section=<sectionId>    alias for ?topic= (stripped after mount)
+//   ?article=<sectionId>    alias for ?topic= (stripped after mount)
+//   ?faq=<idx>              expand FAQ #idx (and force topic=faq)
+//   ?search=<term>          global content search across all
+//                           shortcuts/modules/FAQ — renders a
+//                           consolidated result list at the top.
+//
+// Keyboard:
+//   N         focus the search box (unless typing in a field)
+//   /         focus the search box (unless typing in a field)
+//   Esc       smart-cascade — clears search first, then
+//             collapses any expanded FAQ, then drops back to
+//             the Overview tab
+//
+// PDFs (printable take-away artifacts for the console):
+//   • Quick Reference Card (shortcuts + priorities + statuses)
+//     — admin-only
+//   • Dispatch Console Guide (long-form training PDF, reused
+//     from dispatchGuidePdfGenerator)
+//     — admin-only
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
   MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,
   Zap, Send, Car, Gavel, Briefcase, Mail, Globe, FlaskConical, UserCog,
-  GraduationCap,
+  GraduationCap, Download, Printer, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
+import {
+  SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
+} from '../utils/helpReferenceData';
 
 // ── Health data type ────────────────────────────────────────
 interface HealthData {
   version?: string;
   status?: string;
+  db?: {
+    connected?: boolean;
+    version?: string;
+    users?: number;
+  };
+  timestamp?: string;
 }
 
 // ── Section IDs ─────────────────────────────────────────────
 type SectionId = 'overview' | 'shortcuts' | 'modules' | 'dispatch' | 'faq' | 'system';
+
+const SECTION_IDS: SectionId[] = ['overview', 'shortcuts', 'modules', 'dispatch', 'faq', 'system'];
+const isSectionId = (v: string | null): v is SectionId =>
+  v != null && (SECTION_IDS as string[]).includes(v);
 
 interface NavItem {
   id: SectionId;
@@ -36,85 +76,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dispatch', label: 'Dispatch Reference', icon: Radio },
   { id: 'faq', label: 'FAQ', icon: HelpCircle },
   { id: 'system', label: 'System Info', icon: Settings },
-];
-
-// ── Shortcut data ───────────────────────────────────────────
-const SHORTCUT_GROUPS = [
-  {
-    title: 'Global',
-    shortcuts: [
-      { keys: ['Ctrl', 'K'], description: 'Open global search' },
-      { keys: ['?'], description: 'Show keyboard shortcuts modal' },
-      { keys: ['Esc'], description: 'Close modal / panel' },
-      { keys: ['F11'], description: 'Toggle fullscreen' },
-      { keys: ['Ctrl', 'P'], description: 'Print current view' },
-      { keys: ['Ctrl', 'E'], description: 'Export current view' },
-    ],
-  },
-  {
-    title: 'Page Navigation (F-Keys)',
-    shortcuts: [
-      { keys: ['F1'], description: 'Dashboard' },
-      { keys: ['F2'], description: 'Dispatch' },
-      { keys: ['F3'], description: 'Tactical Map' },
-      { keys: ['F4'], description: 'MDT' },
-      { keys: ['F5'], description: 'NCIC' },
-      { keys: ['F6'], description: 'Records' },
-      { keys: ['F7'], description: 'Enforcement' },
-      { keys: ['F8'], description: 'Personnel' },
-      { keys: ['F9'], description: 'Communications' },
-      { keys: ['F10'], description: 'Reports' },
-      { keys: ['F11'], description: 'Audit Log' },
-      { keys: ['F12'], description: 'Admin' },
-    ],
-  },
-  {
-    title: 'Quick Navigation (Alt+Number)',
-    shortcuts: [
-      { keys: ['Alt', '1'], description: 'Dashboard' },
-      { keys: ['Alt', '2'], description: 'Dispatch' },
-      { keys: ['Alt', '3'], description: 'Map' },
-      { keys: ['Alt', '4'], description: 'Records' },
-      { keys: ['Alt', '5'], description: 'Personnel' },
-      { keys: ['Alt', '6'], description: 'Communications' },
-      { keys: ['Alt', '7'], description: 'Reports' },
-      { keys: ['Alt', '8'], description: 'MDT' },
-    ],
-  },
-  {
-    title: 'Dispatch Console',
-    shortcuts: [
-      { keys: ['N'], description: 'New call for service' },
-      { keys: ['R'], description: 'Refresh call queue' },
-      { keys: ['J'], description: 'Next call in queue' },
-      { keys: ['K'], description: 'Previous call in queue' },
-      { keys: ['D'], description: 'Dispatch selected call' },
-      { keys: ['E'], description: 'Set unit enroute' },
-      { keys: ['O'], description: 'Set unit on scene' },
-      { keys: ['C'], description: 'Clear selected call' },
-      { keys: ['1'], description: 'Filter: All calls' },
-      { keys: ['2'], description: 'Filter: Pending' },
-      { keys: ['3'], description: 'Filter: Active' },
-      { keys: ['4'], description: 'Filter: Cleared' },
-    ],
-  },
-  {
-    title: 'CAD Command Line',
-    shortcuts: [
-      { keys: ['/'], description: 'Focus command line' },
-      { keys: ['F8'], description: 'Focus command line (alt)' },
-      { keys: ['Enter'], description: 'Execute command' },
-      { keys: ['↑', '↓'], description: 'Command history' },
-    ],
-  },
-  {
-    title: 'Incidents',
-    shortcuts: [
-      { keys: ['N'], description: 'New incident report' },
-      { keys: ['E'], description: 'Edit selected incident' },
-      { keys: ['Esc'], description: 'Close detail panel' },
-    ],
-  },
 ];
 
 // ── Module Guide data ───────────────────────────────────────
@@ -175,6 +136,13 @@ const MODULES: ModuleInfo[] = [
     path: '/citations',
     description: 'Traffic and non-traffic citation management with violation tracking, fine calculations, and batch operations.',
     features: ['Citation entry', 'Multiple violations', 'Fine calculation', 'Court tracking', 'Batch operations'],
+  },
+  {
+    name: 'Law Book',
+    icon: BookOpen,
+    path: '/law-book',
+    description: 'Full Utah Code reference — criminal (Title 76), motor-vehicle (Title 41), and security/PI/process-server licensing statutes plus administrative rules, with offense levels and official source links.',
+    features: ['Statute & citation search', 'Browse by chapter', 'Severity filters', 'Full statutory text', 'le.utah.gov source links'],
   },
   {
     name: 'Process Service',
@@ -298,7 +266,7 @@ const FAQ_ITEMS: FaqItem[] = [
   },
   {
     question: 'How do I change my password or enable 2FA?',
-    answer: 'Go to Admin (F12) and use the user settings panel. Two-factor authentication can be enabled with TOTP (authenticator app) or WebAuthn (YubiKey/security key).',
+    answer: 'Go to Admin (F12) and use the user settings panel. The Cloudflare-era stack ships JWT authentication today; multi-factor (TOTP / WebAuthn) was a VPS-era feature and has not yet been ported.',
   },
   {
     question: 'What do the priority levels mean?',
@@ -330,73 +298,418 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Search helpers (extracted so they can be unit-tested independently) ──
+export interface SearchHit {
+  kind: 'shortcut' | 'module' | 'faq';
+  title: string;
+  detail: string;
+  groupOrPath: string;
+  /** Section to navigate to when clicked. */
+  section: SectionId;
+  /** Optional FAQ index to expand. */
+  faqIdx?: number;
+}
+
+const norm = (s: string) => s.toLowerCase();
+
+export function searchHelpContent(query: string): SearchHit[] {
+  const q = norm(query.trim());
+  if (q.length < 2) return [];
+  const hits: SearchHit[] = [];
+
+  for (const g of SHORTCUT_GROUPS) {
+    for (const s of g.shortcuts) {
+      const keys = s.keys.join('+');
+      if (norm(keys).includes(q) || norm(s.description).includes(q) || norm(g.title).includes(q)) {
+        hits.push({
+          kind: 'shortcut',
+          title: keys,
+          detail: s.description,
+          groupOrPath: g.title,
+          section: 'shortcuts',
+        });
+      }
+    }
+  }
+
+  for (const m of MODULES) {
+    const haystack = `${m.name} ${m.description} ${m.path} ${m.features.join(' ')}`;
+    if (norm(haystack).includes(q)) {
+      hits.push({
+        kind: 'module',
+        title: m.name,
+        detail: m.description,
+        groupOrPath: m.path,
+        section: 'modules',
+      });
+    }
+  }
+
+  FAQ_ITEMS.forEach((f, i) => {
+    if (norm(f.question).includes(q) || norm(f.answer).includes(q)) {
+      hits.push({
+        kind: 'faq',
+        title: f.question,
+        detail: f.answer,
+        groupOrPath: 'FAQ',
+        section: 'faq',
+        faqIdx: i,
+      });
+    }
+  });
+
+  return hits;
+}
+
 // ── Main Page ───────────────────────────────────────────────
 export default function HelpPage() {
-  const [activeSection, setActiveSection] = useState<SectionId>('overview');
+  const [params, setParams] = useSearchParams();
+  const { user } = useAuth();
+  const canPrint = user?.role === 'admin';
+
+  // Deep-link: ?article= and ?section= are aliases for ?topic= (stripped after
+  // mount so the URL stays canonical). Read all three on first render.
+  const topicParam = params.get('topic') ?? params.get('section') ?? params.get('article');
+  const faqParam = params.get('faq');
+  const searchParam = params.get('search') ?? '';
+
+  const initialSection: SectionId = isSectionId(topicParam)
+    ? topicParam
+    : faqParam != null
+      ? 'faq'
+      : 'overview';
+  const initialFaq = faqParam != null && /^\d+$/.test(faqParam)
+    ? Math.min(Number(faqParam), FAQ_ITEMS.length - 1)
+    : null;
+
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(initialFaq);
+  const [search, setSearch] = useState(searchParam);
   const [healthData, setHealthData] = useState<HealthData | null>(null);
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Strip alias params (?section=, ?article=) after mount so the URL is
+  // canonical (?topic=…) and browser back/forward stays clean.
+  useEffect(() => {
+    if (params.get('section') || params.get('article')) {
+      const merged: Record<string, string> = {};
+      const resolved = params.get('topic') ?? params.get('section') ?? params.get('article');
+      if (resolved && resolved !== 'overview') merged.topic = resolved;
+      const f = params.get('faq');
+      if (f) merged.faq = f;
+      const s = params.get('search');
+      if (s) merged.search = s;
+      setParams(merged, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch server health info for System section
   useEffect(() => {
+    setHealthLoading(true);
     apiFetch<HealthData>('/api/health')
       .then(setHealthData)
-      .catch(() => setHealthData(null));
+      .catch(() => setHealthData(null))
+      .finally(() => setHealthLoading(false));
   }, []);
+
+  // Re-sync from URL when the back/forward buttons change ?topic / ?faq /
+  // ?search out from under us. Without this, browser back from a deep link
+  // would leave the visible tab pointed at the wrong section.
+  useEffect(() => {
+    const t = params.get('topic') ?? params.get('section') ?? params.get('article');
+    const f = params.get('faq');
+    const s = params.get('search') ?? '';
+    setActiveSection(isSectionId(t) ? t : f != null ? 'faq' : 'overview');
+    setExpandedFaq(f != null && /^\d+$/.test(f)
+      ? Math.min(Number(f), FAQ_ITEMS.length - 1)
+      : null);
+    setSearch(s);
+  }, [params]);
+
+  // Push state changes back into the URL. We only write keys that have a
+  // value so the URL stays clean (`/help` rather than `/help?topic=overview`).
+  const updateUrl = useCallback((next: { topic?: SectionId | null; faq?: number | null; search?: string | null }) => {
+    const merged: Record<string, string> = {};
+    const topic = next.topic !== undefined ? next.topic : (isSectionId(params.get('topic')) ? params.get('topic') as SectionId : null);
+    const faq = next.faq !== undefined ? next.faq : (params.get('faq') != null && /^\d+$/.test(params.get('faq')!) ? Number(params.get('faq')) : null);
+    const s = next.search !== undefined ? next.search : params.get('search');
+    if (topic && topic !== 'overview') merged.topic = topic;
+    if (faq != null) merged.faq = String(faq);
+    if (s && s.length > 0) merged.search = s;
+    setParams(merged, { replace: true });
+  }, [params, setParams]);
+
+  const handleSectionChange = useCallback((id: SectionId) => {
+    setActiveSection(id);
+    updateUrl({ topic: id, faq: id === 'faq' ? expandedFaq : null });
+  }, [expandedFaq, updateUrl]);
+
+  const handleToggleFaq = useCallback((idx: number) => {
+    const next = expandedFaq === idx ? null : idx;
+    setExpandedFaq(next);
+    updateUrl({ topic: 'faq', faq: next });
+  }, [expandedFaq, updateUrl]);
+
+  // Debounced URL write for the search box — typing in the field
+  // shouldn't blow up router history.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      updateUrl({ search: search.trim() ? search.trim() : null });
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Keyboard: "n"/"N" or "/" focuses the search; Esc smart-cascades.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typingInField = t && (
+        t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+      );
+
+      // N or / — focus the search box (mirrors the "/" key on other pages)
+      if ((e.key === 'n' || e.key === 'N' || e.key === '/') && !typingInField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        // Smart cascade: smallest-open-first; stopPropagation so nested
+        // components don't also fire their own Esc handlers.
+        if (pdfError) {
+          e.stopPropagation();
+          setPdfError(null);
+          return;
+        }
+        if (search) {
+          e.stopPropagation();
+          setSearch('');
+          updateUrl({ search: null });
+          return;
+        }
+        if (expandedFaq != null) {
+          e.stopPropagation();
+          setExpandedFaq(null);
+          updateUrl({ faq: null });
+          return;
+        }
+        if (activeSection !== 'overview') {
+          e.stopPropagation();
+          setActiveSection('overview');
+          updateUrl({ topic: null, faq: null });
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [search, expandedFaq, activeSection, pdfError, updateUrl]);
+
+  // Search results — derived from `search`; the search section overrides
+  // the active tab content when populated.
+  const hits = useMemo(() => searchHelpContent(search), [search]);
+
+  // PDF generation handlers (dynamic-imported so jsPDF doesn't bloat the
+  // help-page route bundle when nobody clicks Print). Admin-only.
+  const onPrintQuickRef = useCallback(async () => {
+    if (!canPrint) return;
+    try {
+      const mod = await import('../utils/helpQuickReferencePdf');
+      await mod.generateHelpQuickReferencePdfWithDefaults();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Help] Quick Reference PDF failed:', err);
+      setPdfError('Quick Reference PDF generation failed. See console for details.');
+    }
+  }, [canPrint]);
+
+  const onDownloadDispatchGuide = useCallback(async () => {
+    if (!canPrint) return;
+    try {
+      const mod = await import('../utils/dispatchGuidePdfGenerator');
+      await mod.generateDispatchGuidePdf();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Help] Dispatch Guide PDF failed:', err);
+      setPdfError('Dispatch guide PDF generation failed. See console for details.');
+    }
+  }, [canPrint]);
 
   return (
     <div className="flex h-full overflow-hidden">
+      {/* ── PDF error ConfirmDialog (replaces alert()) ─────── */}
+      <ConfirmDialog
+        isOpen={pdfError != null}
+        onClose={() => setPdfError(null)}
+        onConfirm={() => setPdfError(null)}
+        title="PDF Generation Failed"
+        message={pdfError ?? ''}
+      />
+
       {/* ── Left Navigation ───────────────────────────── */}
       <nav
         className="flex-shrink-0 overflow-y-auto py-3"
         style={{
           width: 200,
-          background: '#080808',
-          borderRight: '1px solid #222222',
+          background: 'var(--surface-overlay)',
+          borderRight: '1px solid var(--border-subtle)',
           scrollbarWidth: 'none',
         }}
       >
-        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid #1a1a1a' }}>
+        <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-[#d4a017]" />
-            <span className="text-xs font-bold text-white uppercase tracking-wider">Help Center</span>
+            <HelpCircle className="w-4 h-4 text-brand-400" />
+            <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Help Center</span>
           </div>
           <div className="text-[9px] text-rmpg-500 mt-1 font-mono">RMPG Flex v{APP_VERSION}</div>
         </div>
 
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active = activeSection === item.id;
+          const active = activeSection === item.id && !search;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveSection(item.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-[#141414]' : ''}`}
+              onClick={() => handleSectionChange(item.id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
-                color: active ? '#ffffff' : '#888888',
-                borderLeft: active ? '3px solid #888888' : '3px solid transparent',
+                color: active ? 'var(--rmpg-100)' : 'var(--rmpg-400)',
+                borderLeft: active ? '3px solid var(--rmpg-400)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : '#666666' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--rmpg-500)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );
         })}
+
+        {/* Print/export actions — admin only */}
+        {canPrint && (
+          <div className="mt-3 pt-3 px-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider mb-2">Print</div>
+            <button
+              type="button"
+              onClick={onPrintQuickRef}
+              className="w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+              title="Two-page tear-off card with shortcuts, priorities, statuses, and CAD commands"
+            >
+              <Printer style={{ width: 12, height: 12, flexShrink: 0 }} />
+              <span>Quick Reference Card</span>
+            </button>
+            <button
+              type="button"
+              onClick={onDownloadDispatchGuide}
+              className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+              title="Long-form dispatcher training PDF (loads live 10-codes)"
+            >
+              <Download style={{ width: 12, height: 12, flexShrink: 0 }} />
+              <span>Dispatch Guide</span>
+            </button>
+          </div>
+        )}
       </nav>
 
       {/* ── Content Area ──────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-6" style={{ background: '#0a0a0a' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto p-6" style={{ background:"var(--surface-sunken)" }}>
         <div className="max-w-4xl mx-auto space-y-6">
 
-          {/* OVERVIEW */}
-          {activeSection === 'overview' && (
+          {/* ── Search bar ──────────────────────────────── */}
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid var(--brand-400)' }}
+          >
+            <Search className="w-4 h-4 text-rmpg-300 shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search shortcuts, modules, and FAQ — press N or / to focus"
+              aria-label="Help content search"
+              className="flex-1 bg-transparent text-[12px] text-rmpg-100 placeholder-rmpg-600 outline-none"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="text-rmpg-500 hover:text-rmpg-100 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            <span className="text-[9px] text-rmpg-600 font-mono shrink-0">N or / to focus</span>
+          </div>
+
+          {/* ── Search results override the section content ── */}
+          {search && (
+            <>
+              <PanelTitleBar
+                title={`SEARCH RESULTS — ${hits.length} match${hits.length === 1 ? '' : 'es'} for "${search.trim()}"`}
+                icon={Search}
+              />
+              {hits.length === 0 ? (
+                <div
+                  className="p-6 text-center text-[11px] text-rmpg-400"
+                  style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
+                >
+                  <Search className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p>No help content matches your search.</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1">Try a shortcut key (e.g. "Ctrl+K"), a module name, or a question keyword.</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {hits.map((h, i) => (
+                    <button
+                      key={`${h.kind}-${i}-${h.title}`}
+                      type="button"
+                      onClick={() => {
+                        setSearch('');
+                        setActiveSection(h.section);
+                        if (h.faqIdx != null) setExpandedFaq(h.faqIdx);
+                        updateUrl({ topic: h.section, faq: h.faqIdx ?? null, search: null });
+                      }}
+                      className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised"
+                      style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
+                    >
+                      <span
+                        className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rmpg-200"
+                        style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
+                      >
+                        {h.kind}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-rmpg-100">{h.title}</span>
+                          <span className="text-[9px] text-rmpg-500">{h.groupOrPath}</span>
+                        </div>
+                        <p className="text-[10px] text-rmpg-400 truncate">{h.detail}</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 shrink-0 mt-0.5" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* When searching, suppress the static section content so the
+              results don't double-render below them. */}
+          {!search && activeSection === 'overview' && (
             <>
               <PanelTitleBar title="RMPG FLEX — SYSTEM OVERVIEW" icon={BookOpen} />
-              <div className="p-4 space-y-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4 space-y-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <p className="text-sm text-rmpg-200 leading-relaxed">
-                  RMPG Flex is a full-featured Computer-Aided Dispatch (CAD) and Records Management System (RMS) 
-                  built for Rocky Mountain Protective Group. It provides real-time dispatch, incident management, 
+                  RMPG Flex is a full-featured Computer-Aided Dispatch (CAD) and Records Management System (RMS)
+                  built for Rocky Mountain Protective Group. It provides real-time dispatch, incident management,
                   records tracking, and comprehensive reporting across all operational areas.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
@@ -411,11 +724,11 @@ export default function HelpPage() {
                     <div
                       key={card.label}
                       className="p-3 space-y-1"
-                      style={{ background: '#0a0a0a', border: '1px solid #1a1a1a' }}
+                      style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-center gap-2">
-                        <card.icon className="w-3.5 h-3.5 text-[#d4a017]" />
-                        <span className="text-[11px] font-bold text-white uppercase">{card.label}</span>
+                        <card.icon className="w-3.5 h-3.5 text-brand-400" />
+                        <span className="text-[11px] font-bold text-rmpg-100 uppercase">{card.label}</span>
                       </div>
                       <p className="text-[10px] text-rmpg-400 leading-relaxed">{card.desc}</p>
                     </div>
@@ -424,7 +737,7 @@ export default function HelpPage() {
               </div>
 
               <PanelTitleBar title="GETTING STARTED" icon={Zap} />
-              <div className="p-4 space-y-3" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 {[
                   { step: '1', title: 'Navigate with F-Keys', desc: 'Use F1–F12 to quickly jump between modules. F2 opens Dispatch, F3 opens the Map, etc.' },
                   { step: '2', title: 'Global Search', desc: 'Press Ctrl+K to search across all records — persons, vehicles, incidents, and more.' },
@@ -440,13 +753,13 @@ export default function HelpPage() {
                         height: 22,
                         background: 'rgba(212,160,23,0.15)',
                         border: '1px solid rgba(212,160,23,0.3)',
-                        color: '#d4a017',
+                        color: 'var(--brand-400)',
                       }}
                     >
                       {item.step}
                     </div>
                     <div>
-                      <div className="text-[11px] font-bold text-white">{item.title}</div>
+                      <div className="text-[11px] font-bold text-rmpg-100">{item.title}</div>
                       <div className="text-[10px] text-rmpg-400 leading-relaxed">{item.desc}</div>
                     </div>
                   </div>
@@ -455,21 +768,21 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* KEYBOARD SHORTCUTS */}
-          {activeSection === 'shortcuts' && (
+          {!search && activeSection === 'shortcuts' && (
             <>
               <PanelTitleBar title="KEYBOARD SHORTCUTS" icon={Keyboard} />
               <div className="text-[10px] text-rmpg-500 mb-2">
-                Press <Kbd>?</Kbd> anywhere in the app to open the quick shortcuts overlay.
+                Press <Kbd>?</Kbd> anywhere in the app to open the quick shortcuts overlay,
+                or <Kbd>N</Kbd> on this page to search.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {SHORTCUT_GROUPS.map((group) => (
                   <div
                     key={group.title}
                     className="p-3"
-                    style={{ background: '#141414', border: '1px solid #222222' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                   >
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid #1a1a1a' }}>
+                    <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       {group.title}
                     </h3>
                     <div className="space-y-1.5">
@@ -493,8 +806,7 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* MODULE GUIDE */}
-          {activeSection === 'modules' && (
+          {!search && activeSection === 'modules' && (
             <>
               <PanelTitleBar title="MODULE GUIDE" icon={Monitor} />
               <div className="text-[10px] text-rmpg-500 mb-2">
@@ -507,7 +819,7 @@ export default function HelpPage() {
                     <div
                       key={mod.path}
                       className="p-3"
-                      style={{ background: '#141414', border: '1px solid #222222' }}
+                      style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-start gap-3">
                         <div
@@ -516,14 +828,14 @@ export default function HelpPage() {
                             width: 28,
                             height: 28,
                             background: 'rgba(136,136,136,0.1)',
-                            border: '1px solid #1a1a1a',
+                            border: '1px solid var(--border-subtle)',
                           }}
                         >
                           <Icon className="w-3.5 h-3.5 text-rmpg-300" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-bold text-white">{mod.name}</span>
+                            <span className="text-[11px] font-bold text-rmpg-100">{mod.name}</span>
                             <span className="text-[9px] font-mono text-rmpg-600">{mod.path}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-400 leading-relaxed mt-0.5">{mod.description}</p>
@@ -532,7 +844,7 @@ export default function HelpPage() {
                               <span
                                 key={f}
                                 className="text-[9px] px-1.5 py-0.5 text-rmpg-300"
-                                style={{ background: '#0a0a0a', border: '1px solid #1a1a1a' }}
+                                style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
                               >
                                 {f}
                               </span>
@@ -547,22 +859,15 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* DISPATCH REFERENCE */}
-          {activeSection === 'dispatch' && (
+          {!search && activeSection === 'dispatch' && (
             <>
               <PanelTitleBar title="DISPATCH QUICK REFERENCE" icon={Radio} />
 
               {/* Priority Levels */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Priority Levels</h3>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">Priority Levels</h3>
                 <div className="space-y-1.5">
-                  {[
-                    { level: 'P1', label: 'EMERGENCY', color: '#ef4444', desc: 'Immediate threat to life — lights & sirens' },
-                    { level: 'P2', label: 'URGENT', color: '#f97316', desc: 'In-progress crime, injury, or time-sensitive' },
-                    { level: 'P3', label: 'ROUTINE', color: '#d4a017', desc: 'Standard response — no immediate danger' },
-                    { level: 'P4', label: 'LOW', color: '#888888', desc: 'Report only, information, or follow-up' },
-                    { level: 'P5', label: 'SCHEDULED', color: '#666666', desc: 'Pre-planned activity or appointment' },
-                  ].map((p) => (
+                  {PRIORITIES.map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{p.level}</span>
                       <span className="text-[10px] font-bold w-24" style={{ color: p.color }}>{p.label}</span>
@@ -573,18 +878,10 @@ export default function HelpPage() {
               </div>
 
               {/* Unit Status Codes */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Unit Status Codes</h3>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">Unit Status Codes</h3>
                 <div className="space-y-1.5">
-                  {[
-                    { code: 'AVL', label: 'Available', color: '#22c55e', desc: 'Ready to receive calls' },
-                    { code: 'DSP', label: 'Dispatched', color: '#888888', desc: 'Assigned to a call, en route' },
-                    { code: 'ENR', label: 'Enroute', color: '#f97316', desc: 'Traveling to call location' },
-                    { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
-                    { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
-                    { code: 'OOD', label: 'Out of District', color: '#888888', desc: 'Operating outside assigned area' },
-                    { code: 'OOS', label: 'Out of Service', color: '#666666', desc: 'Not available (break, end of shift)' },
-                  ].map((s) => (
+                  {UNIT_STATUSES.map((s) => (
                     <div key={s.code} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-8" style={{ color: s.color }}>{s.code}</span>
                       <span className="text-[10px] font-bold w-28" style={{ color: s.color }}>{s.label}</span>
@@ -595,22 +892,13 @@ export default function HelpPage() {
               </div>
 
               {/* CAD Command Line */}
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">CAD Command Line</h3>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">CAD Command Line</h3>
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Press <Kbd>/</Kbd> or <Kbd>F8</Kbd> to focus the command line. Type <strong className="text-rmpg-200">HELP</strong> for a full list of commands.
                 </p>
                 <div className="space-y-1">
-                  {[
-                    { cmd: '10-4', desc: 'Look up any 10-code' },
-                    { cmd: 'STATUS <unit> <status>', desc: 'Change unit status' },
-                    { cmd: 'PREMISE <address>', desc: 'Check premise alerts' },
-                    { cmd: 'LOCATE <unit>', desc: 'Get unit GPS location' },
-                    { cmd: 'MSG <unit> <text>', desc: 'Send message to unit' },
-                    { cmd: 'BOLO <text>', desc: 'Broadcast BOLO alert' },
-                    { cmd: 'RUN <name/plate>', desc: 'Quick records search' },
-                    { cmd: 'HELP', desc: 'List all available commands' },
-                  ].map((c) => (
+                  {CAD_COMMANDS.map((c) => (
                     <div key={c.cmd} className="flex items-center gap-3">
                       <code className="text-[10px] font-mono text-rmpg-200 w-48 flex-shrink-0">{c.cmd}</code>
                       <span className="text-[10px] text-rmpg-400">{c.desc}</span>
@@ -621,20 +909,19 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* FAQ */}
-          {activeSection === 'faq' && (
+          {!search && activeSection === 'faq' && (
             <>
               <PanelTitleBar title="FREQUENTLY ASKED QUESTIONS" icon={HelpCircle} />
               <div className="space-y-1">
                 {FAQ_ITEMS.map((faq, idx) => (
                   <div
                     key={idx}
-                    style={{ background: '#141414', border: '1px solid #222222' }}
+                    style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                   >
                     <button
                       type="button"
-                      onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
-                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-[#1a1a1a] transition-colors"
+                      onClick={() => handleToggleFaq(idx)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-raised transition-colors"
                     >
                       <span className="text-[11px] font-medium text-rmpg-200">{faq.question}</span>
                       <ChevronRight
@@ -643,7 +930,7 @@ export default function HelpPage() {
                       />
                     </button>
                     {expandedFaq === idx && (
-                      <div className="px-4 pb-3" style={{ borderTop: '1px solid #1a1a1a' }}>
+                      <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                         <p className="text-[10px] text-rmpg-400 leading-relaxed pt-2">{faq.answer}</p>
                       </div>
                     )}
@@ -653,36 +940,49 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* SYSTEM INFO */}
-          {activeSection === 'system' && (
+          {!search && activeSection === 'system' && (
             <>
               <PanelTitleBar title="SYSTEM INFORMATION" icon={Settings} />
-              <div className="p-4 space-y-3" style={{ background: '#141414', border: '1px solid #222222' }}>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                  {[
-                    { label: 'Application', value: 'RMPG Flex' },
-                    { label: 'Version', value: APP_VERSION },
-                    { label: 'Platform', value: 'Web / Electron / Capacitor' },
-                    { label: 'Frontend', value: 'React + TypeScript + Vite' },
-                    { label: 'Backend', value: 'Express + SQLite' },
-                    { label: 'Real-time', value: 'WebSocket' },
-                    { label: 'Maps', value: 'Mapbox GL JS' },
-                    { label: 'Auth', value: 'JWT + WebAuthn + TOTP 2FA' },
-                    ...(healthData ? [
-                      { label: 'Server Version', value: healthData.version || 'N/A' },
-                      { label: 'Server Status', value: healthData.status || 'N/A' },
-                    ] : []),
-                  ].map((row) => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-[10px] text-rmpg-500 uppercase">{row.label}</span>
-                      <span className="text-[10px] font-mono text-rmpg-200">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
+                {healthLoading ? (
+                  <p className="text-[10px] text-rmpg-500">Loading system info…</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                    {[
+                      { label: 'Application', value: 'RMPG Flex' },
+                      { label: 'Client Version', value: APP_VERSION },
+                      { label: 'Platform', value: 'Web / Electron / Capacitor' },
+                      { label: 'Frontend', value: 'React + TypeScript + Vite' },
+                      // Backend is Cloudflare-era now — the old VPS Express + SQLite
+                      // stack was decommissioned 2026-06-15.
+                      { label: 'Backend', value: 'Cloudflare Workers + Hono' },
+                      { label: 'Database', value: 'Cloudflare D1 (rmpg-flex)' },
+                      { label: 'Storage', value: 'Cloudflare R2 + KV' },
+                      { label: 'Real-time', value: 'Durable Objects + WebSocket' },
+                      { label: 'Maps', value: 'Mapbox GL JS' },
+                      { label: 'Auth', value: 'JWT (TOTP/WebAuthn not yet ported)' },
+                      ...(healthData ? [
+                        { label: 'Server Version', value: healthData.version || 'N/A' },
+                        { label: 'Server Status', value: healthData.status || 'N/A' },
+                        ...(healthData.db ? [
+                          { label: 'DB Schema', value: healthData.db.version || 'unknown' },
+                          { label: 'DB Users', value: healthData.db.users != null ? String(healthData.db.users) : 'N/A' },
+                        ] : []),
+                      ] : [
+                        { label: 'Server Status', value: 'unreachable' },
+                      ]),
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center justify-between">
+                        <span className="text-[10px] text-rmpg-500 uppercase">{row.label}</span>
+                        <span className="text-[10px] font-mono text-rmpg-200">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <PanelTitleBar title="BROWSER COMPATIBILITY" icon={Monitor} />
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <div className="space-y-1.5">
                   {[
                     { browser: 'Chrome / Edge', version: '90+', status: 'Full support' },
@@ -701,7 +1001,7 @@ export default function HelpPage() {
               </div>
 
               <PanelTitleBar title="CONTACT & SUPPORT" icon={Shield} />
-              <div className="p-4" style={{ background: '#141414', border: '1px solid #222222' }}>
+              <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <p className="text-[10px] text-rmpg-400 leading-relaxed">
                   For technical issues, contact your system administrator. For application bugs, use the{' '}
                   <strong className="text-rmpg-200">Help → Report a Problem</strong> menu item.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface SafetyZone {
@@ -126,7 +127,7 @@ export function useMapSafetyZones(
       const isHigh = p.isHigh as boolean;
       const color = isHigh ? '#dc2626' : '#f59e0b';
       const riskLabel = isHigh ? 'HIGH' : 'MODERATE';
-      const lastDate = p.last_incident ? new Date(p.last_incident as string).toLocaleDateString() : 'Unknown';
+      const lastDate = p.last_incident ? parseTimestamp(p.last_incident as string).toLocaleDateString() : 'Unknown';
 
       const html = `
         <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">

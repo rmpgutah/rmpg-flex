@@ -2,8 +2,11 @@
 // Fetches from /api/dispatch/history-map and renders as color-coded dots on the map.
 // Essential for identifying call patterns, repeat locations, and response patterns.
 import { useCallback, useState, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface HistoryCall {
   id: number;
@@ -51,10 +54,10 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     visibleRef.current = false;
     try {
       [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
       [CIRCLE_SOURCE_ID, LABEL_SOURCE_ID].forEach((id) => {
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveSource(map, id);
       });
     } catch { /* ignore */ }
   }, [map]);
@@ -64,7 +67,7 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     visibleRef.current = true;
 
     const features: GeoJSON.Feature[] = historyCalls.map((c) => {
-      const ageHours = (Date.now() - new Date(c.created_at).getTime()) / 3600000;
+      const ageHours = (Date.now() - parseTimestamp(c.created_at).getTime()) / 3600000;
       return {
         type: 'Feature',
         properties: {
@@ -121,9 +124,9 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       setCalls(calls);
       setTotal(calls.length);
 
-      if (map.loaded()) {
+      whenStyleReady(map, () => {
         renderOnMap(calls, map);
-      }
+      });
     } catch (err) {
       console.warn('[useMapboxHistoryCalls] fetch failed:', err);
     } finally {

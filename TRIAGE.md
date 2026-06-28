@@ -244,3 +244,54 @@ Highlights, grouped:
 | PR #667 | open, not merged | both worker code fix and proxy stubs land on merge |
 
 **The asymmetry matters:** all D1 schema fixes are live, all code fixes are pending merge.
+
+---
+
+# Addendum 4 — 2026-05-27 ~15:15 UTC — Post-merge typecheck regression wedged 5 deploys
+
+PR #667 merged at 15:10:41 UTC. The next five `deploy.yml` runs (commits 5df02df8, c95ea1eb, 40cabd51, f66871a9, 870acc35 — i.e. #667 + #669 + #672 + #670 + #666 all reaching main in rapid succession) **all FAILED** at the Worker TypeScript check step, blocking `wrangler deploy`. **Production stayed broken on the 100-col cap** for ~15 minutes longer than necessary because the fix was in source but never shipped.
+
+## Root cause: textual auto-merge collision in `src/routesConfig.ts`
+
+GitHub's "Update branch" button on PR #667 ran a line-based auto-merge against current main. Both sides had independently added the same imports (fleet/hr/reports) — my branch put them at lines 75/82/89, the parallel PRs (#674 fleet, #679 hr, #671 reports) had added them in their own merge-base context that placed them at lines ~112/116/118. The auto-merge has no concept of TypeScript identifiers, so it accepted both blocks as non-conflicting and produced:
+
+```
+src/routesConfig.ts:75   import fleet from './routes/fleet';   ← block 1
+src/routesConfig.ts:82   import hr from './routes/hr';
+src/routesConfig.ts:89   import reports from './routes/reports';
+…
+src/routesConfig.ts:112  import fleet from './routes/fleet';   ← block 2 (DUPE)
+src/routesConfig.ts:116  import reports from './routes/reports';
+src/routesConfig.ts:118  import hr from './routes/hr';
+```
+
+No conflict markers. No flag in the merge UI. The duplicates only surface when tsc runs.
+
+Two unrelated half-finished refactors in main amplified the failure:
+- `src/routesConfig.ts:248` registered `{ router: skiptracer, ... }` but the corresponding `import skiptracer from './routes/skiptracer';` was missing at the top of the file (some earlier PR added the registration line in a separate commit from the import line).
+- `src/routes/dispatch/callLinks.ts:16` imported `LIST_VIEW_SELECT_C` from `./calls`, a typo'd symbol — the real symbol was `LIST_VIEW_SELECT` and it wasn't `export`ed anyway. Likely a half-finished rename in a parallel PR that nothing else in main exercised, so tsc had been silently failing on this file long before #667 merged. PR #667's other changes triggered fresh CI runs that surfaced it.
+
+## Fix: PR #686
+
+- Dropped the duplicate fleet/hr/reports import block (kept howen + offenderRegistry which were genuine new additions in the second block).
+- Added the missing `import skiptracer from './routes/skiptracer';`.
+- Exported `LIST_VIEW_SELECT` from `src/routes/dispatch/calls.ts`.
+- Renamed callLinks.ts's import from `LIST_VIEW_SELECT_C` → `LIST_VIEW_SELECT`.
+
+Three files, +7/-9 lines. `npm run typecheck` passes. Once #686 merges, deploy.yml unblocks and the accumulated unshipped fixes (column cap projection, proxy stubs, run-card ext writes, neutralized 0014 ALTERs) all reach prod in the next wrangler deploy.
+
+## Lessons memorialized
+
+- New memory: `feedback-routes-config-merge-collision.md` — defends against this specific anti-pattern in future sessions (always re-run typecheck after merge/Update branch; grep for duplicate imports before merging routesConfig.ts changes).
+- The deploy gate working as designed (refusing to ship broken code) is what kept this recoverable — a `continue-on-error: true` on the typecheck step would have shipped a Worker that fails at startup. Don't propose adding one.
+
+## Verification after PR #686 merges
+
+```bash
+# Should see "Run Wrangler" step succeed in deploy.yml run
+curl -sI https://rmpgutah.us/api/dispatch/queue   # expect 200 (or 401 if no auth), NOT 500
+curl -sI https://rmpgutah.us/api/dispatch/calls?limit=200   # same
+
+# Then re-enable run cards (was deactivated in Addendum 2):
+# wrangler d1 execute rmpg-flex-db --remote --command 'UPDATE dispatch_run_cards SET active = 1;'
+```
