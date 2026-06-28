@@ -55,7 +55,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
           if (onPanic) { onPanic(); return; }
           if (confirm('TRIGGER PANIC ALERT?')) {
             const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+              navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
             ).catch(() => null);
             await apiFetch('/dispatch/panic', {
               method: 'POST',
@@ -71,7 +71,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
           break;
         case 'backup':
           const bPos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
           ).catch(() => null);
           await apiFetch('/dispatch/request-backup', {
             method: 'POST',

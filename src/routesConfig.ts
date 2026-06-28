@@ -110,7 +110,6 @@ import analytics from './routes/analytics';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
-import drivingEvents from './routes/drivingEvents';
 import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
@@ -458,10 +457,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
-  { prefix: '/api/analytics', router: analytics, auth: 'required',
-    note: 'R2 Data Catalog (Iceberg) analytics over R2 SQL: ALPR plate history + summary + raw query. 503s until the ANALYTICS pipeline + R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN are provisioned.' },
-  { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
-    note: 'In-video redaction custody store: persist client-redacted MP4 to R2 + video_redactions chain-of-custody row' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',
@@ -626,11 +621,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
-  // Full-trip dashcam footage requests + custody + court-package (FlexCamPage).
-  // The router declares its own requireRole gates for privileged ops (unlock).
-  { prefix: '/api/flexcam', router: flexcam, auth: 'required',
-    note: 'Full-trip dashcam footage: /footage, /footage/:id/custody, /footage/:id/court-package, /request. Mount was dropped in a squash merge — page was fully 404.' },
-  { prefix: '/api/driving-events', router: drivingEvents, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
   { prefix: '/api/servemanager', router: stubs, auth: 'required' },

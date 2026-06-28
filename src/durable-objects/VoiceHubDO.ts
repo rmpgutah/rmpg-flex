@@ -474,19 +474,6 @@ export class VoiceHubDO {
     }
     if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable && !safetyEscalated) return;
 
-    // 3-bis. 10-9 (say again) on LOW CONFIDENCE — if dispatch isn't sure what
-    // the unit said, never act on a guess. Suppress any lookup/CAD write the
-    // model proposed and replace the reply with a readback of what dispatch
-    // heard, asking the unit to confirm/repeat. Skipped on a safety escalation:
-    // a clear emergency is answered urgently, not re-queried.
-    if (decision && decision.confidence === 'low' && !safetyEscalated) {
-      decision.lookup = undefined;
-      decision.action = undefined;
-      if (!/\b(10-9|say again)\b/i.test(decision.reply)) {
-        decision.reply = sayAgainReadback(speaker?.unit_label ?? null, transcript);
-      }
-    }
-
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
     let replyText = decision?.reply ?? '';

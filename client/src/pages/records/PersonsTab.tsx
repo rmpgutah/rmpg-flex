@@ -158,6 +158,37 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     watchlist_checked_at: row.watchlist_checked_at ? String(row.watchlist_checked_at) : null,
     flags: parseFlags(row.flags),
     notes: row.notes ? String(row.notes) : undefined,
+    // Extended identification fields
+    ncic_number: row.ncic_number ? String(row.ncic_number) : undefined,
+    sor_number: row.sor_number ? String(row.sor_number) : undefined,
+    fbi_number: row.fbi_number ? String(row.fbi_number) : undefined,
+    state_id_number: row.state_id_number ? String(row.state_id_number) : undefined,
+    passport_number: row.passport_number ? String(row.passport_number) : undefined,
+    passport_country: row.passport_country ? String(row.passport_country) : undefined,
+    // Law enforcement / medical fields
+    immigration_status: row.immigration_status ? String(row.immigration_status) : undefined,
+    disability_flags: row.disability_flags ? String(row.disability_flags) : undefined,
+    mental_health_flags: row.mental_health_flags ? String(row.mental_health_flags) : undefined,
+    substance_abuse: row.substance_abuse ? String(row.substance_abuse) : undefined,
+    medication_notes: row.medication_notes ? String(row.medication_notes) : undefined,
+    education_level: row.education_level ? String(row.education_level) : undefined,
+    military_branch: row.military_branch ? String(row.military_branch) : undefined,
+    military_status: row.military_status ? String(row.military_status) : undefined,
+    tribal_affiliation: row.tribal_affiliation ? String(row.tribal_affiliation) : undefined,
+    // Physical description extended
+    identifying_marks_location: row.identifying_marks_location ? String(row.identifying_marks_location) : undefined,
+    tattoo_description: row.tattoo_description ? String(row.tattoo_description) : undefined,
+    scar_description: row.scar_description ? String(row.scar_description) : undefined,
+    piercing_description: row.piercing_description ? String(row.piercing_description) : undefined,
+    distinguishing_features: row.distinguishing_features ? String(row.distinguishing_features) : undefined,
+    // Contact extended
+    email_secondary: row.email_secondary ? String(row.email_secondary) : undefined,
+    home_phone: row.home_phone ? String(row.home_phone) : undefined,
+    work_phone: row.work_phone ? String(row.work_phone) : undefined,
+    // Other tab
+    date_last_seen: row.date_last_seen ? String(row.date_last_seen) : undefined,
+    location_last_seen: row.location_last_seen ? String(row.location_last_seen) : undefined,
+    alias_dob: row.alias_dob ? String(row.alias_dob) : undefined,
     incident_ids: [],
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
@@ -279,6 +310,15 @@ export interface PersonsTabProps {
 }
 
 // ── Hook Return ────────────────────────────────────
+
+export interface DuplicateMatch {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  dob?: string | null;
+  address?: string | null;
+  dl_number?: string | null;
+}
 
 export interface PersonsTabState {
   // Selection
@@ -876,7 +916,8 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Person Form Modal (portals to body) */}
@@ -1047,6 +1088,21 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.scars_marks_tattoos && (
             <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
           )}
+          {selectedPerson.scar_description && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scar Details:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scar_description}</span></div>
+          )}
+          {selectedPerson.tattoo_description && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Tattoo Details:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.tattoo_description}</span></div>
+          )}
+          {selectedPerson.piercing_description && (
+            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercings:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.piercing_description}</span></div>
+          )}
+          {selectedPerson.identifying_marks_location && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Marks Location:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.identifying_marks_location}</span></div>
+          )}
+          {selectedPerson.distinguishing_features && (
+            <div className="mt-1"><span className="text-[10px] text-amber-400 uppercase font-semibold">Distinguishing Features:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.distinguishing_features}</span></div>
+          )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
@@ -1162,6 +1218,26 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     )}
                   </div>
                 )}
+              {/* ── Law Enforcement IDs ── */}
+              {(selectedPerson.ncic_number || selectedPerson.sor_number || selectedPerson.fbi_number || selectedPerson.state_id_number) && (
+                <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                    {selectedPerson.ncic_number && <div><span className="text-rmpg-400">NCIC #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.ncic_number}</span></div>}
+                    {selectedPerson.fbi_number && <div><span className="text-rmpg-400">FBI #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.fbi_number}</span></div>}
+                    {selectedPerson.state_id_number && <div><span className="text-rmpg-400">State ID #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.state_id_number}</span></div>}
+                    {selectedPerson.sor_number && <div><span className="text-rmpg-400">SOR #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.sor_number}</span></div>}
+                  </div>
+                </div>
+              )}
+              {/* ── Passport ── */}
+              {(selectedPerson.passport_number || selectedPerson.passport_country) && (
+                <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                    {selectedPerson.passport_number && <div><span className="text-rmpg-400">Passport #:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.passport_number}</span></div>}
+                    {selectedPerson.passport_country && <div><span className="text-rmpg-400">Country:</span> <span className="text-rmpg-200">{selectedPerson.passport_country}</span></div>}
+                  </div>
+                </div>
+              )}
               </div>
             </div>
           ) : (
@@ -1190,6 +1266,43 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
               {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}
             </FieldGrid>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Immigration & Demographics ───────────── */}
+        {(selectedPerson.immigration_status || selectedPerson.passport_number || selectedPerson.passport_country) && (
+          <CollapsibleSection title="Immigration & Travel" icon={Shield}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Immigration Status', selectedPerson.immigration_status)}
+              {renderInfoRow('Passport #', selectedPerson.passport_number)}
+              {renderInfoRow('Passport Country', selectedPerson.passport_country)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Health & Medical (conditional) ────────── */}
+        {(selectedPerson.disability_flags || selectedPerson.mental_health_flags || selectedPerson.substance_abuse || selectedPerson.medication_notes) && (
+          <CollapsibleSection title="Health & Medical" icon={AlertTriangle}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Disabilities', selectedPerson.disability_flags)}
+              {renderInfoRow('Mental Health', selectedPerson.mental_health_flags)}
+              {renderInfoRow('Substance Abuse', selectedPerson.substance_abuse)}
+            </div>
+            {selectedPerson.medication_notes && (
+              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.medication_notes}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Education & Military (conditional) ───── */}
+        {(selectedPerson.education_level || selectedPerson.military_branch || selectedPerson.military_status || selectedPerson.tribal_affiliation) && (
+          <CollapsibleSection title="Education & Military" icon={Shield}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {renderInfoRow('Education', selectedPerson.education_level)}
+              {renderInfoRow('Military Branch', selectedPerson.military_branch)}
+              {renderInfoRow('Military Status', selectedPerson.military_status)}
+              {renderInfoRow('Tribal Affiliation', selectedPerson.tribal_affiliation)}
+            </div>
           </CollapsibleSection>
         )}
 

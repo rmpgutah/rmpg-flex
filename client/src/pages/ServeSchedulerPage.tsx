@@ -82,7 +82,6 @@ export default function ServeSchedulerPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
   const { addToast } = useToast();
 
   const refetch = useCallback(async () => {
@@ -177,7 +176,49 @@ export default function ServeSchedulerPage() {
     }
   }, [refetch, addToast]);
 
-  // ── Timeline area: 3-state (loading / empty / data) ──
+  // ── ConfirmDialog: dismiss slot (DELETE /schedule/:slotId) ─────────────────
+  const handleConfirmDismiss = useCallback(async (slot: ScheduleSlot) => {
+    setConfirmLoading(true);
+    try {
+      await apiFetch(`/serve-intake/schedule/${slot.id}`, { method: 'DELETE' });
+      setSlots((prev) => prev.filter((s) => s.id !== slot.id));
+      addToast('Slot dismissed', 'success');
+      setPendingAction(null);
+    } catch (e) {
+      addToast(`Could not dismiss slot: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [addToast]);
+
+  // ── ConfirmDialog: unassign slot (PATCH officer_id→null) ───────────────────
+  const handleConfirmUnassign = useCallback(async (slot: ScheduleSlot) => {
+    setConfirmLoading(true);
+    try {
+      await apiFetch(`/serve-intake/schedule/${slot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ officer_id: null }),
+      });
+      setSlots((prev) => prev.map((s) =>
+        s.id === slot.id ? { ...s, officer_id: null } : s,
+      ));
+      addToast('Slot unassigned', 'success');
+      setPendingAction(null);
+    } catch (e) {
+      addToast(`Could not unassign slot: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [addToast]);
+
+  const handleConfirm = useCallback(() => {
+    if (!pendingAction) return;
+    if (pendingAction.type === 'dismiss') return void handleConfirmDismiss(pendingAction.slot);
+    if (pendingAction.type === 'unassign') return void handleConfirmUnassign(pendingAction.slot);
+  }, [pendingAction, handleConfirmDismiss, handleConfirmUnassign]);
+
+  // ── Timeline area: loading / error / empty / data ─────────────────────────
   const renderTimeline = () => {
     if (loading) {
       return (

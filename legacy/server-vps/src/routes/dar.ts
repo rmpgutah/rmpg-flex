@@ -173,7 +173,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
     if (calls.length > 0) {
       const typeCounts: Record<string, number> = {};
       for (const c of calls) {
-        const t = (c.incident_type || 'other').replace(/_/g, ' ');
+        const t = (c.incident_type || 'other').replace(/_/g, ' ').toUpperCase();
         typeCounts[t] = (typeCounts[t] || 0) + 1;
       }
       const typeList = Object.entries(typeCounts)
