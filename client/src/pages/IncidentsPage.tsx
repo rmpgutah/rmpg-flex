@@ -254,6 +254,7 @@ function isIncidentOfficerLinked(detailOfficers: any[], officerId: string): bool
 
 export default function IncidentsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isManager = user?.role === 'manager';
@@ -510,6 +511,19 @@ export default function IncidentsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents]);
+
+  // Auto-select incident when navigated from dispatch linked incidents
+  useEffect(() => {
+    const selectId = (location.state as any)?.selectIncidentId;
+    if (selectId && incidents.length > 0) {
+      const found = incidents.find((i) => i.id === selectId);
+      if (found) {
+        setSelectedIncident(found);
+        // Clear the state so it doesn't re-select on every render
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [incidents, location.state]);
 
   // Fetch full incident detail (linked persons, vehicles, evidence, offenses, officers, links) when selected
   const fetchIncidentDetail = useCallback(async (incidentId: string) => {
@@ -1449,6 +1463,17 @@ export default function IncidentsPage() {
           title="Open in new window"
         >
           <ExternalLink className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const subj = `Incident #${selectedIncident.incident_number}`;
+            window.location.href = `/email?compose=1&subject=${encodeURIComponent(subj)}`;
+          }}
+          className="px-2 py-0.5 text-[10px] border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500"
+          title="Compose email referencing this incident (auto-linked on send)"
+        >
+          EMAIL ABOUT THIS
         </button>
         <ReportTypeSelector
             incidentType={selectedIncident.type}

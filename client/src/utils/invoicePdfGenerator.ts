@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { getAgencyName } from './brandConfig';
 import {
   hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
   addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
@@ -107,7 +108,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   // ── NIBRS-style Header ───────────────────────────────
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'INVOICE',
     formNumber: FORM_NUMBERS.invoice || 'FORM PS-301',
     caseNumber: data.invoice_number,
@@ -162,7 +163,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
       const drawItemHeaders = (atY: number): number => {
         doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
         doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, 6, 'F');
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('courier', 'bold');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
         // Luminance check: use dark text on light backgrounds, white on dark
         const hdrLum = headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114;
