@@ -4,10 +4,6 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import QuickCapturePage from '../QuickCapturePage';
 import { ToastProvider } from '../../components/ToastProvider';
 
-vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ user: { role: 'officer', full_name: 'Test Officer', username: 'testofficer' } }),
-}));
-
 vi.mock('../../hooks/useApi', () => ({
   apiFetch: vi.fn(async (path: string) => {
     if (path.startsWith('/intel/quick-capture')) {
@@ -40,7 +36,7 @@ describe('QuickCapturePage', () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Smith' } });
     fireEvent.click(screen.getByText('CAPTURE + CHECK'));
-    await waitFor(() => expect(screen.getAllByText(/Active warrant W-4/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText(/Active warrant W-4/)).toBeInTheDocument());
     expect(screen.getByText(/Open dossier/)).toBeInTheDocument();
   });
 
@@ -61,13 +57,12 @@ describe('QuickCapturePage', () => {
     expect(document.activeElement).toBe(screen.getByPlaceholderText('First name'));
   });
 
-  it('Esc with typed content opens discard confirm dialog', async () => {
+  it('Esc clears typed-but-unsaved form', () => {
     renderPage();
     const last = screen.getByPlaceholderText('Last name') as HTMLInputElement;
     fireEvent.change(last, { target: { value: 'Smith' } });
     expect(last.value).toBe('Smith');
     fireEvent.keyDown(window, { key: 'Escape' });
-    // Esc now opens the ConfirmDialog instead of clearing immediately.
-    expect(await screen.findByText('Discard capture?')).toBeInTheDocument();
+    expect((screen.getByPlaceholderText('Last name') as HTMLInputElement).value).toBe('');
   });
 });

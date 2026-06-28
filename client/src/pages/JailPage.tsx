@@ -67,7 +67,6 @@ function fmtRelativeAge(iso: string | undefined | null): string | null {
 export default function JailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
   const [searchParams, setSearchParams] = useSearchParams();
   const [inmates, setInmates] = useState<Inmate[]>([]);

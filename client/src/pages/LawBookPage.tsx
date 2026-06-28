@@ -52,15 +52,15 @@ interface CatMeta { label: string; short: string; blurb: string; icon: LucideIco
 // title automatically surfaces here without further UI work.
 const CATEGORY_META: Record<string, CatMeta> = {
   criminal:      { label: 'Criminal Code',          short: 'Criminal',   blurb: 'Title 76 — offenses against persons, property, government & public order',          icon: Gavel,       accent: 'var(--sev-critical)' },
-  fraud:         { label: 'Fraud',                  short: 'Fraud',      blurb: 'Title 25 — Statute of Frauds, fraudulent transfers & related fraud law',           icon: Banknote,    accent: 'var(--sev-special)' },
+  fraud:         { label: 'Fraud',                  short: 'Fraud',      blurb: 'Title 25 — Statute of Frauds, fraudulent transfers & related fraud law',           icon: Banknote,    accent: '#db2777' },
   procedure:     { label: 'Criminal Procedure',     short: 'Procedure',  blurb: 'Title 77 — arrest, search & seizure, warrants, evidence & trial process',          icon: Scale,       accent: 'var(--brand-gold)' },
-  vehicle:       { label: 'Motor Vehicle & Traffic',short: 'Vehicle',    blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing',                icon: Car,         accent: 'var(--sev-high)' },
+  vehicle:       { label: 'Motor Vehicle & Traffic',short: 'Vehicle',    blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing',                icon: Car,         accent: '#fb923c' },
   controlled:    { label: 'Controlled Substances',  short: 'Drugs',      blurb: 'Title 58 ch 37 — schedules, possession, distribution & paraphernalia',             icon: Pill,        accent: 'var(--sev-warn)' },
   public_safety: { label: 'Public Safety',          short: 'Pub Safety', blurb: 'Title 53 — peace officer standards (POST), highway patrol & emergency management',  icon: ShieldAlert, accent: 'var(--sev-ok)' },
-  juvenile:      { label: 'Juvenile Justice',       short: 'Juvenile',   blurb: 'Title 80 — juvenile court, delinquency, custody & child welfare',                   icon: Users,       accent: 'var(--sev-ok-soft)' },
-  wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: 'var(--sev-ok)' },
-  alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: 'var(--sev-warn)' },
-  protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: 'var(--sev-critical)' },
+  juvenile:      { label: 'Juvenile Justice',       short: 'Juvenile',   blurb: 'Title 80 — juvenile court, delinquency, custody & child welfare',                   icon: Users,       accent: '#a3e635' },
+  wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
+  alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
+  protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
   licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
@@ -72,11 +72,11 @@ function getCatMeta(cat: string): CatMeta {
 const LEVELS: { key: string; short: string; dot: string }[] = [
   { key: 'capital_felony', short: 'Capital', dot: 'var(--sev-critical)' },
   { key: 'first_degree_felony', short: '1° Felony', dot: 'var(--sev-critical)' },
-  { key: 'second_degree_felony', short: '2° Felony', dot: 'var(--sev-critical-soft)' },
-  { key: 'third_degree_felony', short: '3° Felony', dot: 'var(--sev-high)' },
+  { key: 'second_degree_felony', short: '2° Felony', dot: '#f87171' },
+  { key: 'third_degree_felony', short: '3° Felony', dot: '#fb923c' },
   { key: 'class_a_misdemeanor', short: 'Class A', dot: 'var(--sev-warn-soft)' },
   { key: 'class_b_misdemeanor', short: 'Class B', dot: 'var(--sev-caution)' },
-  { key: 'class_c_misdemeanor', short: 'Class C', dot: 'var(--sev-caution)' },
+  { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
   { key: 'infraction', short: 'Infraction', dot: 'var(--rmpg-400)' },
 ];
 
@@ -168,6 +168,53 @@ function pushRecentStatute(userId: string | undefined, s: StatuteResult): Recent
   } catch { return getRecentStatutes(userId); }
 }
 
+// Offense-level filter chips, ordered most→least severe, color-coded.
+const LEVELS: { key: string; short: string; dot: string }[] = [
+  { key: 'capital_felony', short: 'Capital', dot: '#dc2626' },
+  { key: 'first_degree_felony', short: '1° Felony', dot: '#ef4444' },
+  { key: 'second_degree_felony', short: '2° Felony', dot: '#f87171' },
+  { key: 'third_degree_felony', short: '3° Felony', dot: '#fb923c' },
+  { key: 'class_a_misdemeanor', short: 'Class A', dot: '#fbbf24' },
+  { key: 'class_b_misdemeanor', short: 'Class B', dot: '#facc15' },
+  { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
+  { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
+];
+
+// Indent depth for a statutory line, from its leading (1)/(a)/(i)/(A) marker.
+function lineDepth(line: string): number {
+  const m = line.match(/^\(([0-9a-zA-Z]{1,4})\)/);
+  if (!m) return -1; // continuation / prose
+  const tok = m[1];
+  if (/^\d+$/.test(tok)) return 0;
+  if (/^[ivxl]{2,}$/.test(tok)) return 2;      // roman numerals (ii, iii, iv…)
+  if (/^[A-Z]+$/.test(tok)) return 3;          // (A), (B)…
+  if (/^[a-z]$/.test(tok)) return 1;           // single letter (a)…
+  if (/^[ivxl]$/.test(tok)) return 2;          // lone roman (i)
+  return 1;
+}
+
+function StatuteBody({ text }: { text: string }) {
+  const lines = text.split('\n').filter((l) => l.trim());
+  let last = 0;
+  return (
+    <div className="space-y-1" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+      {lines.map((ln, i) => {
+        let d = lineDepth(ln);
+        if (d < 0) d = last; else last = d;
+        const marker = ln.match(/^(\([0-9a-zA-Z]{1,4}\)(\s*\([0-9a-zA-Z]{1,4}\))*)\s*/);
+        const head = marker ? marker[1] : '';
+        const rest = marker ? ln.slice(marker[0].length) : ln;
+        return (
+          <p key={i} className="text-[12.5px] text-rmpg-100 leading-relaxed" style={{ paddingLeft: d * 18 }}>
+            {head && <span className="font-mono text-brand-gold-500 mr-1.5">{head}</span>}
+            {rest}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function LawBookPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -190,9 +237,6 @@ export default function LawBookPage() {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // ConfirmDialog: gate clearing recent statute history.
-  const [clearRecentConfirm, setClearRecentConfirm] = useState(false);
 
   // Recent statutes — hydrated on mount + bumped every time an operator opens
   // a section in the reader. Per-user so a shared workstation doesn't bleed
@@ -353,57 +397,31 @@ export default function LawBookPage() {
   const resetToBrowse = () => { setChapter(null); setResults(null); setQuery(''); setLevel(null); setOpenSection(null); };
 
   // ── Keyboard shortcuts ──
-  // N or / focuses the search input (gated to any authenticated user).
-  // Esc smart-cascade — close smallest-open-first with stopPropagation per branch:
-  //   1. clearRecentConfirm dialog   → close it
-  //   2. open section in reader      → close it (keep chapter / search visible)
-  //   3. active search               → clear it
-  //   4. open chapter (no search)    → return to browse landing
+  // `/` focuses the search input (when not already in a field).
+  // Esc smart-cascade — close smallest-open-first:
+  //   1. open section in reader      → close it (keep chapter / search visible)
+  //   2. active search                → clear it
+  //   3. open chapter (no search)     → return to browse landing
+  // Disabled while the operator is typing in an input so Esc keeps native
+  // form-clear semantics inside the search box.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inField = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
 
-      if (e.key === 'Escape') {
-        if (clearRecentConfirm) {
-          e.stopPropagation();
-          setClearRecentConfirm(false);
-          return;
-        }
-        if (openSection) {
-          e.stopPropagation();
-          setOpenSection(null);
-          return;
-        }
-        if (results !== null || query) {
-          e.stopPropagation();
-          e.preventDefault();
-          setResults(null); setQuery(''); setLevel(null);
-          return;
-        }
-        if (chapter) {
-          e.stopPropagation();
-          resetToBrowse();
-          return;
-        }
+      if (e.key === '/' && !inField) {
+        e.preventDefault();
+        e.stopPropagation();
+        searchInputRef.current?.focus();
         return;
       }
 
+      if (e.key !== 'Escape') return;
       if (inField) return;
-
-      // / legacy shortcut — focus search input.
-      if (e.key === '/') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        return;
-      }
-
-      // N — focus the search input (any authenticated user).
-      if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && user) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        return;
-      }
+      e.stopPropagation();
+      if (openSection) { setOpenSection(null); return; }
+      if (results !== null || query) { setResults(null); setQuery(''); setLevel(null); return; }
+      if (chapter) { resetToBrowse(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -487,7 +505,7 @@ export default function LawBookPage() {
               ref={searchInputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"… (press N or / to focus)'
+              placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"… (press / to focus)'
               className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500"
               style={{ borderRadius: 2 }}
             />
@@ -603,7 +621,7 @@ export default function LawBookPage() {
                     <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Recent Statutes</span>
                     <span className="text-[9px] font-mono text-rmpg-600 ml-1">{recent.length}</span>
                     {canManage && (
-                      <button type="button" onClick={() => setClearRecentConfirm(true)}
+                      <button type="button" onClick={() => { try { localStorage.removeItem(recentKey(user?.id)); } catch { /* ignore */ } setRecent([]); }}
                         className="ml-auto text-[9px] uppercase tracking-wider text-rmpg-500 hover:text-rmpg-200"
                         aria-label="Clear recent statutes">
                         Clear
@@ -661,22 +679,19 @@ export default function LawBookPage() {
             /* Loading: chapter requested, waiting for sections */
             <div className="p-6 text-center"><Loader2 className="w-5 h-5 text-brand-gold-500 animate-spin inline" /></div>
           ) : visibleSections.length === 0 ? (
-            /* Empty states: loading spinner / no-results / empty-chapter all distinct */
-            <div className="p-6 text-center space-y-1">
-              <Scale className="w-5 h-5 text-rmpg-700 mx-auto" />
-              <div className="text-[10px] text-rmpg-500 uppercase tracking-wider">
-                {showingSearch
-                  ? searching
-                    ? null  /* spinner shown in search field while debounce runs */
-                    : (query.trim() && level
-                        ? `No statutes match "${query.trim()}" at this severity`
-                        : query.trim()
-                          ? `No statutes match "${query.trim()}"`
-                          : 'No statutes at this severity')
-                  : level
-                    ? 'No sections at this severity in this chapter'
-                    : 'This chapter has no sections'}
-              </div>
+            /* Empty states: distinguish no-results from filtered-empty */
+            <div className="p-6 text-[10px] text-rmpg-500 text-center uppercase tracking-wider">
+              {showingSearch
+                ? searching
+                  ? null  /* spinner shown in search field while debounce runs */
+                  : (query.trim() && level
+                      ? `No statutes match "${query.trim()}" at this severity`
+                      : query.trim()
+                        ? `No statutes match "${query.trim()}"`
+                        : 'No statutes at this severity')
+                : level
+                  ? 'No sections at this severity in this chapter'
+                  : 'This chapter has no sections'}
             </div>
           ) : (
             <div className="divide-y divide-rmpg-900">
