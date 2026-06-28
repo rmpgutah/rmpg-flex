@@ -25,7 +25,21 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { broadcastAll } from './ws';
+import { verifySignedResource } from '../utils/signedAccess';
+import {
+  ocrImage,
+  ocrExtractStructured,
+  lookupFromOcr,
+  decideDispatcherReply,
+  phraseLookupReply,
+  synthesizeDispatcherVoice,
+  bytesToBase64,
+  type DispatcherTurn,
+} from '../utils/aiDispatcher';
+import { gatherAwareness, runLookup, runAction, VERBATIM_LOOKUPS } from '../utils/dispatcherAwareness';
+import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
+import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
+import type { Bindings } from '../types';
 
 const rt = new Hono<Env>();
 
@@ -84,7 +98,6 @@ rt.post('/channels', async (c) => {
   const id = Number(result.meta.last_row_id);
   // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_created', channel });
   return c.json({ success: true, id });
 });
 
@@ -104,7 +117,6 @@ rt.patch('/channels/:id', async (c) => {
   const db = getDb(c.env);
   await execute(db, `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_updated', channel });
   return c.json({ success: true });
 });
 
@@ -119,7 +131,6 @@ rt.delete('/channels/:id', async (c) => {
     "UPDATE radio_channels SET archived_at = datetime('now') WHERE id = ? AND archived_at IS NULL",
     id,
   );
-  broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
   return c.json({ success: true });
 });
 
@@ -188,7 +199,6 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  broadcastAll('radio_update', { action: 'transmission_logged', transmission });
   return c.json({ success: true, id });
 });
 
@@ -208,6 +218,16 @@ rt.delete('/transmissions/:id', async (c) => {
 rt.get('/transmissions/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  // authMiddleware passes GET media paths through when the request carries
+  // sig/exp instead of a token — in that case no `user` is set and WE are
+  // the verification point. A JWT-authenticated request has `user` set.
+  if (!c.get('user')) {
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'radio', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!signedOk) return c.json({ error: 'Authentication required' }, 401);
+  }
   const key = `radio-audio/${id}.webm`;
 
   const rangeHeader = c.req.header('Range');
@@ -372,6 +392,294 @@ rt.get('/stats', async (c) => {
       all: totals?.all ?? 0,
     },
   });
+});
+
+// ============================================================
+// POST /dispatcher/ocr — image → dispatcher (OCR + data entry)
+// ============================================================
+// The radio relay carries audio only, so a unit who wants the dispatcher to
+// READ an image (a driver's license, a plate, a registration, a document)
+// sends it here. The dispatcher OCRs it, then runs the SAME brain the radio
+// uses — so it can read the document back, run a wants/plate check off it,
+// or file a call from it (data entry), exactly like a spoken transmission.
+//
+// multipart/form-data:
+//   image        (File, required) — the photo/scan
+//   transcript   (string, opt)    — what the unit also said ("run this guy")
+//   unit         (string, opt)    — the unit's call-sign (for grounding)
+//   channel_id   (number, opt)    — channel for the awareness snapshot
+//   speak        ("1", opt)       — also synthesize the reply audio (base64)
+//
+// Returns the OCR text, the dispatcher's spoken reply, the routed intent,
+// and any lookup/action it performed. Best-effort throughout — a model miss
+// degrades to a clear message, never a 500.
+rt.post('/dispatcher/ocr', async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  // Duck-type the upload (matches serveIntake.ts) — the Workers types here
+  // surface FormDataEntryValue as string, so cast and check for arrayBuffer.
+  const file = (form?.get('image') ?? null) as File | null;
+  if (!file || typeof file.arrayBuffer !== 'function' || file.size === 0) {
+    return c.json({ error: 'multipart field "image" (a file) is required' }, 400);
+  }
+  const image = new Uint8Array(await file.arrayBuffer());
+
+  const db = getDb(c.env);
+  const unit = (form?.get('unit') as string | null)?.trim() || null;
+
+  // 1. OCR — read AND STRUCTURE the image (doc type + runnable identifiers).
+  //    Falls back to plain-text OCR if structuring fails, so behavior never
+  //    regresses below the old endpoint.
+  const extraction = await ocrExtractStructured(c.env.AI, image).catch(() => null);
+  const ocrText = extraction?.rawText || (await ocrImage(c.env.AI, image).catch(() => null));
+  if (!ocrText) {
+    return c.json({ success: false, error: 'No legible text found in the image.' }, 200);
+  }
+
+  // 1a. AUTO-CHAIN — if the image yielded a plate / VIN / name, run THAT CAD
+  //     check now (deterministically), so the dispatcher reads the hit back in
+  //     this same turn instead of relying on the model to chain it. The result
+  //     is fed into the turn as a CAD AUTO-CHECK block (see buildUserPrompt).
+  let autoCheck: string | null = null;
+  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
+  let performed: string | null = null;
+  const autoReq = extraction ? lookupFromOcr(extraction) : null;
+  if (autoReq) {
+    const r = await runLookup(c.env as unknown as Bindings, db, autoReq, { speaker: unit }).catch(() => null);
+    if (r) {
+      autoCheck = r.text;
+      if (r.record) record = r.record;
+      performed = `auto_lookup:${autoReq.type}`;
+    }
+  }
+
+  const transcript = (form?.get('transcript') as string | null)?.trim()
+    || 'Dispatch, I am sending you an image — read it and advise.';
+  const channelIdRaw = form?.get('channel_id');
+  const channelId = channelIdRaw ? Number(channelIdRaw) : 0;
+
+  // 2. Ground the turn in the live board, exactly like the radio path.
+  const awareness = await gatherAwareness(db, channelId, unit)
+    .catch(() => 'No active CAD activity on the board.');
+  const channel = channelId
+    ? await queryFirst<{ name: string }>(db, 'SELECT name FROM radio_channels WHERE id = ?', channelId).catch(() => null)
+    : null;
+  const turn: DispatcherTurn = {
+    transcript,
+    speaker: unit,
+    channelName: channel?.name ?? null,
+    recent: [],
+    awareness,
+    ocrText,
+    autoCheck,
+  };
+
+  // Structured payload the client UI can render (doc type + extracted fields).
+  const structured = extraction
+    ? { docType: extraction.docType, fields: extraction.fields }
+    : { docType: 'unknown' as const, fields: {} };
+
+  // 3. Reason — the brain may answer, read the auto-check back, run another
+  //    lookup, or file a write.
+  const decision = await decideDispatcherReply(c.env.AI, turn);
+  if (!decision) {
+    // No model reply — but if we auto-ran a check, hand that back so the unit
+    // still gets the answer the image asked for.
+    return c.json({
+      success: true, ocrText, structured, autoCheck, record, performed,
+      reply: autoCheck ?? '', intent: autoCheck ? 'lookup_request' : 'unclear',
+      note: autoCheck ? undefined : 'Dispatcher had no reply.',
+    });
+  }
+
+  let reply = decision.reply;
+
+  if (decision.lookup) {
+    const result = await runLookup(
+      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit, channelId },
+    ).catch(() => null);
+    if (result) {
+      // Verbatim lookups (location/eta/call_status/closest_unit/say-again)
+      // already speak a complete line; record checks get re-phrased through the
+      // persona (mirrors VoiceHubDO.runDispatcher).
+      reply = VERBATIM_LOOKUPS.has(decision.lookup.type)
+        ? result.text
+        : await phraseLookupReply(c.env.AI, turn, decision.lookup, result.text);
+      if (result.record) record = result.record;
+      performed = `lookup:${decision.lookup.type}`;
+    }
+  }
+  if (decision.action) {
+    const issuer = c.get('user') as { id: number } | undefined;
+    const written = await runAction(
+      c.env as unknown as Bindings, db, decision.action,
+      { issuedBy: issuer?.id ?? null },
+    ).catch(() => null);
+    if (written) {
+      reply = written.spoken;
+      performed = written.summary;
+    } else {
+      // Honesty: a refused/failed write must not read back as success.
+      reply = decision.action.type === 'set_unit_status'
+        ? 'Unable to log that status — an unrecognized call-sign or unclear status.'
+        : decision.action.type === 'create_bolo'
+          ? 'Unable to put that BOLO out — the BOLO details are required.'
+          : 'Unable to start that call — a location and nature of the call are required.';
+      performed = `action_refused:${decision.action.type}`;
+    }
+  }
+
+  // 4. Optionally synthesize the spoken reply (Aura-2 → MP3 base64).
+  let audio: string | null = null;
+  if ((form?.get('speak') as string | null) === '1' && reply.trim()) {
+    const bytes = await synthesizeDispatcherVoice(c.env.AI, reply).catch(() => null);
+    if (bytes) audio = bytesToBase64(bytes);
+  }
+
+  return c.json({
+    success: true,
+    ocrText,
+    structured,
+    autoCheck,
+    reply,
+    intent: decision.intent,
+    lookup: decision.lookup ?? null,
+    action: decision.action ?? null,
+    record,
+    performed,
+    audio,
+  });
+});
+
+// ============================================================
+// Radio / AI-Dispatcher settings (org-wide, live)
+// ============================================================
+// GET  /settings — read the merged settings (any logged-in user; the operator
+//                  console reflects them). Also returns the defaults + option
+//                  lists so the admin UI can render without hardcoding.
+// PUT  /settings — admin/manager/supervisor only; persists a partial patch and
+//                  echoes the merged result. VoiceHubDO + aiDispatcher read
+//                  these on each dispatch, so changes are live.
+
+rt.get('/settings', async (c) => {
+  const db = getDb(c.env);
+  const settings = await getRadioSettings(db);
+  // `options` are the canonical dropdown lists — the UI renders from these so
+  // the worker stays the single source of truth for voices/tabs/etc.
+  return c.json({ settings, defaults: RADIO_SETTING_DEFAULTS, options: RADIO_SETTING_OPTIONS });
+});
+
+rt.put('/settings', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const db = getDb(c.env);
+  const patch = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!patch || typeof patch !== 'object') {
+    return c.json({ error: 'Body must be a JSON object of setting key/values' }, 400);
+  }
+
+  const settings = await setRadioSettings(db, patch);
+
+  // Keep radio_channels.is_default in sync when the default channel changes —
+  // the operator picker reads is_default, so this makes the setting real.
+  if ('default_channel_id' in patch) {
+    const id = settings.default_channel_id;
+    try {
+      await execute(db, `UPDATE radio_channels SET is_default = 0 WHERE is_default = 1`);
+      if (id != null) {
+        await execute(db, `UPDATE radio_channels SET is_default = 1 WHERE id = ?`, id);
+      }
+    } catch (err) {
+      console.warn('[radio.settings] is_default sync failed:', (err as Error)?.message);
+    }
+  }
+
+  return c.json({ settings });
+});
+
+// ============================================================
+// AI reports — incident narrative + shift summary
+// ============================================================
+// Grounded LLM writeups from real CAD data (see src/utils/aiReports.ts). Any
+// logged-in user may generate; the model only rewrites the facts it's given.
+
+// POST /ai/incident-narrative  body: { call_id } or { call_number }
+// Returns a drafted narrative for the call + the radio traffic logged during it.
+rt.post('/ai/incident-narrative', async (c) => {
+  const body = await c.req.json<{ call_id?: number; call_number?: string }>().catch(() => null);
+  const db = getDb(c.env);
+  const call = body?.call_id
+    ? await queryFirst<Record<string, unknown>>(
+        db,
+        `SELECT call_number, incident_type, priority, status, location_address, description, notes,
+                disposition, unit_call_signs, caller_name, created_at, cleared_at
+         FROM calls_for_service WHERE id = ? LIMIT 1`, body.call_id)
+    : body?.call_number
+      ? await queryFirst<Record<string, unknown>>(
+          db,
+          `SELECT call_number, incident_type, priority, status, location_address, description, notes,
+                  disposition, unit_call_signs, caller_name, created_at, cleared_at
+           FROM calls_for_service WHERE UPPER(call_number) = UPPER(?) LIMIT 1`, body.call_number)
+      : null;
+  if (!call) return c.json({ error: 'call_id or call_number required (and must exist)' }, 400);
+
+  // Radio traffic logged while the call was active (received → cleared/now).
+  const start = (call.created_at as string) || null;
+  const end = (call.cleared_at as string) || null;
+  const tx = start
+    ? await query<{ unit_label: string | null; transcript: string | null; transmitted_at: string | null }>(
+        db,
+        `SELECT unit_label, transcript, transmitted_at FROM radio_transmissions
+         WHERE transcript IS NOT NULL AND datetime(transmitted_at) >= datetime(?)
+           AND datetime(transmitted_at) <= datetime(${end ? '?' : "'now'"})
+         ORDER BY datetime(transmitted_at) ASC LIMIT 40`,
+        ...(end ? [start, end] : [start]),
+      ).catch(() => [])
+    : [];
+
+  const narrative = await generateIncidentNarrative(c.env.AI, {
+    call: call as any,
+    transmissions: tx.map((t) => ({ unit: t.unit_label, text: t.transcript || '', at: t.transmitted_at })),
+  });
+  if (!narrative) return c.json({ error: 'Narrative generation failed — try again.' }, 502);
+  return c.json({ call_number: call.call_number, narrative });
+});
+
+// GET /ai/shift-summary?unit=12-Adam&hours=12
+rt.get('/ai/shift-summary', async (c) => {
+  const unit = (c.req.query('unit') || '').trim();
+  if (!unit) return c.json({ error: 'unit query parameter required' }, 400);
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '12', 10) || 12, 1), 72);
+  const db = getDb(c.env);
+  const since = `-${hours} hours`;
+
+  const calls = await query<{ call_number: string | null; incident_type: string | null; disposition: string | null; status: string | null }>(
+    db,
+    `SELECT call_number, incident_type, disposition, status FROM calls_for_service
+     WHERE (unit_call_signs LIKE ? OR COALESCE(responding_officer,'') LIKE ?)
+       AND datetime(created_at) >= datetime('now', ?)
+     ORDER BY datetime(created_at) DESC LIMIT 50`,
+    `%${unit}%`, `%${unit}%`, since,
+  ).catch(() => []);
+
+  const txRow = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM radio_transmissions
+     WHERE UPPER(unit_label) = UPPER(?) AND datetime(transmitted_at) >= datetime('now', ?)`,
+    unit, since,
+  ).catch(() => ({ n: 0 }));
+
+  const unitRow = await queryFirst<{ status: string | null }>(
+    db, 'SELECT status FROM units WHERE UPPER(call_sign) = UPPER(?) LIMIT 1', unit,
+  ).catch(() => null);
+
+  const summary = await generateShiftSummary(c.env.AI, {
+    unit, hours,
+    calls,
+    transmissionCount: txRow?.n ?? 0,
+    statuses: unitRow?.status ? [unitRow.status] : [],
+  });
+  if (!summary) return c.json({ error: 'Shift summary generation failed — try again.' }, 502);
+  return c.json({ unit, hours, summary, stats: { calls: calls.length, transmissions: txRow?.n ?? 0 } });
 });
 
 export default rt;

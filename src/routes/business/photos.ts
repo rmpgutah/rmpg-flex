@@ -20,7 +20,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
 
 const businessPhotos = new Hono<Env>();
 
@@ -171,9 +170,6 @@ businessPhotos.post('/', async (c) => {
       db, 'SELECT * FROM business_photos WHERE id = ?', Number(result.meta.last_row_id),
     );
 
-    broadcastAll('business_update', {
-      action: 'business_photos_updated', business_id: businessId,
-    });
 
     return c.json(row, 201);
   } catch (err) {
@@ -207,9 +203,6 @@ businessPhotos.delete('/:photoId', async (c) => {
     }
 
     await execute(db, 'DELETE FROM business_photos WHERE id = ?', id);
-    broadcastAll('business_update', {
-      action: 'business_photos_updated', business_id: before.business_id,
-    });
 
     return c.body(null, 204);
   } catch (err) {

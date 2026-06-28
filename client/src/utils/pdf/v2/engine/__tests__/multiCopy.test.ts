@@ -18,6 +18,9 @@ describe('renderMultiCopyPdfV2', () => {
       citationSchema,
       { citation_number: 'C-26-1' },
       CITATION_INSTRUCTIONS,
+      // Raw-stream text assertions below need ASCII text operators; embedded
+      // Arial would encode glyph IDs. Layout under test is font-independent.
+      { coreFontsOnly: true },
     );
     const pages: any[] = (doc as any).internal.pages;
     const text = pages.map((p) => Array.isArray(p) ? p.join('\n') : String(p ?? ''));
@@ -49,6 +52,9 @@ describe('renderMultiCopyPdfV2', () => {
       citationSchema,
       { citation_number: 'C-26-1' },
       CITATION_INSTRUCTIONS,
+      // Raw-stream text assertions below need ASCII text operators; embedded
+      // Arial would encode glyph IDs. Layout under test is font-independent.
+      { coreFontsOnly: true },
     );
     const total = doc.getNumberOfPages();
     const pages: any[] = (doc as any).internal.pages;

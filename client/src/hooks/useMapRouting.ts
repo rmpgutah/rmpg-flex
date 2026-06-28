@@ -2,17 +2,22 @@
 // RMPG Flex — useMapRouting Hook
 // Mapbox-powered routing between a unit and a dispatch call.
 // Renders a polyline on the map with ETA and distance, and adds
-// five advanced dispatch-grade routing capabilities:
+// seven advanced dispatch-grade routing capabilities:
 //   1. Live traffic-aware routing (driving-traffic profile)
 //   2. Congestion-colored route line (green→yellow→orange→red)
 //   3. Live route progress + dynamic remaining ETA
 //   4. Off-route detection + automatic re-route
 //   5. Closest-unit-by-drive-time (Mapbox Matrix API)
+//   6. Pause/resume travel calculation (officer control)
+//   7. Coordinate guardrails (bounds, sanity, jump detection)
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { useNavTravel } from './useNavTravel';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -82,6 +87,54 @@ export interface UnitDriveTime {
 
 export type CongestionLevel = 'low' | 'moderate' | 'heavy' | 'severe' | 'unknown';
 
+/** Active route geometry, exposed for downstream corridor analysis
+ *  (e.g. hazard-ahead scanning in useNavGuidance). */
+export interface RouteGeom {
+  /** Route polyline as [lng, lat][]. */
+  coords: [number, number][];
+  /** Cumulative meters at each coordinate. */
+  cum: number[];
+  /** Total route length in meters. */
+  totalMeters: number;
+}
+
+/** One stop in an optimized multi-call patrol route. */
+export interface MultiStop {
+  callNumber: string;
+  lat: number;
+  lng: number;
+  /** Short label for the stop (incident type / address), optional. */
+  label?: string;
+  /** 1-based position in the optimized visit order. */
+  order: number;
+  /** Drive time from the previous stop (or the unit) to here, seconds. */
+  legSec: number;
+  /** Drive distance from the previous stop to here, meters. */
+  legMeters: number;
+  /** Leg ETA text, e.g. "6 min". */
+  legEta: string;
+  /** Leg distance text, e.g. "2.4 mi". */
+  legDistance: string;
+  /** Cumulative ETA from the unit to this stop, text. */
+  cumEta: string;
+}
+
+/** An optimized one-unit-many-calls route (Mapbox Optimization API / TSP). */
+export interface MultiStopRoute {
+  /** Origin unit call sign. */
+  unitCallSign: string;
+  /** Stops in optimized visit order. */
+  stops: MultiStop[];
+  /** Total drive time across all legs, text. */
+  totalEta: string;
+  /** Total drive time, seconds. */
+  totalSec: number;
+  /** Total drive distance, text. */
+  totalDistance: string;
+  /** Total drive distance, meters. */
+  totalMeters: number;
+}
+
 interface UseMapRoutingOptions {
   /** Mapbox Map instance — must be set before calling showRoute */
   map: mapboxgl.Map | null;
@@ -112,7 +165,7 @@ function makeProjector(refLat: number) {
 /** Snap a point to the nearest position along a polyline (route geometry).
  *  Returns the perpendicular distance to the line and the distance traveled
  *  *along* the line to that snap point — the basis for progress + off-route. */
-function snapToRoute(
+export function snapToRoute(
   coords: [number, number][], // [lng, lat][]
   cum: number[],              // cumulative meters at each coord
   lat: number,
@@ -152,6 +205,19 @@ const fmtEta = (sec: number) => {
 };
 const fmtStepDist = (m: number) =>
   m >= 1609 ? `${(m * 0.000621371).toFixed(1)} mi` : `${Math.round(m * 3.28084)} ft`;
+
+// ─── Guardrail constants ────────────────────────────────────
+
+/** Valid latitude range for the US (including AK/HI edge cases). */
+const VALID_LAT_MIN = 18.0;
+const VALID_LAT_MAX = 72.0;
+/** Valid longitude range for the US. */
+const VALID_LNG_MIN = -180.0;
+const VALID_LNG_MAX = -64.0;
+/** Max plausible speed for any road vehicle, mph. Guards against GPS glitches. */
+const MAX_PLAUSIBLE_SPEED_MPH = 150;
+/** Max haversine distance between consecutive origin updates before rejecting, miles. */
+const MAX_POSITION_JUMP_MI = 50;
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -193,13 +259,41 @@ const ROUTE_SOURCE_ID = 'rmpg-route-source';
 const ROUTE_LAYER_ID = 'rmpg-route-layer';
 const TRAVELED_LAYER_ID = 'rmpg-route-traveled';
 
+/** Multi-stop (optimized patrol) route source/layer IDs. */
+const MULTI_SOURCE_ID = 'rmpg-multi-route-source';
+const MULTI_CASING_LAYER_ID = 'rmpg-multi-route-casing';
+const MULTI_LAYER_ID = 'rmpg-multi-route-layer';
+
 // ─── Hook ───────────────────────────────────────────────────
+
+// ─── Coordinate validation guardrail ────────────────────────
+function validateCoordinate(lat: number, lng: number): { valid: boolean; reason?: string } {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { valid: false, reason: 'Coordinates must be finite numbers' };
+  }
+  if (lat < VALID_LAT_MIN || lat > VALID_LAT_MAX) {
+    return { valid: false, reason: `Latitude ${lat} outside valid range` };
+  }
+  if (lng < VALID_LNG_MIN || lng > VALID_LNG_MAX) {
+    return { valid: false, reason: `Longitude ${lng} outside valid range` };
+  }
+  return { valid: true };
+}
 
 export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [activeRoute, setActiveRoute] = useState<RouteInfo | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeProgress, setRouteProgress] = useState<RouteProgress | null>(null);
+  const [routeGeom, setRouteGeom] = useState<RouteGeom | null>(null);
   const [offRoute, setOffRoute] = useState(false);
+  const [multiStopRoute, setMultiStopRoute] = useState<MultiStopRoute | null>(null);
+  const [multiStopLoading, setMultiStopLoading] = useState(false);
+
+  // Travel calculation pause/resume + data retention
+  const { travelState, pauseTravel, resumeTravel, updatePosition } = useNavTravel();
+
+  // DOM markers for the numbered stops on the optimized patrol route.
+  const multiMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   const lastOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastQueryTimeRef = useRef<number>(0);
@@ -219,9 +313,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const clearRouteFromMap = useCallback(() => {
     if (!map) return;
     try {
-      if (map.getLayer(TRAVELED_LAYER_ID)) map.removeLayer(TRAVELED_LAYER_ID);
-      if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
-      if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+      safeRemoveLayer(map, TRAVELED_LAYER_ID);
+      safeRemoveLayer(map, ROUTE_LAYER_ID);
+      safeRemoveSource(map, ROUTE_SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, [map]);
 
@@ -241,7 +335,12 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         expr.push(frac, CONGESTION_COLOR[congestion[i]]);
         lastFrac = frac;
       }
-      return expr.length >= 3 ? expr : null;
+      // A Mapbox `step` needs at least one stop PAIR — minimum valid form is
+      // ['step', input, base, stop1_in, stop1_out] (length 5). A length-3 expr
+      // (single congestion segment → just a base color, no stops) is invalid
+      // and throws "Expected at least 4 arguments" on addLayer. Fall back to a
+      // flat line-color in that case (caller treats null as "no gradient").
+      return expr.length >= 5 ? expr : null;
     },
     [],
   );
@@ -277,6 +376,11 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         const distance: number = route.distance;      // meters
         const geometry = route.geometry;              // GeoJSON LineString
         const coords: [number, number][] = geometry?.coordinates ?? [];
+        // A degenerate route (<2 points) can't form a line; rendering it would
+        // build a stop-less Mapbox `line-gradient` step expr and throw on
+        // addLayer. Bail before any source/layer work — the caller treats null
+        // as "no route".
+        if (coords.length < 2) return null;
 
         // Cumulative distance at each coordinate (for progress + gradient).
         const cum: number[] = [0];
@@ -294,35 +398,41 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         for (const c of congestion) if (CONGESTION_RANK[c] > CONGESTION_RANK[worst]) worst = c;
 
         geomRef.current = { coords, cum, totalMeters: total, totalSec: duration };
+        setRouteGeom({ coords, cum, totalMeters: total });
         offRouteStreakRef.current = 0;
         setOffRoute(false);
 
         // ── Render on map (Feature 2: congestion-colored line) ──
-        clearRouteFromMap();
-        map.addSource(ROUTE_SOURCE_ID, {
-          type: 'geojson',
-          lineMetrics: true, // required for line-gradient
-          data: { type: 'Feature', properties: {}, geometry },
-        });
-        // Traveled-portion underlay (dimmed) — trimmed by updateProgress.
-        map.addLayer({
-          id: TRAVELED_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
-        });
+        // Guard on STYLE readiness — addSource throws "Style is not done
+        // loading" if the basemap style hasn't finished (map.loaded() alone
+        // isn't sufficient).
         const gradient = buildCongestionGradient(cum, total, congestion);
-        map.addLayer({
-          id: ROUTE_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            ...(gradient ? { 'line-gradient': gradient } : { 'line-color': CONGESTION_COLOR.unknown }),
-            'line-width': 5,
-            'line-opacity': 0.9,
-          },
+        whenStyleReady(map, () => {
+          clearRouteFromMap();
+          map.addSource(ROUTE_SOURCE_ID, {
+            type: 'geojson',
+            lineMetrics: true, // required for line-gradient
+            data: { type: 'Feature', properties: {}, geometry },
+          });
+          // Traveled-portion underlay (dimmed) — trimmed by updateProgress.
+          map.addLayer({
+            id: TRAVELED_LAYER_ID,
+            type: 'line',
+            source: ROUTE_SOURCE_ID,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+          });
+          map.addLayer({
+            id: ROUTE_LAYER_ID,
+            type: 'line',
+            source: ROUTE_SOURCE_ID,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              ...(gradient ? { 'line-gradient': gradient } : { 'line-color': CONGESTION_COLOR.unknown }),
+              'line-width': 5,
+              'line-opacity': 0.9,
+            },
+          });
         });
 
         // Turn-by-turn maneuvers (single leg: unit → call).
@@ -384,6 +494,17 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       callLat: number,
       callLng: number,
     ) => {
+      // Guardrails: validate both origin and destination coordinates
+      const originCheck = validateCoordinate(unitLat, unitLng);
+      if (!originCheck.valid) {
+        console.warn('[useMapRouting] showRoute rejected — origin:', originCheck.reason);
+        return null;
+      }
+      const destCheck = validateCoordinate(callLat, callLng);
+      if (!destCheck.valid) {
+        console.warn('[useMapRouting] showRoute rejected — destination:', destCheck.reason);
+        return null;
+      }
       metaRef.current = { unitCallSign, callNumber };
       destRef.current = { lat: callLat, lng: callLng };
       return queryRoute({ lat: unitLat, lng: unitLng }, { lat: callLat, lng: callLng });
@@ -396,6 +517,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     clearRouteFromMap();
     setActiveRoute(null);
     setRouteProgress(null);
+    setRouteGeom(null);
     setOffRoute(false);
     geomRef.current = null;
     offRouteStreakRef.current = 0;
@@ -419,7 +541,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       const remainingSec = g.totalMeters > 0 ? Math.round(g.totalSec * (remainingMeters / g.totalMeters)) : 0;
 
       // Trim the traveled portion: dim everything up to `fraction`.
-      if (map?.getLayer(TRAVELED_LAYER_ID)) {
+      if (map && hasLayer(map, TRAVELED_LAYER_ID)) {
         try {
           map.setPaintProperty(TRAVELED_LAYER_ID, 'line-gradient', [
             'step', ['line-progress'],
@@ -447,11 +569,37 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
    *  - Feature 3: recompute progress every fix.
    *  - Feature 4: force an immediate re-route when the unit leaves the
    *    corridor for OFFROUTE_SAMPLES consecutive fixes (bypasses throttle).
+   *  - Feature 6: skip all routing work when travel is paused.
+   *  - Feature 7: coordinate guardrails + jump detection.
    *  - routine throttled re-route (30s + 100m moved) otherwise.
    */
   const updateOrigin = useCallback(
     (newLat: number, newLng: number) => {
+      // Feature 6: bail entirely when travel calculation is paused
+      if (travelState.paused) return;
+
+      // Feature 7: coordinate guardrail — reject out-of-bounds coords
+      const coordCheck = validateCoordinate(newLat, newLng);
+      if (!coordCheck.valid) {
+        console.warn('[useMapRouting] updateOrigin rejected:', coordCheck.reason);
+        return;
+      }
+
       if (!destRef.current || !lastOriginRef.current) return;
+
+      // Feature 7: jump detection — reject teleportation glitches
+      if (lastOriginRef.current) {
+        const jumpMi = haversineMeters(
+          lastOriginRef.current.lat, lastOriginRef.current.lng, newLat, newLng
+        ) * 0.000621371;
+        if (jumpMi > MAX_POSITION_JUMP_MI) {
+          console.warn(`[useMapRouting] updateOrigin rejected: jump of ${jumpMi.toFixed(1)} mi exceeds sanity threshold`);
+          return;
+        }
+      }
+
+      // Track position for travel calculation (distance accumulation, odometer)
+      updatePosition(newLat, newLng);
 
       const progress = updateProgress(newLat, newLng);
 
@@ -478,7 +626,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       if (moved < REROUTE_DISTANCE_THRESHOLD) return;
       queryRoute({ lat: newLat, lng: newLng }, destRef.current);
     },
-    [queryRoute, updateProgress],
+    [queryRoute, updateProgress, travelState.paused, updatePosition],
   );
 
   // ── Feature 5: closest unit by real drive time (Matrix API) ──
@@ -535,22 +683,248 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     [],
   );
 
+  // ── Multi-stop patrol routing (Mapbox Optimization API / TSP) ──
+  /** Remove the optimized route line + all numbered stop markers. */
+  const clearMultiStopFromMap = useCallback(() => {
+    for (const m of multiMarkersRef.current) {
+      try { m.remove(); } catch { /* ignore */ }
+    }
+    multiMarkersRef.current = [];
+    if (!map) return;
+    try {
+      safeRemoveLayer(map, MULTI_LAYER_ID);
+      safeRemoveLayer(map, MULTI_CASING_LAYER_ID);
+      safeRemoveSource(map, MULTI_SOURCE_ID);
+    } catch { /* ignore cleanup errors */ }
+  }, [map]);
+
+  const clearMultiStop = useCallback(() => {
+    clearMultiStopFromMap();
+    setMultiStopRoute(null);
+  }, [clearMultiStopFromMap]);
+
+  /** Build a gold numbered "stop" marker (1, 2, 3 …) for the patrol route. */
+  const makeStopMarker = useCallback((order: number): HTMLElement => {
+    const el = document.createElement('div');
+    el.style.cssText =
+      'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
+      'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
+      "color:#d4a017;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0,0,0,0.6);' +
+      'cursor:default;';
+    el.textContent = String(order);
+    return el;
+  }, []);
+
+  /**
+   * Route one unit through many calls in the fastest visiting order.
+   *
+   * Uses the Mapbox Optimization API (a traveling-salesman solver): the unit is
+   * pinned as the start (`source=first`) and the call order is fully optimized
+   * (`destination=any`, `roundtrip=false`) so dispatch gets the genuinely
+   * shortest patrol path, not the click order. Caps at 11 stops (API limit 12
+   * coords incl. the unit). Renders a gold route line + numbered stop markers.
+   */
+  const showMultiStopRoute = useCallback(
+    async (
+      unitCallSign: string,
+      origin: { lat: number; lng: number },
+      stops: { callNumber: string; lat: number; lng: number; label?: string }[],
+    ): Promise<MultiStopRoute | null> => {
+      if (!map) return null;
+      const valid = stops.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).slice(0, 11);
+      if (valid.length < 1 || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)) return null;
+
+      setMultiStopLoading(true);
+      try {
+        const token = await getMapboxAccessToken();
+        if (!token) return null;
+
+        // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
+        const pts = [origin, ...valid];
+        const coordStr = pts.map((p) => `${p.lng},${p.lat}`).join(';');
+        // Mapbox Optimization v1 only implements two (source,destination,roundtrip)
+        // combos: roundtrip=true (any endpoints), or roundtrip=false with BOTH
+        // source=first AND destination=last. The open-tour we actually want
+        // (unit pinned as start, end optimized freely) maps to the UNSUPPORTED
+        // roundtrip=false + destination=any — Mapbox answers HTTP 200 with
+        // {code:"NotImplemented"}, which surfaced as "[useMapRouting] Optimization
+        // query failed: Error: NotImplemented". So we solve it as a ROUNDTRIP
+        // (optimal visiting order, unit as the fixed start) and drop the final
+        // return-to-unit leg from the drawn line + ETA below — dispatch doesn't
+        // need the officer to loop back to where they started. steps=true gives
+        // per-leg geometry so the line can be rebuilt without that return leg.
+        const url =
+          `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordStr}` +
+          `?access_token=${token}&source=first&roundtrip=true` +
+          `&geometries=geojson&overview=full&steps=true&annotations=duration,distance`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Optimization HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.code !== 'Ok' || !data.trips?.[0]) throw new Error(data.code || 'No trip');
+
+        const trip = data.trips[0];
+        const legs: any[] = trip.legs ?? [];
+
+        // `waypoints[i].waypoint_index` = position of input coord i in the
+        // optimized sequence. Build input-index → optimized-position map.
+        const waypoints: any[] = data.waypoints ?? [];
+        // optimizedOrder[pos] = input coordinate index visited at that position.
+        const optimizedOrder: number[] = [];
+        waypoints.forEach((w, inputIdx) => {
+          if (typeof w?.waypoint_index === 'number') optimizedOrder[w.waypoint_index] = inputIdx;
+        });
+
+        // Walk the optimized order (skip position 0 = the unit origin). Leg k
+        // is the drive INTO optimized position k+1.
+        const orderedStops: MultiStop[] = [];
+        let cumSec = 0;
+        let cumMeters = 0;
+        for (let pos = 1; pos < optimizedOrder.length; pos++) {
+          const inputIdx = optimizedOrder[pos];
+          const stop = pts[inputIdx] as typeof valid[number];
+          const leg = legs[pos - 1] || {};
+          const legSec = typeof leg.duration === 'number' ? leg.duration : 0;
+          const legMeters = typeof leg.distance === 'number' ? leg.distance : 0;
+          cumSec += legSec;
+          cumMeters += legMeters;
+          orderedStops.push({
+            callNumber: stop.callNumber,
+            lat: stop.lat,
+            lng: stop.lng,
+            label: stop.label,
+            order: pos,
+            legSec: Math.round(legSec),
+            legMeters: Math.round(legMeters),
+            legEta: fmtEta(legSec),
+            legDistance: fmtMiles(legMeters),
+            cumEta: fmtEta(cumSec),
+          });
+        }
+
+        // Build the drawn line from ONLY the legs INTO the stops (legs 0..k-1),
+        // excluding the roundtrip's final return-to-unit leg (legs[k]). Each leg's
+        // geometry is the concatenation of its steps' geometries (steps=true),
+        // de-duping the vertex shared between consecutive steps. Falls back to the
+        // full trip geometry (the closed loop, incl. return) only if steps are
+        // missing — better a slightly-wrong line than none.
+        const usedLegCount = Math.max(0, optimizedOrder.length - 1);
+        const lineCoords: [number, number][] = [];
+        for (let i = 0; i < usedLegCount; i++) {
+          for (const step of legs[i]?.steps ?? []) {
+            const cs = step?.geometry?.coordinates;
+            if (!Array.isArray(cs)) continue;
+            for (const c of cs) {
+              const last = lineCoords[lineCoords.length - 1];
+              if (!last || last[0] !== c[0] || last[1] !== c[1]) lineCoords.push(c as [number, number]);
+            }
+          }
+        }
+        const geometry =
+          lineCoords.length >= 2
+            ? { type: 'LineString' as const, coordinates: lineCoords }
+            : trip.geometry; // fallback: full loop incl. the return leg
+
+        // ── Render the optimized line + numbered markers ──
+        clearMultiStopFromMap();
+        whenStyleReady(map, () => {
+          try {
+            map.addSource(MULTI_SOURCE_ID, {
+              type: 'geojson',
+              data: { type: 'Feature', properties: {}, geometry },
+            });
+            // Dark casing under a gold dashed line — reads as a planned patrol
+            // path, visually distinct from the live single-call congestion line.
+            map.addLayer({
+              id: MULTI_CASING_LAYER_ID,
+              type: 'line',
+              source: MULTI_SOURCE_ID,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: { 'line-color': '#0a0a0a', 'line-width': 8, 'line-opacity': 0.7 },
+            });
+            map.addLayer({
+              id: MULTI_LAYER_ID,
+              type: 'line',
+              source: MULTI_SOURCE_ID,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: { 'line-color': '#d4a017', 'line-width': 4, 'line-opacity': 0.95, 'line-dasharray': [2, 1.5] },
+            });
+          } catch { /* style race — markers below still render */ }
+        });
+
+        for (const s of orderedStops) {
+          try {
+            const marker = new mapboxgl.Marker({ element: makeStopMarker(s.order), anchor: 'center' })
+              .setLngLat([s.lng, s.lat])
+              .addTo(map);
+            multiMarkersRef.current.push(marker);
+          } catch { /* ignore marker failure */ }
+        }
+
+        // Totals are the sum of the kept (into-stop) legs, so they exclude the
+        // dropped return-to-unit leg — trip.duration/trip.distance would include it.
+        const totalSec = cumSec;
+        const totalMeters = cumMeters;
+        const route: MultiStopRoute = {
+          unitCallSign,
+          stops: orderedStops,
+          totalEta: fmtEta(totalSec),
+          totalSec: Math.round(totalSec),
+          totalDistance: fmtMiles(totalMeters),
+          totalMeters: Math.round(totalMeters),
+        };
+        setMultiStopRoute(route);
+
+        // Fit the map to the whole patrol path.
+        try {
+          const coords: [number, number][] = geometry?.coordinates ?? [];
+          if (coords.length >= 2) {
+            const b = new mapboxgl.LngLatBounds(coords[0], coords[0]);
+            for (const c of coords) b.extend(c as [number, number]);
+            map.fitBounds(b, { padding: 80, duration: 600, maxZoom: 15 });
+          }
+        } catch { /* ignore fit errors */ }
+
+        return route;
+      } catch (err) {
+        console.warn('[useMapRouting] Optimization query failed:', err);
+        return null;
+      } finally {
+        setMultiStopLoading(false);
+      }
+    },
+    [map, clearMultiStopFromMap, makeStopMarker],
+  );
+
   // ── Cleanup on unmount ───────────────────────────────────
   useEffect(() => {
     return () => {
       clearRouteFromMap();
+      clearMultiStopFromMap();
     };
-  }, [clearRouteFromMap]);
+  }, [clearRouteFromMap, clearMultiStopFromMap]);
 
   return {
     activeRoute,
     routeLoading,
     routeProgress,
+    routeGeom,
     offRoute,
     showRoute,
     clearRoute,
     updateOrigin,
     updateProgress,
     findClosestUnit,
+    // Multi-stop patrol routing
+    multiStopRoute,
+    multiStopLoading,
+    showMultiStopRoute,
+    clearMultiStop,
+    // Pause/resume travel calculation (officer control)
+    travelPaused: travelState.paused,
+    pauseTravel,
+    resumeTravel,
+    travelState,
   };
 }
