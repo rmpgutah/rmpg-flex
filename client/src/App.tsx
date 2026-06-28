@@ -1,15 +1,20 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
+import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
+import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
+import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
@@ -28,26 +33,32 @@ const MapPage = lazyRetry(importMap);
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
-  return lazy(() => factory().catch((err) => {
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  // Retry the import in place before escalating to a reload. A reload only
+  // helps when OUR index.html is stale; during a Pages deploy-propagation
+  // window the fresh index references a chunk the CDN is still replicating
+  // (server 500s) — there a reload re-fails instantly, the second failure
+  // lands inside the 30s guard, and the ErrorBoundary card strands the user
+  // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
+  // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
+  const withRetry = () => factory()
+    .catch(() => sleep(1500).then(factory))
+    .catch(() => sleep(4000).then(factory));
+  return lazy(() => withRetry().catch((err) => {
     // A lazy chunk failed to load — almost always a stale bundle after a
     // deploy: this long-lived tab requests an old hash the server no longer
-    // serves. Reload ONCE per 30s to pick up the fresh index. On that first
-    // failure return a promise that NEVER settles, so React keeps rendering
-    // the Suspense fallback (spinner) while the reload navigates away —
-    // rejecting here instead would flash the ErrorBoundary's red error card
-    // for a frame (the exact "[ErrorBoundary] Chunk load failed — page will
-    // reload" noise seen in prod). If a second failure lands inside the 30s
-    // window the reload didn't help, so rethrow and let the ErrorBoundary show
-    // its recovery UI rather than reload-loop forever.
-    const KEY = 'rmpg_chunk_reload';
-    const last = sessionStorage.getItem(KEY);
-    const now = Date.now();
-    if (!last || now - parseInt(last) > 30000) {
-      sessionStorage.setItem(KEY, String(now));
-      window.location.reload();
-      return new Promise<{ default: T }>(() => { /* stay pending; reload in flight */ });
-    }
-    throw err instanceof Error ? err : new Error('Chunk load failed');
+    // serves. Reload ONCE per 30s to pick up the fresh index, holding the
+    // Suspense fallback (spinner) while the reload navigates away — rejecting
+    // immediately would flash the ErrorBoundary's red card for a frame. The
+    // hold is BOUNDED (tryReloadForChunkFailure): if the reload never tears
+    // this page down (offline / stale SW shell / captive portal / webview that
+    // ignores reload()), it rejects after ~10s so the RouteErrorBoundary shows
+    // its recovery card — never a permanent button-less splash. A second
+    // failure inside the 30s window means the reload didn't help → reload
+    // returns null here and we rethrow for the ErrorBoundary instead of looping.
+    const held = tryReloadForChunkFailure<{ default: T }>(err);
+    if (held) return held;
+    throw normalizeChunkError(err);
   }));
 }
 
@@ -58,15 +69,22 @@ const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
+const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
+const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const FleetShell = lazyRetry(() => import('./pages/fleet/v2/FleetShell'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
+const KnowledgeBasePage = lazyRetry(() => import('./pages/KnowledgeBasePage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
+const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
+const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
+const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -78,15 +96,18 @@ const CrimeAnalysisPage = lazyRetry(() => import('./pages/CrimeAnalysisPage'));
 const CodeEnforcementPage = lazyRetry(() => import('./pages/CodeEnforcementPage'));
 const CourtTrackerPage = lazyRetry(() => import('./pages/CourtTrackerPage'));
 const DailyActivityReportsPage = lazyRetry(() => import('./pages/DailyActivityReportsPage'));
-const OffenderRegistryPage = lazyRetry(() => import('./pages/OffenderRegistryPage'));
-const SexOffenderRegistryPage = lazyRetry(() => import('./pages/SexOffenderRegistryPage'));
+// OffenderRegistryPage + SexOffenderRegistryPage were consolidated into the
+// NSOPW federated cross-reference (PR series #1588 → #1590 → #1594 → photos
+// PR). The two old tabs (Utah-only iCrimeWatch SOR + RMPG-internal offender
+// compliance) are now redirected to /nsopw — historical bookmarks survive,
+// the canonical SOR surface is one tab now.
+const NsopwLookupPage = lazyRetry(() => import('./pages/NsopwLookupPage'));
 const NcicPage = lazyRetry(() => import('./pages/NcicPage'));
 const DlSearchPage = lazyRetry(() => import('./pages/DlSearchPage'));
 const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
 const DashCamerasPage = lazyRetry(() => import('./pages/DashCamerasPage'));
 const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
-const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
@@ -95,10 +116,30 @@ const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
 const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
 const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const ServeSchedulerPage = lazyRetry(() => import('./pages/ServeSchedulerPage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
+const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
+const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
+const NewIntelReportPage = lazyRetry(() => import('./pages/intel/NewIntelReportPage'));
+const IntelSourcesPage = lazyRetry(() => import('./pages/intel/IntelSourcesPage'));
+const PersonDossierPage = lazyRetry(() => import('./pages/PersonDossierPage'));
+const IntelPortalLayout = lazyRetry(() => import('./pages/intel/IntelPortalLayout'));
+const IntelDashboard = lazyRetry(() => import('./pages/intel/IntelDashboard'));
+const WatchlistSection = lazyRetry(() => import('./pages/intel/WatchlistSection'));
+const AlertsSection = lazyRetry(() => import('./pages/intel/AlertsSection'));
+const ReviewQueues = lazyRetry(() => import('./pages/intel/ReviewQueues'));
+const IntelMapPage = lazyRetry(() => import('./pages/intel/IntelMapPage'));
+const IntelAiAnalyst = lazyRetry(() => import('./pages/intel/IntelAiAnalyst'));
+const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
+const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
+const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
+const AnalyticsPage = lazyRetry(() => import('./pages/AnalyticsPage'));
+const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
+const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
+const InteractionRecorderPage = lazyRetry(() => import('./pages/InteractionRecorderPage'));
 const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
 const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
 const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
@@ -124,23 +165,36 @@ const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const PersonIntelPage = lazyRetry(() => import('./pages/PersonIntelPage'));
+const PersonIntelDossierPage = lazyRetry(() => import('./pages/PersonIntelDossierPage'));
 const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
 const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
 const AlarmManagementPage = lazyRetry(() => import('./pages/AlarmManagementPage'));
 const NarcoticsPage = lazyRetry(() => import('./pages/NarcoticsPage'));
+const NavPage = lazyRetry(() => import('./pages/NavPage'));
 const AccreditationPage = lazyRetry(() => import('./pages/AccreditationPage'));
 const RecruitmentPage = lazyRetry(() => import('./pages/RecruitmentPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
 const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
+const FlexCamPage = lazyRetry(() => import('./pages/FlexCamPage'));
+const FlexCamFootagePage = lazyRetry(() => import('./pages/FlexCamFootagePage'));
+const TripPlaybackPage = lazyRetry(() => import('./pages/flexcam/TripPlaybackPage'));
 const DashcamAiPage = lazyRetry(() => import('./pages/DashcamAiPage'));
 const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'));
 const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
-const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
+const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
+const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
+const TextEditorPage = lazyRetry(() => import('./pages/TextEditorPage'));
+const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
+// ForgotPasswordPage was a legacy standalone email-based reset surface. The
+// route now redirects to /login?forgot=1 (the working username + security-
+// question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
+const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -160,7 +214,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
         {/* Animated scanning line beneath logo */}
         <div
           className="mt-4 mb-3 overflow-hidden"
-          style={{ width: 140, height: 2, background: '#0a0a0a', borderRadius: 1 }}
+          style={{ width: 140, height: 2, background:"var(--surface-sunken)", borderRadius: 1 }}
         >
           <div
             className="h-full"
@@ -182,14 +236,14 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
             style={{ color: 'rgba(167, 177, 188, 0.42)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b2b2b, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
         </div>
       </div>
 
@@ -206,13 +260,20 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return <LoadingSplash message="Loading RMPG Flex" />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Preserve the originally-requested URL so LoginPage can route the
+    // operator back after auth. Excludes /login itself to avoid loops.
+    const returnTo = location.pathname + location.search;
+    const params = returnTo && returnTo !== '/login'
+      ? `?return=${encodeURIComponent(returnTo)}`
+      : '';
+    return <Navigate to={`/login${params}`} replace />;
   }
 
   return <>{children}</>;
@@ -246,7 +307,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
-    <div className="flex items-center justify-center h-full p-8" style={{ background: '#0a0a0a' }}>
+    <div className="flex items-center justify-center h-full p-8" style={{ background:"var(--surface-sunken)" }}>
       <div className="text-center max-w-md">
         {/* Logo with fallback */}
         <img
@@ -262,7 +323,7 @@ function NotFoundPage() {
         <div className="mb-4">
           <span
             className="text-6xl font-black tracking-tight"
-            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+            style={{ color: 'var(--surface-raised)', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
           >
             404
           </span>
@@ -272,8 +333,8 @@ function NotFoundPage() {
         <div
           className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-            borderColor: '#222222',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+            borderColor: 'var(--border-subtle)',
             borderRadius: 2,
           }}
         >
@@ -290,7 +351,7 @@ function NotFoundPage() {
         <p className="text-sm text-[#888888] mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
-        <p className="text-[11px] text-[#555555] mb-6">
+        <p className="text-[11px] text-rmpg-500 mb-6">
           If you believe this is an error, contact your system administrator.
         </p>
 
@@ -299,7 +360,7 @@ function NotFoundPage() {
           href="/"
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
             border: '1px solid #d4a017',
             color: '#d4a017',
             borderRadius: 2,
@@ -309,7 +370,7 @@ function NotFoundPage() {
             e.currentTarget.style.borderColor = '#e8b52a';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
             e.currentTarget.style.borderColor = '#d4a017';
           }}
         >
@@ -323,6 +384,15 @@ function NotFoundPage() {
 /** Per-route error boundary wrapper for lazy-loaded routes */
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
+}
+
+// <Navigate to="/foo" replace /> drops the URL search + hash. This wrapper
+// preserves both so legacy paths can act as transparent redirects (used by
+// /offender-registry → /nsopw so saved bookmarks with ?offender_id=… keep
+// working).
+function RedirectKeepQuery({ to }: { to: string }) {
+  const loc = useLocation();
+  return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
 function AppRoutes() {
@@ -368,26 +438,49 @@ function AppRoutes() {
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* /forgot-password was a standalone email-based reset page, but the
+              live API (/api/auth/forgot-password) expects {username} + 3
+              security-question answers — the in-page panel on LoginPage is
+              the working flow. Redirect so the "Request New Link" affordance
+              on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
+          <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
+              per-shift QR on the ShiftCard; the :token IS the credential. */}
+          <Route path="/m/shift/:token" element={<MobileShiftPage />} />
+          {/* QR-token-authed mobile PSO call dispatch surface. Opened by the
+              guard scanning the per-call QR; the ?token IS the credential and
+              the guard picks their identity via OfficerPicker before the auth
+              round-trip. Lives outside the auth gate because the QR token is
+              the auth — the guard is not yet logged in. */}
+          <Route path="/m/cfs/:id" element={<MobilePsoCfsPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
 
-          {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
-              renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
-              page's own header has a Close button back to /map. */}
-          <Route path="/navigation" element={<ProtectedRoute><RouteErrorBoundary><NavigationPage /></RouteErrorBoundary></ProtectedRoute>} />
-
-          {/* Protected routes with Layout */}
+          {/* Authenticated app shell. The pathless parent route hosts ONE
+              app-wide NavTripProvider so vehicle trip detection + live movement
+              recording runs no matter which page is open — including the
+              full-screen Drive Mode HUD (/navigation), which renders OUTSIDE
+              <Layout>. ProtectedRoute sits at the parent so the provider's GPS
+              tracker only mounts for authenticated officers. */}
           <Route
             element={
               <ProtectedRoute>
-                <Layout />
+                <NavTripProvider>
+                  <Outlet />
+                </NavTripProvider>
               </ProtectedRoute>
             }
           >
+            {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
+                renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
+                page's own header has a Close button back to /map. */}
+            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
+
+            {/* Protected routes with Layout */}
+            <Route element={<Layout />}>
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
@@ -395,19 +488,41 @@ function AppRoutes() {
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
+            <Route path="/my-id" element={<RouteErrorBoundary><MyIdPage /></RouteErrorBoundary>} />
+            <Route path="/verify-id" element={<RouteErrorBoundary><VerifyIdPage /></RouteErrorBoundary>} />
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
+            <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
-            <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            {/* === Fleet UI cutover (PR 7'c) ===
+                 /fleet now serves the v2 Fleet.io-style shell.
+                 /fleet-legacy keeps the old UI mounted for ≥7 days as the
+                 escape hatch — operators hit it when they need a feature
+                 the new shell doesn't have yet. The legacy mount + old
+                 FleetPage code are removed in PR 7'd after the second
+                 7-day soak. The /fleet/v2/* parallel mount is kept for
+                 one cycle as a redirect target (anyone with a bookmark
+                 hitting /fleet/v2 still lands on the new UI). */}
+            <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
+            <Route path="/fleet-legacy" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
+            <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
+            <Route path="/flexcam/:id" element={<RouteErrorBoundary><FlexCamFootagePage /></RouteErrorBoundary>} />
+            <Route path="/flexcam/trip/:tripId" element={<RouteErrorBoundary><TripPlaybackPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
+            <Route path="/national-warrants" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
+            <Route path="/screening" element={<Navigate to="/warrants" replace />} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/law-book" element={<RouteErrorBoundary><LawBookPage /></RouteErrorBoundary>} />
+            <Route path="/knowledge-base" element={<RouteErrorBoundary><KnowledgeBasePage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
+            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
+            <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />
@@ -416,17 +531,46 @@ function AppRoutes() {
             <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
             <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
             <Route path="/connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            <Route path="/intel" element={<RouteErrorBoundary><IntelPortalLayout /></RouteErrorBoundary>}>
+              {/* Each child is individually error-bounded so a single bad surface
+                  fails in the center pane only — the rail + context panel survive. */}
+              <Route index element={<RouteErrorBoundary><IntelDashboard /></RouteErrorBoundary>} />
+              <Route path="search" element={<RouteErrorBoundary><IntelSearch /></RouteErrorBoundary>} />
+              <Route path="connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+              <Route path="watchlist" element={<RouteErrorBoundary><WatchlistSection /></RouteErrorBoundary>} />
+              <Route path="bolos" element={<RouteErrorBoundary><BoloBoard /></RouteErrorBoundary>} />
+              <Route path="alerts" element={<RouteErrorBoundary><AlertsSection /></RouteErrorBoundary>} />
+              <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
+              <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
+              <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
+              <Route path="map" element={<RouteErrorBoundary><IntelMapPage /></RouteErrorBoundary>} />
+              <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />
+              <Route path="reports" element={<RouteErrorBoundary><IntelReportsPage /></RouteErrorBoundary>} />
+              <Route path="reports/new" element={<RouteErrorBoundary><NewIntelReportPage /></RouteErrorBoundary>} />
+              <Route path="reports/:id" element={<RouteErrorBoundary><IntelReportDetailPage /></RouteErrorBoundary>} />
+              <Route path="sources" element={<RouteErrorBoundary><IntelSourcesPage /></RouteErrorBoundary>} />
+              <Route path="quick-capture" element={<RouteErrorBoundary><QuickCapturePage /></RouteErrorBoundary>} />
+              <Route path="record" element={<RouteErrorBoundary><InteractionRecorderPage /></RouteErrorBoundary>} />
+              <Route path="person/:id" element={<RouteErrorBoundary><PersonDossierPage /></RouteErrorBoundary>} />
+              <Route path="workbench" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            </Route>
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
-            <Route path="/offender-registry" element={<RouteErrorBoundary><OffenderRegistryPage /></RouteErrorBoundary>} />
-            <Route path="/sex-offender-registry" element={<RouteErrorBoundary><SexOffenderRegistryPage /></RouteErrorBoundary>} />
+            {/* Legacy offender-registry surfaces — redirect to the canonical
+                /nsopw page but PRESERVE the query string so deep-links like
+                /offender-registry?offender_id=42 (saved bookmarks, dossier
+                cross-refs, court-package links) survive the move. Plain
+                <Navigate to="/nsopw" /> drops the search part. */}
+            <Route path="/offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
+            <Route path="/sex-offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
+            <Route path="/nsopw" element={<RouteErrorBoundary><NsopwLookupPage /></RouteErrorBoundary>} />
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
-            <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
+            <Route path="/forensics" element={<Navigate to="/connections" replace />} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
@@ -434,6 +578,7 @@ function AppRoutes() {
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
+            <Route path="/serve-intake/scheduler" element={<RouteErrorBoundary><ServeSchedulerPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
@@ -455,6 +600,10 @@ function AppRoutes() {
             <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
             <Route path="/document-intake" element={<RouteErrorBoundary><DocumentIntakePage /></RouteErrorBoundary>} />
             <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
+            <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
+            <Route path="/document-writer" element={<RouteErrorBoundary><DocumentWriterPage /></RouteErrorBoundary>} />
+            <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
+            <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
@@ -468,15 +617,20 @@ function AppRoutes() {
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel" element={<RouteErrorBoundary><PersonIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel/:id" element={<RouteErrorBoundary><PersonIntelDossierPage /></RouteErrorBoundary>} />
             <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
             <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
             <Route path="/alarms" element={<RouteErrorBoundary><AlarmManagementPage /></RouteErrorBoundary>} />
             <Route path="/narcotics" element={<RouteErrorBoundary><NarcoticsPage /></RouteErrorBoundary>} />
+            <Route path="/nav" element={<RouteErrorBoundary><NavPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
+            {/* /navigation rendered OUTSIDE Layout above — full-screen vehicle HUD */}
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
+            </Route>
           </Route>
 
           {/* Catch-all outside layout */}
@@ -488,21 +642,39 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // TWO nested boundaries by design (defense in depth):
+  //  • OUTER — sits above every context provider. A render/effect throw inside
+  //    AuthProvider, WebSocketProvider, UserPreferencesProvider, ToastProvider,
+  //    or ContextMenuProvider propagates ABOVE the inner boundary (a boundary
+  //    can only catch its descendants), so without this the whole tree unmounts
+  //    to a blank white page. A long-shift WebSocket reconnect that throws was
+  //    white-screening the app and forcing a reload; this converts that into the
+  //    recovery card (which also auto-reports to /api/admin/health/client-error).
+  //    ErrorBoundary reads the auth token straight from localStorage, so it is
+  //    safe to mount above AuthProvider.
+  //  • INNER — catches page/route crashes WITHOUT tearing down the providers,
+  //    so the WebSocket + auth session survive a single page blowing up.
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        <UserPreferencesProvider>
-          <ToastProvider>
-            <ContextMenuProvider>
-              <ErrorBoundary>
-                <WebUpdateBanner />
-                <AndroidUpdateChecker />
-                <AppRoutes />
-              </ErrorBoundary>
-            </ContextMenuProvider>
-          </ToastProvider>
-        </UserPreferencesProvider>
-      </WebSocketProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <FeatureFlagsProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <ErrorBoundary>
+                    <WebUpdateBanner />
+                    <MDTBridge />
+                    <AndroidUpdateChecker />
+                    <ButtonHealthOverlay />
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </ContextMenuProvider>
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </FeatureFlagsProvider>
+    </ErrorBoundary>
   );
 }

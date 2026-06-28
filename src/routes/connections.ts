@@ -28,6 +28,10 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { escapeLike, codedLike } from '../utils/searchText';
+import { mergeTimeline } from '../utils/intelDossier';
+import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
+import { recordAudit } from '../utils/auditLog';
 
 const connections = new Hono<Env>();
 
@@ -60,17 +64,12 @@ interface Connection {
 const OPERATIONAL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
 
 const VALID_TYPES = [
-  'person', 'vehicle', 'property', 'evidence', 'case', 'incident',
+  'person', 'vehicle', 'property', 'business', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
-  'serve_job', 'call', 'report',
+  'serve_job', 'call', 'report', 'intel_report',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
-
-// Escape LIKE wildcards so a search for "50%" doesn't match everything.
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 // Best-effort audit row. MUST NOT throw — a failed audit write can never
 // be allowed to fail the user's request.
@@ -81,21 +80,13 @@ async function audit(
   entityId: number | string,
   details: string,
 ): Promise<void> {
-  try {
-    await execute(
-      getDb(c.env),
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      (c.get('userId') as number | undefined) ?? null,
-      action,
-      entityType,
-      String(entityId),
-      details,
-      c.req.header('CF-Connecting-IP') ?? null,
-    );
-  } catch (err: any) {
-    console.error('[Connections] audit write failed:', err?.message);
-  }
+  await recordAudit(c, {
+    action,
+    entityType,
+    entityId: String(entityId),
+    details,
+    actorId: (c.get('userId') as number | undefined) ?? null,
+  });
 }
 
 // ── Node loading (label + metadata in one query) ─────────────
@@ -120,6 +111,12 @@ async function loadNode(
       case 'property': {
         const pr = await queryFirst<any>(db, 'SELECT name, address, property_type, client_id FROM properties WHERE id = ?', id);
         return { label: pr ? pr.name : `Property #${id}`, metadata: pr || {} };
+      }
+      case 'business': {
+        const b = await queryFirst<any>(db, 'SELECT name, dba_name, business_type, address, phone FROM businesses WHERE id = ?', id);
+        if (!b) return { label: `Business #${id}`, metadata: {} };
+        const label = b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${id}`);
+        return { label, metadata: b };
       }
       case 'evidence': {
         const e = await queryFirst<any>(db, 'SELECT evidence_number, description, evidence_type, status, incident_id FROM evidence WHERE id = ?', id);
@@ -167,6 +164,17 @@ async function loadNode(
       case 'report': {
         const r = await queryFirst<any>(db, 'SELECT report_number, incident_id, report_type, author_id, created_at FROM supplemental_reports WHERE id = ?', id);
         return { label: r ? `${r.report_number || `SR-${id}`} (${r.report_type || 'supplemental'})` : `Report #${id}`, metadata: r || {} };
+      }
+      case 'intel_report': {
+        const r = await queryFirst<any>(db,
+          `SELECT report_number, title, source_reliability, info_credibility, handling_code, threat_level
+           FROM intel_reports WHERE id = ? AND status = 'disseminated'`, id);
+        if (!r) return { label: `Intel #${id}`, metadata: {} };
+        const grade = (r.source_reliability && r.info_credibility) ? `${r.source_reliability}${r.info_credibility}` : '';
+        return {
+          label: `${r.report_number || `INT-${id}`} — ${r.title || ''}`.trim(),
+          metadata: { grade, threat_level: r.threat_level || 'low', handling_code: r.handling_code || '', intel: true },
+        };
       }
       default:
         return { label: `${type} #${id}`, metadata: {} };
@@ -240,6 +248,42 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('trespass_order', r.id, 'trespassed_from', 'trespass_orders');
         for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE recipient_person_id = ?', id))
           add('serve_job', r.id, 'serve_recipient', 'serve_queue');
+
+        // ── Derived person↔person edges (Palantir Phase 3) ──
+        // Labeled semantic links so analysts see WHY two people connect
+        // without hopping through an event node. Each rule is capped and
+        // guarded; sentinel strings ("None"/"N/A"/"0") never match.
+        // 2a. Confirmed linked identities (entity resolution, mig 0098).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT person_id, canonical_person_id FROM person_canonical
+             WHERE person_id = ? OR canonical_person_id = ?
+                OR canonical_person_id = (SELECT canonical_person_id FROM person_canonical WHERE person_id = ?)
+             LIMIT 10`, id, id, id)) {
+            const other = r.person_id === id ? r.canonical_person_id : r.person_id;
+            if (other !== id) add('person', other, 'linked_identity', 'person_canonical');
+          }
+        } catch (err: any) { console.error('[Connections] linked_identity edges error:', err?.message); }
+        // 2b. Shared address (exact, sentinel-guarded).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT p2.id FROM persons p1 JOIN persons p2
+               ON p2.address = p1.address AND p2.id != p1.id
+             WHERE p1.id = ? AND p1.address IS NOT NULL AND TRIM(p1.address) != ''
+               AND LOWER(TRIM(p1.address)) NOT IN ('none','n/a','na','null','0','unknown')
+             LIMIT 8`, id))
+            add('person', r.id, 'shares_address', 'persons');
+        } catch (err: any) { console.error('[Connections] shares_address edges error:', err?.message); }
+        // 2c. Shared phone (exact, sentinel-guarded).
+        try {
+          for (const r of await query<any>(db,
+            `SELECT p2.id FROM persons p1 JOIN persons p2
+               ON p2.phone = p1.phone AND p2.id != p1.id
+             WHERE p1.id = ? AND p1.phone IS NOT NULL AND TRIM(p1.phone) != ''
+               AND LOWER(TRIM(p1.phone)) NOT IN ('none','n/a','na','null','0','unknown')
+             LIMIT 8`, id))
+            add('person', r.id, 'shares_phone', 'persons');
+        } catch (err: any) { console.error('[Connections] shares_phone edges error:', err?.message); }
         break;
       }
 
@@ -254,6 +298,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
         for (const r of await query<any>(db, 'SELECT id FROM field_interviews WHERE vehicle_id = ?', id))
           add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
+        for (const r of await query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id))
+          add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
         break;
       }
 
@@ -273,6 +319,9 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('report', r.id, r.report_type || 'supplemental', 'supplemental_reports');
         for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE incident_id = ?', id))
           add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
+        // incident_links: manual cross-references added via IncidentsPage "Link Record" form
+        for (const r of await query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id))
+          if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
         break;
       }
 
@@ -294,6 +343,8 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('trespass_order', r.id, 'order_from_call', 'trespass_orders');
         for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE call_id = ?', id))
           add('serve_job', r.id, 'serve_from_call', 'serve_queue');
+        for (const r of await query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id))
+          add('business', r.business_id, r.role || 'involved', 'call_businesses');
         break;
       }
 
@@ -329,6 +380,14 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('serve_job', r.id, 'serve_location', 'serve_queue');
         for (const r of await query<any>(db, 'SELECT id FROM calls_for_service WHERE property_id = ?', id))
           add('call', r.id, 'call_at_location', 'calls_for_service');
+        break;
+      }
+
+      case 'business': {
+        for (const r of await query<any>(db, 'SELECT vehicle_id, relationship FROM business_vehicles WHERE business_id = ?', id))
+          add('vehicle', r.vehicle_id, r.relationship || 'business_vehicle', 'business_vehicles');
+        for (const r of await query<any>(db, 'SELECT call_id, role FROM call_businesses WHERE business_id = ?', id))
+          add('call', r.call_id, r.role || 'involved', 'call_businesses');
         break;
       }
 
@@ -387,10 +446,33 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         if (s?.call_id) add('call', s.call_id, 'serve_from_call', 'serve_queue');
         break;
       }
+
+      case 'intel_report': {
+        // Only a disseminated product exposes its links (parity with loadNode's
+        // status gate) — a draft report's edges must not surface in the graph.
+        const dissem = await queryFirst<any>(db,
+          "SELECT 1 AS ok FROM intel_reports WHERE id = ? AND status = 'disseminated'", id);
+        if (dissem) {
+          for (const r of await query<any>(db,
+            `SELECT entity_type, entity_id, role FROM intel_report_links WHERE report_id = ? LIMIT 200`, id))
+            add(r.entity_type, r.entity_id, r.role || 'mentioned', 'intel_report_links');
+        }
+        break;
+      }
     }
   } catch (err: any) {
     console.error(`[Connections] junction query error (${type}#${id}):`, err?.message);
   }
+
+  // 3. Disseminated intel products that name this entity (any node type).
+  try {
+    for (const r of await query<any>(db,
+      `SELECT l.report_id, l.role FROM intel_report_links l
+       JOIN intel_reports rp ON rp.id = l.report_id
+       WHERE l.entity_type = ? AND l.entity_id = ? AND rp.status = 'disseminated'
+       LIMIT 200`, type, id))
+      add('intel_report', r.report_id, r.role || 'intel_subject', 'intel_report_links');
+  } catch (err: any) { console.error('[Connections] intel link edges error:', err?.message); }
 
   return results;
 }
@@ -586,7 +668,9 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const term = `%${escapeLike(q.trim())}%`;
+  const raw = q.trim();
+  const term = `%${escapeLike(raw)}%`;
+  const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 
   try {
@@ -605,18 +689,23 @@ connections.get('/search', operational, async (c) => {
   } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
 
   try {
+    for (const b of await query<any>(db, `SELECT id, name, dba_name, address FROM businesses WHERE name LIKE ? ESCAPE '\\' OR dba_name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR owner_name LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term, term))
+      results.push({ id: b.id, type: 'business', label: b.dba_name ? `${b.name} (${b.dba_name})` : (b.name || b.address || `Business #${b.id}`) });
+  } catch (err: any) { console.error('[Connections] businesses search error:', err?.message); }
+
+  try {
     for (const r of await query<any>(db, `SELECT id, case_number, title FROM cases WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' LIMIT 8`, term, term))
       results.push({ id: r.id, type: 'case', label: `${r.case_number} - ${r.title}` });
   } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
   try {
-    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const i of await query<any>(db, `SELECT id, incident_number, incident_type FROM incidents WHERE incident_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() });
   } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
   // Calls for service — searchable so an analyst can seed a graph on a CFS.
   try {
-    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, term, term))
+    for (const cf of await query<any>(db, `SELECT id, call_number, incident_type, status FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' OR ${incidentTypeMatch.sql} OR location_address LIKE ? ESCAPE '\\' LIMIT 8`, term, ...incidentTypeMatch.binds, term))
       results.push({ id: cf.id, type: 'call', label: `${cf.call_number || `CFS-${cf.id}`} ${cf.incident_type || ''} (${(cf.status || '?').toUpperCase()})`.replace(/\s+/g, ' ').trim() });
   } catch (err: any) { console.error('[Connections] calls search error:', err?.message); }
 
@@ -630,7 +719,54 @@ connections.get('/search', operational, async (c) => {
       results.push({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() });
   } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
 
+  try {
+    for (const r of await query<any>(db,
+      `SELECT id, report_number, title FROM intel_reports
+       WHERE status = 'disseminated' AND (report_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\') LIMIT 8`, term, term))
+      results.push({ id: r.id, type: 'intel_report', label: `${r.report_number || `INT-${r.id}`} — ${r.title || ''}`.trim() });
+  } catch (err: any) { console.error('[Connections] intel search error:', err?.message); }
+
   return c.json(results);
+});
+
+// GET /timeline?nodes=person:1,incident:5,intel_report:3 — merged chronology of a node set
+const TIMELINE_QUERY: Record<string, string> = {
+  incident: 'id, incident_number, incident_type, occurred_date, created_at, location_address, status',
+  call: 'id, call_number, incident_type, created_at, location_address, status',
+  citation: 'id, citation_number, violation_description, violation_date, status',
+  warrant: 'id, warrant_number, charge_description, issued_date, status',
+  arrest: 'id, full_name, charges, booking_date, status',
+  field_interview: 'id, fi_number, contact_reason, created_at, status',
+  trespass_order: 'id, order_number, location, effective_date, status',
+  case: 'id, case_number, title, case_type, created_at, status',
+  evidence: 'id, evidence_number, description, created_at, status',
+  intel_report: 'id, report_number, title, disseminated_at, source_reliability, info_credibility, threat_level',
+};
+const TIMELINE_TABLE: Record<string, string> = {
+  incident: 'incidents', call: 'calls_for_service', citation: 'citations', warrant: 'warrants',
+  arrest: 'arrest_records', field_interview: 'field_interviews', trespass_order: 'trespass_orders',
+  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports',
+};
+
+connections.get('/timeline', operational, async (c) => {
+  const refs = parseNodeRefs(c.req.query('nodes') || '');
+  const byType = new Map<string, number[]>();
+  for (const r of refs) {
+    if (!TIMELINE_QUERY[r.type]) continue; // skip undated types (person/vehicle/property/...)
+    byType.set(r.type, [...(byType.get(r.type) || []), r.id]);
+  }
+  const db = getDb(c.env);
+  const sources: any[][] = [];
+  for (const [type, ids] of byType) {
+    try {
+      const ph = ids.map(() => '?').join(',');
+      const extra = type === 'intel_report' ? "AND status = 'disseminated'" : '';
+      const rows = await query<any>(db,
+        `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`, ...ids);
+      sources.push(rows.map((row) => buildTimelineEvent(type, row)).filter(Boolean));
+    } catch (err: any) { console.error(`[Connections] timeline ${type} error:`, err?.message); }
+  }
+  return c.json(mergeTimeline(sources as any));
 });
 
 // ─── INVESTIGATIONS CRUD ────────────────────────────────────

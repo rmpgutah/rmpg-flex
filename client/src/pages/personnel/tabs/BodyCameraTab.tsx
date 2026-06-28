@@ -5,7 +5,7 @@
 // print/export, and complete CRUD for cameras & videos.
 // ============================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search, Play, HardDrive,
   Film, Shield, Clock, CheckSquare, Square, Upload, Loader2,
@@ -17,6 +17,8 @@ import {
 import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
+import ConfirmDialog from '../../../components/ConfirmDialog';
+import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -61,6 +63,17 @@ interface Props {
   onBulkClassifyVideos?: (ids: number[], classification: VideoClassification) => Promise<void>;
   onBulkDeleteCameras?: (ids: number[]) => Promise<void>;
   bulkLoading?: boolean;
+  /**
+   * Deep-link: highlight a specific camera row by its numeric PK.
+   * Passed from BodyCamerasPage when ?camera_id= is present in the URL.
+   * The tab scrolls the row into view and applies a highlight ring.
+   */
+  highlightCameraId?: number | null;
+  /**
+   * Deep-link: pre-seed the officer filter search box with a user ID string.
+   * Passed from BodyCamerasPage when ?officer_id= is present in the URL.
+   */
+  initialOfficerFilter?: string;
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -72,18 +85,43 @@ export default function BodyCameraTab({
   onUploadVideo, canManage = true,
   onBulkDeleteVideos, onBulkClassifyVideos, onBulkDeleteCameras,
   bulkLoading = false,
+  highlightCameraId = null,
+  initialOfficerFilter = '',
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('cameras');
   const [statusFilter, setStatusFilter] = useState<CameraStatus | 'all'>('all');
   const [classFilter, setClassFilter] = useState<VideoClassification | 'all'>('all');
-  const [search, setSearch] = useState('');
+  // Seed the search box from the ?officer_id= deep-link when provided.
+  const [search, setSearch] = useState(initialOfficerFilter);
   const [videoDateFrom, setVideoDateFrom] = useState('');
+
+  // Row-level ref map for scroll-to-highlight (?camera_id= deep-link).
+  const cameraRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+  useEffect(() => {
+    if (!highlightCameraId) return;
+    // Switch to the cameras sub-tab so the highlighted row is visible.
+    setSubTab('cameras');
+    const el = cameraRowRefs.current.get(highlightCameraId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightCameraId]);
   const [videoDateTo, setVideoDateTo] = useState('');
 
   // ── Bulk selection state ──────────────────────────────────
   const [selectedCameraIds, setSelectedCameraIds] = useState<Set<number>>(new Set());
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkClassification, setBulkClassification] = useState<VideoClassification>('routine');
+
+  // ── Bulk-confirm dialog state ─────────────────────────────
+  // Page-25 audit caught: bulk delete buttons used `window.confirm()`,
+  // which the rest of the app has migrated off (Cases #1604, Evidence
+  // #1603, Citations #1606, Court #1613). Native confirm() bypasses the
+  // app's theme, focus management, and tab-trap. Routed through the
+  // shared ConfirmDialog so the destructive-flow polish is consistent.
+  const [bulkConfirm, setBulkConfirm] = useState<
+    | { kind: 'cameras'; count: number }
+    | { kind: 'videos'; count: number }
+    | null
+  >(null);
 
   // ── Stats ────────────────────────────────────────────────
 
@@ -143,7 +181,7 @@ export default function BodyCameraTab({
   }
 
   function statusLabel(status: string): string {
-    return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return toDisplayLabel(status);
   }
 
   function statusLedClass(status: string): string {
@@ -174,14 +212,20 @@ export default function BodyCameraTab({
 
   // ── Summary Cards ────────────────────────────────────────
 
+  // Theme: prior pure-black/very-dark hex literals (#0a1a0a, #1a150a,
+  // #1a0a0a, #0f0f0f) ignored the day/night palette swap and rendered as
+  // near-black bars on a light-grey surface. Lifted to the semantic
+  // --sev-*-rgb tokens (same alpha-tinted approach as the warning banner
+  // in PR #1595/#1606/#1610) so the cards re-skin between night and day
+  // without losing the green/amber/red tonal language.
   const SUMMARY_CARDS = [
-    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Assigned', value: stats.assigned, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-600/30', topBorder: 'border-t-gray-500' },
-    { label: 'Available', value: stats.available, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Lost / Retired', value: stats.lostRetired, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgClass: 'bg-[#0f0f0f]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
-  ];
+    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgStyle: undefined, bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
+    { label: 'Assigned', value: stats.assigned, color: 'text-rmpg-400', bgStyle: undefined, bgClass: 'bg-surface-base', border: 'border-border-subtle/30', topBorder: 'border-t-rmpg-500' },
+    { label: 'Available', value: stats.available, color: 'text-green-400', bgStyle: { background: 'rgb(var(--sev-ok-rgb) / 0.08)' }, bgClass: '', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-amber-400', bgStyle: { background: 'rgb(var(--sev-warn-rgb) / 0.08)' }, bgClass: '', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'Lost / Retired', value: stats.lostRetired, color: 'text-red-400', bgStyle: { background: 'rgb(var(--sev-critical-rgb) / 0.08)' }, bgClass: '', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+    { label: 'Videos', value: stats.videoCount, color: 'text-purple-400', bgStyle: undefined, bgClass: 'bg-surface-sunken', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+  ] as const;
 
   // ── Selection helpers ──────────────────────────────────
 
@@ -253,7 +297,7 @@ export default function BodyCameraTab({
   useEffect(() => { document.title = 'Personnel - Body Cameras \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -271,7 +315,7 @@ export default function BodyCameraTab({
             </button>
           )}
           {canManage && (
-            <button type="button" onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <button type="button" onClick={onAddCamera} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
               <Plus className="w-3 h-3" />
               Assign Camera
             </button>
@@ -281,7 +325,10 @@ export default function BodyCameraTab({
 
       {/* ── Alert Banner ── */}
       {stats.lostRetired > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div
+          className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500"
+          style={{ background: 'rgb(var(--sev-critical-rgb) / 0.08)' }}
+        >
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <span className="text-xs text-red-400 font-semibold">
             {stats.lostRetired} camera{stats.lostRetired !== 1 ? 's' : ''} lost or retired
@@ -295,6 +342,7 @@ export default function BodyCameraTab({
           <div
             key={card.label}
             className={`panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            style={card.bgStyle}
           >
             <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
             <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
@@ -352,7 +400,7 @@ export default function BodyCameraTab({
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
               className={`text-[10px] px-2.5 py-1 ${
-                statusFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                statusFilter === f.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
               {f.label}
@@ -365,7 +413,7 @@ export default function BodyCameraTab({
                 key={f.value}
                 onClick={() => setClassFilter(f.value)}
                 className={`text-[10px] px-2.5 py-1 ${
-                  classFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                  classFilter === f.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
                 {f.label}
@@ -417,10 +465,7 @@ export default function BodyCameraTab({
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteCameras && (
             <button type="button"
-              onClick={async () => {
-                if (!confirm(`Delete ${selectedCameraIds.size} camera(s) and all their videos?`)) return;
-                try { await onBulkDeleteCameras(Array.from(selectedCameraIds)); setSelectedCameraIds(new Set()); } catch { /* handled by parent */ }
-              }}
+              onClick={() => setBulkConfirm({ kind: 'cameras', count: selectedCameraIds.size })}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
@@ -446,10 +491,7 @@ export default function BodyCameraTab({
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteVideos && (
             <button type="button"
-              onClick={async () => {
-                if (!confirm(`Delete ${selectedVideoIds.size} video(s)? This cannot be undone.`)) return;
-                try { await onBulkDeleteVideos(Array.from(selectedVideoIds)); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
-              }}
+              onClick={() => setBulkConfirm({ kind: 'videos', count: selectedVideoIds.size })}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
@@ -474,7 +516,7 @@ export default function BodyCameraTab({
                   try { await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
                 }}
                 disabled={bulkLoading}
-                className="toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
+                className="toolbar-btn toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
               >
                 {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
                 Classify
@@ -521,15 +563,25 @@ export default function BodyCameraTab({
                     <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                       <Camera className="w-6 h-6 text-rmpg-600" />
                     </div>
-                    <p className="text-[10px] text-rmpg-500">No body cameras found.</p>
-                    <p className="text-[9px] text-rmpg-600 mt-0.5">Assign cameras to track officer body-worn devices.</p>
+                    {cameras.length === 0 ? (
+                      <>
+                        <p className="text-[10px] text-rmpg-500">No body cameras assigned.</p>
+                        <p className="text-[9px] text-rmpg-600 mt-0.5">Use "Assign Camera" to register a body-worn device.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-rmpg-500">No cameras match the current filter.</p>
+                        <p className="text-[9px] text-rmpg-600 mt-0.5">Try a different status filter or clear the search.</p>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (
                 filteredCameras.map(cam => (
                   <tr
                     key={cam.id}
-                    className={`cursor-pointer hover:bg-surface-hover ${cam.status === 'lost' ? 'bg-red-900/10' : ''} ${selectedCameraIds.has(cam.id) ? 'bg-brand-900/20' : ''}`}
+                    ref={el => { if (el) cameraRowRefs.current.set(cam.id, el); else cameraRowRefs.current.delete(cam.id); }}
+                    className={`cursor-pointer hover:bg-surface-hover ${cam.status === 'lost' ? 'bg-red-900/10' : ''} ${selectedCameraIds.has(cam.id) ? 'bg-brand-900/20' : ''} ${highlightCameraId === cam.id ? 'ring-1 ring-brand-400 ring-inset' : ''}`}
                     onClick={() => onSelectOfficer?.(String(cam.officer_id))}
                     onContextMenu={(e) => openMenu(e, buildCameraMenu(cam))}
                   >
@@ -644,8 +696,17 @@ export default function BodyCameraTab({
                       <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                         <Film className="w-6 h-6 text-rmpg-600" />
                       </div>
-                      <p className="text-[10px] text-rmpg-500">No video footage found.</p>
-                      <p className="text-[9px] text-rmpg-600 mt-0.5">Videos are uploaded from individual officer detail views.</p>
+                      {videos.length === 0 ? (
+                        <>
+                          <p className="text-[10px] text-rmpg-500">No footage uploaded yet.</p>
+                          <p className="text-[9px] text-rmpg-600 mt-0.5">Use "Upload Video" to add body-cam footage.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[10px] text-rmpg-500">No videos match the current filter.</p>
+                          <p className="text-[9px] text-rmpg-600 mt-0.5">Try a different classification or clear the search.</p>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -733,6 +794,36 @@ export default function BodyCameraTab({
           </div>
         </>
       )}
+
+      {/* ── Bulk-delete confirm (replaces native window.confirm) ── */}
+      <ConfirmDialog
+        isOpen={bulkConfirm !== null}
+        onClose={() => setBulkConfirm(null)}
+        onConfirm={async () => {
+          if (!bulkConfirm) return;
+          try {
+            if (bulkConfirm.kind === 'cameras' && onBulkDeleteCameras) {
+              await onBulkDeleteCameras(Array.from(selectedCameraIds));
+              setSelectedCameraIds(new Set());
+            } else if (bulkConfirm.kind === 'videos' && onBulkDeleteVideos) {
+              await onBulkDeleteVideos(Array.from(selectedVideoIds));
+              setSelectedVideoIds(new Set());
+            }
+          } catch { /* parent toasts the error */ }
+          setBulkConfirm(null);
+        }}
+        title={bulkConfirm?.kind === 'cameras' ? 'Delete cameras?' : 'Delete videos?'}
+        message={
+          bulkConfirm?.kind === 'cameras'
+            ? `Delete ${bulkConfirm.count} camera${bulkConfirm.count !== 1 ? 's' : ''} and ALL videos assigned to them? This cannot be undone.`
+            : bulkConfirm?.kind === 'videos'
+              ? `Delete ${bulkConfirm.count} body-cam video${bulkConfirm.count !== 1 ? 's' : ''}? This cannot be undone — held videos will refuse to delete and stay on the list.`
+              : ''
+        }
+        confirmLabel={bulkConfirm?.kind === 'cameras' ? 'Delete Cameras' : 'Delete Videos'}
+        confirmVariant="danger"
+        isLoading={bulkLoading}
+      />
     </div>
   );
 }

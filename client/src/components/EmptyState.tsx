@@ -25,9 +25,9 @@ function EmptyState({ icon: Icon, title, description, action, className = '' }: 
       >
         <Icon size={24} color="#d4a017" style={{ opacity: 0.5 }} />
       </div>
-      <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#666666] mb-1.5">{title}</h3>
+      <h3 className="text-[10px] font-bold uppercase tracking-wider text-rmpg-500 mb-1.5">{title}</h3>
       {description && (
-        <p className="text-[10px] text-[#555555] max-w-xs leading-relaxed">{description}</p>
+        <p className="text-[10px] text-rmpg-500 max-w-xs leading-relaxed">{description}</p>
       )}
       {action && (
         <button

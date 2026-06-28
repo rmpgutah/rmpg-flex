@@ -134,7 +134,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       clearAllErrors();
     } else if (editingEvidence) {
       const initial: EvidenceFormData = {
-        evidence_type: editingEvidence.type || 'physical',
+        evidence_type: editingEvidence.evidence_type || editingEvidence.type || 'physical',
         category: editingEvidence.category || '',
         description: editingEvidence.description || '',
         storage_location: editingEvidence.storage_location || '',
@@ -241,6 +241,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           body: JSON.stringify(body),
         });
       }
+      clearDraft();
       onCreated();
       onClose();
     } catch (err: any) {
@@ -286,8 +287,8 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-1.5 text-xs font-medium transition-colors ${
               activeTab === tab.id
-                ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
+                ? 'bg-rmpg-700 text-rmpg-100 border border-rmpg-600 border-b-rmpg-700'
+                : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50'
             }`}
           >
             {tab.label}
@@ -449,7 +450,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {activeTab === 'lab' && (
         <div className="space-y-3">
           <div className="panel-beveled p-3">
-            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Lab Submission</label>
+            <label htmlFor="ff-evidenceformmodal-21" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Lab Submission</label>
             <div className="flex items-center gap-4 mb-2">
               <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-evidenceformmodal-20" type="checkbox" checked={form.lab_submitted} onChange={(e) => updateField('lab_submitted', e.target.checked)} className="accent-brand-500" />
@@ -469,7 +470,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           </div>
 
           <div className="panel-beveled p-3">
-            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
+            <label htmlFor="ff-evidenceformmodal-23" className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Disposal Method">
                 <select id="ff-evidenceformmodal-23" className="select-dark text-xs" value={form.disposal_method} onChange={(e) => updateField('disposal_method', e.target.value)}>

@@ -202,3 +202,58 @@ export function recordPosture(flags: Array<string | null | undefined>): RecordPo
     label: POSTURE_LABEL[bestLevel],
   };
 }
+
+// ── CORNER BADGE (icon-tile alert tab) ──────────────────────
+// The no-photo record tiles (RecordAvatar) are now a uniform steel-blue glyph
+// instead of a colored threat ring, so the at-a-glance alert moved to a small
+// CODE tab pinned to the bottom of the tile (WARRANT / SOR / STOLEN / …). This
+// is the same spirit as classifyFlag(): a single isolated, well-commented
+// table of OPERATIONAL judgment calls.
+//
+// DECISION POINT — Christopher, tune codes / priority here. Highest `rank`
+// wins when a record carries several conditions; only the single most-important
+// one shows so the tile never becomes a christmas tree.
+
+export interface CornerBadge {
+  /** Short all-caps code shown on the tab (≤7 chars reads cleanly at 36px). */
+  code: string;
+  tone: BadgeTone;
+  /** Pulse for must-not-miss conditions (armed / wanted / stolen). */
+  pulse: boolean;
+}
+
+const CORNER_RULES: Array<{ terms: string[]; code: string; tone: BadgeTone; pulse: boolean; rank: number }> = [
+  { terms: ['warrant', 'wanted'],                         code: 'WARRANT', tone: 'red',    pulse: true,  rank: 9 },
+  { terms: ['armed', 'weapon'],                           code: 'ARMED',   tone: 'red',    pulse: true,  rank: 9 },
+  { terms: ['stolen'],                                    code: 'STOLEN',  tone: 'red',    pulse: true,  rank: 8 },
+  { terms: ['watchlist', 'ofac'],                         code: 'WATCH',   tone: 'red',    pulse: true,  rank: 8 },
+  { terms: ['hazmat', 'hazard', 'biohazard'],             code: 'HAZMAT',  tone: 'red',    pulse: true,  rank: 7 },
+  { terms: ['violent', 'officer safety', 'escape'],       code: 'CAUTION', tone: 'red',    pulse: true,  rank: 7 },
+  { terms: ['sex offender', 'offender'],                  code: 'SOR',     tone: 'orange', pulse: false, rank: 6 },
+  { terms: ['gang'],                                      code: 'GANG',    tone: 'orange', pulse: false, rank: 5 },
+  { terms: ['felony'],                                    code: 'FELONY',  tone: 'orange', pulse: false, rank: 5 },
+  { terms: ['parole', 'probation', 'supervision', 'pre-trial'], code: 'SUPV', tone: 'orange', pulse: false, rank: 4 },
+  { terms: ['bolo'],                                      code: 'BOLO',    tone: 'amber',  pulse: false, rank: 3 },
+  { terms: ['suspended', 'expired', 'impound', 'uninsured', 'no insurance'], code: 'FLAG', tone: 'amber', pulse: false, rank: 2 },
+];
+
+/**
+ * Pick the single highest-priority corner tab for a record's flags, or null
+ * when the record is clear (no tab → plain blue tile). Substring-matched and
+ * case-insensitive, same vocabulary spirit as classifyFlag().
+ */
+export function recordCornerBadge(flags: Array<string | null | undefined>): CornerBadge | null {
+  let best: CornerBadge | null = null;
+  let bestRank = -1;
+  for (const raw of flags) {
+    if (!raw) continue;
+    const f = String(raw).toLowerCase();
+    for (const rule of CORNER_RULES) {
+      if (rule.rank > bestRank && rule.terms.some((t) => f.includes(t))) {
+        bestRank = rule.rank;
+        best = { code: rule.code, tone: rule.tone, pulse: rule.pulse };
+      }
+    }
+  }
+  return best;
+}

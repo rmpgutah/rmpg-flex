@@ -77,11 +77,10 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     if (!cs) { addToast('Call sign is required', 'error'); return; }
     setUnitCreating(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         call_sign: cs,
         officer_id: newUnitOfficerId || null,
         status: newUnitStatus || 'available',
-        vehicle_id: newUnitVehicleId.trim() || null,
         capabilities: newUnitCapabilities,
         assigned_beat: newUnitBeat.trim() || null,
         audio_mode: newUnitAudioMode || 'audible',
@@ -89,6 +88,7 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       if (editingUnit) {
         await apiFetch(`/dispatch/units/${editingUnit.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
+        payload.vehicle_id = newUnitVehicleId.trim() || null;
         await apiFetch('/dispatch/units', { method: 'POST', body: JSON.stringify(payload) });
       }
       await refreshUnits();

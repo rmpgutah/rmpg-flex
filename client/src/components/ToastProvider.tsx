@@ -52,8 +52,8 @@ const TOAST_CONFIG = {
     leftAccent: 'border-l-[3px] border-l-[#fbbf24]',
   },
   info: {
-    bgClass: 'bg-[#0a0a0a]',
-    borderClass: 'border-[#3a3a3a]',
+    bgClass: 'bg-surface-sunken',
+    borderClass: 'border-border-subtle',
     textClass: 'text-[#d4a017]',
     progressClass: 'bg-[#d4a017]',
     icon: Info,

@@ -3,6 +3,7 @@ import { CreditCard, Plus, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface FuelCard {
   id: number;
@@ -88,13 +89,13 @@ export default function FleetFuelCardsTab() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> Fuel Cards</h3>
+        <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> Fuel Cards</h3>
         <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Card</button>
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="panel-inset p-2 text-center"><p className="field-label">Total Cards</p><p className="text-sm font-bold text-white">{cards.length}</p></div>
+        <div className="panel-inset p-2 text-center"><p className="field-label">Total Cards</p><p className="text-sm font-bold text-rmpg-100">{cards.length}</p></div>
         <div className="panel-inset p-2 text-center"><p className="field-label">Assigned</p><p className="text-sm font-bold text-green-400">{cards.filter(c => c.vehicle_id).length}</p></div>
         <div className="panel-inset p-2 text-center"><p className="field-label">Unassigned</p><p className="text-sm font-bold text-amber-400">{cards.filter(c => !c.vehicle_id).length}</p></div>
       </div>
@@ -124,6 +125,7 @@ export default function FleetFuelCardsTab() {
       {loading ? (
         <div className="flex items-center justify-center gap-2 text-rmpg-400 py-4 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading fuel cards...</div>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-[10px]">
           <thead>
             <tr className="text-rmpg-400 border-b border-rmpg-700">
@@ -139,11 +141,11 @@ export default function FleetFuelCardsTab() {
           <tbody>
             {cards.map(c => (
               <tr key={c.id} className="border-b border-rmpg-800 hover:bg-surface-raised/30 transition-colors">
-                <td className="py-1 text-white font-mono">{c.card_number}</td>
+                <td className="py-1 text-rmpg-100 font-mono">{c.card_number}</td>
                 <td className="text-rmpg-300">{c.provider || '-'}</td>
                 <td className="text-rmpg-200">{c.vehicle_number || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
                 <td className="text-right text-rmpg-300 font-mono">{c.monthly_limit ? `$${c.monthly_limit}` : '-'}</td>
-                <td className="text-center"><span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_COLORS[c.status] || ''}`}>{(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</span></td>
+                <td className="text-center"><span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_COLORS[c.status] || ''}`}>{toDisplayLabel(c.status || '')}</span></td>
                 <td className="text-right text-rmpg-400">{c.expiry_date ? parseTimestamp(c.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</td>
                 <td className="text-right">
                   {c.status === 'active' && (
@@ -157,6 +159,7 @@ export default function FleetFuelCardsTab() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

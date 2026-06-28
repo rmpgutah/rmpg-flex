@@ -72,7 +72,7 @@ export class Primitives {
     // Form-fill underline beneath the value spanning the field width.
     this.doc.setDrawColor(0, 0, 0);
     this.doc.setLineWidth(RULE_WEIGHTS.fieldUnderline);
-    this.doc.line(x, y + 5, x + width, y + 5);
+    this.doc.line(x, y + 5.5, x + width, y + 5.5);
 
     if (!positioned) this.layout.advance(SPACING.fieldRowHeight);
   }
@@ -142,21 +142,27 @@ export class Primitives {
   table<T>(spec: TableField<T>, data: T): void {
     const rows = spec.accessor(data) ?? [];
 
-    // Section label (above table)
+    // Section label (above table) — skip if empty
     this.layout.pageBreakIfNeeded(4 + 6 + 6);
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(LABEL_FONT_SIZE);
-    this.doc.setTextColor(0, 0, 0);
-    this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
-    this.layout.advance(4);
+    if (spec.label) {
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(LABEL_FONT_SIZE);
+      this.doc.setTextColor(0, 0, 0);
+      this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
+      this.layout.advance(4);
+    }
 
     const tableWidth = this.layout.rightX - this.layout.leftX;
-    const totalUnits = spec.columns.reduce((sum, c) => sum + widthUnits(c.width ?? 'full'), 0);
+    const hasRatios = spec.columns.some(c => c.ratio != null);
+    const totalUnits = hasRatios
+      ? spec.columns.reduce((sum, c) => sum + (c.ratio ?? 1), 0)
+      : spec.columns.reduce((sum, c) => sum + widthUnits(c.width ?? 'full'), 0);
     let x = this.layout.leftX;
     const colStarts: number[] = [];
     const colWidths: number[] = [];
     for (const c of spec.columns) {
-      const w = (widthUnits(c.width ?? 'full') / totalUnits) * tableWidth;
+      const units = hasRatios ? (c.ratio ?? 1) : widthUnits(c.width ?? 'full');
+      const w = (units / totalUnits) * tableWidth;
       colStarts.push(x);
       colWidths.push(w);
       x += w;
@@ -168,63 +174,78 @@ export class Primitives {
     const rowH = TABLE_ROW_H;
     const left = this.layout.leftX;
 
-    // ── Header band: solid black fill, white UPPERCASE text ──
-    const tableTop = this.layout.cursorY;
-    this.doc.setFillColor(0, 0, 0);
-    this.doc.rect(left, tableTop, tableWidth, headerH, 'F');
+    // Draw the black header band + white UPPERCASE column labels at `top`.
+    // Repeated at the top of every page a long table spills onto so the
+    // columns stay identifiable on continuation pages.
+    const drawHeaderBand = (top: number): void => {
+      this.doc.setFillColor(0, 0, 0);
+      this.doc.rect(left, top, tableWidth, headerH, 'F');
+      this.doc.setFont('helvetica', TYPOGRAPHY.tableHeader.weight);
+      this.doc.setFontSize(TYPOGRAPHY.tableHeader.size);
+      this.doc.setTextColor(255, 255, 255);
+      spec.columns.forEach((c, i) => {
+        const headerText = (c.header || c.key).toUpperCase();
+        this.doc.text(headerText, colStarts[i] + 1, top + headerH - 1.5);
+      });
+    };
 
-    this.doc.setFont('helvetica', TYPOGRAPHY.tableHeader.weight);
-    this.doc.setFontSize(TYPOGRAPHY.tableHeader.size);
-    this.doc.setTextColor(255, 255, 255);
-    spec.columns.forEach((c, i) => {
-      const headerText = (c.header || c.key).toUpperCase();
-      this.doc.text(headerText, colStarts[i] + 1, tableTop + headerH - 1.5);
-    });
-    this.layout.advance(headerH);
+    // Reapply body text style (the header band leaves white/bold state behind).
+    const applyBodyStyle = (): void => {
+      this.doc.setFont('helvetica', TYPOGRAPHY.tableBody.weight);
+      this.doc.setFontSize(TYPOGRAPHY.tableBody.size);
+      this.doc.setTextColor(0, 0, 0);
+    };
 
-    // ── Body rows: zebra-striped, black text ──
-    this.doc.setFont('helvetica', TYPOGRAPHY.tableBody.weight);
-    this.doc.setFontSize(TYPOGRAPHY.tableBody.size);
-    this.doc.setTextColor(0, 0, 0);
-
-    const bodyTop = this.layout.cursorY;
-
-    // Draw the outer rect + column dividers (+ optional below-header separator)
-    // for ONE page fragment. Tables that overflow a page get borders per
-    // fragment — the old single-rect pass spanned tableTop→bodyBottom and was
-    // skipped entirely once a page break reset cursorY below tableTop, leaving
-    // the table as gridless floating text on every page it touched.
-    const drawFragmentBorders = (top: number, bottom: number, withHeaderSep: boolean) => {
+    // Outer rect + column dividers + the separator beneath the header band, for
+    // ONE page fragment. CRITICAL: jsPDF draws on the *current* page, and
+    // pageBreakIfNeeded() calls addPage() the instant it decides to break — so
+    // each page's borders are closed via that method's `onBeforeBreak` hook
+    // (which fires before the page flips), NEVER after. Drawing them after the
+    // flip painted every completed page's grid onto the *next* page: page 1
+    // looked borderless, page 2 got a half-height grid, and the last page got a
+    // full-height phantom box bleeding through the TOTALS block.
+    const drawFragmentBorders = (top: number, bottom: number, headerSepY: number): void => {
       if (bottom <= top) return;
       const h = bottom - top;
       this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
       this.doc.setDrawColor(0, 0, 0);
       this.doc.rect(left, top, tableWidth, h);
-      if (withHeaderSep) this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      this.doc.line(left, headerSepY, left + tableWidth, headerSepY);
       for (let i = 1; i < spec.columns.length; i++) {
         this.doc.line(colStarts[i], top, colStarts[i], top + h);
       }
     };
+
+    // Never orphan a header band at the very bottom of a page — keep it with
+    // at least its first body row.
+    this.layout.pageBreakIfNeeded(headerH + rowH);
+
+    // ── First fragment: header band on the current page ──
+    let fragTop = this.layout.cursorY;
+    drawHeaderBand(fragTop);
+    this.layout.advance(headerH);
+    let bodyTop = this.layout.cursorY;   // below-header separator y for this fragment
+    applyBodyStyle();
 
     if (rows.length === 0) {
       this.doc.setTextColor(150, 150, 150);
       this.doc.text('No records', left + 1, this.layout.cursorY + rowH - 1.5);
       this.layout.advance(rowH);
       this.doc.setTextColor(0, 0, 0);
-      drawFragmentBorders(tableTop, this.layout.cursorY, true);
+      drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
     } else {
-      let fragTop = tableTop;      // first fragment includes the header band
-      let fragHasHeader = true;
       for (let r = 0; r < rows.length; r++) {
-        const yBefore = this.layout.cursorY;
-        this.layout.pageBreakIfNeeded(rowH);
-        if (this.layout.cursorY < yBefore) {
-          // Page break: close the fragment on the page just left (from fragTop
-          // down to the last row's bottom), then start fresh on the new page
-          // top (continuation fragments carry no below-header separator).
-          drawFragmentBorders(fragTop, yBefore, fragHasHeader);
+        const broke = this.layout.pageBreakIfNeeded(rowH, () => {
+          // Close THIS page's fragment before jsPDF flips to the next page.
+          drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
+        });
+        if (broke) {
+          // New page: repeat the header band and re-anchor the fragment.
           fragTop = this.layout.cursorY;
-          fragHasHeader = false;
+          drawHeaderBand(fragTop);
+          this.layout.advance(headerH);
+          bodyTop = this.layout.cursorY;
+          applyBodyStyle();
         }
         const row = rows[r];
         const yRow = this.layout.cursorY;
@@ -241,7 +262,7 @@ export class Primitives {
         });
         this.layout.advance(rowH);
       }
-      drawFragmentBorders(fragTop, this.layout.cursorY, fragHasHeader);
+      drawFragmentBorders(fragTop, this.layout.cursorY, bodyTop);
     }
 
     // Reset text + fill color for downstream callers — the body loop

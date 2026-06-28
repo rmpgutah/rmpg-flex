@@ -17,7 +17,7 @@ import {
   CalendarDays, Clipboard, MapPin, Package, UserCheck, FileSearch, PenTool,
   HeartPulse, ShieldAlert, GraduationCap, Server, Palette, Bug, Sparkles, Mic,
   MicOff, Video, ClipboardCheck, Contrast, Droplets, Flame, Leaf, Tv, Brain,
-  SlidersHorizontal, AudioLines, Network,
+  SlidersHorizontal, AudioLines, Network, CreditCard, DollarSign, Route, Film,
 } from 'lucide-react';
 import {
   setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts,
@@ -462,16 +462,22 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
           { type: 'action', label: 'Incident Report', icon: FileText, action: () => { navigate('/incidents'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
+          { type: 'action', label: 'Arrest Report', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'separator' },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Use of Force Report', icon: AlertTriangle, action: () => navigate('/use-of-force') },
+          { type: 'separator' },
           { type: 'action', label: 'Service Job', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'action', label: 'Serve Intake (Drop Documents)', icon: Upload, action: () => navigate('/serve-intake') },
           { type: 'separator' },
           { type: 'action', label: 'BOLO Alert', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'Message', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'separator' },
+          { type: 'action', label: 'Daily Activity Report', icon: Clipboard, action: () => navigate('/dar') },
+          { type: 'action', label: 'Shift Plan', icon: CalendarDays, action: () => navigate('/shift-plans') },
         ],
       },
       { type: 'separator' },
@@ -481,44 +487,67 @@ export default function MenuBar({
         icon: Globe,
         items: [
           { type: 'action', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate('/') },
+          { type: 'action', label: 'Command Center', icon: Map, action: () => navigate('/command-center') },
+          { type: 'action', label: 'Navigation & Route Planning', icon: Route, action: () => navigate('/navigation') },
           { type: 'action', label: 'Dispatch', icon: Radio, action: () => navigate('/dispatch') },
           { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map') },
           { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
+          { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
+          { type: 'action', label: 'Field Interviews', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry (NSOPW)', icon: ShieldAlert, action: () => navigate('/nsopw') },
+          { type: 'action', label: 'National Warrant Search', icon: Search, action: () => navigate('/national-warrant-search') },
           { type: 'separator' },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'action', label: 'Serve Intake', icon: Upload, action: () => navigate('/serve-intake') },
+          { type: 'action', label: 'Use of Force', icon: AlertTriangle, action: () => navigate('/use-of-force') },
           { type: 'separator' },
           { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
+          { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
+          { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
+          { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
+          { type: 'separator' },
           { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', label: 'Dispatch Geography', icon: MapPin, action: () => navigate('/geography') },
+          { type: 'action', label: 'Geo Data Viewer', icon: Map, action: () => navigate('/geo-data-viewer') },
           { type: 'separator' },
           { type: 'action', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
           { type: 'action', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
+          { type: 'action', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           { type: 'action', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') },
+          { type: 'action', label: 'Alert Center', icon: Bell, action: () => navigate('/alerts') },
           { type: 'separator' },
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
+          { type: 'action', label: 'Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
           { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
           { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
           { type: 'separator' },
+          { type: 'action', label: 'Overwatch (CRM)', icon: Briefcase, action: () => navigate('/crm') },
+          { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
+          { type: 'action', label: 'Jail Management', icon: Shield, action: () => navigate('/jail') },
+          { type: 'action', label: 'Internal Affairs', icon: ShieldAlert, action: () => navigate('/affairs') },
+          { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
           { type: 'action', label: 'Administration', icon: Settings, action: () => navigate('/admin'), adminOnly: true },
+          { type: 'separator' },
+          { type: 'action', label: 'Settings', icon: SlidersHorizontal, action: () => navigate('/settings') },
+          { type: 'action', label: 'Help & About', icon: Info, action: () => navigate('/help') },
         ],
       },
       { type: 'separator' },
@@ -632,11 +661,13 @@ export default function MenuBar({
     label: 'Tools',
     items: [
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
+      { type: 'action', label: 'Knowledge Base', icon: BookOpen, action: () => navigate('/knowledge-base') },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
       { type: 'separator' },
       { type: 'action', label: timerEndTime ? `Timer: ${timerRemaining}` : 'Quick Timer', icon: Clock, action: () => {
         if (timerEndTime) { cancelQuickTimer(); } else { setTimerPromptOpen(true); }
       }},
+      { type: 'action', label: 'Fullscreen Toggle', icon: Monitor, action: toggleFullscreen },
       { type: 'separator' },
       {
         type: 'submenu',
@@ -651,6 +682,8 @@ export default function MenuBar({
           { type: 'action', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', label: 'Geography / Zones', icon: MapPin, action: () => navigate('/geography') },
           { type: 'action', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
+          { type: 'separator' },
+          { type: 'action', label: 'Command Center', icon: Map, action: () => navigate('/command-center') },
         ],
       },
       {
@@ -663,15 +696,17 @@ export default function MenuBar({
           { type: 'action', label: 'Incident Lookup', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'separator' },
-          { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
+          { type: 'action', label: 'DL Search', icon: CreditCard, action: () => navigate('/dl-search') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
           { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry (NSOPW)', icon: ShieldAlert, action: () => navigate('/nsopw') },
+          { type: 'action', label: 'National Warrant Search', icon: Search, action: () => navigate('/national-warrant-search') },
           { type: 'separator' },
+          { type: 'action', label: 'Skip Tracer', icon: Search, action: () => navigate('/skip-tracer') },
           { type: 'action', label: 'MicroBilt', icon: Search, action: () => navigate('/microbilt') },
           { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
           { type: 'action', label: 'Recon Connect', icon: Search, action: () => navigate('/recon-connect') },
+          { type: 'action', label: 'Colorado DOC Search', icon: Search, action: () => navigate('/colorado-doc') },
         ],
       },
       {
@@ -679,14 +714,53 @@ export default function MenuBar({
         label: 'Enforcement',
         icon: Shield,
         items: [
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
+          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
+          { type: 'separator' },
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
-          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Court Records', icon: FileText, action: () => navigate('/court-records') },
+          { type: 'separator' },
           { type: 'action', label: 'Use of Force', icon: AlertTriangle, action: () => navigate('/use-of-force') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'action', label: 'Serve Intake Upload', icon: Upload, action: () => navigate('/serve-intake') },
+          { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
+        ],
+      },
+      {
+        type: 'submenu',
+        label: 'Personnel & Fleet',
+        icon: Users,
+        items: [
+          { type: 'action', label: 'Personnel Directory', icon: Users, action: () => navigate('/personnel') },
+          { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
+          { type: 'separator' },
+          { type: 'action', label: 'Fleet Management', icon: Car, action: () => navigate('/fleet') },
+          { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
+          { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
+          { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
+          { type: 'action', label: 'Trip Footage (FlexCam)', icon: Film, action: () => navigate('/flexcam') },
+          { type: 'separator' },
+          { type: 'action', label: 'Training', icon: GraduationCap, action: () => navigate('/training') },
+          { type: 'action', label: 'Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
+          { type: 'separator' },
+          { type: 'action', label: 'My Officer ID', icon: CreditCard, action: () => navigate('/my-id') },
+          { type: 'action', label: 'Verify Officer ID', icon: QrCode, action: () => navigate('/verify-id') },
+        ],
+      },
+      {
+        type: 'submenu',
+        label: 'Navigation & Map',
+        icon: Map,
+        items: [
+          { type: 'action', label: 'Live Map', icon: Map, action: () => navigate('/map') },
+          { type: 'action', label: 'Navigation & Route Planning', icon: Route, action: () => navigate('/navigation') },
+          { type: 'action', label: 'Geo Data Viewer', icon: MapPin, action: () => navigate('/geo-data-viewer') },
+          { type: 'action', label: 'Command Center', icon: Map, action: () => navigate('/command-center') },
+          { type: 'action', label: 'Dispatch Geography', icon: MapPin, action: () => navigate('/geography') },
         ],
       },
       {
@@ -694,11 +768,15 @@ export default function MenuBar({
         label: 'Communications',
         icon: MessageSquare,
         items: [
-          { type: 'action', label: 'Send Message', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', label: 'Communications Center', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
+          { type: 'action', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
+          { type: 'separator' },
           { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'View Active BOLOs', icon: Eye, action: () => navigate('/communications') },
           { type: 'separator' },
-
+          { type: 'action', label: 'Alert Center', icon: Bell, action: () => navigate('/alerts') },
+          { type: 'action', label: 'Notifications', icon: Bell, action: () => navigate('/notifications') },
         ],
       },
       {
@@ -706,19 +784,38 @@ export default function MenuBar({
         label: 'Analysis & Reports',
         icon: BarChart3,
         items: [
+          { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
+          { type: 'action', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
-          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
+          { type: 'separator' },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
           { type: 'separator' },
-          { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
-          { type: 'action', label: 'PDF Editor', icon: FileText, action: () => navigate('/pdf-editor') },
-          { type: 'action', label: 'Historical GPS Tracks', icon: BarChart3, action: () => navigate('/historical-tracks') },
+          { type: 'action', label: 'Connections', icon: Network, action: () => navigate('/connections') },
+          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
+          { type: 'action', label: 'IPED Forensics', icon: Microscope, action: () => navigate('/iped') },
+        ],
+      },
+      {
+        type: 'submenu',
+        label: 'Support Services',
+        icon: Shield,
+        items: [
+          { type: 'action', label: 'Jail Management', icon: Shield, action: () => navigate('/jail') },
+          { type: 'action', label: 'Internal Affairs', icon: ShieldAlert, action: () => navigate('/affairs') },
+          { type: 'action', label: 'Asset Management', icon: Package, action: () => navigate('/assets') },
+          { type: 'separator' },
+          { type: 'action', label: 'Task Management', icon: ClipboardList, action: () => navigate('/tasks') },
+          { type: 'action', label: 'QA / Inspections', icon: ClipboardCheck, action: () => navigate('/qa') },
+          { type: 'action', label: 'Risk Management', icon: Shield, action: () => navigate('/risk') },
+          { type: 'separator' },
+          { type: 'action', label: 'Community Relations', icon: Users, action: () => navigate('/community') },
+          { type: 'action', label: 'Billing & Invoicing', icon: DollarSign, action: () => navigate('/billing') },
         ],
       },
       { type: 'separator' },
-      { type: 'action', label: 'Overwatch', icon: Briefcase, action: () => navigate('/crm') },
+      { type: 'action', label: 'Overwatch (CRM)', icon: Briefcase, action: () => navigate('/crm') },
+      { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
       {
         type: 'submenu',
         label: 'Administration',
@@ -732,8 +829,9 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
-          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
+          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training-mgmt') },
           { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
+          { type: 'action', label: 'Settings', icon: SlidersHorizontal, action: () => navigate('/settings') },
         ],
       },
     ],
@@ -779,6 +877,23 @@ export default function MenuBar({
                 await generateDispatchGuidePdf();
               } catch (err) {
                 console.error('[DispatchGuide] Generation failed:', err);
+              }
+            },
+          },
+          {
+            // Two-page tear-off card with shortcuts, priorities, statuses,
+            // and CAD commands — meant to live taped to the console.
+            // Reuses the same generator the Help page exposes, lazy-imported
+            // so jsPDF only loads when the menu item is actually clicked.
+            type: 'action',
+            label: 'Quick Reference Card (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                const { generateHelpQuickReferencePdfWithDefaults } = await import('../utils/helpQuickReferencePdf');
+                await generateHelpQuickReferencePdfWithDefaults();
+              } catch (err) {
+                console.error('[QuickReferenceCard] Generation failed:', err);
               }
             },
           },
@@ -844,7 +959,7 @@ export default function MenuBar({
     ],
   };
 
-  const menus = [fileMenu, helpMenu];
+  const menus = [fileMenu, viewMenu, toolsMenu, helpMenu];
 
   // ============================================================
   // Rendering
@@ -964,17 +1079,17 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col animate-dropdown-appear"
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 23: 10-codes header with top accent and version tag */}
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
+              <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
                 <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4 scrollbar-dark">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1005,7 +1120,7 @@ export default function MenuBar({
                       ['10-20', 'Location / What is your location'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1038,7 +1153,7 @@ export default function MenuBar({
                       ['10-40', 'Silent run — no lights/siren'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1070,7 +1185,7 @@ export default function MenuBar({
                       ['10-60', 'Squad in vicinity'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1104,7 +1219,7 @@ export default function MenuBar({
                       ['10-99', 'Wanted / Stolen indicated'],
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
-                        <span className="text-white font-mono font-bold w-12 flex-shrink-0">{code}</span>
+                        <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
                         <span className="text-rmpg-300">{desc}</span>
                       </div>
                     ))}
@@ -1112,7 +1227,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#050505' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: 'var(--surface-overlay)' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
@@ -1122,15 +1237,15 @@ export default function MenuBar({
       {/* ── Quick Timer Prompt Modal ── */}
       {timerPromptOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setTimerPromptOpen(false)}>
-          <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background: '#0a0a0a' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#050505', borderTop: '2px solid #888888' }}>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+          <div className="panel-beveled w-[280px] animate-dropdown-appear" style={{ background:"var(--surface-sunken)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #888888' }}>
+              <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-brand-400" />Quick Timer
               </h2>
-              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-white text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
+              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
             </div>
             <div className="p-4 space-y-3">
-              <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
+              <label htmlFor="ff-menubar-0" className="block text-xs text-rmpg-300">Duration (minutes)</label>
               <input id="ff-menubar-0"
                 ref={timerInputRef}
                 type="number"
@@ -1139,18 +1254,18 @@ export default function MenuBar({
                 value={timerMinutesInput}
                 onChange={(e) => setTimerMinutesInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') startQuickTimer(); }}
-                className="w-full bg-surface-sunken border border-rmpg-600 text-white text-sm font-mono px-3 py-2 focus:border-brand-400 focus:outline-none"
+                className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-100 text-sm font-mono px-3 py-2 focus:border-brand-400 focus:outline-none"
               />
               <div className="flex gap-2">
                 {[5, 10, 15, 30].map((m) => (
                   <button key={m} type="button" onClick={() => setTimerMinutesInput(String(m))}
-                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-white hover:border-rmpg-400 transition-colors">
+                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors">
                     {m}m
                   </button>
                 ))}
               </div>
               <button type="button" onClick={startQuickTimer}
-                className="w-full py-2 text-xs font-bold text-white border border-brand-400 hover:bg-brand-400/10 transition-colors">
+                className="w-full py-2 text-xs font-bold text-rmpg-100 border border-brand-400 hover:bg-brand-400/10 transition-colors">
                 START TIMER
               </button>
             </div>
@@ -1161,7 +1276,7 @@ export default function MenuBar({
       {/* ── Floating Timer Indicator ── */}
       {timerEndTime && (
         <div className="fixed top-[76px] right-4 z-[9990] flex items-center gap-2 px-3 py-1.5 border border-rmpg-600 animate-dropdown-appear"
-          style={{ background: '#0a0a0a', borderTop: '2px solid #d4a017' }}>
+          style={{ background:"var(--surface-sunken)", borderTop: '2px solid #d4a017' }}>
           <Clock className="w-3.5 h-3.5 text-brand-400" />
           <span className="font-mono text-sm text-green-400 tabular-nums">{timerRemaining}</span>
           <button type="button" onClick={cancelQuickTimer} className="text-rmpg-400 hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>

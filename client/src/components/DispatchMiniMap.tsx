@@ -9,12 +9,16 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
+import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
@@ -60,6 +64,24 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // below would stay bound to map=null forever and queryRoute would bail before
   // ever fetching the Directions API — no route line, no turn-by-turn banner.
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (see installWebglContextRecovery below).
+  const [recovering, setRecovering] = useState(false);
+  const [recoverNonce, setRecoverNonce] = useState(0);
+  const recoverCamRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // Always-visible assigned vehicle (independent of dispatch)
+  interface AssignedVehicle {
+    id: number;
+    vehicle_number: string;
+    plate_number: string | null;
+    gps_lat: number | null;
+    gps_lon: number | null;
+    status: string;
+    current_mileage: number | null;
+  }
+  const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
+  const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
@@ -106,22 +128,54 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const hasCallLoc = call?.latitude != null && call?.longitude != null;
-    const center: [number, number] = hasCallLoc
-      ? [call!.longitude!, call!.latitude!]
-      : DEFAULT_CENTER;
+    // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
+    // so a call with bad coordinates never anchors the map / drops a teardrop.
+    const hasCallLoc = isValidLngLat(call?.longitude, call?.latitude);
+    // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
+    // call (or the SLC fallback). One-shot: cleared after the new map is built.
+    const recoverCam = recoverCamRef.current;
+    const center: [number, number] = recoverCam
+      ? recoverCam.center
+      : hasCallLoc
+        ? [call!.longitude!, call!.latitude!]
+        : DEFAULT_CENTER;
+    const zoom = recoverCam ? recoverCam.zoom : MINI_ZOOM;
 
     if (!mapRef.current) {
+      recoverCamRef.current = null;
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: MAPBOX_STYLE_DARK,
         center,
-        zoom: MINI_ZOOM,
+        zoom,
         attributionControl: false,
       });
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
       registerMapInstance(map);
       setMapReady(true); // re-render so useMapRouting picks up the real map instance
+      setRecovering(false);
+
+      // WebGL context-loss recovery: rebuild this map in place if the GPU drops
+      // its context (long shift / Toughbook GPU pressure / sleep-wake). We null
+      // mapRef + bump recoverNonce so THIS effect re-creates the map; the marker
+      // and routing effects (keyed on mapReady) re-attach to the new instance.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'DispatchMiniMap',
+        onContextLost: () => setRecovering(true),
+        onContextRestored: () => setRecovering(false),
+        onRebuild: (camera) => {
+          recoverCamRef.current = camera;
+          if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+          callMarkerRef.current?.remove(); callMarkerRef.current = null;
+          unitMarkersRef.current.forEach((m) => m.remove()); unitMarkersRef.current.clear();
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+          setMapReady(false);
+          setRecovering(true);
+          setRecoverNonce((n) => n + 1);
+        },
+        onGiveUp: () => setRecovering(false),
+      });
 
       // Monitor tile loading
       map.on('idle', () => setTilesStalled(false));
@@ -141,14 +195,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (hasCallLoc && mapRef.current) {
       if (callMarkerRef.current) {
         callMarkerRef.current.setLngLat([call!.longitude!, call!.latitude!]);
-        const el = callMarkerRef.current.getElement();
-        if (el) el.textContent = call!.call_number || 'CALL';
+        // The builder nests the label in a <span>; update it in place so the
+        // teardrop shape/rotation isn't wiped by setting textContent on the root.
+        const label = callMarkerRef.current.getElement()?.querySelector('span');
+        if (label) label.textContent = call!.call_number || 'CALL';
       } else {
-        const el = document.createElement('div');
-        el.style.cssText =
-          'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-          "padding:1px 4px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-        el.textContent = call!.call_number || 'CALL';
+        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
         callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([call!.longitude!, call!.latitude!])
           .addTo(mapRef.current);
@@ -157,7 +209,54 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       callMarkerRef.current.remove();
       callMarkerRef.current = null;
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude]);
+  }, [loaded, call?.id, call?.latitude, call?.longitude, recoverNonce]);
+
+  // Fetch assigned vehicle — always visible, independent of dispatch
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAssignedVehicle = () => {
+      apiFetch<AssignedVehicle | null>('/dispatch/gps/my-vehicle')
+        .then((v) => {
+          if (cancelled || !v) return;
+          setAssignedVehicle(v);
+        })
+        .catch(() => { /* no assigned vehicle — normal */ });
+    };
+    fetchAssignedVehicle();
+    const interval = setInterval(fetchAssignedVehicle, 60_000); // refresh every 60s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Render assigned vehicle marker on map (always visible)
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const av = assignedVehicle;
+
+    // Remove existing marker if vehicle info changed or GPS lost
+    if (assignedVehicleMarkerRef.current) {
+      assignedVehicleMarkerRef.current.remove();
+      assignedVehicleMarkerRef.current = null;
+    }
+
+    if (!av || !isValidLngLat(av.gps_lon, av.gps_lat)) return;
+
+    // Take-home vehicle: no dispatch status in scope, so render the shared unit
+    // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
+    // the original gold-branded accent the plain neutral ring would have lost).
+    const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([av.gps_lon!, av.gps_lat!])
+      .addTo(map);
+    assignedVehicleMarkerRef.current = marker;
+
+    return () => {
+      if (assignedVehicleMarkerRef.current) {
+        assignedVehicleMarkerRef.current.remove();
+        assignedVehicleMarkerRef.current = null;
+      }
+    };
+  }, [loaded, mapReady, assignedVehicle?.gps_lat, assignedVehicle?.gps_lon, assignedVehicle?.vehicle_number]);
 
   // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
   // update so the pin glides to its new position instead of being destroyed and
@@ -172,7 +271,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     const assignedUnits = units.filter(u =>
       (assignedIds.has(String(u.id)) ||
         (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
-      u.latitude != null && u.longitude != null
+      isValidLngLat(u.longitude, u.latitude)
     );
 
     const liveIds = new Set<string>();
@@ -182,14 +281,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const existing = unitMarkersRef.current.get(id);
       if (existing) {
         existing.setLngLat([unit.longitude!, unit.latitude!]);
-        const el = existing.getElement();
-        if (el && el.textContent !== unit.call_sign) el.textContent = unit.call_sign;
+        // Label lives in the builder's <span>; update it (not the root) in place.
+        const label = existing.getElement()?.querySelector('span');
+        if (label && label.textContent !== unit.call_sign) label.textContent = unit.call_sign;
       } else {
-        const el = document.createElement('div');
-        el.style.cssText =
-          'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-          "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-        el.textContent = unit.call_sign;
+        const el = buildUnitMarker({ label: unit.call_sign, status: unit.status });
         const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([unit.longitude!, unit.latitude!])
           .addTo(map);
@@ -299,6 +395,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
     return () => {
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       callMarkerRef.current?.remove();
       callMarkerRef.current = null;
       unitMarkersRef.current.forEach((m) => m.remove());
@@ -310,14 +407,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Auth error (config problem, not connectivity)
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -332,7 +429,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
+            className="text-rmpg-400 hover:text-rmpg-100"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
@@ -341,7 +438,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
+              className="text-rmpg-400 hover:text-rmpg-100"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
@@ -358,11 +455,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -375,20 +472,20 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid #2e2e2e', pointerEvents: 'auto',
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
         }}>
           {/* ETA + miles, above */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: '#141414',
+            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
           }}>
-            <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
-            <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 900, letterSpacing: '0.02em' }}>
+            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
               {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
             </span>
-            <span style={{ fontSize: 12, color: '#d4a017', fontWeight: 900 }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
@@ -401,7 +498,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}
@@ -416,9 +513,27 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
+        </div>
+      )}
+
+      {/* WebGL recovery badge — map briefly rebuilding after a GPU context drop */}
+      {recovering && (
+        <div style={{
+          position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', zIndex: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              RECONNECTING
+            </span>
+          </div>
         </div>
       )}
 
@@ -429,11 +544,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
