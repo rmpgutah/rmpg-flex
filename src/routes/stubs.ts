@@ -178,7 +178,12 @@ stubs.post('/messages', async (c) => {
     if (!content) return c.json({ error: 'content is required' }, 400);
     const channel = body.channel === 'broadcast' ? 'broadcast' : 'direct';
     const toUserId = channel === 'broadcast' ? null : (body.to_user_id ? Number(body.to_user_id) : null);
-    // Derive thread_id: replies use the parent's thread_id or parent's own id.
+    // Derive thread_id:
+    //  • Replies: use the parent's thread_id, or the parent's own id if the
+    //    parent has no thread_id (it was a root message sent before threading).
+    //  • Root messages: set thread_id to the newly-inserted row's own id so
+    //    future replies can anchor their thread correctly. We do this in a
+    //    second UPDATE after insert.
     let threadId: string | null = null;
     if (body.parent_id) {
       const parent = await db.prepare('SELECT id, thread_id FROM messages WHERE id = ?')
@@ -198,8 +203,13 @@ stubs.post('/messages', async (c) => {
       body.parent_id ? Number(body.parent_id) : null,
       threadId,
     ).run();
-    const created = await db.prepare('SELECT * FROM messages WHERE id = ?')
-      .bind(result.meta.last_row_id).first();
+    const newId = result.meta.last_row_id as number;
+    // Root messages self-anchor their thread_id so future replies know the root.
+    if (!body.parent_id) {
+      await db.prepare('UPDATE messages SET thread_id = ? WHERE id = ? AND thread_id IS NULL')
+        .bind(String(newId), newId).run();
+    }
+    const created = await db.prepare('SELECT * FROM messages WHERE id = ?').bind(newId).first();
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /comms/messages failed:', err);

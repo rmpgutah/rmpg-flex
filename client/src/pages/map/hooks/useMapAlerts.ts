@@ -6,16 +6,8 @@ import { useWebSocket } from '../../../context/WebSocketContext';
 import { whenStyleReady } from '../utils/safeAddSource';
 
 export type SafetyAlertType =
-  | 'shots_fired'
-  | 'officer_down'
-  | 'pursuit'
-  | 'hazmat'
-  | 'armed_subject'
-  | 'barricaded'
-  | 'hostage'
-  | 'bomb_threat'
-  | 'active_shooter'
-  | 'missing_officer';
+  | 'shots_fired' | 'officer_down' | 'pursuit' | 'hazmat' | 'armed_subject'
+  | 'barricaded' | 'hostage' | 'bomb_threat' | 'active_shooter' | 'missing_officer';
 
 export interface SafetyAlert {
   id: string;
@@ -30,28 +22,16 @@ export interface SafetyAlert {
 }
 
 export const ALERT_TYPE_LABELS: Record<SafetyAlertType, string> = {
-  shots_fired: 'Shots Fired',
-  officer_down: 'Officer Down',
-  pursuit: 'Pursuit',
-  hazmat: 'HAZMAT',
-  armed_subject: 'Armed Subject',
-  barricaded: 'Barricaded Subject',
-  hostage: 'Hostage',
-  bomb_threat: 'Bomb Threat',
-  active_shooter: 'Active Shooter',
+  shots_fired: 'Shots Fired', officer_down: 'Officer Down', pursuit: 'Pursuit',
+  hazmat: 'HAZMAT', armed_subject: 'Armed Subject', barricaded: 'Barricaded Subject',
+  hostage: 'Hostage', bomb_threat: 'Bomb Threat', active_shooter: 'Active Shooter',
   missing_officer: 'Missing Officer',
 };
 
 export const ALERT_SEVERITY_COLORS: Record<string, string> = {
-  officer_down: '#ef4444',
-  active_shooter: '#ef4444',
-  shots_fired: '#f59e0b',
-  armed_subject: '#f59e0b',
-  pursuit: '#888888',
-  hazmat: '#888888',
-  bomb_threat: '#f59e0b',
-  barricaded: '#f59e0b',
-  hostage: '#ef4444',
+  officer_down: '#ef4444', active_shooter: '#ef4444', shots_fired: '#f59e0b',
+  armed_subject: '#f59e0b', pursuit: '#888888', hazmat: '#888888',
+  bomb_threat: '#f59e0b', barricaded: '#f59e0b', hostage: '#ef4444',
   missing_officer: '#a855f7',
 };
 
@@ -138,13 +118,10 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
         osc.type = 'square';
         gain.gain.value = 0.15;
         const dur = pattern.durations[i] / 1000;
-        osc.start(time);
-        osc.stop(time + dur);
+        osc.start(time); osc.stop(time + dur);
         time += dur + pattern.gaps[i] / 1000;
       }
-    } catch (err) {
-      console.warn('[useMapAlerts] Audio playback failed:', err);
-    }
+    } catch (err) { console.warn('[useMapAlerts] Audio playback failed:', err); }
   }, []);
 
   const renderAlertCircles = useCallback(() => {

@@ -75,6 +75,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
+    id: 'serve',
+    label: 'Process Service',
+    items: [
+      { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
+      { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    ],
+  },
+  {
     id: 'personnel',
     label: 'Personnel & Fleet',
     items: [

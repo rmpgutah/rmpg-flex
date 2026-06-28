@@ -567,6 +567,9 @@ export default function MapPage() {
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
 
+  // Cursor coordinates — shows lat/lng on hover (desktop only)
+  const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null);
+
   // District enrichment data for beat map coloring
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
   const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
@@ -1306,9 +1309,6 @@ export default function MapPage() {
   useEffect(() => {
     if (!mapRef.current) return;
 
-    injectKeyframes();
-
-    // Clear any previous error when retrying
     setMapError(null);
     setMapRecoveryFailed(false);
     // Re-arm data fetching on (re)init. abortedRef is latched true by THIS
@@ -1322,8 +1322,6 @@ export default function MapPage() {
     let cancelled = false;
     let unsubOnline = () => {};
 
-    // If a map instance already exists (e.g. from a previous successful init
-    // before React StrictMode's second mount), just flag it loaded and bail.
     if (mapInstanceRef.current) {
       setMapLoaded(true);
       return;
@@ -1474,13 +1472,13 @@ export default function MapPage() {
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
-      tileMonitorCleanupRef.current = monitorTileLoading(map, {
+      tileMonitorCleanupRef.current = monitorMapTiles(map, {
         onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled — connection may be too slow');
+          devWarn('[MapPage] Map tiles stalled');
           setTilesStalled(true);
         },
         onLoaded: () => {
-          devLog('[MapPage] Map tiles loaded successfully');
+          devLog('[MapPage] Map tiles loaded');
           setTilesStalled(false);
         },
         onRecovering: () => {
@@ -1498,14 +1496,13 @@ export default function MapPage() {
     function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled || !mapConfig) return;
 
-      // If device is offline, pause retries and wait for connectivity
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        devWarn('[MapPage] Device offline — pausing retries until connectivity returns');
+        devWarn('[MapPage] Device offline — pausing retries');
         const onBack = () => {
           window.removeEventListener('online', onBack);
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(apiKey, attempt); // resume at same attempt count (don't penalize for offline time)
+            attemptLoad(token, attempt);
           }
         };
         window.addEventListener('online', onBack);
@@ -1576,7 +1573,7 @@ export default function MapPage() {
       if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
-      markersRef.current.forEach((m) => {
+      markersRef.current.forEach((m: any) => {
         if (m && typeof m.remove === 'function') m.remove();
       });
       markersRef.current = [];
@@ -1604,7 +1601,7 @@ export default function MapPage() {
 
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !mapLoaded) return;
 
     const styleMap: Record<string, string> = {
       dark: MAPBOX_STYLE_DARK,
@@ -1629,7 +1626,7 @@ export default function MapPage() {
   // Update Markers
   // ============================================================
 
-  // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
+  // Helper: create a Mapbox marker
   const createMarker = useCallback((opts: {
     map: mapboxgl.Map;
     position: [number, number];
@@ -1669,7 +1666,7 @@ export default function MapPage() {
     }
   }, []);
 
-  // Helper: remove a marker (works for both types)
+  // Helper: remove a marker
   const removeMarker = useCallback((m: any) => {
     if (m && typeof m.remove === 'function') m.remove();
   }, []);
@@ -2064,7 +2061,7 @@ export default function MapPage() {
                     ${details.hazard_notes ? `<div style="font-size:8px;color:#f87171;margin-top:4px;padding:3px 5px;background:#f8717110;border:1px solid #f8717130;border-radius:2px;">⚠ ${escapeHtml(details.hazard_notes)}</div>` : ''}
                     ${details.post_orders ? `<div style="font-size:8px;color:#9ca3af;margin-top:4px;">Post Orders: ${escapeHtml(details.post_orders.substring(0, 100))}${details.post_orders.length > 100 ? '…' : ''}</div>` : ''}
                   </div>
-                `);
+                `, prop.latitude!, prop.longitude!);
               } catch (err) {
                 if (lastClickedPropRef.current !== propId) return;
                 console.error('[MapPage] Failed to fetch property details:', err);
@@ -2075,7 +2072,7 @@ export default function MapPage() {
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                   </div>
-                `);
+                `, prop.latitude!, prop.longitude!);
               }
             },
           });
@@ -2993,7 +2990,7 @@ export default function MapPage() {
         .addTo(map);
     }
 
-    // Create speed label InfoWindow
+    // Create speed label Popup
     if (!playbackSpeedLabelRef.current) {
       playbackSpeedLabelRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
@@ -3029,7 +3026,6 @@ export default function MapPage() {
       setPlaybackIdx(currentIdx);
       currentIdx++;
 
-      // Speed-proportional playback: faster vehicle = faster animation
       const ptSpeed = pt.speed != null ? pt.speed * 2.237 : 10;
       const speedFactor = Math.max(ptSpeed / 30, 0.2);
       const delay = (200 / playbackSpeed) / speedFactor;
@@ -5861,27 +5857,62 @@ export default function MapPage() {
               padding: '4px 8px',
             }}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
-                .map(([status, color]) => (
-                  <div key={status} className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 5px ${color}80` }} />
-                    <span className={`text-[8px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`}>
-                      {UNIT_STATUS_LABELS[status as UnitStatus]}
-                    </span>
+                .map(([status, color]) => {
+                  const count = unitsByStatus[status as string] || 0;
+                  return (
+                    <div key={status} className="flex items-center gap-1 group cursor-default" title={`${UNIT_STATUS_LABELS[status as UnitStatus]}: ${count} units`}>
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80, inset 0 1px 0 rgba(255,255,255,0.3)` }} />
+                      <span className={`text-[8px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-600 group-hover:text-gray-900' : 'text-rmpg-300 group-hover:text-white'}`}>
+                        {UNIT_STATUS_LABELS[status as UnitStatus]}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-[7px] font-mono font-black px-1 rounded-sm" style={{ background: color + '20', color }}>
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              <div className={`w-px h-4 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                const pCount = callsByPriority[p] || 0;
+                return (
+                  <div key={p} className="flex items-center gap-0.5 group cursor-default" title={`${p}: ${pCount} calls`}>
+                    <div className="w-2 h-2 rounded-sm shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: PRIORITY_COLORS[p], boxShadow: `0 0 4px ${PRIORITY_COLORS[p]}60` }} />
+                    <span className={`text-[7px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-500 group-hover:text-gray-800' : 'text-rmpg-400 group-hover:text-white'}`}>{p}</span>
+                    {pCount > 0 && (
+                      <span className="text-[6px] font-mono font-black" style={{ color: PRIORITY_COLORS[p] }}>
+                        {pCount}
+                      </span>
+                    )}
                   </div>
-                ))}
-              <div className={`w-px h-3 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
-              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
-                <div key={p} className="flex items-center gap-0.5">
-                  <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
-                  <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>}
+
+        {/* ── Compass Rose - Bottom Left above legend (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 36, left: 8 }}>
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Scale Bar - Bottom Right above sidebar (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 28, right: sidebarOpen ? 'calc(clamp(220px, 20vw, 300px) + 8px)' : 44 }}>
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Coordinate Readout - Bottom center (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <MapCoordinateReadout mapInstance={mapInstanceRef.current} />
+        )}
 
         {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
         {!isMobile && <div

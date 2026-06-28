@@ -7,6 +7,8 @@ import { whenStyleReady } from '../utils/safeAddSource';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 const MAX_HEATMAP_POINTS = 10000;
+const SOURCE_ID = 'map-heatmap-source';
+const LAYER_ID = 'map-heatmap-layer';
 
 interface UseMapHeatmapParams {
   mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;

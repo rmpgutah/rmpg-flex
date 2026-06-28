@@ -1,8 +1,6 @@
 import Foundation
 import CoreAPI
 
-/// Stub for the Worker's `/api/duty/clock-on` endpoint. Real wiring happens
-/// when the corresponding Worker route lands.
 public struct DutyAPI: Sendable {
     public let client: APIClient
 
@@ -10,37 +8,39 @@ public struct DutyAPI: Sendable {
         self.client = client
     }
 
-    public struct ClockOnRequest: Encodable, Sendable {
-        public let unitID: String
-        public let startedAt: String  // ISO8601
-
-        public init(unitID: String, startedAt: Date = Date()) {
-            self.unitID = unitID
-            let f = ISO8601DateFormatter()
-            self.startedAt = f.string(from: startedAt)
-        }
-
-        enum CodingKeys: String, CodingKey {
-            case unitID = "unit_id"
-            case startedAt = "started_at"
+    // Server auto-resolves unit + vehicle via JWT officer_id.
+    // Optionally override with explicit unit_id (numeric) or starting_mileage.
+    public struct StartRequest: Encodable, Sendable {
+        public let unit_id: Int?
+        public let starting_mileage: Double?
+        public init(unitID: Int? = nil, startingMileage: Double? = nil) {
+            self.unit_id = unitID
+            self.starting_mileage = startingMileage
         }
     }
 
-    public struct ClockOnResponse: Decodable, Sendable {
-        public let dutyID: Int?
-        public let serverTime: String?
+    public struct DutyStateResponse: Decodable, Sendable {
+        public let officer_id: Int?
+        public let on_shift: Bool
+        public let clock_in: String?
+        public let unit: UnitInfo?
 
-        enum CodingKeys: String, CodingKey {
-            case dutyID = "duty_id"
-            case serverTime = "server_time"
+        public struct UnitInfo: Decodable, Sendable {
+            public let id: Int
+            public let call_sign: String?
+            public let status: String?
         }
     }
 
-    public func clockOn(unitID: String) async throws -> ClockOnResponse {
-        let endpoint = try Endpoint.jsonPost(
-            "api/duty/clock-on",
-            body: ClockOnRequest(unitID: unitID)
-        )
-        return try await client.request(endpoint, as: ClockOnResponse.self)
+    public func clockOn() async throws -> DutyStateResponse {
+        let endpoint = try Endpoint.jsonPost("api/dispatch/duty/start", body: StartRequest())
+        return try await client.request(endpoint, as: DutyStateResponse.self)
+    }
+
+    public func clockOff() async throws -> DutyStateResponse {
+        let endpoint = try Endpoint.jsonPost("api/dispatch/duty/end", body: EmptyBody())
+        return try await client.request(endpoint, as: DutyStateResponse.self)
     }
 }
+
+private struct EmptyBody: Encodable {}
