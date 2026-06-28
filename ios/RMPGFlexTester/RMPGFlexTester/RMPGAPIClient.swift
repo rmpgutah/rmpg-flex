@@ -23,8 +23,17 @@ struct RMPGAPIClient {
             || body.contains("challenge-platform")
     }
 
+    // Build a request URL that PRESERVES query strings. URL.appendingPathComponent
+    // treats the whole arg as one path segment and percent-encodes "?" → "%3F",
+    // which turned `api/x?limit=1` into the bogus path `/api/x%3Flimit=1` and 404'd
+    // every queried endpoint. Concatenating into the URL string keeps "?" a query.
+    // Callers already percent-encode dynamic query VALUES (e.g. ?q=<name>).
+    private func makeURL(_ path: String) -> URL {
+        URL(string: baseURL.absoluteString + "/" + path) ?? baseURL.appendingPathComponent(path)
+    }
+
     func login(username: String, password: String) async throws -> String {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/login"))
+        var req = URLRequest(url: makeURL("api/auth/login"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -50,7 +59,7 @@ struct RMPGAPIClient {
     /// Generic authenticated request returning parsed JSON (object or array).
     @discardableResult
     func requestJSON(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> Any {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: makeURL(path))
         req.httpMethod = method
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         if let body {
@@ -60,15 +69,33 @@ struct RMPGAPIClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
+            // Attach the parsed JSON error body (when there is one) so callers
+            // can branch on the Worker's `code` contract (NEEDS_VEHICLE,
+            // MILEAGE_DECREASING, …) instead of string-matching the message.
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RMPG", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"])
+            var info: [String: Any] = [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(200))"]
+            if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                info["json"] = body
+                if let msg = body["error"] as? String {
+                    info[NSLocalizedDescriptionKey] = msg
+                }
+            }
+            throw NSError(domain: "RMPG", code: status, userInfo: info)
         }
         return try JSONSerialization.jsonObject(with: data)
     }
 
+    /// The Worker's machine-readable error `code` from a thrown request error.
+    static func apiCode(_ error: Error) -> String? {
+        ((error as NSError).userInfo["json"] as? [String: Any])?["code"] as? String
+    }
+    /// The full parsed JSON error body, when the server sent one.
+    static func apiBody(_ error: Error) -> [String: Any]? {
+        (error as NSError).userInfo["json"] as? [String: Any]
+    }
+
     func postJSON(_ path: String, body: [String: Any]) async throws {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: makeURL(path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
@@ -82,8 +109,42 @@ struct RMPGAPIClient {
         }
     }
 
+    /// POST JSON and return the decoded object (for endpoints that reply
+    /// with data we need, e.g. a new recording id).
+    func postJSONReturning(_ path: String, body: [String: Any]) async throws -> Any {
+        var req = URLRequest(url: makeURL(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// Raw PUT of binary data (audio segment) with an explicit content-type.
+    func putData(_ path: String, data: Data, contentType: String) async throws {
+        var req = URLRequest(url: makeURL(path))
+        req.httpMethod = "PUT"
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = data
+        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let text = String(data: respData, encoding: .utf8) ?? ""
+            throw NSError(domain: "RMPG", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status): \(text.prefix(150))"])
+        }
+    }
+
     func probe(_ path: String) async -> SmokeOutcome {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: makeURL(path))
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         let start = Date()
         do {

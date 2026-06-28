@@ -213,3 +213,38 @@ describe('formatLawEnforcement — NCIC/NLETS fielded output', () => {
     expect(byTag.EXP).toBeUndefined();
   });
 });
+
+describe('plain-English helpers for stored records', () => {
+  it('translates restriction codes to English (code preserved)', async () => {
+    const { describeRestrictions } = await import('../aamvaParser');
+    expect(describeRestrictions('B')).toBe('B — Corrective lenses required');
+    // multi-code, comma-delimited
+    expect(describeRestrictions('B,F')).toBe('B — Corrective lenses required; F — Outside mirror required');
+  });
+
+  it('translates endorsement and class codes to English', async () => {
+    const { describeEndorsements, describeClass } = await import('../aamvaParser');
+    expect(describeEndorsements('M')).toBe('M — Motorcycle');
+    expect(describeClass('D')).toBe('Class D — regular operator license');
+  });
+
+  it('returns empty string for blank / filler values (not "None")', async () => {
+    const { describeRestrictions, describeEndorsements, describeClass } = await import('../aamvaParser');
+    expect(describeRestrictions('')).toBe('');
+    expect(describeRestrictions('NONE')).toBe('');
+    expect(describeEndorsements('UNK')).toBe('');
+    expect(describeClass('')).toBe('');
+  });
+
+  it('passes already-translated values through unchanged (phone-relay round-trip)', async () => {
+    const { describeRestrictions, describeClass } = await import('../aamvaParser');
+    // An already-described value must not be re-mangled when re-saved.
+    expect(describeRestrictions('B — Corrective lenses required')).toBe('B — Corrective lenses required');
+    expect(describeClass('Class D — regular operator license')).toBe('Class D — regular operator license');
+  });
+
+  it('leaves unknown codes intact rather than dropping them', async () => {
+    const { describeRestrictions } = await import('../aamvaParser');
+    expect(describeRestrictions('Q')).toBe('Q');
+  });
+});

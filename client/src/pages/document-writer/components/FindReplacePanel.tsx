@@ -46,18 +46,18 @@ export default function FindReplacePanel({
 
   const optBtn = (k: keyof SearchOptions, label: string, title: string) => (
     <button type="button" title={title} onClick={() => toggle(k)}
-      className={`px-1.5 py-0.5 text-[10px] rounded-[2px] border ${opts[k] ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'border-[#222] text-rmpg-400 hover:bg-[#1a1a1a]'}`}>
+      className={`px-1.5 py-0.5 text-[10px] rounded-[2px] border ${opts[k] ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'border-border-default text-rmpg-400 hover:bg-surface-raised'}`}>
       {label}
     </button>
   );
 
   return (
-    <div className="absolute top-2 left-2 right-2 sm:left-auto z-40 w-auto sm:w-[340px] max-w-[calc(100vw-1rem)] bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5">
+    <div className="absolute top-2 left-2 right-2 sm:left-auto z-40 w-auto sm:w-[340px] max-w-[calc(100vw-1rem)] bg-surface-base border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5">
       <div className="flex items-center gap-1">
         <input
           ref={inputRef} list="rmpg-search-history" value={term} onChange={(e) => setTerm(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? prev() : onSubmit(); } if (e.key === 'Escape') onClose(); }}
-          placeholder="Find" className="flex-1 bg-[#141414] border border-[#222] text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50"
+          placeholder="Find" className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50"
         />
         <datalist id="rmpg-search-history">{readHistory().map((h) => <option key={h} value={h} />)}</datalist>
         <span className="text-[10px] text-rmpg-500 w-14 text-center tabular-nums">{total ? `${current}/${total}` : '0'}</span>
@@ -69,9 +69,9 @@ export default function FindReplacePanel({
       {mode === 'replace' && (
         <div className="flex items-center gap-1">
           <input value={replacement} onChange={(e) => setReplacement(e.target.value)} placeholder="Replace with"
-            className="flex-1 bg-[#141414] border border-[#222] text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50" />
+            className="flex-1 bg-surface-base border border-border-default text-[11px] text-rmpg-100 rounded-[2px] px-2 py-1 focus:outline-none focus:border-[#d4a017]/50" />
           <button type="button" onClick={() => { editor.commands.replaceCurrent(replacement); editor.commands.setSearchTerm(term, opts); force((n) => n + 1); }}
-            className="px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">Replace</button>
+            className="px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">Replace</button>
           <button type="button" onClick={() => { editor.commands.replaceAll(replacement); force((n) => n + 1); }}
             className="px-2 py-1 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-1"><ArrowDownAZ className="w-3 h-3" />All</button>
         </div>

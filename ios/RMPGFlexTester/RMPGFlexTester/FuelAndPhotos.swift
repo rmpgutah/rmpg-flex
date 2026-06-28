@@ -17,13 +17,9 @@ enum PhotoUploader {
             fields["lng"] = "\(loc.coordinate.longitude)"
         }
         let boundary = "rmpg-\(UUID().uuidString)"
-        var body = Data()
-        for (key, value) in fields where !value.isEmpty {
-            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"inspection.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(jpeg)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        let body = buildMultipartBody(boundary: boundary, fields: fields,
+                                      fileField: "photo", filename: "inspection.jpg",
+                                      mime: "image/jpeg", fileData: jpeg)
 
         var req = URLRequest(url: client.baseURL.appendingPathComponent("api/field-photos"))
         req.httpMethod = "POST"
@@ -139,7 +135,7 @@ struct FuelPurchaseSheet: View {
                 Button(busy ? "LOGGING…" : "LOG FUEL EXPENSE") { Task { await submit() } }
                     .fontWeight(.bold)
                     .disabled(busy || (gallons.isEmpty && totalCost.isEmpty))
-                if let status { Text(status).font(.system(size: 11, design: .monospaced)) }
+                if let status { Text(status).font(Theme.Typography.mono) }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.base)

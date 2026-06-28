@@ -390,7 +390,7 @@ export const CLASS_CODES: Record<string, string> = {
 
 const TRUNCATION: Record<string, string> = { T: 'Yes — truncated', N: 'No — complete', U: 'Unknown' };
 
-function describeCodes(value: string, dict: Record<string, string>): string {
+export function describeCodes(value: string, dict: Record<string, string>): string {
   const v = clean(value);
   if (!v) return 'None';
   const parts = v.split(/[\s,;]+/).filter(Boolean);
@@ -399,6 +399,35 @@ function describeCodes(value: string, dict: Record<string, string>): string {
     return desc ? `${p} — ${desc}` : p;
   });
   return out.join('; ');
+}
+
+// ── Plain-English helpers for stored records ──────────────────
+// parseAamva keeps restrictions / endorsements / class as the raw
+// AAMVA codes (B, A,F, D). For records persisted to the system —
+// where officers read the value directly — translate to plain
+// English ("B — Corrective lenses required"). Empty in → empty out
+// (not "None"), so blank fields render as "—" rather than a literal.
+// Already-translated strings (containing " — ") pass through
+// unchanged, so these are safe to call on either a raw or a
+// previously-described value (phone-relay round-trip).
+function alreadyEnglish(v: string): boolean {
+  return / — /.test(v) || /[a-z]/.test(v.replace(/\b[A-Z]\b/g, ''));
+}
+export function describeRestrictions(value: string): string {
+  const v = clean(value);
+  if (!v) return '';
+  return alreadyEnglish(v) ? v : describeCodes(v, RESTRICTION_CODES);
+}
+export function describeEndorsements(value: string): string {
+  const v = clean(value);
+  if (!v) return '';
+  return alreadyEnglish(v) ? v : describeCodes(v, ENDORSEMENT_CODES);
+}
+export function describeClass(value: string): string {
+  const v = clean(value);
+  if (!v) return '';
+  if (alreadyEnglish(v)) return v;
+  return CLASS_CODES[v.toUpperCase()] || v;
 }
 
 export interface ReadoutRow {
@@ -477,7 +506,7 @@ function daysBetween(a: Date, b: Date): number {
 function ageOn(dobIso: string, now: Date): number | null {
   const m = dobIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  const dob = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dob = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); // new-date-ok: local civil date from numeric Y/M/D parts, not a server string
   if (isNaN(dob.getTime())) return null;
   let age = now.getFullYear() - dob.getFullYear();
   const had = now.getMonth() > dob.getMonth() ||
@@ -497,7 +526,7 @@ export function assessAamva(r: AamvaResult, now: Date = new Date()): ScanAlert[]
   // Expiration
   const expM = r.dl_expiry.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (expM) {
-    const exp = new Date(Number(expM[1]), Number(expM[2]) - 1, Number(expM[3]), 23, 59, 59);
+    const exp = new Date(Number(expM[1]), Number(expM[2]) - 1, Number(expM[3]), 23, 59, 59); // new-date-ok: local civil expiry date from numeric Y/M/D parts
     if (exp.getTime() < now.getTime()) {
       alerts.push({
         level: 'danger', code: 'EXPIRED',

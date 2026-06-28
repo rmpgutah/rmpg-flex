@@ -36,20 +36,122 @@
 
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
   extractFromImage,
+  extractFromImageClaude,
+  extractFromTextClaude,
   extractTextFromPdf,
   fieldsToQueueRow,
   normalizeFields,
   type ExtractionResult,
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
+import { judgeMerged } from '../utils/serveIntakeJudge';
+import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import {
+  findLocationNote, listLocationNotes, createLocationNote,
+  updateLocationNote, deactivateLocationNote,
+  type CreateNoteInput,
+} from '../utils/serveLocationNotes';
 import { LIST_VIEW_COLUMNS } from './dispatch/calls';
+import {
+  replanAfterFailedAttempt,
+  applyUrgencyTier,
+  type AttemptWindow,
+} from '../utils/serveDiligencePlanner';
+import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import { broadcastAll } from './ws';
+import { recordAudit } from '../utils/auditLog';
+
+// ── Migration 0140 runtime reconciler ───────────────────────
+// D1 deploy apply is continue-on-error; columns may be absent on live.
+// One-shot per Worker instance (cold starts re-run, idempotent).
+let scheduleSchemaReconciled = false;
+async function reconcileScheduleSchema(db: D1Database): Promise<void> {
+  if (scheduleSchemaReconciled) return;
+  scheduleSchemaReconciled = true;
+
+  // serve_attempt_schedules columns from migration 0140
+  for (const [name, type] of [
+    ['manually_moved', 'INTEGER NOT NULL DEFAULT 0'],
+    ['moved_by_user_id', 'INTEGER'],
+    ['moved_at', 'TEXT'],
+    ['auto_replan_source', 'INTEGER'],
+    ['officer_id', 'INTEGER'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // serve_queue columns from migration 0140
+  for (const [name, type] of [
+    ['geo_cluster_id', 'TEXT'],
+    ['urgency_tier', 'TEXT'],
+    ['urgency_computed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+
+  // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
+  for (const [name, type] of [
+    ['updated_at', "TEXT NOT NULL DEFAULT (datetime('now'))"],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
+        await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
+
+// ── Migration 0152 runtime reconciler ───────────────────────
+// Same pattern as reconcileScheduleSchema — deploy.yml's migration
+// apply is continue-on-error, so the Worker self-heals.
+let qualityGateReconciled = false;
+async function ensureQualityGateColumns(db: D1Database): Promise<void> {
+  if (qualityGateReconciled) return;
+  qualityGateReconciled = true;
+
+  try {
+    await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      model TEXT NOT NULL,
+      ms INTEGER NOT NULL,
+      raw_response TEXT,
+      flagged_field_count INTEGER NOT NULL DEFAULT 0,
+      overall_status TEXT NOT NULL,
+      fallback_chain TEXT NOT NULL,
+      upload_user_id INTEGER
+    )`);
+  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+
+  for (const [name, type] of [
+    ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
+    ['judge_run_id', 'INTEGER'],
+    ['quality_reviewed_by', 'INTEGER'],
+    ['quality_reviewed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
 
 const si = new Hono<Env>();
 
@@ -73,6 +175,7 @@ const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
 ]);
+const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved']);
 
 // ── OCR + upload constants ──────────────────────────────────
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
@@ -116,6 +219,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     p,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
   ]);
+}
+
+// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
+// SAME rich serve-doc prompt + parser, so the result shape is identical and the
+// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
+// credits / error) → we transparently fall back to the free Workers-AI path.
+// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
+async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromImageClaude(env, bytes, mime), AI_TIMEOUT_MS, 'Claude OCR timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(extractFromImage(env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
+}
+async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
+  const claude = await withTimeout(
+    extractFromTextClaude(env, text), AI_TIMEOUT_MS, 'Claude text timed out',
+  ).catch(() => null);
+  return claude ?? withTimeout(
+    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
+  );
 }
 
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
@@ -172,52 +295,16 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await withTimeout(
-        extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-      );
-      ocrEngine = 'workers-ai-vision';
+      extraction = await ocrImage(c.env, bytes, file.type);
+      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      let text = clientText;
-      ocrEngine = 'pdfjs-client';
-
-      if (clientText.length < MIN_CLIENT_TEXT_CHARS) {
-        // Insufficient born-digital text — race the (prod-disabled) container
-        // against its timeout rather than awaiting it bare. On timeout /
-        // unavailable AND no usable client text, this is a scanned PDF we
-        // cannot OCR server-side: return a clean 422 with guidance instead of
-        // hanging to a 500. The client rasterizes to images and resends those.
-        try {
-          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-          const txt = await withTimeout(
-            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-          );
-          text = txt.text;
-          pageCount = txt.page_count;
-          ocrUsed = txt.ocr_used;
-          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-        } catch {
-          return c.json({
-            error: 'scanned_pdf_unsupported',
-            code: 'SCANNED_PDF',
-            message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
-          }, 422);
-        }
-      }
-
-      if (text.trim().length < 20) {
-        return c.json({
-          error: 'scanned_pdf_unsupported',
-          code: 'SCANNED_PDF',
-          message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
-        }, 422);
-      }
-
-      extraction = await withTimeout(
-        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA),
-        AI_TIMEOUT_MS, 'Text extraction timed out',
-      );
+      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
+      pageCount = txt.page_count;
+      ocrUsed = txt.ocr_used;
+      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -298,6 +385,7 @@ si.post('/upload', async (c) => {
   }
 
   const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
@@ -342,11 +430,11 @@ si.post('/upload', async (c) => {
 
       // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
-        const ex = await withTimeout(
-          extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
-        ).catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const ex = await ocrImage(c.env, bytes, file.type)
+          .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -459,6 +547,71 @@ si.post('/upload', async (c) => {
   // success card) sees clean values.
   const normalizedFields = normalizeFields(mergedFields);
 
+  // ── Phase 1 Quality Gate: judge the merged result ──────────────
+  const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
+  const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
+  const judgeResult = await judgeMerged(
+    c.env,
+    normalizedFields,
+    rawDocsForJudge,
+    docTypesForJudge,
+  );
+
+  // ── Operator pre-submission overrides ──────────────────────────────
+  // Client sends `field_overrides` JSON (key → string) for values the
+  // operator edited in the review panel before clicking Create. Applied
+  // after normalizeFields so they bypass the formatter and commit as-is;
+  // confidence 1.0 ensures they beat any AI-extracted value downstream.
+  const overridesRaw = form.get('field_overrides');
+  if (typeof overridesRaw === 'string') {
+    try {
+      const overrides = JSON.parse(overridesRaw) as Record<string, string>;
+      for (const [k, v] of Object.entries(overrides)) {
+        if (typeof v === 'string' && v.trim()) {
+          normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
+        }
+      }
+      for (const k of Object.keys(overrides)) {
+        if (judgeResult.verdicts[k]) delete judgeResult.verdicts[k];
+      }
+      judgeResult.flagged_field_count = Object.values(judgeResult.verdicts).filter(v => !v.ok).length;
+      if (judgeResult.flagged_field_count === 0) judgeResult.overall_status = 'clean';
+    } catch { /* ignore malformed overrides blob */ }
+  }
+
+  const judgeInsert = await db.prepare(`
+    INSERT INTO serve_intake_judge_runs
+      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    judgeResult.model,
+    judgeResult.ms,
+    judgeResult.raw_response,
+    judgeResult.flagged_field_count,
+    judgeResult.overall_status,
+    JSON.stringify(judgeResult.fallback_chain),
+    user.id,
+  ).run();
+  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+
+  // Operator-selected client_id (integer FK) sent as a separate FormData field
+  // so it doesn't get coerced through the string-only field_overrides path.
+  const clientIdRaw = form.get('client_id');
+  const clientId = typeof clientIdRaw === 'string' && /^\d+$/.test(clientIdRaw.trim())
+    ? Number(clientIdRaw.trim()) : null;
+
+  let defendantsSelected: string[] | null = null;
+  const defendantsRaw = form.get('defendants_selected');
+  if (typeof defendantsRaw === 'string') {
+    try {
+      const arr = JSON.parse(defendantsRaw);
+      if (Array.isArray(arr) && arr.every(s => typeof s === 'string')) {
+        defendantsSelected = arr.map(s => s.trim()).filter(Boolean);
+        if (defendantsSelected.length === 0) defendantsSelected = null;
+      }
+    } catch { /* malformed — fall back to single-recipient path */ }
+  }
+
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
 
@@ -519,15 +672,21 @@ si.post('/upload', async (c) => {
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
+    case_id: null, rmpg_case_number: null,
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalizedFields,
       queueRow: row,
       userId: user.id,
       documentSummary: docSummary,
       docCount: documents.length,
+      clientId,
+      defendantsSelected,
+      judgeRunId,
+      qualityStatus: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
       // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
       // call + compact line on serve_queue.notes + parsed_data._intake audit.
       docs: documents.map((d) => ({
@@ -538,10 +697,23 @@ si.post('/upload', async (c) => {
       allDates: [...allDates],
       env: c.env,
     });
-    // Back-link the document rows to the new queue entry.
+    // Back-link the document rows to the new queue entry — and to the
+    // auto-created Case File when commitIntake produced one. case_id
+    // column lands with migration 0146; on legacy D1 the UPDATE 500s
+    // and we fall back to the queue-only UPDATE (try/catch per doc).
     if (commit.serve_queue_id) {
       for (const d of documents) {
-        if (d.id) {
+        if (!d.id) continue;
+        let linkedCase = false;
+        if (commit.case_id) {
+          try {
+            await execute(db,
+              'UPDATE serve_intake_documents SET serve_queue_id = ?, case_id = ? WHERE id = ?',
+              commit.serve_queue_id, commit.case_id, d.id);
+            linkedCase = true;
+          } catch { /* legacy D1 without case_id col — fall through */ }
+        }
+        if (!linkedCase) {
           await execute(db,
             'UPDATE serve_intake_documents SET serve_queue_id = ? WHERE id = ?',
             commit.serve_queue_id, d.id);
@@ -595,6 +767,12 @@ si.post('/upload', async (c) => {
     property_id: commit.property_id,
     call_id: commit.call_id,
     call_number: commit.call_number,
+    // Auto-created Case File anchoring this batch (migration 0146).
+    // Null when the case-create failed (best-effort) OR on legacy D1
+    // without the cases table. UI surfaces "Case 26-000123-SV" on the
+    // success card so the operator can jump straight to the file.
+    case_id: commit.case_id ?? null,
+    rmpg_case_number: commit.rmpg_case_number ?? null,
     created: commit.created,
     latitude: null,
     longitude: null,
@@ -616,6 +794,10 @@ si.post('/upload', async (c) => {
     missing_critical: commit.missing_critical ?? [],
     attempt_plan: commit.attempt_plan ?? [],
     duplicate_of: commit.duplicate_of ?? null,
+    judge_verdicts: judgeResult.verdicts,
+    quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
+    judge_run_id: judgeRunId,
+    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
@@ -662,23 +844,92 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
   };
 }
 
-// Description string written to calls_for_service.description. Kept
-// short — dispatchers see this in the call queue, so the case number
-// and recipient name need to come first.
+// Description written to calls_for_service.description — the dispatcher's
+// one-line situational picture shown in the call queue BEFORE they open the
+// call. Structured as ordered dot-segments so every critical fact is legible
+// at a scan: paper type → who → where → case → parties → hiring party →
+// deadline (with urgency tag) → job # → doc count.
 function buildCallDescription(
   row: ReturnType<typeof fieldsToQueueRow>,
   fields: Record<string, { value: string; confidence: number }>,
   docCount: number,
 ): string {
+  const f = (k: string) => (fields[k]?.value || '').trim();
   const parts: string[] = [];
-  parts.push(`Process service: ${row.document_type || 'Civil paper'}`);
-  if (row.case_number) parts.push(`Case ${row.case_number}`);
-  if (row.recipient_name) parts.push(`Recipient: ${row.recipient_name}`);
-  const agent = (fields.registered_agent_name?.value || '').trim();
-  if (agent) parts.push(`R/A: ${agent}`);
-  if (row.court_name) parts.push(row.court_name);
-  if (row.deadline) parts.push(`Due ${row.deadline}`);
-  if (docCount) parts.push(`${docCount} document${docCount > 1 ? 's' : ''} on file`);
+
+  // ── 1. Paper type ─────────────────────────────────────────────
+  // Use the more-specific subtype when the extractor found one (e.g.
+  // "Summons + Complaint" is more useful than just "court_filing").
+  const docType = f('document_subtype') || row.document_type || 'Civil paper';
+  const isBusiness = f('recipient_type').toLowerCase() === 'business';
+  parts.push(`SERVE / ${docType}${isBusiness ? ' (Corporate)' : ''}`);
+
+  // ── 2. Target party ──────────────────────────────────────────
+  // For individuals: full name + DOB (identity confirmation before tender).
+  // For businesses: entity name + registered agent (who we need at the door).
+  const agentName = f('registered_agent_name');
+  const bizName = f('recipient_business_name');
+  if (isBusiness) {
+    const entity = bizName || row.recipient_name;
+    if (entity) {
+      parts.push(entity + (agentName ? ` (R/A: ${agentName})` : ''));
+    }
+  } else if (row.recipient_name) {
+    const dob = f('recipient_dob');
+    parts.push(row.recipient_name + (dob ? ` DOB ${dob}` : ''));
+  }
+
+  // ── 3. Service address with city/state for quick district context ─
+  const addrCity = [
+    row.recipient_address,
+    [row.recipient_city, row.recipient_state].filter(Boolean).join(' '),
+  ].filter(Boolean).join(', ');
+  if (addrCity) parts.push(addrCity);
+
+  // ── 4. Case # + court ────────────────────────────────────────
+  const caseStr = [
+    row.case_number ? `Case ${row.case_number}` : '',
+    row.court_name || '',
+  ].filter(Boolean).join(' — ');
+  if (caseStr) parts.push(caseStr);
+
+  // ── 5. Parties (plaintiff v. defendant) ──────────────────────
+  // Both are normally present on a summons/complaint; evictions may have
+  // only a plaintiff (landlord). Shows the legal relationship at a glance.
+  if (row.plaintiff && row.defendant) {
+    parts.push(`${row.plaintiff} v. ${row.defendant}`);
+  } else if (row.plaintiff) {
+    parts.push(`Plaintiff: ${row.plaintiff}`);
+  }
+
+  // ── 6. Hiring party + callback ───────────────────────────────
+  // Client name preferred (the firm paying); attorney name as fallback.
+  const hiringParty = row.client_name || row.attorney_name;
+  const attyPhone = f('attorney_phone');
+  if (hiringParty) {
+    parts.push(`Atty: ${hiringParty}${attyPhone ? ` (${attyPhone})` : ''}`);
+  } else if (attyPhone) {
+    parts.push(`Callback: ${attyPhone}`);
+  }
+
+  // ── 7. Deadline + urgency tag ────────────────────────────────
+  if (row.deadline) {
+    const urgency = row.priority === 'urgent' ? ' ⚠ URGENT'
+      : row.priority === 'rush' ? ' ⚠ RUSH'
+      : '';
+    parts.push(`Due ${row.deadline}${urgency}`);
+  }
+
+  // ── 8. Hearing / court date ──────────────────────────────────
+  if (row.court_date) parts.push(`Hearing ${row.court_date}`);
+
+  // ── 9. Client job # ──────────────────────────────────────────
+  const jobNum = f('job_number');
+  if (jobNum) parts.push(`Job #${jobNum}`);
+
+  // ── 10. Document count ───────────────────────────────────────
+  if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
+
   return parts.join(' · ');
 }
 
@@ -706,10 +957,12 @@ si.post('/intake', async (c) => {
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
+    case_id: null, rmpg_case_number: null,
     created: { person: false, agent_person: false, business: false, property: false, call: false },
   };
   if (row.recipient_name || row.recipient_address) {
     const db = getDb(c.env);
+    await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
       fields: normalized,
       queueRow: row,
@@ -795,6 +1048,143 @@ si.get('/documents/:docId/file', async (c) => {
   });
 });
 
+// ── Recovery: re-extract failed/unmatched intake documents ──────────────────
+// Re-runs OCR on a STORED document through the (now Claude-first) engine and, when
+// a recipient identity is recovered and the doc isn't already linked, commits it to
+// a real serve job — turning a previously-failed upload into a queue entry without
+// re-uploading. Image docs re-extract from R2 bytes; PDFs/text from stored raw_text
+// (scanned PDFs with no stored text must be re-uploaded as images — container OCR
+// is disabled in prod).
+async function reprocessDocument(
+  c: any, doc: any, userId: number,
+): Promise<{ success: boolean; documentType: string; confidence: number; model: string; committedQueueId: number | null; note?: string }> {
+  const db = getDb(c.env);
+  let extraction: ExtractionResult | null = null;
+  if (isImage(doc.file_type) && doc.r2_key) {
+    const obj = await c.env.UPLOADS.get(doc.r2_key);
+    if (obj) extraction = await ocrImage(c.env, new Uint8Array(await obj.arrayBuffer()), doc.file_type).catch(() => null);
+  } else if ((doc.raw_text || '').trim().length >= 20) {
+    extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
+  }
+  if (!extraction) {
+    return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
+      committedQueueId: null, note: 'No image or stored text to re-extract (scanned PDF — re-upload as images)' };
+  }
+  const normalized = normalizeFields(extraction.fields);
+  const queueRow = fieldsToQueueRow(normalized);
+  await execute(db,
+    `UPDATE serve_intake_documents SET fields_json=?, confidence=?, extraction_model=?, doc_type=?,
+       status=?, error_message=NULL, updated_at=datetime('now') WHERE id=?`,
+    JSON.stringify(extraction.fields), extraction.confidence, extraction.model, extraction.documentType,
+    extraction.success ? 'extracted' : 'failed', doc.id);
+  let committedQueueId: number | null = null;
+  const hasIdentity = !!(normalized.recipient_last_name?.value || normalized.recipient_business_name?.value);
+  if (!doc.serve_queue_id && extraction.success && hasIdentity) {
+    await reconcileScheduleSchema(db);
+    const commit = await commitIntake(db, {
+      env: c.env, fields: normalized, queueRow, userId,
+      documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
+      docCount: 1,
+    });
+    if (commit.serve_queue_id) {
+      committedQueueId = commit.serve_queue_id;
+      await execute(db, `UPDATE serve_intake_documents SET serve_queue_id=?, status='extracted' WHERE id=?`, committedQueueId, doc.id);
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_created' }).catch(() => {});
+    }
+  }
+  return {
+    success: extraction.success, documentType: extraction.documentType, confidence: extraction.confidence,
+    model: extraction.model, committedQueueId,
+    note: !hasIdentity && extraction.success ? 'Extracted but no recipient identity — needs manual entry' : undefined,
+  };
+}
+
+// GET /review-queue — serve_queue entries filtered by quality_status.
+// Defaults to 'needs_review'; accepts ?quality_status=clean|needs_review|reviewed_ok|reviewed_fixed.
+si.get('/review-queue', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const status = c.req.query('quality_status');
+  let sql = `SELECT id, recipient_name, recipient_address, quality_status, judge_run_id, created_at
+             FROM serve_queue
+             WHERE 1 = 1`;
+  const bindings: unknown[] = [];
+  if (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed') {
+    sql += ` AND quality_status = ?`;
+    bindings.push(status);
+  } else {
+    sql += ` AND quality_status = 'needs_review'`;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...bindings);
+  return c.json({ rows });
+});
+
+const REVIEW_ROLES = ['admin', 'manager', 'supervisor'] as const;
+
+si.post('/review-queue/:id/accept', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_ok', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_ok' });
+});
+
+si.post('/review-queue/:id/fix', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_fixed', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_fixed' });
+});
+
+// POST /documents/:docId/reprocess — re-extract one doc; auto-commit if recovered.
+si.post('/documents/:docId/reprocess', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  const docId = parseInt(c.req.param('docId'), 10);
+  const doc = await queryFirst<any>(getDb(c.env), 'SELECT * FROM serve_intake_documents WHERE id = ?', docId);
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  const r = await reprocessDocument(c, doc, user.id);
+  return c.json({ document_id: docId, ...r, committed: r.committedQueueId ? { serve_queue_id: r.committedQueueId } : null });
+});
+
+// POST /reprocess-failed?limit=10 — batch recovery (admin/manager).
+si.post('/reprocess-failed', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '10', 10)));
+  const docs = await query<any>(getDb(c.env),
+    `SELECT * FROM serve_intake_documents
+      WHERE serve_queue_id IS NULL AND (status = 'failed' OR confidence < 0.4)
+        AND (file_type LIKE 'image/%' OR length(raw_text) >= 20)
+      ORDER BY created_at DESC LIMIT ?`, limit);
+  const results: any[] = [];
+  for (const doc of docs) {
+    try { results.push({ document_id: doc.id, file_name: doc.file_name, ...(await reprocessDocument(c, doc, user.id)) }); }
+    catch (e) { results.push({ document_id: doc.id, file_name: doc.file_name, success: false, error: e instanceof Error ? e.message : String(e) }); }
+  }
+  return c.json({ processed: results.length, recovered: results.filter((r) => r.committedQueueId).length, results });
+});
+
 // ── GET /stats ──────────────────────────────────────────────
 si.get('/stats', async (c) => {
   const db = getDb(c.env);
@@ -847,8 +1237,477 @@ si.get('/', async (c) => {
   return c.json(rows);
 });
 
+// ── GET /queue — list serve_queue rows with filters ──────────
+si.get('/queue', async (c) => {
+  // Exposes recipient names + addresses + case numbers — gate to operations roles.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+  const officerParam = c.req.query('officer_id');
+  const statusParam = c.req.query('status') ?? 'pending,assigned';
+  const statuses = statusParam.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!statuses.length) return c.json([]);
+  const placeholders = statuses.map(() => '?').join(',');
+
+  let officerClause = '';
+  const binds: unknown[] = [...statuses];
+  if (officerParam === 'null') officerClause = 'AND officer_id IS NULL';
+  else if (officerParam && /^\d+$/.test(officerParam)) {
+    officerClause = 'AND officer_id = ?';
+    binds.push(parseInt(officerParam, 10));
+  }
+
+  const rows = await query<any>(
+    db,
+    `SELECT id, recipient_name, case_number, deadline, urgency_tier, priority, document_type
+       FROM serve_queue
+      WHERE status IN (${placeholders}) ${officerClause}
+      ORDER BY (deadline IS NULL), deadline ASC, id ASC
+      LIMIT 200`,
+    ...binds,
+  );
+  return c.json(rows);
+});
+
+// ── GET /schedule — upcoming attempt windows (calendar feed) ─
+// Returns all pending/assigned/in_progress queue items' attempt windows
+// for the next 14 days, grouped by date. Used by the dashboard calendar.
+si.get('/schedule', async (c) => {
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+  // Guard: table may not exist on live yet (migration pending).
+  const tableExists = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
+  );
+  if (!tableExists?.n) return c.json({ schedule: [], generated_at: '' });
+  const { denverNow } = await import('../utils/serveAttemptScheduler');
+  const now = denverNow();
+
+  // Client may request a specific date range + per-slot enrichment.
+  // ?start_date=YYYY-MM-DD (default: today Denver)
+  // ?end_date=YYYY-MM-DD   (default: start + 14 days)
+  // ?include=tier,cluster  (comma list — tier joins urgency_tier; cluster joins geo_cluster_id)
+  const YMD = /^\d{4}-\d{2}-\d{2}$/;
+  const startParam = c.req.query('start_date');
+  const endParam = c.req.query('end_date');
+  const startDate = startParam && YMD.test(startParam) ? startParam : now.slice(0, 10);
+  const endDate = endParam && YMD.test(endParam)
+    ? endParam
+    : (() => {
+        const d = new Date(Date.parse(`${startDate}T12:00:00Z`) + 14 * 86_400_000);
+        return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' }).format(d);
+      })();
+  const include = new Set((c.req.query('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const withTier = include.has('tier');
+  const withCluster = include.has('cluster');
+
+  const tierProj = withTier ? `, q.urgency_tier` : '';
+  const clusterProj = withCluster ? `, q.geo_cluster_id` : '';
+
+  const rows = await query<{
+    id: number; queue_id: number; attempt_number: number;
+    scheduled_date: string; window_start: string; window_end: string;
+    window_label: string; notify_at: string; notify_before_secs: number;
+    notified: number; dismissed: number;
+    officer_id: number | null; manually_moved: number;
+    auto_replan_source: number | null;
+    recipient_name: string | null; recipient_address: string | null;
+    recipient_city: string | null; recipient_state: string | null;
+    case_number: string | null; priority: string; deadline: string | null;
+    status: string;
+    urgency_tier?: string | null; geo_cluster_id?: string | null;
+  }>(
+    db,
+    `SELECT s.id, s.queue_id, s.attempt_number, s.scheduled_date,
+            s.window_start, s.window_end, s.window_label, s.notify_at,
+            s.notify_before_secs, s.notified, s.dismissed,
+            s.officer_id, s.manually_moved, s.auto_replan_source,
+            q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
+            q.case_number, q.priority, q.deadline, q.status${tierProj}${clusterProj}
+     FROM serve_attempt_schedules s
+     JOIN serve_queue q ON q.id = s.queue_id
+     WHERE s.dismissed = 0
+       AND s.scheduled_date >= ?
+       AND s.scheduled_date <= ?
+       AND q.status NOT IN ('served','cancelled','failed')
+     ORDER BY s.scheduled_date ASC, s.window_start ASC`,
+    startDate,
+    endDate,
+  );
+
+  // Group by date
+  const byDate = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!byDate.has(row.scheduled_date)) byDate.set(row.scheduled_date, []);
+    byDate.get(row.scheduled_date)!.push(row);
+  }
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const schedule = [...byDate.entries()].map(([date, slots]) => {
+    const dow = new Date(`${date}T12:00:00Z`).getDay();
+    return { date, weekday: DAYS[dow], slots };
+  });
+  return c.json({ schedule, generated_at: now });
+});
+
+// ── POST /schedule/backfill — generate slots for active jobs with no schedule ─
+// Idempotent: only touches queue rows that have 0 rows in serve_attempt_schedules.
+// Designed to be called once after deploying the scheduler feature, or via the
+// "Generate Schedule" button in ServeSchedulerPanel when the view is empty.
+si.post('/schedule/backfill', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const { persistAttemptSchedule, denverNow } = await import('../utils/serveAttemptScheduler');
+  const { planAttemptWindows } = await import('../utils/serveDiligencePlanner');
+
+  const nowIso = new Date().toISOString();
+  const nowDenver = denverNow();
+  const todayYmd = nowDenver.slice(0, 10);
+
+  // Find active queue jobs with no existing schedule rows.
+  // Fetch business_id + recipient_type so planAttemptWindows uses the right
+  // window strategy (business = weekday 09:30-11:30 / 13:30-15:30,
+  // residential = evening first, then morning, then weekend).
+  const unscheduled = await query<{
+    id: number; deadline: string | null; priority: string;
+    attempt_count: number; max_attempts: number;
+    business_id: number | null; created_at: string;
+    recipient_type: string | null;
+  }>(
+    db,
+    `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
+            q.business_id, q.created_at,
+            q.parsed_data->>'recipient_type' AS recipient_type
+     FROM serve_queue q
+     WHERE q.status IN ('pending', 'in_progress')
+       AND NOT EXISTS (
+         SELECT 1 FROM serve_attempt_schedules s
+          WHERE s.queue_id = q.id AND s.dismissed = 0
+       )`,
+  );
+
+  let seeded = 0;
+  for (const job of unscheduled) {
+    const remainingAttempts = job.max_attempts - job.attempt_count;
+    if (remainingAttempts <= 0) continue;
+    try {
+      // Determine serve target type from structural FK (business_id) or
+      // OCR-derived field in parsed_data. Business → weekday office windows.
+      const isBusiness = !!job.business_id || (job.recipient_type ?? '').toLowerCase() === 'business';
+
+      // Use created_at as the planning baseline when the intake happened today —
+      // gives morning uploads an evening-first plan rather than tomorrow-first.
+      const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
+      const baseIso = uploadedToday ? job.created_at : nowIso;
+
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
+      // Trim plan to only remaining attempts and only future dates.
+      const futurePlan = plan
+        .filter((w) => w.date >= todayYmd)
+        .slice(0, remainingAttempts)
+        .map((w, i) => ({ ...w, attempt: job.attempt_count + i + 1 }));
+      if (futurePlan.length === 0) continue;
+      await persistAttemptSchedule(db, job.id, futurePlan, nowIso);
+      seeded++;
+    } catch {
+      // Skip individual failures — don't abort the whole backfill.
+    }
+  }
+
+  return c.json({ seeded, total_unscheduled: unscheduled.length });
+});
+
+// ── GET /officers — minimal officer roster for the scheduler lanes ─
+// Returns active users in field-facing roles so dispatchers can render
+// the swim-lane view without needing /admin/users access.
+si.get('/officers', async (c) => {
+  // Lane labels for the scheduler — same operations roles that can see /queue.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string }>(
+    db,
+    `SELECT id, COALESCE(full_name, username, 'User ' || id) AS name
+       FROM users
+      WHERE status = 'active'
+        AND role IN ('officer','dispatcher','supervisor','manager','admin')
+      ORDER BY full_name, username`,
+  );
+  return c.json(rows);
+});
+
+// ── PATCH /schedule/:slotId — manual reschedule (drag-drop or full-page edit) ─
+si.patch('/schedule/:slotId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const slotId = parseInt(c.req.param('slotId'), 10);
+  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const force = c.req.query('force') === '1';
+  const userId = (c.get('userId') as number | undefined) ?? null;
+  const ifUnmodifiedSince = c.req.header('If-Unmodified-Since') ?? body.if_unmodified_since ?? null;
+
+  const { detectSlotOverlap, isStaleUpdate, normalizeWindow } = await import('../utils/serveScheduleEdit');
+
+  // Read the slot being edited.
+  const current = await queryFirst<{
+    id: number; queue_id: number; officer_id: number | null;
+    scheduled_date: string; window_start: string; window_end: string;
+    updated_at: string;
+  }>(
+    db,
+    `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+  if (!current) return c.json({ error: 'Not found' }, 404);
+
+  if (isStaleUpdate(ifUnmodifiedSince, current.updated_at)) {
+    return c.json({ error: 'stale', current }, 409);
+  }
+
+  // Build the candidate window from body + current row defaults.
+  let candidateWindow: { window_start: string; window_end: string };
+  try {
+    candidateWindow = normalizeWindow(
+      String(body.window_start ?? current.window_start),
+      String(body.window_end ?? current.window_end),
+    );
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  const candidateDate = typeof body.scheduled_date === 'string' && body.scheduled_date
+    ? body.scheduled_date
+    : current.scheduled_date;
+  // Coerce officer_id: undefined → current; null → null (unassign);
+  // numeric string → number; otherwise fall back to current to avoid silent string-vs-number mismatch.
+  const candidateOfficer = body.officer_id === undefined
+    ? current.officer_id
+    : body.officer_id === null
+    ? null
+    : Number.isFinite(Number(body.officer_id))
+    ? Number(body.officer_id)
+    : current.officer_id;
+
+  if (!force) {
+    // Pull all other slots on the candidate (officer, date) for overlap detection.
+    const peers = await query<{
+      id: number; queue_id: number; officer_id: number | null;
+      scheduled_date: string; window_start: string; window_end: string;
+      updated_at: string;
+    }>(
+      db,
+      `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
+         FROM serve_attempt_schedules
+        WHERE scheduled_date = ? AND officer_id IS ?`,
+      candidateDate, candidateOfficer,
+    );
+    const conflicts = detectSlotOverlap(
+      peers,
+      { officer_id: candidateOfficer, scheduled_date: candidateDate, ...candidateWindow },
+      slotId,
+    );
+    if (conflicts.length) {
+      return c.json({ error: 'overlap', conflicts }, 409);
+    }
+  }
+
+  // Apply the update. updated_at refreshes so the next read picks up the new value.
+  await execute(
+    db,
+    `UPDATE serve_attempt_schedules
+        SET scheduled_date = ?, window_start = ?, window_end = ?,
+            officer_id = ?, manually_moved = 1, moved_by_user_id = ?,
+            moved_at = datetime('now'), notified = 0,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    candidateDate, candidateWindow.window_start, candidateWindow.window_end,
+    candidateOfficer, userId, slotId,
+  );
+
+  // If the officer changed, propagate to serve_queue so future attempts route correctly.
+  if (candidateOfficer !== current.officer_id) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET officer_id = ? WHERE id = ?`,
+      candidateOfficer, current.queue_id,
+    );
+  }
+
+  // Audit (force = supervisor flag for visibility).
+  await recordAudit(c, {
+    action: force ? 'serve_schedule.force_overlap' : 'serve_schedule.move',
+    entityType: 'serve_schedule_slot',
+    entityId: slotId,
+    details: {
+      from: { scheduled_date: current.scheduled_date, window: `${current.window_start}-${current.window_end}`, officer_id: current.officer_id },
+      to: { scheduled_date: candidateDate, window: `${candidateWindow.window_start}-${candidateWindow.window_end}`, officer_id: candidateOfficer },
+      reason: typeof body.reason === 'string' ? body.reason : null,
+    },
+  });
+
+  // Broadcast — clients refetch via useLiveSync.
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'slot',
+    action: 'updated',
+    slot_id: slotId,
+    queue_id: current.queue_id,
+  });
+
+  const updated = await queryFirst(
+    db,
+    `SELECT id, queue_id, attempt_number, scheduled_date, window_start, window_end,
+            window_label, notify_at, notify_before_secs, notified, dismissed,
+            officer_id, manually_moved, moved_by_user_id, moved_at,
+            auto_replan_source, updated_at
+       FROM serve_attempt_schedules WHERE id = ?`,
+    slotId,
+  );
+
+  return c.json({ slot: updated });
+});
+
+// ── POST /schedule/rebalance — dry-run preview or apply ───────
+si.post('/schedule/rebalance', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const body = await c.req.json<any>().catch(() => ({}));
+  const dry = body.dry_run !== false; // default true — preview unless explicitly set false
+
+  const { previewRangeRebalance } = await import('../utils/rebalancePreview');
+
+  const rows = await query<{
+    id: number; deadline: string | null; max_attempts: number;
+    attempt_count: number; priority: string; urgency_tier: string | null;
+  }>(
+    db,
+    `SELECT id, deadline, max_attempts, attempt_count, priority, urgency_tier
+       FROM serve_queue
+      WHERE status IN ('pending', 'assigned', 'in_progress', 'attempted')`,
+  );
+
+  const nowIso = new Date().toISOString();
+  const preview = previewRangeRebalance(rows, nowIso);
+
+  if (dry) {
+    return c.json({ dry_run: true, ...preview });
+  }
+
+  // Apply: one UPDATE per changed row. Low volume; in-loop is acceptable.
+  for (const change of preview.changes) {
+    const priorityClause = change.to_priority === 'rush' ? `, priority = 'rush'` : '';
+    await execute(
+      db,
+      `UPDATE serve_queue
+          SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+        WHERE id = ?`,
+      change.to_tier, change.queue_id,
+    );
+  }
+
+  await recordAudit(c, {
+    action: 'serve_schedule.rebalance_applied',
+    entityType: 'serve_queue',
+    entityId: null,
+    details: {
+      changes: preview.changes.length,
+      tiers_promoted_critical: preview.tiers_promoted_critical,
+      priority_escalated: preview.priority_escalated,
+    },
+  });
+
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'queue',
+    action: 'rebalanced',
+    count: preview.changes.length,
+  });
+
+  return c.json({ dry_run: false, ...preview });
+});
+
+// ── DELETE /schedule/:slotId — dismiss a slot ────────────────
+si.delete('/schedule/:slotId', async (c) => {
+  const slotId = parseInt(c.req.param('slotId'), 10);
+  if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
+  const db = getDb(c.env);
+  await execute(db, 'UPDATE serve_attempt_schedules SET dismissed = 1 WHERE id = ?', slotId);
+  return c.json({ success: true });
+});
+
+// ── GET /record-lookup — property + business match for the review panel ──
+// Lightweight search used by ServeRecordMatchPanel to show gate codes,
+// alarm codes, and key-holder info from existing records while the
+// operator is still reviewing the extracted fields before submitting.
+si.get('/record-lookup', async (c) => {
+  const db = getDb(c.env);
+  const addressQ = (c.req.query('address') || '').trim();
+  const nameQ = (c.req.query('business_name') || '').trim();
+  const { normAddr } = await import('../utils/serveIntakeRecords');
+
+  let property: any = null;
+  if (addressQ) {
+    const norm = normAddr(addressQ);
+    const candidates = await query<any>(
+      db,
+      `SELECT id, name, address, gate_code, alarm_code, alarm_account,
+              alarm_company, key_holder_name, key_holder_phone,
+              post_orders, access_instructions, hazard_notes
+         FROM properties
+        WHERE LOWER(address) LIKE ? LIMIT 10`,
+      `%${norm.split(' ').slice(0, 4).join(' ')}%`,
+    );
+    for (const row of candidates) {
+      if (normAddr(row.address) === norm) { property = row; break; }
+    }
+  }
+
+  let business: any = null;
+  if (nameQ) {
+    business = await queryFirst<any>(
+      db,
+      `SELECT id, name, address, owner_name, owner_phone,
+              contact_name, contact_phone, phone, notes
+         FROM businesses WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+      nameQ,
+    ) ?? null;
+  }
+
+  return c.json({ property, business });
+});
+
+// ── GET /clients — active clients for the intake client selector ──
+si.get('/clients', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<{ id: number; name: string; contact_name: string | null; contact_phone: string | null }>(
+    db,
+    `SELECT id, name, contact_name, contact_phone
+       FROM clients WHERE status = 'active' ORDER BY name ASC`,
+  );
+  return c.json(rows);
+});
+
 // ── GET /:id ────────────────────────────────────────────────
-si.get('/:id', async (c) => {
+// Param constrained to digits so literal single-segment GETs registered
+// later in this file (/routes, /export.csv, /map-items, /location-notes)
+// are not shadowed. Hono's SmartRouter falls back to the order-sensitive
+// TrieRouter on static-vs-param overlap; the {[0-9]+} regex narrows the
+// param-only branch to numeric ids. See properties.ts:43-45 for the
+// codebase's precedent fix for the same trap.
+si.get('/:id{[0-9]+}', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -934,6 +1793,19 @@ si.put('/:id', async (c) => {
   sets.push("updated_at = datetime('now','localtime')");
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
+  // Manually-moved slots (manually_moved=1) keep their officer assignment intact.
+  if ('officer_id' in body) {
+    const newOfficer = body.officer_id == null ? null : Number(body.officer_id) || null;
+    await execute(
+      db,
+      `UPDATE serve_attempt_schedules SET officer_id = ? WHERE queue_id = ? AND manually_moved = 0 AND dismissed = 0`,
+      newOfficer,
+      id,
+    );
+  }
+
   return c.json({ success: true });
 });
 
@@ -944,7 +1816,41 @@ si.delete('/:id', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+
+  // Read first so audit can capture context after the row is gone.
+  const queue = await queryFirst<{
+    id: number; recipient_name: string | null; case_number: string | null;
+    document_type: string | null; status: string;
+  }>(
+    db, 'SELECT id, recipient_name, case_number, document_type, status FROM serve_queue WHERE id = ?', id,
+  );
+  if (!queue) return c.json({ error: 'Not found' }, 404);
+
+  // serve_attempts + serve_skip_traces cascade via FK (migration 0030), but
+  // serve_attempt_schedules has no REFERENCES clause (migration 0130) — clean
+  // up explicitly before the parent DELETE.
+  await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_queue WHERE id = ?', id);
+
+  await recordAudit(c, {
+    action: 'serve_queue.delete',
+    entityType: 'serve_queue',
+    entityId: id,
+    details: {
+      recipient_name: queue.recipient_name,
+      case_number: queue.case_number,
+      document_type: queue.document_type,
+      status_at_delete: queue.status,
+    },
+  });
+
+  broadcastAll('data_changed', {
+    module: 'serve-schedule',
+    entity: 'queue',
+    action: 'deleted',
+    queue_id: id,
+  });
+
   return c.json({ success: true });
 });
 
@@ -975,6 +1881,7 @@ si.post('/:id/attempts', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const user = c.get('user') as { id: number } | undefined;
   const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
 
   const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
     db,
@@ -1016,7 +1923,128 @@ si.post('/:id/attempts', async (c) => {
     nextNum, newStatus, id,
   );
 
-  return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
+  // Completion → auto-compute the serve charge (pending_review) so it shows up in
+  // billing without a manual step. Mirrors serve.ts; best-effort — generateServeCharges
+  // swallows its own errors and never breaks the attempt write.
+  if (newStatus === 'served') {
+    const { generateServeCharges } = await import('../utils/serveChargeStore');
+    await generateServeCharges(db, id).catch(() => null);
+  }
+
+  // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
+  let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
+  const attemptId = ins.meta.last_row_id as number;
+
+  if (REPLAN_RESULTS.has(String(body.result ?? ''))) {
+    // Re-read the queue row to get the post-increment attempt_count + recipient details.
+    const q = await queryFirst<{
+      id: number; deadline: string | null; max_attempts: number;
+      attempt_count: number; recipient_lat: number | null;
+      recipient_lng: number | null; document_type: string | null;
+      recipient_type: string | null;
+    }>(
+      db,
+      `SELECT id, deadline, max_attempts, attempt_count, recipient_lat,
+              recipient_lng, document_type,
+              parsed_data->>'recipient_type' AS recipient_type
+         FROM serve_queue WHERE id = ?`,
+      id,
+    );
+
+    if (q && q.attempt_count < q.max_attempts) {
+      const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
+
+      const next = replanAfterFailedAttempt(
+        {
+          attempt_at: new Date().toISOString(),
+          result: String(body.result),
+          window: typeof body.window === 'string' ? body.window : null,
+        },
+        {
+          deadline: q.deadline,
+          max_attempts: q.max_attempts,
+          attempt_count: q.attempt_count,
+          recipient_lat: q.recipient_lat,
+          recipient_lng: q.recipient_lng,
+          isBusiness,
+        },
+      );
+
+      if (next) {
+        // Append the next slot WITHOUT deleting prior slots (appendAttemptSlot).
+        // Using persistAttemptSchedule here would DELETE all prior schedule rows
+        // including completed/notified ones, losing attempt history after attempt #1.
+        await appendAttemptSlot(db, id, next, new Date().toISOString());
+
+        // Look up the newly-inserted slot for the response payload.
+        const slot = await queryFirst<{ id: number; scheduled_date: string; window_start: string; window_end: string }>(
+          db,
+          `SELECT id, scheduled_date, window_start, window_end
+             FROM serve_attempt_schedules
+            WHERE queue_id = ? AND scheduled_date = ?
+            ORDER BY id DESC LIMIT 1`,
+          id, next.date,
+        );
+        if (slot) {
+          // Stamp the auto_replan_source FK to the attempt we just inserted.
+          await execute(
+            db,
+            `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
+            attemptId, slot.id,
+          ).catch((e) => {
+            console.warn('[serveIntake] auto_replan_source FK stamp skipped:', e instanceof Error ? e.message : e);
+            return null;
+          }); // column may not exist on live yet (mig 0140 pending Task 7)
+          replanSummary = {
+            slot_id: slot.id,
+            scheduled_date: slot.scheduled_date,
+            window: `${slot.window_start}–${slot.window_end}`,
+          };
+        }
+
+        // Recompute tier; bump priority to 'rush' on flip-to-critical (one-way ratchet).
+        const tier = applyUrgencyTier(q.deadline, q.attempt_count, q.max_attempts, new Date().toISOString());
+        const priorityClause = tier === 'critical'
+          ? `, priority = CASE WHEN priority IN ('urgent') THEN priority ELSE 'rush' END`
+          : '';
+        await execute(
+          db,
+          `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause}
+             WHERE id = ?`,
+          tier, id,
+        ).catch((e) => {
+          console.warn('[serveIntake] urgency_tier update skipped:', e instanceof Error ? e.message : e);
+          return null;
+        }); // urgency_tier column may not exist on live yet (mig 0140 pending Task 7)
+      } else {
+        // replanAfterFailedAttempt returned null (no viable window) — mark failed.
+        await execute(
+          db,
+          `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now') WHERE id = ?`,
+          id,
+        );
+      }
+    }
+  }
+
+  // Broadcast auto-replan slot creation to all clients so dashboards refetch.
+  if (replanSummary) {
+    broadcastAll('data_changed', {
+      module: 'serve-schedule',
+      entity: 'slot',
+      action: 'created',
+      slot_id: replanSummary.slot_id,
+      queue_id: id,
+    });
+  }
+
+  return c.json({
+    success: true,
+    id: attemptId,
+    attempt_number: nextNum,
+    queue_status: newStatus,
+    ...(replanSummary ? { replan: replanSummary } : {}),
+  });
 });
 
 // ── POST /:id/skip-trace ────────────────────────────────────
@@ -1107,6 +2135,109 @@ si.get('/export.csv', async (c) => {
       'Content-Disposition': 'attachment; filename="serve-queue.csv"',
     },
   });
+});
+
+// ── GET /map-items — geocoded queue items for the intake map ──
+si.get('/map-items', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  // Join next scheduled attempt window per queue item for popup display.
+  const rows = await query<{
+    id: number; status: string; priority: string;
+    recipient_name: string | null; recipient_address: string | null;
+    recipient_city: string | null; recipient_state: string | null;
+    document_type: string | null; case_number: string | null;
+    deadline: string | null; attempt_count: number; recipient_type: string | null;
+    recipient_lat: number | null; recipient_lng: number | null;
+    location_note_id: number | null; location_note_text: string | null;
+    next_attempt_date: string | null; next_attempt_window: string | null;
+  }>(
+    db,
+    `SELECT q.id, q.status, q.priority,
+            q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
+            q.document_type, q.case_number, q.deadline, q.attempt_count,
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            q.parsed_data->>'recipient_lat'  AS recipient_lat,
+            q.parsed_data->>'recipient_lng'  AS recipient_lng,
+            sn.id   AS location_note_id,
+            sn.note_text AS location_note_text,
+            ns.scheduled_date AS next_attempt_date,
+            ns.window_start || '–' || ns.window_end AS next_attempt_window
+     FROM serve_queue q
+     LEFT JOIN serve_attempt_schedules ns ON ns.id = (
+       SELECT id FROM serve_attempt_schedules
+       WHERE queue_id = q.id AND dismissed = 0 AND notified = 0
+       ORDER BY scheduled_date ASC, window_start ASC LIMIT 1
+     )
+     LEFT JOIN serve_location_notes sn ON sn.id = ns.location_note_id AND sn.active = 1
+     WHERE q.status NOT IN ('served','cancelled','failed')
+     ORDER BY q.priority DESC, q.deadline ASC NULLS LAST
+     LIMIT 500`,
+  );
+  return c.json(rows);
+});
+
+// ── Location notes — CRUD + lookup ───────────────────────────
+
+si.get('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { search, active_only } = c.req.query() as Record<string, string>;
+  const notes = await listLocationNotes(db, {
+    search: search || undefined,
+    active_only: active_only !== 'false',
+  });
+  return c.json(notes);
+});
+
+si.get('/location-notes/lookup', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const { businessName, personName, address } = c.req.query() as Record<string, string>;
+  const note = await findLocationNote(db, {
+    businessName: businessName || null,
+    personName: personName || null,
+    address: address || null,
+  });
+  return c.json(note ?? null);
+});
+
+si.post('/location-notes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const body = await c.req.json<CreateNoteInput>();
+  if (!body.note_text?.trim()) return c.json({ error: 'note_text required' }, 400);
+  if (!body.entity_type) return c.json({ error: 'entity_type required' }, 400);
+  const id = await createLocationNote(db, {
+    ...body,
+    created_by: c.var.user?.id ?? null,
+  });
+  return c.json({ id }, 201);
+});
+
+si.put('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  const body = await c.req.json<Partial<CreateNoteInput>>();
+  await updateLocationNote(db, id, body);
+  return c.json({ ok: true });
+});
+
+si.delete('/location-notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const id = Number(c.req.param('noteId'));
+  if (!id) return c.json({ error: 'invalid id' }, 400);
+  await deactivateLocationNote(db, id);
+  return c.json({ ok: true });
 });
 
 export default si;

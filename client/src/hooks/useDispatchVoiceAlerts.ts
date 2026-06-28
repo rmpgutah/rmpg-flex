@@ -254,6 +254,25 @@ export function useDispatchVoiceAlerts(options?: {
       })
     );
 
+    // ── Officer on foot overdue (safety sweep) ──
+    unsubs.push(
+      subscribe('officer_on_foot_overdue', (msg) => {
+        const data = ((msg as any).data || msg) as any;
+        const cs = data.call_sign || 'Unit';
+        const mins = data.minutes ?? 5;
+        if (isEdgeTTSEnabled()) {
+          speak(`${cs} has been on foot for over ${mins} minutes. Check officer status.`, 'moderate');
+        }
+        onAlert?.({
+          id: nextAlertId(),
+          severity: 'moderate',
+          title: 'OFFICER ON FOOT',
+          message: `${cs} on foot over ${mins} min${data.officer_name ? ` — ${data.officer_name}` : ''}`,
+          timestamp: Date.now(),
+        });
+      })
+    );
+
     // ── Warrant hit from safety screening ──
     unsubs.push(
       subscribe('call:warrant_alert', (msg) => {
@@ -505,6 +524,31 @@ export function useDispatchVoiceAlerts(options?: {
         } else if (status === 'failed' || status === 'unable') {
           speak(`Service attempt failed for ${subject}. ${data.reason || ''}`, 'minor');
         }
+      })
+    );
+
+    // ── Serve attempt pre-event reminder ──────────────────────
+    // Fires when the random pre-event window (30 min–6 h before the
+    // attempt window opens) arrives. Shows a dispatch banner + voice.
+    unsubs.push(
+      subscribe('serve_attempt_reminder' as any, (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const name = data.recipientName || 'recipient';
+        const addr = data.recipientAddress || '';
+        const mins: number = data.minutesBefore ?? 0;
+        const timeUntil = mins < 60
+          ? `${mins} minutes`
+          : `${Math.round(mins / 60)} hour${Math.round(mins / 60) > 1 ? 's' : ''}`;
+        const windowStr = data.windowStart && data.windowEnd ? ` (${data.windowStart}–${data.windowEnd})` : '';
+        const text = `Serve attempt reminder: ${name}${addr ? ` at ${addr}` : ''}. Window opens in approximately ${timeUntil}${windowStr}.`;
+        speak(text, 'moderate');
+        onAlert?.({
+          id: `serve-remind-${data.queueId}-${data.attemptNumber ?? 0}-${Date.now()}`,
+          severity: data.priority === 'urgent' || data.priority === 'rush' ? 'moderate' : 'minor',
+          title: 'SERVE WINDOW',
+          message: data.message || text,
+          timestamp: Date.now(),
+        });
       })
     );
 

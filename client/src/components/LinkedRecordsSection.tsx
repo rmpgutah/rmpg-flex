@@ -91,7 +91,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
   /* ---- Render ---------------------------------------------------- */
 
   return (
-    <div className="panel-beveled p-3" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled p-3" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -144,7 +144,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                 <Icon size={14} className={color.text} />
 
                 {/* Label */}
-                <span className="text-rmpg-200 truncate flex-1">{link.linked_label}</span>
+                <span className="text-rmpg-200 min-w-0 truncate flex-1">{link.linked_label}</span>
 
                 {/* Type badge — Title-cased plain label ("Incident") */}
                 <span

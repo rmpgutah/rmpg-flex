@@ -5,6 +5,11 @@ import AudioToolbox
 // parsed identity relays through D1 to the officer's open desktop session
 // (DL Search page polls /dl-records/scan-relay/poll and auto-loads it).
 struct IDScanView: View {
+    enum ScanMode: String, CaseIterable {
+        case license = "LICENSE", passport = "PASSPORT", wireless = "WIRELESS"
+    }
+
+    @State private var scanMode: ScanMode = .license
     @State private var scanning = true
     @State private var result: AamvaResult?
     @State private var alerts: [String] = []
@@ -12,16 +17,36 @@ struct IDScanView: View {
     @State private var loginStatus: String?
     @State private var recordCheck: String?
     @State private var showFi = false
+    @State private var knownPersonId: Int?
+    @State private var showRecords = false
+    @StateObject private var wireless = WirelessIDVerifier()
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 8) {
-                if scanning {
+                Picker("Mode", selection: $scanMode) {
+                    ForEach(ScanMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: scanMode) { _, _ in
+                    result = nil; alerts = []; relayStatus = nil; recordCheck = nil; scanning = true
+                }
+
+                if scanMode == .wireless {
+                    wirelessSection
+                } else if scanning {
                     ZStack(alignment: .bottom) {
-                        ScannerCamera { code in handleCode(code) }
-                            .frame(maxHeight: 360)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        Text("AIM AT LICENSE BARCODE (BACK OF CARD)")
+                        // .id forces a fresh camera pipeline when the mode flips
+                        // (metadata detector vs Vision OCR output).
+                        ScannerCamera(mode: scanMode == .passport ? .mrz : .barcode) { code in
+                            handleCode(code)
+                        }
+                        .id(scanMode)
+                        .frame(maxHeight: 360)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        Text(scanMode == .passport
+                             ? "AIM AT THE TWO MRZ LINES (PASSPORT PHOTO PAGE)"
+                             : "AIM AT LICENSE BARCODE (BACK OF CARD)")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Theme.gold)
                             .padding(6)
@@ -29,79 +54,85 @@ struct IDScanView: View {
                     }
                 } else {
                     Button("SCAN ANOTHER") { result = nil; alerts = []; relayStatus = nil; scanning = true }
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Theme.gold).foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .buttonStyle(GoldButtonStyle())
                 }
 
                 ForEach(alerts, id: \.self) { alert in
                     Text("⚠ \(alert)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(Theme.Typography.caption).fontWeight(.bold)
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity).padding(.vertical, 6)
                         .background(Theme.orange)
                 }
 
-                if let relayStatus {
-                    Text(relayStatus)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(relayStatus.hasPrefix("✓") ? Theme.gold : Theme.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                if let relayStatus { StatusLine(text: relayStatus) }
                 if let loginStatus {
                     Text(loginStatus).font(.system(size: 10)).foregroundStyle(Theme.neutral)
                 }
                 if let recordCheck {
                     Text(recordCheck)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(Theme.Typography.caption).fontWeight(.bold)
                         .foregroundStyle(recordCheck.hasPrefix("⚠") ? .black : Theme.gold)
                         .frame(maxWidth: .infinity).padding(.vertical, 6)
                         .background(recordCheck.hasPrefix("⚠") ? Theme.red : Theme.raised)
+                }
+                if let knownPersonId {
+                    Button("📂 VIEW SUBJECT RECORDS (#\(knownPersonId))") { showRecords = true }
+                        .buttonStyle(RaisedButtonStyle())
                 }
                 if result != nil {
                     Button("CREATE & LINK PERSON + PROPERTY") {
                         Task { await createLinked() }
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 7)
-                    .background(Theme.gold).foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                    .buttonStyle(GoldButtonStyle())
                     Button("CREATE FI CARD FROM SCAN") { showFi = true }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 7)
-                        .background(Theme.raised).foregroundStyle(Theme.gold)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .buttonStyle(RaisedButtonStyle())
+                    NavigationLink {
+                        WorkflowRenderer(def: WorkflowRegistry.citation, prefill: scanCitationPrefill(result))
+                    } label: {
+                        Text("CITE / WARN THIS SUBJECT").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(RaisedButtonStyle())
+                    Button("SEND TO MDT") { Task { await sendScanToMDT() } }
+                        .buttonStyle(RaisedButtonStyle())
                 }
 
                 if let result {
                     ScrollView {
+                        PlateCheckSection(scanFields: result.fields)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(result.displayName)
-                                .font(.system(size: 16, weight: .bold))
+                                .font(Theme.Typography.headline).fontWeight(.bold)
                                 .foregroundStyle(.white)
                             ForEach(rows(result), id: \.0) { label, value in
                                 HStack(alignment: .top) {
                                     Text(label).font(.system(size: 10, weight: .semibold))
                                         .foregroundStyle(Theme.gold)
                                         .frame(width: 90, alignment: .leading)
-                                    Text(value).font(.system(size: 12, design: .monospaced))
+                                    Text(value).font(Theme.Typography.mono)
                                         .foregroundStyle(.white)
                                 }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
+                        .padding(Theme.Spacing.lg)
                         .background(Theme.raised)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("ID SCAN → MDT")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showRecords) {
+                if let knownPersonId {
+                    SubjectRecordsView(personId: knownPersonId,
+                                       displayName: result?.displayName ?? "")
+                        .presentationBackground(Theme.base)
+                }
+            }
             .sheet(isPresented: $showFi) {
                 FieldInterviewForm(prefill: [
                     "name": result?.displayName ?? "",
@@ -125,23 +156,109 @@ struct IDScanView: View {
         }
     }
 
+    private var wirelessSection: some View {
+        VStack(spacing: 8) {
+            Text("Verify a Wallet-stored mobile ID (mDL / state ID): the subject holds their iPhone or Apple Watch to the top of this phone and approves sharing. iOS shows the verified name + age in a system sheet — identity data never enters this app.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.neutral)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(wireless.busy ? "READING…" : "TAP TO VERIFY WALLET ID") {
+                Task { await wireless.verify() }
+            }
+            .font(Theme.Typography.caption).fontWeight(.semibold)
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(WirelessIDVerifier.isSupported ? Theme.gold : Theme.raised)
+            .foregroundStyle(WirelessIDVerifier.isSupported ? .black : Theme.neutral)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .disabled(wireless.busy)
+            if let s = wireless.status { StatusLine(text: s) }
+            if !WirelessIDVerifier.isSupported {
+                Text("Needs iOS 17+, the Verifier API capability on this bundle id, and a reader token in Settings.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.neutral)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .background(Theme.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+    }
+
     private func rows(_ r: AamvaResult) -> [(String, String)] {
-        let order = ["dl_number", "dl_state", "dl_class", "date_of_birth", "dl_expiry",
+        let order = ["doc_type", "document_number", "dl_number", "dl_state", "dl_class",
+                     "issuing_country", "nationality", "date_of_birth", "dl_expiry",
                      "gender", "height", "weight", "eye_color", "hair_color",
-                     "address", "city", "state", "zip"]
+                     "address", "city", "state", "zip", "mrz_checks"]
         return order.compactMap { key in
-            r.fields[key].map { (key.replacingOccurrences(of: "_", with: " ").uppercased(), $0) }
+            r.fields[key].map { (FieldFormat.label(key), FieldFormat.value(key, $0)) }
         }
     }
 
     private func handleCode(_ code: String) {
-        guard AamvaParser.looksLikeAamva(code) else { return }
+        let parsed: AamvaResult
+        let parsedAlerts: [String]
+        switch scanMode {
+        case .license:
+            guard AamvaParser.looksLikeAamva(code) else { return }
+            parsed = AamvaParser.parse(code)
+            parsedAlerts = AamvaParser.alerts(parsed)
+        case .passport:
+            guard let mrz = MrzParser.parse(code) else { return }
+            parsed = mrz
+            parsedAlerts = MrzParser.alerts(mrz)
+        case .wireless:
+            return
+        }
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        let parsed = AamvaParser.parse(code)
         result = parsed
-        alerts = AamvaParser.alerts(parsed)
+        alerts = parsedAlerts
+        knownPersonId = nil
         scanning = false
         Task { await relay(parsed) }
+    }
+
+    /// Push the scanned subject to the in-vehicle MDT terminal.
+    @MainActor private func sendScanToMDT() async {
+        guard let f = result?.fields else { return }
+        let ok = await MDTLink.shared.send(type: "person", payload: [
+            "name": [f["last_name"] ?? "", f["first_name"] ?? ""].filter { !$0.isEmpty }.joined(separator: ", "),
+            "dob": f["date_of_birth"] ?? "", "dl": f["dl_number"] ?? "",
+        ])
+        relayStatus = ok ? "✓ Subject sent to your vehicle MDT" : "✗ MDT send failed"
+    }
+
+    /// Prefill a citation from a license/MRZ scan (name, DOB, DL number).
+    private func scanCitationPrefill(_ r: AamvaResult?) -> [String: FieldValue] {
+        guard let f = r?.fields else { return [:] }
+        var p: [String: FieldValue] = [:]
+        let name = [f["last_name"] ?? "", f["first_name"] ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
+        if !name.isEmpty { p["person_name"] = .string(name) }
+        if let dob = f["date_of_birth"], !dob.isEmpty { p["person_dob"] = .string(dob) }
+        if let dl = f["dl_number"], !dl.isEmpty { p["person_dl"] = .string(dl) }
+        return p
+    }
+
+    /// RECORDS integration: resolve the scan to an existing person so the
+    /// dossier button lights up without creating anything. Match precedence:
+    /// exact DL number, then exact name+DOB — same keys from-dl-scan dedupes on.
+    @MainActor
+    private func resolvePerson(_ parsed: AamvaResult, client: RMPGAPIClient) async {
+        guard knownPersonId == nil, let last = parsed.fields["last_name"], !last.isEmpty else { return }
+        let q = last.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? last
+        guard let rows = (try? await client.requestJSON("GET", "api/records/persons/search?q=\(q)"))
+                as? [[String: Any]] else { return }
+        let dl = parsed.fields["dl_number"]
+        let first = parsed.fields["first_name"]?.lowercased()
+        let dob = parsed.fields["date_of_birth"]
+        let match = rows.first(where: { dl != nil && ($0["dl_number"] as? String) == dl })
+            ?? rows.first(where: { row in
+                guard let f = first, let d = dob else { return false }
+                return (row["first_name"] as? String)?.lowercased() == f
+                    && (row["dob"] as? String)?.hasPrefix(d) == true
+            })
+        if let id = match?["id"] as? Int ?? (match?["id"] as? Double).map(Int.init) {
+            knownPersonId = id
+        }
     }
 
     @MainActor
@@ -161,7 +278,9 @@ struct IDScanView: View {
             return
         }
         var payload: [String: Any] = parsed.fields
-        payload["aamva_raw"] = parsed.raw
+        // The desktop re-parses aamva_raw with its richer parser; MRZ scans
+        // carry mrz_raw instead so it never tries to AAMVA-parse an MRZ.
+        payload[parsed.fields["doc_type"] != nil ? "mrz_raw" : "aamva_raw"] = parsed.raw
         payload["source"] = "ios-field-app"
         do {
             try await client.postJSON("api/dl-records/scan-relay", body: ["payload": payload])
@@ -170,6 +289,7 @@ struct IDScanView: View {
             relayStatus = "✗ Relay failed: \(error.localizedDescription)"
         }
         await recordChecks(parsed, client: client)
+        await resolvePerson(parsed, client: client)
     }
 
     /// One-shot Person + Property create/link from the scan (same endpoint
@@ -190,6 +310,7 @@ struct IDScanView: View {
             var bits: [String] = []
             if let p = res?["person"] as? [String: Any], let id = p["id"] {
                 bits.append("Person #\(id) \((res?["person_created"] as? Bool) == true ? "created" : "linked")")
+                knownPersonId = (id as? Int) ?? (id as? Double).map(Int.init)
             }
             if let pr = res?["property"] as? [String: Any], let id = pr["id"] {
                 bits.append("Property #\(id) \((res?["property_created"] as? Bool) == true ? "created" : "linked")")

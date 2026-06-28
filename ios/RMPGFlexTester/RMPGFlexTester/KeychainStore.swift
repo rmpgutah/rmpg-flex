@@ -1,8 +1,8 @@
 import Foundation
 import Security
 
-// Minimal generic-password wrapper. Keys used app-wide:
-//   cfAccountId, cfToken, rmpgUser, rmpgPass, rmpgJWT
+// Minimal generic-password wrapper. Keys used app-wide: rmpgUser, rmpgPass, rmpgJWT, verifierToken
+// (cfAccountId/cfToken removed in Phase 1 — any old device entries are benign.)
 enum KeychainStore {
     private static let service = "us.rmpgutah.flextester"
 

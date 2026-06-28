@@ -65,41 +65,6 @@ export function playUiClose(): void {
   }
 }
 
-// ── Window-open tone ────────────────────────────────────────
-// Counterpart to the de-key close: opening a window "keys up" — the short
-// rising talk-permit chirp (key_up.wav). Fired by a MutationObserver when
-// a dialog/overlay mounts, so every modal in the app is voiced without
-// per-component wiring. Throttled harder than clicks (a dialog often
-// mounts several overlay nodes in one frame).
-const OPEN_GAIN = 0.14;
-const OPEN_THROTTLE_MS = 250;
-let lastOpen = 0;
-
-function playUiOpen(): void {
-  try {
-    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
-    const now = Date.now();
-    if (now - lastOpen < OPEN_THROTTLE_MS) return;
-    lastOpen = now;
-    startSoundAsset('key_up', OPEN_GAIN);
-  } catch { /* never interfere with the open */ }
-}
-
-// ── Page-flip chirp ─────────────────────────────────────────
-// Spillman MDT page changes are audible — a barely-there data chirp on
-// route navigation. Layout calls this on pathname change. Very quiet by
-// design: felt, not heard.
-const NAV_GAIN = 0.05;
-
-export function playUiNavigate(): void {
-  try {
-    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
-    startSoundAsset('data_chirp', NAV_GAIN);
-  } catch { /* never interfere with navigation */ }
-}
-
-const DIALOG_SELECTOR = '[role="dialog"], [data-modal], .modal-overlay';
-
 /** True when the control is a close/dismiss affordance (modal X, Cancel,
  * dismiss chip). IconButton enforces aria-label, so X buttons carry
  * "Close …"/"Dismiss …" labels app-wide. */
@@ -134,6 +99,18 @@ export function initUiClickSounds(): void {
       // Close/dismiss affordances de-key; everything else key-ticks.
       if (isCloseControl(control)) playUiClose();
       else playUiClick();
+    },
+    { capture: true, passive: true }
+  );
+
+  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
+  // only when something dismissable is actually open (a dialog or a
+  // full-screen overlay), so bare Escape presses in a grid stay silent.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape' || e.repeat) return;
+      if (document.querySelector('[role="dialog"], [data-modal], .modal-overlay')) playUiClose();
     },
     { capture: true, passive: true }
   );

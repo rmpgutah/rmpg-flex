@@ -38,6 +38,7 @@ const EXPLICIT: Record<string, string> = {
   cfs: 'Call for Service',
   report: 'Supplemental Report',
   supplemental_report: 'Supplemental Report',
+  intel_report: 'Intel Report',
   dl: 'Driver License',
   dl_record: 'Driver License',
 };

@@ -80,3 +80,6 @@ client/.guide-shots/
 .audit-*.json
 .audit-*.md
 .live_schema.json
+
+# Superpowers brainstorm visual-companion scaffolding (local only)
+.superpowers/
