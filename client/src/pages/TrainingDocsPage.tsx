@@ -81,12 +81,9 @@ export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [searchParams, setSearchParams] = useSearchParams();
-
-  // ?category= deep-link — seed initial tab from URL param (once, on mount)
-  const initCategory = (searchParams.get('category') as CompanyDocCategory | 'all') || 'all';
-  const validCategory = CATEGORIES.some(c => c.key === initCategory) ? initCategory : 'all';
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,17 +118,6 @@ export default function TrainingDocsPage() {
 
   // ?doc_id=<id> deep-link — open edit modal for matching document after load
   const pendingDocIdRef = useRef<string | null>(searchParams.get('doc_id'));
-  // Strip ?category= from URL after seeding state (one-shot on mount)
-  const categoryStripRef = useRef(!!searchParams.get('category'));
-  useEffect(() => {
-    if (!categoryStripRef.current) return;
-    categoryStripRef.current = false;
-    const next = new URLSearchParams(searchParams);
-    next.delete('category');
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     if (loading) return;
     const docId = pendingDocIdRef.current;
@@ -162,8 +148,8 @@ export default function TrainingDocsPage() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Escape') {
         // Cascade: close confirm → modal
-        if (docToDelete) { e.stopPropagation(); setDocToDelete(null); return; }
-        if (showModal) { e.stopPropagation(); setShowModal(false); setEditDoc(null); return; }
+        if (docToDelete) { setDocToDelete(null); return; }
+        if (showModal) { setShowModal(false); setEditDoc(null); return; }
         return;
       }
       if (isTypingInField(e.target)) return;
@@ -386,7 +372,7 @@ export default function TrainingDocsPage() {
                     <span className={`inline-block px-1.5 py-0.5 text-[8px] font-bold uppercase border flex-shrink-0 ${
                       CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.general
                     }`}>
-                      {doc.category?.replace(/_/g, ' ')}
+                      {doc.category?.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </div>
 
