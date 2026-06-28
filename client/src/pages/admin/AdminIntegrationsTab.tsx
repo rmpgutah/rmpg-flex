@@ -292,12 +292,6 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const handleSave = async (configKey: string) => {
     const value = values[configKey]?.trim();
     if (!value) return;
-    const cfg = keyConfigs.find(k => k.key === configKey);
-    if (cfg) {
-      const err = validateKey(value, cfg);
-      if (err) { setErrors(prev => ({ ...prev, [configKey]: err })); return; }
-    }
-    setErrors(prev => ({ ...prev, [configKey]: null }));
     setSaving(configKey);
     try {
       await apiFetch('/admin/third-party-keys', {
@@ -641,7 +635,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   // ── Render ──
 
   // Set document title
-  useEffect(() => { document.title = 'Admin - Integrations \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Admin - Integrations — RMPG Flex'; }, []);
 
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {

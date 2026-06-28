@@ -6,6 +6,27 @@
 import type { CallForService, Unit, CallNote } from '../../../types';
 
 /**
+ * True when a backend response actually looks like a full calls_for_service
+ * row, as opposed to a bare acknowledgement body like {message, ...} or
+ * {error, ...}.
+ *
+ * WHY THIS EXISTS — every "replace the selected call with the server response"
+ * path runs the body through mapDbCall() and stuffs the result back into
+ * dispatch state. mapDbCall() defaults a row with no `id` to id:"undefined"
+ * and incident_type:"other", so feeding it a non-row body produces a blank
+ * 'Other' call that *wipes the real call out of the UI*. This has bitten us
+ * twice — the timeline-edit PUT ("editing time destructs the call") and the
+ * assign-unit endpoint ("attaching a unit destroys the dispatch"). Guard every
+ * replace-with-response path with this so a future partial/error response can
+ * never destroy a good call again.
+ */
+export function looksLikeCallRow(row: any): boolean {
+  return !!row && typeof row === 'object'
+    && row.id != null
+    && (row.incident_type != null || row.call_number != null);
+}
+
+/**
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
 /**
@@ -216,6 +237,23 @@ export function mapDbCall(row: any): CallForService {
     visit_history: row.visit_history || undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
+    // ── PDF-required fields (carried so PrintRecordButton spread sees them) ──
+    // These are user-entered values that previously dropped silently between
+    // the server row and the PDF generator because the mapper only copied
+    // explicitly-listed columns. Cast through `any` because CallForService
+    // doesn't (yet) declare them — PDF generator reads via spread and is
+    // tolerant of extras.
+    ...({
+      attorney_name: row.attorney_name || undefined,
+      jurisdiction: row.jurisdiction || undefined,
+      deadline: row.deadline || undefined,
+      time_window: row.time_window || undefined,
+      service_instructions: row.service_instructions || undefined,
+      pso_72hr_deadline: row.pso_72hr_deadline || undefined,
+      pso_72hr_notified: row.pso_72hr_notified || undefined,
+      dispatcher_name: row.dispatcher_name || undefined,
+      case_id: row.case_id ?? undefined,
+    } as any),
   };
 }
 

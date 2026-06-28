@@ -1309,9 +1309,6 @@ export default function MapPage() {
   useEffect(() => {
     if (!mapRef.current) return;
 
-    injectKeyframes();
-
-    // Clear any previous error when retrying
     setMapError(null);
     setMapRecoveryFailed(false);
     // Re-arm data fetching on (re)init. abortedRef is latched true by THIS
@@ -1325,8 +1322,6 @@ export default function MapPage() {
     let cancelled = false;
     let unsubOnline = () => {};
 
-    // If a map instance already exists (e.g. from a previous successful init
-    // before React StrictMode's second mount), just flag it loaded and bail.
     if (mapInstanceRef.current) {
       setMapLoaded(true);
       return;
@@ -1477,13 +1472,13 @@ export default function MapPage() {
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
-      tileMonitorCleanupRef.current = monitorTileLoading(map, {
+      tileMonitorCleanupRef.current = monitorMapTiles(map, {
         onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled — connection may be too slow');
+          devWarn('[MapPage] Map tiles stalled');
           setTilesStalled(true);
         },
         onLoaded: () => {
-          devLog('[MapPage] Map tiles loaded successfully');
+          devLog('[MapPage] Map tiles loaded');
           setTilesStalled(false);
         },
         onRecovering: () => {
@@ -1501,14 +1496,13 @@ export default function MapPage() {
     function attemptLoad(apiKey: string, attempt: number) {
       if (cancelled || !mapConfig) return;
 
-      // If device is offline, pause retries and wait for connectivity
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        devWarn('[MapPage] Device offline — pausing retries until connectivity returns');
+        devWarn('[MapPage] Device offline — pausing retries');
         const onBack = () => {
           window.removeEventListener('online', onBack);
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(apiKey, attempt); // resume at same attempt count (don't penalize for offline time)
+            attemptLoad(token, attempt);
           }
         };
         window.addEventListener('online', onBack);
@@ -1579,7 +1573,7 @@ export default function MapPage() {
       if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
-      markersRef.current.forEach((m) => {
+      markersRef.current.forEach((m: any) => {
         if (m && typeof m.remove === 'function') m.remove();
       });
       markersRef.current = [];
@@ -1607,7 +1601,7 @@ export default function MapPage() {
 
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !mapLoaded) return;
 
     const styleMap: Record<string, string> = {
       dark: MAPBOX_STYLE_DARK,
@@ -1632,7 +1626,7 @@ export default function MapPage() {
   // Update Markers
   // ============================================================
 
-  // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
+  // Helper: create a Mapbox marker
   const createMarker = useCallback((opts: {
     map: mapboxgl.Map;
     position: [number, number];
@@ -1672,7 +1666,7 @@ export default function MapPage() {
     }
   }, []);
 
-  // Helper: remove a marker (works for both types)
+  // Helper: remove a marker
   const removeMarker = useCallback((m: any) => {
     if (m && typeof m.remove === 'function') m.remove();
   }, []);
@@ -2067,7 +2061,7 @@ export default function MapPage() {
                     ${details.hazard_notes ? `<div style="font-size:8px;color:#f87171;margin-top:4px;padding:3px 5px;background:#f8717110;border:1px solid #f8717130;border-radius:2px;">⚠ ${escapeHtml(details.hazard_notes)}</div>` : ''}
                     ${details.post_orders ? `<div style="font-size:8px;color:#9ca3af;margin-top:4px;">Post Orders: ${escapeHtml(details.post_orders.substring(0, 100))}${details.post_orders.length > 100 ? '…' : ''}</div>` : ''}
                   </div>
-                `);
+                `, prop.latitude!, prop.longitude!);
               } catch (err) {
                 if (lastClickedPropRef.current !== propId) return;
                 console.error('[MapPage] Failed to fetch property details:', err);
@@ -2078,7 +2072,7 @@ export default function MapPage() {
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
                     ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                   </div>
-                `);
+                `, prop.latitude!, prop.longitude!);
               }
             },
           });
@@ -2996,7 +2990,7 @@ export default function MapPage() {
         .addTo(map);
     }
 
-    // Create speed label InfoWindow
+    // Create speed label Popup
     if (!playbackSpeedLabelRef.current) {
       playbackSpeedLabelRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
@@ -3032,7 +3026,6 @@ export default function MapPage() {
       setPlaybackIdx(currentIdx);
       currentIdx++;
 
-      // Speed-proportional playback: faster vehicle = faster animation
       const ptSpeed = pt.speed != null ? pt.speed * 2.237 : 10;
       const speedFactor = Math.max(ptSpeed / 30, 0.2);
       const delay = (200 / playbackSpeed) / speedFactor;
