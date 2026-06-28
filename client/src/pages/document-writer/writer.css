@@ -1,0 +1,346 @@
+/* Document Writer — editor canvas + document-design CSS.
+ *
+ * Color is driven entirely by `color: inherit` from the `.writer-page` element
+ * (the component sets page background + base text color per theme), so:
+ *   - light theme  → white page, near-black text
+ *   - dark theme   → dark page, light text
+ *   - text-color / highlight marks (inline spans) always override the base.
+ * This replaces the old `prose prose-invert` setup, whose light-text variables
+ * rendered nearly invisible on the white page. Print always forces black-on-white
+ * (see @media print at the bottom), independent of the editor theme. */
+
+.writer-page {
+  position: relative;
+  box-sizing: border-box;
+}
+
+.writer-content .ProseMirror {
+  outline: none;
+  color: inherit;
+  font-family: var(--writer-font, "Times New Roman", Times, serif);
+  font-size: var(--writer-size, 12pt);
+  line-height: var(--writer-line-height, 1.5);
+  min-height: 100%;
+}
+
+/* Editor appearance: optional writing measure (max content width) applied to
+ * the editing canvas only — never to print (see @media print). */
+.writer-content .ProseMirror > * {
+  max-width: var(--writer-measure, none);
+}
+
+.writer-content .ProseMirror > * + * { margin-top: 0.6em; }
+
+.writer-content .ProseMirror h1 { font-size: 1.9em; font-weight: 700; line-height: 1.2; }
+.writer-content .ProseMirror h2 { font-size: 1.5em; font-weight: 700; line-height: 1.25; }
+.writer-content .ProseMirror h3 { font-size: 1.25em; font-weight: 700; }
+.writer-content .ProseMirror h4 { font-size: 1.1em; font-weight: 700; }
+.writer-content .ProseMirror p { margin: 0; }
+.writer-content .ProseMirror a { color: #2563eb; text-decoration: underline; }
+.writer-content .ProseMirror ul { list-style: disc; padding-left: 1.6em; }
+.writer-content .ProseMirror ol { list-style: decimal; padding-left: 1.6em; }
+.writer-content .ProseMirror blockquote {
+  border-left: 3px solid currentColor;
+  padding-left: 1em;
+  opacity: 0.85;
+  font-style: italic;
+}
+.writer-content .ProseMirror code {
+  font-family: Consolas, monospace;
+  background: rgba(128, 128, 128, 0.18);
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+  font-size: 0.9em;
+}
+.writer-content .ProseMirror pre {
+  background: rgba(128, 128, 128, 0.14);
+  padding: 0.8em;
+  border-radius: 3px;
+  overflow-x: auto;
+}
+.writer-content .ProseMirror hr {
+  border: none;
+  border-top: 1px solid currentColor;
+  opacity: 0.4;
+  margin: 1em 0;
+}
+.writer-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  /* Fixed layout divides the page width evenly across columns instead of
+   * letting content set it. Without this, an unbreakable run (notably the
+   * signature block's underscore "line") forces a column wider than the page
+   * and the whole table overflows the right margin in print/PDF. */
+  table-layout: fixed;
+  margin: 0.5em 0;
+}
+.writer-content .ProseMirror td,
+.writer-content .ProseMirror th {
+  /* Spacing + sizing are driven by CSS custom properties set on the parent
+   * <table> (TableFormatting extension); these defaults match the prior look.
+   * --rmpg-cell-px = side-to-side padding, --rmpg-cell-py = top-to-bottom
+   * padding, --rmpg-row-h = row height, --rmpg-tbl-border = grid line weight. */
+  border: 1px solid rgba(128, 128, 128, 0.6);
+  border-width: var(--rmpg-tbl-border, 1px);
+  padding: var(--rmpg-cell-py, 4px) var(--rmpg-cell-px, 8px);
+  height: var(--rmpg-row-h, auto);
+  vertical-align: top;
+  /* NOTE: deliberately NOT `overflow: hidden` here — it would clip the
+   * column-resize drag handle (Table is configured resizable). On-screen,
+   * table-layout:fixed alone keeps the table within the page; the underscore
+   * line is clipped to its cell only in print (see @media print below). */
+}
+.writer-content .ProseMirror th { background: rgba(128, 128, 128, 0.16); font-weight: 700; }
+.writer-content .ProseMirror img { max-width: 100%; height: auto; }
+.writer-content .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0.4em; }
+.writer-content .ProseMirror ul[data-type="taskList"] li { display: flex; gap: 0.4em; }
+
+/* Placeholder */
+.writer-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* Drop cap (feature 13) */
+.writer-content .ProseMirror p.drop-cap::first-letter {
+  float: left;
+  font-size: 3.4em;
+  line-height: 0.8;
+  font-weight: 700;
+  padding: 0.05em 0.08em 0 0;
+}
+
+/* Multi-column layout (feature 19) */
+.writer-content.cols-2 .ProseMirror { column-count: 2; column-gap: 2.4em; }
+.writer-content.cols-3 .ProseMirror { column-count: 3; column-gap: 1.8em; }
+
+/* Page break / section break markers (features 20, 21) */
+.doc-page-break {
+  break-after: page;
+  border-top: 2px dashed rgba(128, 128, 128, 0.6);
+  margin: 1em 0;
+  height: 0;
+  position: relative;
+}
+.doc-page-break::after {
+  content: "Page Break";
+  position: absolute;
+  right: 0;
+  top: -0.7em;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+.doc-section-break {
+  break-after: column;
+  border-top: 1px dotted rgba(128, 128, 128, 0.6);
+  margin: 1em 0;
+  height: 0;
+  position: relative;
+}
+.doc-section-break::after {
+  content: "Section Break";
+  position: absolute;
+  right: 0;
+  top: -0.7em;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+/* Line numbers (feature 29) — left gutter counter on each block */
+.writer-content.line-numbers .ProseMirror { counter-reset: writer-line; }
+.writer-content.line-numbers .ProseMirror > p,
+.writer-content.line-numbers .ProseMirror > h1,
+.writer-content.line-numbers .ProseMirror > h2,
+.writer-content.line-numbers .ProseMirror > h3,
+.writer-content.line-numbers .ProseMirror > h4,
+.writer-content.line-numbers .ProseMirror > blockquote {
+  position: relative;
+}
+.writer-content.line-numbers .ProseMirror > p::before,
+.writer-content.line-numbers .ProseMirror > h1::before,
+.writer-content.line-numbers .ProseMirror > h2::before,
+.writer-content.line-numbers .ProseMirror > h3::before,
+.writer-content.line-numbers .ProseMirror > h4::before,
+.writer-content.line-numbers .ProseMirror > blockquote::before {
+  counter-increment: writer-line;
+  content: counter(writer-line);
+  position: absolute;
+  left: -2.6em;
+  width: 2em;
+  text-align: right;
+  font-size: 0.7em;
+  opacity: 0.4;
+  user-select: none;
+}
+
+/* Watermark (feature 36) */
+.doc-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 90px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  transform: rotate(-32deg);
+  white-space: nowrap;
+  z-index: 0;
+}
+.writer-content,
+.doc-running-header,
+.doc-running-footer { position: relative; z-index: 1; }
+
+/* Running header / footer (features 34, 35) */
+.doc-running-header,
+.doc-running-footer {
+  font-size: 9pt;
+  opacity: 0.75;
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+}
+.doc-running-header { border-bottom: 1px solid rgba(128, 128, 128, 0.3); padding-bottom: 4px; margin-bottom: 12px; }
+.doc-running-footer { border-top: 1px solid rgba(128, 128, 128, 0.3); padding-top: 4px; margin-top: 12px; }
+
+/* Widow/orphan control (feature 23) */
+.writer-content.widow-control .ProseMirror p { orphans: 2; widows: 2; }
+
+/* Margin notes (feature 43) */
+.writer-content .ProseMirror aside[data-margin-note] { clear: right; }
+
+/* Title / subtitle styles (feature 37) */
+.writer-content .ProseMirror .doc-title { font-size: 30px; font-weight: 800; text-align: center; letter-spacing: 0.01em; }
+.writer-content .ProseMirror .doc-subtitle { font-size: 16px; opacity: 0.7; text-align: center; font-style: italic; }
+
+/* Style-gallery presets (feature 48) */
+.writer-content .ProseMirror .style-legal { font-family: "Times New Roman", serif; font-size: 13pt; line-height: 2; }
+.writer-content .ProseMirror .style-memo { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; }
+/* Legal-numbered list preset — double-spaced, decimal markers */
+.writer-content .ProseMirror ol.style-legal-list { font-family: "Times New Roman", serif; line-height: 2; list-style-type: decimal; padding-left: 2em; }
+
+/* Horizontal ruler / margin guides (feature 26) */
+.writer-ruler {
+  height: 18px;
+  background: repeating-linear-gradient(to right, transparent, transparent 95px, rgba(212,160,23,0.35) 95px, rgba(212,160,23,0.35) 96px);
+  border: 1px solid #222;
+  border-radius: 2px;
+  position: relative;
+}
+.writer-ruler::before, .writer-ruler::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: #d4a017;
+  opacity: 0.6;
+}
+
+/* Page border / frame (feature 40) */
+.writer-page.has-page-border { outline: 2px solid #555; outline-offset: -18px; }
+.writer-page.border-thin { outline: 1px solid #777; outline-offset: -18px; }
+.writer-page.border-thick { outline: 3px solid #777; outline-offset: -18px; }
+.writer-page.border-double { outline: 4px double #888; outline-offset: -18px; }
+.writer-page.border-gold { outline: 3px solid #d4a017; outline-offset: -18px; }
+
+/* Letterhead band (wave 3) — on-screen preview of the printed letterhead */
+.writer-page .writer-letterhead { text-align: center; border-bottom: 2px solid #d4a017; padding-bottom: 6px; margin-bottom: 14px; }
+.writer-page .writer-letterhead .lh-name { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; }
+.writer-page .writer-letterhead .lh-sub { font-size: 10px; opacity: 0.7; }
+
+/* Find & Replace match highlights (features 1–10) */
+.writer-content .ProseMirror .search-match { background: rgba(212, 160, 23, 0.32); border-radius: 2px; }
+.writer-content .ProseMirror .search-current { background: #d4a017; color: #000; }
+
+/* Comment-marked text (features 101–110) */
+.writer-content .ProseMirror .doc-comment { background: rgba(56, 189, 248, 0.18); border-bottom: 2px solid rgba(56, 189, 248, 0.6); cursor: pointer; }
+.writer-content .ProseMirror .doc-comment[data-resolved="true"] { background: none; border-bottom: 1px dotted rgba(128, 128, 128, 0.5); }
+
+/* Embedded media (features 80–82) */
+.writer-content .ProseMirror .doc-embed { margin: 0.6em 0; }
+.writer-content .ProseMirror .doc-audio { margin: 0.4em 0; }
+
+/* Reversible redaction mark — solid black bar that hides the underlying text on
+ * screen AND in print. (Distinct from the destructive █-block redaction tool.) */
+.writer-content .ProseMirror .doc-redacted,
+.doc-redacted {
+  background: #000 !important;
+  color: #000 !important;
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.writer-content .ProseMirror .doc-redacted::selection { color: #000; }
+
+/* Track-changes (suggestion) marks. */
+.writer-content .ProseMirror .doc-suggest-ins {
+  color: #1f8f4e;
+  text-decoration: underline;
+  text-decoration-color: rgba(31, 143, 78, 0.7);
+}
+.writer-content .ProseMirror .doc-suggest-del {
+  color: #c0392b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(192, 57, 43, 0.8);
+}
+
+/* Auto-numbered figure / table / exhibit captions. */
+.writer-content .ProseMirror .doc-caption {
+  font-size: 0.85em;
+  text-align: center;
+  color: inherit;
+  opacity: 0.92;
+  margin: 4px 0 12px;
+}
+.writer-content .ProseMirror .doc-caption strong { font-weight: 700; }
+
+/* Vertical spacer block — a real fixed-height gap that survives export. The
+ * dashed outline is an editing aid only and is removed in print (below). */
+.writer-content .ProseMirror .doc-spacer {
+  display: block;
+  outline: 1px dashed rgba(212, 160, 23, 0.35);
+  outline-offset: -1px;
+  border-radius: 2px;
+  user-select: none;
+}
+
+/* Print / PDF — ALWAYS black text on white, regardless of editor theme. */
+@media print {
+  .writer-page {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+  .writer-content .ProseMirror a { color: #000; }
+  .doc-page-break::after,
+  .doc-section-break::after { display: none; }
+  /* Writing measure is a drafting aid only — full width in print. */
+  .writer-content .ProseMirror > * { max-width: none !important; }
+  /* Clip an unbreakable run (the signature underscore "line") to its column so
+   * a multi-column signature row can't push the table past the page margin.
+   * Print has no resize handles, so clipping is safe here (unlike on screen).
+   * Pairs with table-layout:fixed on the table rule above. */
+  .writer-content .ProseMirror td,
+  .writer-content .ProseMirror th { overflow: hidden; }
+  /* Redaction bars must print solid black (force background printing). */
+  .doc-redacted {
+    background: #000 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Track-changes coloring carries into print so a reviewer can mark up a copy. */
+  .doc-suggest-del { text-decoration: line-through; }
+  /* Spacer outline is an editing aid only — invisible in print/PDF. */
+  .doc-spacer { outline: none !important; }
+}

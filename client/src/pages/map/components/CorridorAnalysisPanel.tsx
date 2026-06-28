@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Route, Navigation, AlertTriangle, ArrowUp, Loader2, Zap } from 'lucide-react';
 
 interface CorridorAnalysisPanelProps {
@@ -70,14 +70,14 @@ export default function CorridorAnalysisPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="p-0.5 rounded-sm hover:bg-[#181818] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
+          className="p-0.5 rounded-sm hover:bg-surface-raised text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
           aria-label="Close corridor analysis"
         >
           <X size={12} />
         </button>
       </div>
 
-      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+      <div className="p-3 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {/* === Corridor Analysis Section === */}
         <section className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-widest text-rmpg-400 font-semibold flex items-center gap-1">
@@ -89,7 +89,7 @@ export default function CorridorAnalysisPanel({
             <button type="button"
               onClick={onAnalyzeCorridor}
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-gray-600/20 border border-gray-500/30 text-gray-300 hover:bg-gray-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-rmpg-600/20 border border-rmpg-500/30 text-rmpg-300 hover:bg-rmpg-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
               aria-label="Analyze corridor route"
             >
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Route size={10} />}
@@ -138,7 +138,7 @@ export default function CorridorAnalysisPanel({
                   </div>
                   <div className="space-y-0.5">
                     {corridorData.segments.map((seg, i) => (
-                      <div key={i} className="flex items-center justify-between text-[9px] font-mono hover:bg-[#181818]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
+                      <div key={i} className="flex items-center justify-between text-[9px] font-mono hover:bg-surface-raised/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                         <div className="flex items-center gap-1">
                           <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getRiskColor(seg.risk_score), boxShadow: `0 0 3px ${getRiskColor(seg.risk_score)}50` }} />
                           <span className="text-rmpg-400">Seg {i + 1}</span>
@@ -196,7 +196,7 @@ export default function CorridorAnalysisPanel({
                 max={360}
                 value={headingInput}
                 onChange={(e) => setHeadingInput(e.target.value)}
-                className="w-full px-1.5 py-1 rounded-sm text-[9px] font-mono bg-rmpg-700/30 border border-rmpg-700 text-rmpg-200 focus:outline-none focus:border-gray-500/50"
+                className="w-full px-1.5 py-1 rounded-sm text-[9px] font-mono bg-rmpg-700/30 border border-rmpg-700 text-rmpg-200 focus:outline-none focus:border-rmpg-500/50"
                 placeholder="0-360°"
               />
             </div>

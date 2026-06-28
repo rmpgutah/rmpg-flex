@@ -36,7 +36,7 @@ export interface UseAnalysisSummaryReturn {
   refresh: () => void;
 }
 
-const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const REFRESH_INTERVAL = 5 * 60 * 1000;
 
 export function useAnalysisSummary(enabled: boolean): UseAnalysisSummaryReturn {
   const [data, setData] = useState<AnalysisSummary | null>(null);
@@ -49,15 +49,11 @@ export function useAnalysisSummary(enabled: boolean): UseAnalysisSummaryReturn {
     setLoading(true);
     try {
       const json = await apiFetch<AnalysisSummary>('/dispatch/analysis/summary');
-      if (mountedRef.current) {
-        setData(json || null);
-      }
+      if (mountedRef.current) setData(json || null);
     } catch (err) {
       console.warn('[useAnalysisSummary] Failed to fetch analysis summary:', err);
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -74,10 +70,7 @@ export function useAnalysisSummary(enabled: boolean): UseAnalysisSummaryReturn {
 
     return () => {
       mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     };
   }, [enabled, fetchSummary]);
 

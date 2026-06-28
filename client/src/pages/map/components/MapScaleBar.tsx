@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapScaleBarProps {
-  mapInstance: google.maps.Map | null;
+  mapInstance: mapboxgl.Map | null;
 }
 
 /** Meters per pixel at a given latitude and zoom level */
@@ -54,11 +55,9 @@ const TARGET_BAR_WIDTH = 120; // pixels - target width for the bar
 export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   const [barWidth, setBarWidth] = useState(0);
   const [label, setLabel] = useState('');
-  const [metricLabel, setMetricLabel] = useState('');
-  const [metricBarWidth, setMetricBarWidth] = useState(0);
-  const [showMetric, setShowMetric] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(0);
-  const listenerRefs = useRef<google.maps.MapsEventListener[]>([]);
+  const listenerRefs = useRef<{ map: mapboxgl.Map; onUpdate: () => void }[]>([]);
+
+  const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
 
   const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
 
@@ -70,36 +69,30 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       const zoom = mapInstance.getZoom();
       if (!center || zoom == null) return;
 
-      const lat = center.lat();
+      const lat = center.lat;
       const metersPerPixel = getMetersPerPixel(lat, zoom);
       const feetPerPixel = metersPerPixel * 3.28084;
 
-      setZoomLevel(Math.round(zoom));
-
-      // Imperial
       const maxFeet = feetPerPixel * TARGET_BAR_WIDTH;
       const niceFeet = pickNiceDistanceFeet(maxFeet);
       const exactWidthFt = niceFeet / feetPerPixel;
       setBarWidth(Math.round(exactWidthFt));
       setLabel(formatDistanceFeet(niceFeet));
 
-      // Metric
-      const maxMeters = metersPerPixel * TARGET_BAR_WIDTH;
-      const niceMeters = pickNiceDistanceMeters(maxMeters);
-      const exactWidthM = niceMeters / metersPerPixel;
-      setMetricBarWidth(Math.round(exactWidthM));
-      setMetricLabel(formatDistanceMetric(niceMeters));
+      const exactWidth = niceFeet / feetPerPixel;
+
+      setBarWidth(Math.round(exactWidth));
+      setLabel(formatDistance(niceFeet));
     };
 
     update();
 
-    const zoomListener = google.maps.event.addListener(mapInstance, 'zoom_changed', update);
-    const boundsListener = google.maps.event.addListener(mapInstance, 'bounds_changed', update);
-    listenerRefs.current = [zoomListener, boundsListener];
+    mapInstance.on('zoom', update);
+    mapInstance.on('move', update);
 
     return () => {
-      listenerRefs.current.forEach((l) => google.maps.event.removeListener(l));
-      listenerRefs.current = [];
+      mapInstance.off('zoom', update);
+      mapInstance.off('move', update);
     };
   }, [mapInstance]);
 
@@ -113,42 +106,18 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   return (
     <div
       role="img"
-      aria-label={`Map scale: ${activeLabel}`}
-      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#2b2b2b]/50 rounded-sm"
+      aria-label={`Map scale: ${label}`}
+      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-rmpg-700/50 rounded-sm"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.92)',
+        background: 'rgba(10, 10, 10, 0.9)',
         padding: '4px 8px 5px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
     >
-      {/* Top row: distance label + zoom level + unit toggle */}
-      <div className="flex items-center justify-between mb-1" style={{ width: activeWidth, minWidth: 80 }}>
-        <div
-          className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider cursor-pointer hover:text-[#a0a0a0] transition-colors tabular-nums"
-          onClick={toggleUnit}
-          title={`Click to switch to ${showMetric ? 'imperial' : 'metric'}`}
-        >
-          {activeLabel}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[7px] text-rmpg-500 tabular-nums" title="Zoom level">Z{zoomLevel}</span>
-          <button
-            type="button"
-            onClick={toggleUnit}
-            className="font-mono text-[7px] font-bold px-1 py-0 transition-colors hover:text-rmpg-200"
-            style={{
-              color: '#666666',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid #333333',
-              borderRadius: 1,
-              cursor: 'pointer',
-            }}
-            title={`Switch to ${showMetric ? 'imperial' : 'metric'}`}
-          >
-            {showMetric ? 'MI' : 'KM'}
-          </button>
-        </div>
+      {/* #19: Distance label with tabular-nums for stable width */}
+      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-rmpg-400 transition-colors tabular-nums" style={{ width: barWidth }}>
+        {label}
       </div>
       {/* Dual-tone alternating bar segments */}
       <div className="flex" style={{ width: activeWidth, height: 4 }}>

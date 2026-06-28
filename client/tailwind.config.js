@@ -20,7 +20,7 @@ export default {
       xl: '2px',
       '2xl': '2px',
       '3xl': '2px',
-      full: '2px',
+      full: '9999px',
     },
     screens: {
       'xs': '475px',
@@ -47,79 +47,86 @@ export default {
         'display': ['24px', { lineHeight: '32px' }],
       },
       colors: {
-        // ── Surface tokens (CSS variable backed, alpha-capable) ──
-        // Uses rgb(<channels> / <alpha-value>) so Tailwind's /NN opacity
-        // modifier works (e.g. bg-surface-sunken/50). RGB channels are
-        // declared in index.css as --surface-*-rgb (space-separated).
+        // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          // Dark Mode colors:  #000000 #0b0b0b #000000 #030303 #000000
-          // Light Mode colors: #0d2a4d #153a6a #081e3d #061630 #041022
-          base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',
-          raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',
-          sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',
-          overlay: 'rgb(var(--surface-overlay-rgb) / <alpha-value>)',
-          deep:    'rgb(var(--surface-deep-rgb) / <alpha-value>)',
+          base:    'var(--surface-base)',     // #141e2b
+          raised:  'var(--surface-raised)',   // #1a2636
+          sunken:  'var(--surface-sunken)',   // #0d1520
+          overlay: 'var(--surface-overlay)',  // #0a1018
+          deep:    'var(--surface-deep)',     // #060c14
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Pure black shell with neutral metallic accents
+        // Spillman Flex / Motorola Solutions blue theme
+        //   Primary blue (toolbar / accents):   #1a5a9e
+        //   Logo charcoal (body / base):        #303030
+        //   Logo gold (field labels / accents):  #d4a017
+        //   Logo light grey (text):              #d0d0d0
 
         brand: {
-          50:  '#f2f2f2',
-          100: '#dddddd',
-          200: '#bfbfbf',
-          300: '#9e9e9e',
-          400: '#7f7f7f',
-          500: '#666666',
-          600: '#4c4c4c',
-          700: '#343434',
-          800: '#1f1f1f',
-          900: '#0e0e0e',
+          50:  'rgb(var(--brand-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--brand-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--brand-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--brand-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--brand-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--brand-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--brand-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--brand-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--brand-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--brand-900-rgb) / <alpha-value>)',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
         'brand-gold': {
-          300: '#f5d060',
-          400: '#e8b820',
-          500: '#d4a017',    // Primary gold
-          600: '#b8880f',
-          700: '#936c0a',
+          300: 'rgb(var(--brand-gold-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--brand-gold-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--brand-gold-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--brand-gold-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--brand-gold-700-rgb) / <alpha-value>)',
         },
 
         // Keep the "blue" token name for existing utility usage, but render it as neutral gray
         blue: {
-          50:  '#f1f1f1',
-          100: '#d9d9d9',
-          200: '#bdbdbd',
-          300: '#a1a1a1',
-          400: '#c8c8c8',
-          500: '#9a9a9a',
-          600: '#737373',
-          700: '#4f4f4f',
-          800: '#2e2e2e',
-          900: '#141414',
+          50:  'rgb(var(--blue-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--blue-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--blue-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--blue-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--blue-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--blue-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--blue-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--blue-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--blue-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--blue-900-rgb) / <alpha-value>)',
         },
 
         // Neutral graphite greys — no blue cast
         rmpg: {
-          50:  '#ededed',
-          100: '#d6d6d6',
-          200: '#b8b8b8',
-          300: '#969696',
-          400: '#757575',
-          500: '#5a5a5a',
-          600: '#434343',
-          700: '#2d2d2d',
-          800: '#1b1b1b',
-          900: '#0d0d0d',
-          950: '#030303',
+          50:  'rgb(var(--rmpg-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--rmpg-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--rmpg-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--rmpg-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--rmpg-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--rmpg-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--rmpg-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--rmpg-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--rmpg-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--rmpg-900-rgb) / <alpha-value>)',
+          950: 'rgb(var(--rmpg-950-rgb) / <alpha-value>)',
+        },
+
+        border: {
+          DEFAULT: 'var(--border-default)',
+          default: 'var(--border-default)',
+          subtle:  'var(--border-subtle)',
+          strong:  'var(--border-strong)',
+          panel:   'var(--border-panel)',
         },
 
         dispatch: {
-          emergency: '#dc2626',    // Safety red (not brand)
-          urgent:    '#d4a017',    // Brand gold
-          routine:   '#a7b1bc',
-          scheduled: '#6b7280',
+          emergency: '#dc2626',
+          urgent:    '#d4a017',
+          routine:   '#888888',
+          scheduled: '#666666',
         },
         success: {
           400: '#34d399',
@@ -131,11 +138,25 @@ export default {
         },
         status: {
           available:  '#22c55e',
-          dispatched: '#d4a017',   // Brand gold
-          enroute:    '#d5dde6',
+          dispatched: '#d4a017',
+          enroute:    '#888888',
           onscene:    '#a855f7',
-          busy:       '#dc2626',   // Safety red
-          offduty:    '#6b7280',
+          busy:       '#dc2626',
+          offduty:    '#666666',
+        },
+        // Override Tailwind default blue to gray (kills ALL text-blue-*, bg-blue-*, border-blue-*)
+        blue: {
+          50:  '#f5f5f5',
+          100: '#e0e0e0',
+          200: '#c0c0c0',
+          300: '#aaaaaa',
+          400: '#999999',
+          500: '#888888',
+          600: '#666666',
+          700: '#444444',
+          800: '#333333',
+          900: '#222222',
+          950: '#111111',
         },
       },
     },
