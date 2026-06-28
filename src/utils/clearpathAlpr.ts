@@ -13,12 +13,10 @@
 // directly — we never pull the image (or the mp4) into the Worker.
 // ============================================================
 
-import { log } from './logger';
 import type { Bindings } from '../types';
-import { queryFirst, execute, columnExists } from './db';
+import { queryFirst, execute } from './db';
 import { screenVehicle } from './intelScreen';
 import { ALPR_ACCEPT_CONFIDENCE } from './roboflowAlpr';
-import { trustScore } from './plateTrust';
 import { readPlateCloudflare } from './cloudflarePlate';
 import { type CpgMediaEvent, type CpgMediaObject } from './clearpathGps';
 
@@ -33,53 +31,6 @@ const isOutside = (mo: CpgMediaObject) => {
   const c = (mo.channel || 'outside').toLowerCase();
   return c !== 'inside' && c !== 'interior' && c !== 'cabin';
 };
-
-/** Reject the model's non-plate answers ("NOTVISIBLE", "NONE", "UNKNOWN", …)
- *  and anything that isn't a plausible plate (2–8 alphanumerics). Returns the
- *  normalized plate or null. Pure, exported for tests. */
-const NON_PLATE = new Set(['NOTVISIBLE', 'NONE', 'UNKNOWN', 'NA', 'NOPLATE', 'NOTAPLATE', 'NULL', 'BLURRY', 'OBSCURED', 'UNREADABLE']);
-export function validatePlate(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const norm = raw.toUpperCase().replace(/[\s-]/g, '');
-  if (!/^[A-Z0-9]{2,8}$/.test(norm)) return null;
-  if (NON_PLATE.has(norm)) return null;
-  return norm;
-}
-
-export interface CaptureTrust {
-  /** Calibrated, DERIVED plate confidence to persist + display (never the model's
-   *  self-report). Null when there is no plate. */
-  plateConfidence: number | null;
-  /** True only when derived trust clears the 0.85 accept gate. A single dashcam
-   *  read is hard-capped at 0.84 by trustScore, so a lone read never auto-accepts. */
-  accepted: boolean;
-  /** 'accepted' | 'needs_review' | 'no_plate' — consistent with plateConfidence. */
-  reviewStatus: 'accepted' | 'needs_review' | 'no_plate';
-  /** The model's RAW self-reported confidence, kept for forensics (raw_json) only —
-   *  it is demoted to a tiebreaker inside trustScore and is NEVER the stored signal. */
-  modelConfidence: number | null;
-}
-
-/** Decide what a dashcam capture should PERSIST + DISPLAY from a single plate read.
- *  This is the seam that fixes the "false 100%" bug: instead of trusting the vision
- *  model's self-reported confidence (Llama 3.2 11B routinely emits 1.0), we store
- *  the derived `trustScore` — consensus + format validity, model % demoted to a
- *  0.05 tiebreaker, lone reads hard-capped below the accept gate. Pure, exported
- *  for tests. */
-export function captureTrust(plate: string | null, modelConfidence: number | null): CaptureTrust {
-  const modelConf = typeof modelConfidence === 'number' ? modelConfidence : null;
-  if (!plate) {
-    return { plateConfidence: null, accepted: false, reviewStatus: 'no_plate', modelConfidence: modelConf };
-  }
-  const trust = trustScore({ reads: [plate], modelPct: modelConf ?? undefined });
-  const accepted = trust.trustScore >= ALPR_ACCEPT_CONFIDENCE;
-  return {
-    plateConfidence: trust.trustScore,
-    accepted,
-    reviewStatus: accepted ? 'accepted' : 'needs_review',
-    modelConfidence: modelConf,
-  };
-}
 
 /** Best https still-image URL for the outside camera of an event:
  *  a full IMAGE object's accessUrl first, else any outside thumbnail. null if none. */
@@ -120,151 +71,86 @@ async function upsertVehicleByPlate(db: DB, plate: string, attrs: PlateAttrs): P
        VALUES (?, ?, ?, ?, ?, ?, 'Observed via ClearPath dashcam ALPR (Workers AI)', datetime('now'))`,
       plate, attrs.state ?? null, attrs.make ?? null, attrs.model ?? null, attrs.color ?? null, attrs.year ?? null);
     return Number(r.meta.last_row_id);
-  } catch (err) { log.error('vehicle upsert failed', {}, err); return null; }
-}
-
-/** Reconcile the columns this background path writes, mirroring the alpr route's
- *  ensureAlprSchema. Migrations routinely fail to reach live D1 silently (deploy
- *  step is continue-on-error), so without this a missing column makes the
- *  vehicle_sightings / alpr_captures INSERTs throw — and they're caught + only
- *  logged, so the sighting (which feeds /intel/plate-log) or capture would be
- *  silently lost. We reconcile here rather than dropping columns so intel data is
- *  never discarded, matching the established pattern in src/routes/alpr.ts.
- *  (Cannot import the route's private ensureAlprSchema from a util without a
- *  route→util import inversion; the columns this path touches are inlined here.) */
-const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [['confidence', 'REAL']];
-const CAPTURE_EXTRA_COLUMNS: Array<[string, string]> = [
-  ['plate_confidence', 'REAL'], ['accepted', 'INTEGER'], ['review_status', 'TEXT'],
-  ['image_key', 'TEXT'], ['capture_id', 'TEXT'], ['raw_json', 'TEXT'],
-  ['condition', 'TEXT'], ['damage_observed', 'INTEGER'], ['damage_summary', 'TEXT'],
-];
-async function ensureAlprWriteSchema(db: DB): Promise<void> {
-  for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
-    if (!(await columnExists(db, 'vehicle_sightings', name))) {
-      try { await execute(db, `ALTER TABLE vehicle_sightings ADD COLUMN ${name} ${type}`); }
-      catch { /* lost a race or already present — fine */ }
-    }
-  }
-  for (const [name, type] of CAPTURE_EXTRA_COLUMNS) {
-    if (!(await columnExists(db, 'alpr_captures', name))) {
-      try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
-      catch { /* lost a race or already present — fine */ }
-    }
-  }
+  } catch (err) { console.error('[cpg-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
 }
 
 // ── Main entry (called from the media-sync loop, best-effort) ─
 
 export async function alprDashcamClip(
   env: Bindings, db: DB,
-  args: { videoId?: number; r2Key?: string; mapping: MappingRef; event: CpgMediaEvent },
+  args: { videoId: number; r2Key?: string; mapping: MappingRef; event: CpgMediaEvent },
 ): Promise<void> {
-  // When called without a stored video (the lightweight still-only scan), there's
-  // no dashcam_videos row to flag — markVideo becomes a no-op.
   const markVideo = async (status: string) => {
-    if (args.videoId == null) return;
     try { await execute(db, 'UPDATE dashcam_videos SET alpr_status = ? WHERE id = ?', status, args.videoId); } catch { /* */ }
   };
-  // Reconcile the columns the sighting + capture INSERTs below depend on, the
-  // same way the alpr route does before its writes (best-effort, never fatal).
-  try { await ensureAlprWriteSchema(db); } catch { /* best-effort */ }
   const imageUrl = pickAlprImageUrl(args.event);
   if (!imageUrl) { await markVideo('skipped'); return; }
 
   // Fetch the dashcam still (a small JPEG, not the mp4) and read the plate on
   // Workers AI — free, no Roboflow credits. The pre-signed S3 url needs no auth.
-  // We ALSO persist the still to R2 so the capture stays viewable after the
-  // pre-signed S3 url expires (~1h) — the capture gallery serves it from there.
   let read: Awaited<ReturnType<typeof readPlateCloudflare>> = null;
-  let imageKey: string | null = null;
   try {
     const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(30_000) });
     if (!resp.ok) throw new Error(`still fetch ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const bytes = new Uint8Array(buf);
+    const bytes = new Uint8Array(await resp.arrayBuffer());
     const mediaType = resp.headers.get('content-type') || 'image/jpeg';
-    imageKey = `alpr-captures/cpg/${args.mapping.cpg_device_id}/${args.event.eventTimestamp}.jpg`;
-    try { await env.UPLOADS.put(imageKey, buf, { httpMetadata: { contentType: mediaType } }); }
-    catch (e) { log.error('still R2 put failed', {}, e); imageKey = null; }
     read = await readPlateCloudflare(env, bytes, mediaType);
   } catch (err) {
-    log.error('workers-ai read failed', {}, err);
+    console.error('[cpg-alpr] workers-ai read failed:', (err as Error)?.message);
     await markVideo('failed');
     return;
   }
-  const plate = validatePlate(read?.plate);   // null for "NOTVISIBLE"/junk → recorded as a no-plate still
-  const modelConfidence = read?.confidence ?? null;   // the vision model's SELF-REPORT (untrusted)
+  const plate = read?.plate ?? null;
+  const confidence = read?.confidence ?? null;
+  if (!plate) { await markVideo('done'); return; }
+
   const { lat, lng } = eventLatLng(args.event);
-  // Derive what we PERSIST + DISPLAY from the read. captureTrust() distrusts the
-  // model's self-reported confidence (which is routinely a fabricated 1.0) and
-  // returns the calibrated trustScore instead. trustScore() hard-caps a single
-  // read at 0.84, so no lone dashcam read can auto-accept or auto-upsert a
-  // vehicles_records master row — matching the on-scene ASSERT_GATE behavior.
-  // `plateConfidence` is what goes into the capture's confidence columns and the
-  // forensic overlay; the raw model % survives only in raw_json for forensics.
-  const ct = captureTrust(plate, modelConfidence);
-  const confidence = ct.plateConfidence;   // derived trust, NOT the model self-report
-  const accepted = ct.accepted;
+  const threshold = ALPR_ACCEPT_CONFIDENCE;
+  const accepted = (confidence ?? 0) >= threshold;
   const deviceName = args.mapping.cpg_display_name || args.mapping.cpg_device_id;
   const locationText = args.event.address || `${deviceName} dashcam`;
 
-  // Plate-dependent intel writes (vehicle record / sighting / screening) only run
-  // when a plate was actually read; a no-plate still is still recorded below as a
-  // gallery capture so the dashcam event is visible.
+  // Full policy: upsert a master vehicle record only on an accepted (≥0.85) read,
+  // enriched with the make/model/color Workers AI returned in the same call.
   let vehicleId: number | null = null;
-  if (plate) {
-    // Upsert a master vehicle record only on an accepted (≥0.85) read.
-    if (accepted) vehicleId = await upsertVehicleByPlate(db, plate, {
-      state: read?.state, make: read?.make, model: read?.model, color: read?.color, year: read?.year,
-    });
-    // Log a sighting (feeds /intel/plate-log).
-    try {
-      await execute(db,
-        `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
-         VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?)`,
-        plate, vehicleId, locationText, lat, lng,
-        `ClearPath dashcam ${deviceName}${args.event.address ? ` @ ${args.event.address}` : ''}${accepted ? '' : ' (unconfirmed <0.85)'}`,
-        confidence);
-    } catch (err) { log.error('sighting insert failed', {}, err); }
-    // Screen (officer safety) — hits raise a notification.
-    try {
-      const screen = await screenVehicle(db, vehicleId ? { vehicleId } : { plate });
-      const critical = screen.hits.filter((h) => h.severity === 'critical');
-      if (critical.length) {
-        const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}DASHCAM PLATE HIT: ${plate}`;
-        await execute(db,
-          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-           VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
-          title, critical.map((h) => h.detail).join('; '), screen.vehicleId ?? vehicleId);
-      }
-    } catch (err) { log.error('screen failed', {}, err); }
-  }
+  if (accepted) vehicleId = await upsertVehicleByPlate(db, plate, {
+    state: read?.state, make: read?.make, model: read?.model, color: read?.color, year: read?.year,
+  });
 
-  // Capture-level row (best-effort; columns reconciled above via ensureAlprWriteSchema).
-  // image_key points at the R2-persisted still so the capture gallery can render
-  // it (and overlay the plate) long after the pre-signed S3 url expires.
+  // Always log a sighting (feeds /intel/plate-log).
   try {
-    const damageObserved = read?.damageSummary != null || (read?.condition != null && read?.condition !== 'clean');
     await execute(db,
-      `INSERT INTO alpr_captures (plate, state, make, model, color, year, condition, damage_observed, damage_summary,
-         confidence, plate_confidence,
-         accepted, review_status, image_key, lat, lng, location_text, captured_by, capture_id, raw_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
-      plate, read?.state ?? null, read?.make ?? null, read?.model ?? null, read?.color ?? null, read?.year ?? null,
-      read?.condition ?? null, damageObserved ? 1 : 0, read?.damageSummary ?? null,
-      confidence, confidence, accepted ? 1 : 0, ct.reviewStatus, imageKey,
+      `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?)`,
+      plate, vehicleId, locationText, lat, lng,
+      `ClearPath dashcam ${deviceName}${args.event.address ? ` @ ${args.event.address}` : ''}${accepted ? '' : ' (unconfirmed <0.85)'}`,
+      confidence);
+  } catch (err) { console.error('[cpg-alpr] sighting insert failed:', (err as Error)?.message); }
+
+  // Always screen (officer safety) — hits raise a notification.
+  try {
+    const screen = await screenVehicle(db, vehicleId ? { vehicleId } : { plate });
+    const critical = screen.hits.filter((h) => h.severity === 'critical');
+    if (critical.length) {
+      const title = `${accepted ? '' : 'UNCONFIRMED — verify plate: '}DASHCAM PLATE HIT: ${plate}`;
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
+        title, critical.map((h) => h.detail).join('; '), screen.vehicleId ?? vehicleId);
+    }
+  } catch (err) { console.error('[cpg-alpr] screen failed:', (err as Error)?.message); }
+
+  // Capture-level row (best-effort; alpr_captures self-heals in the alpr route).
+  try {
+    await execute(db,
+      `INSERT INTO alpr_captures (plate, state, confidence, plate_confidence, accepted, review_status,
+         lat, lng, location_text, captured_by, capture_id, raw_json, created_at)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))`,
+      plate, confidence, confidence, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
       lat, lng, locationText,
       `cpg_dashcam:${args.mapping.cpg_device_id}:${args.event.eventTimestamp}`,
-      JSON.stringify({
-        source: 'dashcam', engine: 'workers-ai',
-        device: args.mapping.cpg_device_id, deviceName, eventTimestamp: args.event.eventTimestamp,
-        eventType: args.event.mediaObject?.[0]?.eventType || null,
-        videoId: args.videoId, imageUrl,
-        // Forensics: the model's RAW self-reported confidence (demoted to a
-        // tiebreaker by trustScore) vs. the derived trust we actually persist.
-        modelConfidence: ct.modelConfidence, derivedTrust: ct.plateConfidence,
-      }));
-  } catch (err) { log.error('capture insert failed', {}, err); }
+      JSON.stringify({ device: args.mapping.cpg_device_id, eventTimestamp: args.event.eventTimestamp, imageUrl }));
+  } catch { /* non-fatal — background path */ }
 
   await markVideo('done');
 }

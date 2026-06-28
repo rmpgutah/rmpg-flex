@@ -44,7 +44,7 @@
 //     on the Map page's shift planning overlay).
 // ============================================================
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
@@ -105,6 +105,20 @@ function PlanStatusBadge({ status }: { status: string }) {
 }
 
 // ── Main Component ─────────────────────────────────────────
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
@@ -167,17 +181,8 @@ export default function ShiftPlansPage() {
   // ?plan_id=<id>          — auto-select this plan once the hook hydrates.
   //
   // Params are stripped with setSearchParams({ replace: true }) so a
-  // refresh doesn't re-trigger. deepLinkRef guards against double-fire
-  // on React StrictMode double-invocation. Mirrors GangIntelPage /
-  // VictimServicesPage / ReportsPage patterns.
-  const deepLinkRef = useRef(false);
-  // pending plan_id from deep-link, watched until the hook has it in state
-  const pendingDeepLinkPlanRef = useRef<string | null>(null);
-
+  // refresh doesn't re-trigger. Mirrors GangIntelPage / VictimServicesPage.
   useEffect(() => {
-    if (deepLinkRef.current) return;
-    deepLinkRef.current = true;
-
     const dateParam = searchParams.get('date');
     const planParam = searchParams.get('plan_id');
     let consumedAny = false;
@@ -252,6 +257,24 @@ export default function ShiftPlansPage() {
       .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
       .finally(done);
   }, [selectedDate, addToast]);
+
+  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
+  const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [overtimeData, setOvertimeData] = useState<any>(null);
+  const [staffingLevels, setStaffingLevels] = useState<any>(null);
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+  }, [selectedDate]);
 
   // ── Computed ──
   const plansForDate = useMemo(() =>
@@ -455,15 +478,6 @@ export default function ShiftPlansPage() {
           )}
           <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           {canManage && (
-            <>
-            <button type="button"
-              onClick={() => { setTemplateLoading(true); setShowTemplateModal(true); apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false)); }}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rmpg-400 border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors"
-              title="Shift plan templates"
-            >
-              <LayoutTemplate style={{ width: 10, height: 10 }} />
-              Templates
-            </button>
             <button type="button"
               onClick={() => setShowCreateForm(true)}
               className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
@@ -472,7 +486,6 @@ export default function ShiftPlansPage() {
               <Plus style={{ width: 10, height: 10 }} />
               New Plan
             </button>
-            </>
           )}
         </div>
       </div>
@@ -656,15 +669,6 @@ export default function ShiftPlansPage() {
                       title="Duplicate for next day"
                     >
                       <Copy style={{ width: 9, height: 9 }} /> Duplicate
-                    </button>
-                  )}
-                  {canManage && sp.activePlan.assignments.length > 0 && (
-                    <button type="button"
-                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); setShowTemplateModal(true); }}
-                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-brand-400 hover:border-brand-600"
-                      title="Save this shift plan as a reusable template"
-                    >
-                      <LayoutTemplate style={{ width: 9, height: 9 }} /> Template
                     </button>
                   )}
                   {canManage && sp.activePlan.status !== 'archived' && (

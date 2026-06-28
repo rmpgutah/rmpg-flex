@@ -5,24 +5,20 @@
 //   • Officer swim-lane calendar (drag/drop reschedule + queue assign)
 //   • Unassigned queue sidebar (drag source)
 //   • Auto-rebalance preview modal (admin/manager/supervisor only)
-//   • ConfirmDialog — gates dismiss-slot (DELETE) + unassign-slot (PATCH officer→null)
-//   • Deep-link: ?schedule_id=<id> or ?serve_id=<id> — highlights + scrolls that slot
-//   • Deep-link: ?officer_id=<id> — highlights officer lane header + toast
+//   • Deep-link: ?schedule_id=<id> — highlights + scrolls that slot
 //   • N shortcut — opens Rebalance modal (canManage only)
-//   • Esc cascade — closes ConfirmDialog → Rebalance modal → blurs focus
-//   • Role gates: canManage (admin/manager/supervisor) for drag-drop + Rebalance;
-//     canDelete (admin/manager) for dismiss-slot + unassign-slot chip buttons
-//   • 4-state empty: loading / error+retry / no-data / no-results
+//   • Esc cascade — closes Rebalance modal, then blurs focus
+//   • Role gates: canManage (admin/manager/supervisor) for Rebalance
+//   • 3-state empty: loading / empty-schedule / error
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Navigation, RefreshCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-import ConfirmDialog from '../components/ConfirmDialog';
 import RangePicker from '../components/scheduler/RangePicker';
 import UnassignedQueueSidebar from '../components/scheduler/UnassignedQueueSidebar';
 import OfficerLaneTimeline, { type OfficerOption } from '../components/scheduler/OfficerLaneTimeline';
@@ -31,7 +27,6 @@ import type { RangeMode } from '../utils/schedulerLanes';
 import type { ScheduleSlot } from '../utils/schedulerView';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
-const DELETE_ROLES = new Set(['admin', 'manager']);
 
 interface ScheduleResp {
   schedule: Array<{ date: string; weekday: string; slots: ScheduleSlot[] }>;
@@ -60,46 +55,23 @@ export default function ServeSchedulerPage() {
   const today = useMemo(todayDenver, []);
   const { user } = useAuth();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
-  const canDelete = DELETE_ROLES.has(user?.role ?? '');
 
-  // ── Deep-link ──────────────────────────────────────────────────────────────
-  // ?schedule_id=<id> or ?serve_id=<id> — highlights + scrolls that slot
-  // ?officer_id=<id> — highlights officer lane header
-  // Strip params after capturing to avoid replay on back-nav.
+  // ── Deep-link: ?schedule_id=<id> — strip after capturing ──
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkSlotId = useRef<number | null>(null);
-  const deepLinkOfficerId = useRef<number | null>(null);
-  const deepLinkFiredRef = useRef(false);
   useEffect(() => {
-    if (deepLinkFiredRef.current) return;
-    deepLinkFiredRef.current = true;
-
-    const rawSlot = searchParams.get('schedule_id') ?? searchParams.get('serve_id');
-    if (rawSlot) {
-      const parsed = parseInt(rawSlot, 10);
-      if (!isNaN(parsed)) deepLinkSlotId.current = parsed;
-    }
-
-    const rawOfficer = searchParams.get('officer_id');
-    if (rawOfficer) {
-      const parsed = parseInt(rawOfficer, 10);
-      if (!isNaN(parsed)) deepLinkOfficerId.current = parsed;
-    }
-
-    if (rawSlot || rawOfficer) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('schedule_id');
-        next.delete('serve_id');
-        next.delete('officer_id');
-        return next;
-      }, { replace: true });
-    }
+    const raw = searchParams.get('schedule_id');
+    if (!raw) return;
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed)) deepLinkSlotId.current = parsed;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('schedule_id');
+      return next;
+    }, { replace: true });
   // Run once on mount — searchParams intentionally excluded to avoid loops.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const officerHighlightToastedRef = useRef(false);
 
   const [anchorYmd, setAnchorYmd] = useState(today);
   const [mode, setMode] = useState<RangeMode>('week');
@@ -110,7 +82,6 @@ export default function ServeSchedulerPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
   const { addToast } = useToast();
 
   const refetch = useCallback(async () => {
@@ -141,24 +112,9 @@ export default function ServeSchedulerPage() {
       .catch(() => { /* lanes still render Unassigned even on failure */ });
   }, []);
 
-  // Toast for officer deep-link — fires once after first data load.
-  useEffect(() => {
-    if (!deepLinkOfficerId.current || officerHighlightToastedRef.current || loading) return;
-    const officerId = deepLinkOfficerId.current;
-    const officer = officers.find((o) => o.id === officerId);
-    officerHighlightToastedRef.current = true;
-    if (officer) {
-      addToast(`Showing schedule for ${officer.name}`, 'info');
-      const el = document.getElementById(`officer-lane-${officerId}`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (officers.length > 0) {
-      addToast('Officer not found in scheduler', 'warning');
-    }
-  }, [loading, officers, addToast]);
-
-  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
-  //   N — open Rebalance modal (canManage only, not while typing)
-  //   Esc cascade — (1) ConfirmDialog → (2) Rebalance modal → (3) blur focus
+  // ── Keyboard shortcuts ──
+  //   N — open Rebalance modal (canManage only, not while typing).
+  //   Esc — close Rebalance first, then blur active element.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName ?? '';
@@ -167,21 +123,19 @@ export default function ServeSchedulerPage() {
 
       if (e.key === 'Escape') {
         e.stopPropagation();
-        if (pendingAction) { setPendingAction(null); return; }
         if (showRebalance) { setShowRebalance(false); return; }
         (document.activeElement as HTMLElement | null)?.blur();
         return;
       }
 
-      if ((e.key === 'n' || e.key === 'N') && !isTyping && !e.metaKey && !e.ctrlKey) {
+      if ((e.key === 'n' || e.key === 'N') && canManage && !isTyping && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        if (canManage) setShowRebalance(true);
-        // Non-managers: no primary text input in this drag-drop view — N is a no-op.
+        setShowRebalance(true);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showRebalance, canManage, pendingAction]);
+  }, [showRebalance, canManage]);
 
   const handleSlotDrop = useCallback(async (
     slot: ScheduleSlot, target: { date: string; officer_id: number | null },
@@ -219,18 +173,6 @@ export default function ServeSchedulerPage() {
       refetch();
     } catch (e) {
       addToast(`Could not assign paper: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
-    }
-  }, [refetch, addToast]);
-
-  const handleBackfill = useCallback(async () => {
-    setBackfilling(true);
-    try {
-      await apiFetch('/serve-intake/schedule/backfill', { method: 'POST' });
-      await refetch();
-    } catch (e) {
-      addToast(`Schedule generation failed: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
-    } finally {
-      setBackfilling(false);
     }
   }, [refetch, addToast]);
 
@@ -287,40 +229,16 @@ export default function ServeSchedulerPage() {
     }
     if (error) {
       return (
-        <div className="flex flex-col items-center justify-center h-32 gap-2 text-[11px]" role="alert">
-          <span className="text-red-300">{error}</span>
-          <button
-            type="button"
-            onClick={refetch}
-            className="px-2 py-0.5 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px]"
-          >
-            Retry
-          </button>
+        <div className="flex items-center justify-center h-32 text-[11px] text-red-300" role="alert">
+          {error}
         </div>
       );
     }
     if (slots.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center h-40 gap-2 text-[11px] text-rmpg-400">
+        <div className="flex flex-col items-center justify-center h-32 gap-1 text-[11px] text-rmpg-400">
           <span>No serve attempts scheduled for this window.</span>
-          <span className="text-[10px] text-rmpg-500">
-            Generate a schedule first, then drag slots between lanes to assign officers.
-          </span>
-          <button
-            type="button"
-            onClick={handleBackfill}
-            disabled={backfilling}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-brand-500/20 text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/30 disabled:opacity-50 transition-colors"
-          >
-            {backfilling
-              ? <><RefreshCcw size={11} className="animate-spin" /> Generating…</>
-              : <><Sparkles size={11} /> Generate Schedule</>}
-          </button>
-          {canManage && (
-            <span className="text-[10px] text-rmpg-500">
-              Once slots exist, use Rebalance (N) to optimally redistribute workload.
-            </span>
-          )}
+          <span className="text-[10px]">Drag items from the queue{canManage ? ' or use Rebalance (N)' : ''} to populate lanes.</span>
         </div>
       );
     }
@@ -332,22 +250,11 @@ export default function ServeSchedulerPage() {
         officers={officers}
         todayYmd={today}
         highlightSlotId={deepLinkSlotId.current ?? undefined}
-        highlightOfficerId={deepLinkOfficerId.current ?? undefined}
         onSlotDrop={canManage ? handleSlotDrop : undefined}
         onQueueDrop={canManage ? handleQueueDrop : undefined}
-        onSlotDismiss={canDelete ? (slot) => setPendingAction({ type: 'dismiss', slot }) : undefined}
-        onSlotUnassign={canDelete ? (slot) => setPendingAction({ type: 'unassign', slot }) : undefined}
       />
     );
   };
-
-  // ── ConfirmDialog derived content ──────────────────────────────────────────
-  const confirmTitle = pendingAction?.type === 'dismiss' ? 'Dismiss Slot' : 'Unassign Slot';
-  const confirmMessage = pendingAction?.type === 'dismiss'
-    ? 'This will permanently remove the scheduled attempt window.'
-    : 'This will unassign the serve attempt from the officer, returning it to the Unassigned lane.';
-  const confirmLabel = pendingAction?.type === 'dismiss' ? 'Dismiss' : 'Unassign';
-  const confirmVariant = pendingAction?.type === 'dismiss' ? 'danger' : 'warning';
 
   return (
     <div className="p-3">
@@ -419,25 +326,6 @@ export default function ServeSchedulerPage() {
           onApplied={refetch}
         />
       )}
-
-      {/* ConfirmDialog — dismiss slot (danger/DELETE) or unassign slot (warning/PATCH) */}
-      <ConfirmDialog
-        isOpen={pendingAction !== null}
-        onClose={() => setPendingAction(null)}
-        onConfirm={handleConfirm}
-        title={confirmTitle}
-        message={confirmMessage}
-        details={pendingAction?.slot ? (
-          <>
-            <div>{pendingAction.slot.recipient_name ?? '—'}</div>
-            {pendingAction.slot.case_number && <div>{pendingAction.slot.case_number}</div>}
-            <div>{pendingAction.slot.scheduled_date} {pendingAction.slot.window_start}</div>
-          </>
-        ) : undefined}
-        confirmLabel={confirmLabel}
-        confirmVariant={confirmVariant}
-        isLoading={confirmLoading}
-      />
     </div>
   );
 }
