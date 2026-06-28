@@ -539,6 +539,7 @@ export default function WarrantsPage() {
   const [filterCourt, setFilterCourt] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -898,6 +899,61 @@ export default function WarrantsPage() {
   // WARRANTS TAB FETCHES
   // ============================================================
 
+  const fetchDashStats = useCallback(async () => {
+    setDashStatsLoading(true);
+    try {
+      const res = await apiFetch<DashboardStats>('/warrants/dashboard/stats');
+      setDashStats(res);
+    } catch { /* silent */ }
+    finally { setDashStatsLoading(false); }
+  }, []);
+
+  const fetchFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try {
+      const res = await apiFetch<{ data: FeedEntry[] }>(`/warrants/dashboard/feed?range=${FEED_RANGE_PARAMS[feedRange]}&limit=50`);
+      setFeedEntries(res.data || (Array.isArray(res) ? res : []));
+    } catch { setFeedEntries([]); }
+    finally { setFeedLoading(false); }
+  }, [feedRange]);
+
+  const fetchPriority = useCallback(async () => {
+    setPriorityLoading(true);
+    try {
+      const res = await apiFetch<{ data: PriorityWarrant[] }>('/warrants/dashboard/priority');
+      setPriorityWarrants(res.data || (Array.isArray(res) ? res : []));
+    } catch { setPriorityWarrants([]); }
+    finally { setPriorityLoading(false); }
+  }, []);
+
+  // Auto-refresh dashboard stats every 30s
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    fetchDashStats();
+    fetchPriority();
+    const interval = setInterval(fetchDashStats, 30_000);
+    return () => clearInterval(interval);
+  }, [activeTab, fetchDashStats, fetchPriority]);
+
+  // Fetch feed when range changes
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    fetchFeed();
+  }, [activeTab, fetchFeed]);
+
+  // ============================================================
+  // WARRANTS TAB FETCHES
+  // ============================================================
+
+  // Debounce search query — 400ms delay prevents hammering API on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchWarrants = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
     try {
@@ -922,12 +978,23 @@ export default function WarrantsPage() {
       if (filterFederal) params.set('state_prefix', 'fed_');
       if (filterArchivedChip) params.set('include_archived', '1');
 
-      const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-        `/warrants?${params.toString()}`
-      );
-      setWarrants(res.data || []);
-      setTotalPages(res.pagination?.totalPages || 1);
-      setTotalCount(res.pagination?.total || 0);
+      // Try unified endpoint first, fall back to standard
+      try {
+        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
+          `/warrants/unified?${params.toString()}`
+        );
+        setWarrants(res.warrants || []);
+        setTotalCount(res.total || 0);
+        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
+      } catch {
+        // Fallback to standard endpoint
+        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
+          `/warrants?${params.toString()}`
+        );
+        setWarrants(res.data || []);
+        setTotalPages(res.pagination?.totalPages || 1);
+        setTotalCount(res.pagination?.total || 0);
+      }
     } catch (err: any) {
       if (!options?.silent) setError(err?.message || 'Failed to load warrants');
     } finally {
@@ -2012,8 +2079,8 @@ export default function WarrantsPage() {
         <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
           {/* LEFT: Warrant List */}
           <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
-            {/* Filters */}
-            <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-2 border-b border-rmpg-700 bg-surface-sunken`}>
+            {/* Filters (thin bar) */}
+            <div className={`flex ${isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-[#1a1a1a] bg-[#080808]`}>
               <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                 <input id="ff-warrantspage-4"
@@ -2021,7 +2088,8 @@ export default function WarrantsPage() {
                   className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
                   value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setDebouncedSearch(searchQuery); setPage(1); } }}
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
                 {searchQuery && (
@@ -2353,11 +2421,11 @@ export default function WarrantsPage() {
               )}
             </div>
 
-            {/* Pagination */}
+            {/* Pagination (thin) */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
-                <span className={`${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-                  Page {page} of {totalPages} ({totalCount} results)
+              <div className="flex items-center justify-between px-2 py-[2px] border-t border-[#1a1a1a] bg-[#080808]">
+                <span className={`${isMobile ? 'text-xs' : 'text-[9px]'} text-rmpg-500 font-mono tabular-nums`}>
+                  {page}/{totalPages} &middot; {totalCount}
                 </span>
                 <div className="flex gap-1">
                   <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px] disabled:opacity-40">Prev</button>
@@ -2414,8 +2482,8 @@ export default function WarrantsPage() {
             {selectedWarrant ? (
               <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
                 {/* Header */}
-                <div className="panel-beveled p-4">
-                  <div className="flex items-start justify-between mb-3">
+                <div className="panel-beveled p-3">
+                  <div className="flex items-start justify-between mb-2">
                     <div>
                       <h2 className="text-lg font-bold text-rmpg-100 font-mono">{selectedWarrant.warrant_number}</h2>
                       <div className="flex items-center gap-2 mt-1">
@@ -2439,8 +2507,8 @@ export default function WarrantsPage() {
                     </div>
                     {selectedWarrant.bail_amount != null && selectedWarrant.bail_amount > 0 && (
                       <div className="text-right">
-                        <span className="text-[10px] text-rmpg-400 uppercase">Bail</span>
-                        <div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(selectedWarrant.bail_amount)}</div>
+                        <span className="text-[9px] text-rmpg-500 uppercase">Bail</span>
+                        <div className="text-sm font-bold text-green-400 font-mono">{formatCurrency(selectedWarrant.bail_amount)}</div>
                       </div>
                     )}
                   </div>
@@ -2462,27 +2530,27 @@ export default function WarrantsPage() {
                     <p className="text-sm text-rmpg-100 mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
                   </div>
 
-                  {/* Dates row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  {/* Dates row (compact) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
                     <div>
-                      <span className="text-rmpg-400">Entered</span>
-                      <div className="text-rmpg-200 mt-0.5">{formatDateTime(selectedWarrant.created_at)}</div>
-                      <div className="text-rmpg-400 text-[10px]">by {selectedWarrant.entered_by_name || 'Unknown'}</div>
+                      <span className="text-rmpg-500 text-[9px]">Entered</span>
+                      <div className="text-rmpg-300">{formatDateTime(selectedWarrant.created_at)}</div>
+                      <div className="text-rmpg-500 text-[9px]">{selectedWarrant.entered_by_name || 'Unknown'}</div>
                     </div>
                     {selectedWarrant.expires_at && (
                       <div>
-                        <span className="text-rmpg-400">Expires</span>
-                        <div className="text-amber-300 mt-0.5">{formatDate(selectedWarrant.expires_at)}</div>
+                        <span className="text-rmpg-500 text-[9px]">Expires</span>
+                        <div className="text-amber-400">{formatDate(selectedWarrant.expires_at)}</div>
                       </div>
                     )}
                     {selectedWarrant.served_at && (
                       <div>
-                        <span className="text-rmpg-400">Served</span>
-                        <div className="text-green-300 mt-0.5">{formatDateTime(selectedWarrant.served_at)}</div>
-                        {selectedWarrant.served_by_name && <div className="text-rmpg-400 text-[10px]">by {selectedWarrant.served_by_name}</div>}
+                        <span className="text-rmpg-500 text-[9px]">Served</span>
+                        <div className="text-green-400">{formatDateTime(selectedWarrant.served_at)}</div>
+                        {selectedWarrant.served_by_name && <div className="text-rmpg-500 text-[9px]">{selectedWarrant.served_by_name}</div>}
                         {selectedWarrant.served_location && (
-                          <div className="text-rmpg-400 text-[10px] flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3" /> {selectedWarrant.served_location}
+                          <div className="text-rmpg-500 text-[9px] flex items-center gap-0.5 mt-0.5">
+                            <MapPin className="w-2.5 h-2.5" /> {selectedWarrant.served_location}
                           </div>
                         )}
                       </div>
@@ -2496,57 +2564,57 @@ export default function WarrantsPage() {
                     <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
                       <User className="w-4 h-4 text-[var(--brand-gold)]" /> Subject Information
                     </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1.5 text-[11px]">
                       <div>
                         <span className="text-rmpg-400">Name</span>
                         <div className="text-rmpg-100 font-bold">{selectedWarrant.subject_name}</div>
                       </div>
                       {selectedWarrant.subject_dob && (
                         <div>
-                          <span className="text-rmpg-400">DOB</span>
-                          <div className="text-rmpg-200">{formatDate(selectedWarrant.subject_dob)}</div>
+                          <span className="text-rmpg-500 text-[9px]">DOB</span>
+                          <div className="text-rmpg-300">{formatDate(selectedWarrant.subject_dob)}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_gender && (
                         <div>
-                          <span className="text-rmpg-400">Gender</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_gender}</div>
+                          <span className="text-rmpg-500 text-[9px]">Gender</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_gender}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_race && (
                         <div>
-                          <span className="text-rmpg-400">Race</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_race}</div>
+                          <span className="text-rmpg-500 text-[9px]">Race</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_race}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_height && (
                         <div>
-                          <span className="text-rmpg-400">Height</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_height}</div>
+                          <span className="text-rmpg-500 text-[9px]">Height</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_height}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_weight && (
                         <div>
-                          <span className="text-rmpg-400">Weight</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_weight}</div>
+                          <span className="text-rmpg-500 text-[9px]">Weight</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_weight}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_hair_color && (
                         <div>
-                          <span className="text-rmpg-400">Hair</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_hair_color}</div>
+                          <span className="text-rmpg-500 text-[9px]">Hair</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_hair_color}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_eye_color && (
                         <div>
-                          <span className="text-rmpg-400">Eyes</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_eye_color}</div>
+                          <span className="text-rmpg-500 text-[9px]">Eyes</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_eye_color}</div>
                         </div>
                       )}
                       {selectedWarrant.subject_address && (
                         <div className="col-span-2">
-                          <span className="text-rmpg-400">Address</span>
-                          <div className="text-rmpg-200">{selectedWarrant.subject_address}</div>
+                          <span className="text-rmpg-500 text-[9px]">Address</span>
+                          <div className="text-rmpg-300">{selectedWarrant.subject_address}</div>
                         </div>
                       )}
                     </div>
@@ -2577,16 +2645,16 @@ export default function WarrantsPage() {
                     <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Gavel className="w-4 h-4 text-[var(--brand-gold)]" /> Court Information
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                       {selectedWarrant.issuing_court && (
                         <div>
-                          <span className="text-rmpg-400">Issuing Court</span>
-                          <div className="text-rmpg-200">{selectedWarrant.issuing_court}</div>
+                          <span className="text-rmpg-500 text-[9px]">Issuing Court</span>
+                          <div className="text-rmpg-300">{selectedWarrant.issuing_court}</div>
                         </div>
                       )}
                       {selectedWarrant.issuing_judge && (
                         <div>
-                          <span className="text-rmpg-400">Issuing Judge</span>
+                          <span className="text-rmpg-500 text-[9px]">Issuing Judge</span>
                           <div className="text-rmpg-200">{selectedWarrant.issuing_judge}</div>
                         </div>
                       )}
@@ -2608,12 +2676,12 @@ export default function WarrantsPage() {
                     <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Clock className="w-4 h-4 text-[var(--brand-gold)]" /> Activity Log
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       {selectedWarrant.activity.map((a) => (
-                        <div key={a.id} className="flex items-start gap-2 text-xs">
-                          <span className="text-rmpg-500 text-[10px] whitespace-nowrap mt-0.5">{formatDateTime(a.created_at)}</span>
-                          <span className="text-rmpg-300">{a.details}</span>
-                          <span className="text-rmpg-500 ml-auto whitespace-nowrap">{a.user_name}</span>
+                        <div key={a.id} className="flex items-start gap-1.5 text-[10px]">
+                          <span className="text-rmpg-600 whitespace-nowrap font-mono tabular-nums">{formatDateTime(a.created_at)}</span>
+                          <span className="text-rmpg-400">{a.details}</span>
+                          <span className="text-rmpg-600 ml-auto whitespace-nowrap">{a.user_name}</span>
                         </div>
                       ))}
                     </div>

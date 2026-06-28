@@ -1,23 +1,20 @@
 // ============================================================
 // RMPG Flex — Map Provider Abstraction Layer
 // ============================================================
-// Unified interface for map engines (Mapbox GL JS primary,
-// Google Maps fallback). All map consumers should reference
-// this abstraction so the underlying engine can be swapped
-// at runtime based on configuration and token availability.
+// Mapbox GL JS is the mandatory map engine. MapLibre GL serves
+// as a free fallback when no Mapbox access token is configured.
+// Google Maps has been fully removed from the system.
 //
 // Provider priority:
 //   1. Mapbox GL JS — if Mapbox access token is configured
-//   2. Google Maps — if Google Maps API key is configured
-//   3. MapLibre GL — free fallback, no API key required
+//   2. MapLibre GL — free fallback, no API key required
 // ============================================================
 
 import { getMapboxToken, hasMapboxToken } from './mapboxApiKey';
-import { getGoogleMapsApiKey } from './googleMapsApiKey';
 
 // ── Types ─────────────────────────────────────────────────
 
-export type MapEngine = 'mapbox' | 'google' | 'maplibre';
+export type MapEngine = 'mapbox' | 'maplibre';
 
 export interface MapProviderConfig {
   /** Preferred engine. If null, auto-detect based on token availability. */
@@ -50,8 +47,7 @@ let detectionPromise: Promise<MapEngine> | null = null;
  *
  * Priority:
  *   1. Mapbox GL JS (if mapbox_api_key configured in Admin → Integrations)
- *   2. Google Maps (if Google Maps API key configured)
- *   3. MapLibre GL (always available — free, no key)
+ *   2. MapLibre GL (always available — free, no key)
  */
 export async function detectMapEngine(config?: MapProviderConfig): Promise<MapEngine> {
   // Honor explicit preference
@@ -81,21 +77,7 @@ export async function detectMapEngine(config?: MapProviderConfig): Promise<MapEn
       // Mapbox not available — try next
     }
 
-    // 2. Try Google Maps (with timeout)
-    try {
-      const gmapsKey = await Promise.race([
-        getGoogleMapsApiKey(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
-      ]);
-      if (gmapsKey) {
-        resolvedEngine = 'google';
-        return 'google' as MapEngine;
-      }
-    } catch {
-      // Google Maps not available — try next
-    }
-
-    // 3. Fall back to MapLibre (always available)
+    // 2. Fall back to MapLibre (always available)
     resolvedEngine = 'maplibre';
     return 'maplibre' as MapEngine;
   })().finally(() => {
@@ -131,15 +113,6 @@ export async function getAvailableEngines(): Promise<MapEngine[]> {
     if (mapboxToken) engines.unshift('mapbox');
   } catch { /* skip */ }
 
-  try {
-    const gmapsKey = await getGoogleMapsApiKey();
-    if (gmapsKey) {
-      // Insert after mapbox but before maplibre
-      const idx = engines.indexOf('maplibre');
-      engines.splice(idx, 0, 'google');
-    }
-  } catch { /* skip */ }
-
   return engines;
 }
 
@@ -150,9 +123,6 @@ export function isEngineAvailable(engine: MapEngine): boolean {
   switch (engine) {
     case 'mapbox':
       return hasMapboxToken();
-    case 'google':
-      // Can't synchronously check — need the key fetch. This is a best-effort check.
-      return typeof google !== 'undefined' && !!google?.maps;
     case 'maplibre':
       return true;
     default:
@@ -164,12 +134,10 @@ export function isEngineAvailable(engine: MapEngine): boolean {
 
 export const MAP_ENGINE_LABELS: Record<MapEngine, string> = {
   mapbox: 'Mapbox GL',
-  google: 'Google Maps',
   maplibre: 'MapLibre GL',
 };
 
 export const MAP_ENGINE_DESCRIPTIONS: Record<MapEngine, string> = {
   mapbox: 'High-performance vector tiles with 3D terrain, globe view, and offline support',
-  google: 'Comprehensive mapping with Street View, traffic, and Places autocomplete',
   maplibre: 'Open-source vector tiles — free, no API key required',
 };

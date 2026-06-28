@@ -397,6 +397,7 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
 
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access

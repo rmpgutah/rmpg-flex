@@ -37,6 +37,7 @@ import StatusBadge from '../components/StatusBadge';
 import IconButton from '../components/IconButton';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import AddLinkModal from '../components/AddLinkModal';
 import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
@@ -59,7 +60,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
-import { fetchEntityImages } from '../utils/pdfImageHelpers';
+import { fetchEntityImages, fetchStaticMapImage } from '../utils/pdfImageHelpers';
 import DocumentViewer from '../components/DocumentViewer';
 import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
@@ -454,6 +455,25 @@ export default function IncidentsPage() {
       } catch { /* best-effort save */ }
     };
   }, []);
+
+  // Debounced narrative auto-save (every 10s while editing)
+  const [narrativeLastSaved, setNarrativeLastSaved] = useState<string | null>(null);
+  const narrativeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isEditing || !selectedIncident) return;
+    if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current);
+    narrativeAutoSaveTimer.current = setTimeout(() => {
+      const narrative = narrativeRef.current?.value;
+      if (narrative == null || !selectedIncidentRef.current) return;
+      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ narrative }),
+      }).then(() => {
+        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }).catch(() => { /* silent fail — unmount save is the fallback */ });
+    }, 10000);
+    return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
+  }, [isEditing, selectedIncident]);
 
   // ============================================================
   // Fetch incidents
@@ -1253,15 +1273,20 @@ export default function IncidentsPage() {
   // Build incident data object for PDF generation (used by both download and preview)
   // Async: fetches attachment images for embedding in the PDF
   const buildIncidentPdfData = async () => {
-    // Fetch attachment images in parallel with building the data object
-    let attachmentImages: any[] = [];
-    try {
-      attachmentImages = await fetchEntityImages('incident', selectedIncident!.id);
-    } catch {
-      // Graceful degradation — proceed without images
-    }
-
+    // Fetch attachment images and static map in parallel
     const inc = selectedIncident as any;
+    const [attachmentImagesResult, mapImageResult] = await Promise.allSettled([
+      fetchEntityImages('incident', selectedIncident!.id),
+      (inc?.latitude != null && inc?.longitude != null)
+        ? fetchStaticMapImage(Number(inc.latitude), Number(inc.longitude), {
+            zoom: 15, width: 600, height: 300,
+            markers: [{ lng: Number(inc.longitude), lat: Number(inc.latitude), color: 'd4a017' }],
+          })
+        : Promise.resolve(null),
+    ]);
+    const attachmentImages = attachmentImagesResult.status === 'fulfilled' ? (attachmentImagesResult.value || []) : [];
+    const mapImage = mapImageResult.status === 'fulfilled' ? mapImageResult.value : null;
+
     const pdfData = {
       // Core fields
       incident_number: selectedIncident!.incident_number,
@@ -1382,6 +1407,7 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      _mapImage: mapImage || undefined,
       // Geo coordinates
       latitude: inc?.latitude,
       longitude: inc?.longitude,
@@ -1483,14 +1509,16 @@ export default function IncidentsPage() {
             }}
             onPreview={async (reportType) => {
               try {
+                if (!selectedIncident) { addToast('No incident selected', 'error'); return; }
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
                 setPdfViewerOpen(true);
-              } catch (err) {
+              } catch (err: any) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
+                addToast(err?.message || 'PDF preview generation failed', 'error');
               }
             }}
             onSignAndExport={async (reportType, signature) => {

@@ -1928,6 +1928,20 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
@@ -2244,7 +2258,46 @@ export default function EmailPage() {
     setLoadingMessage(true);
     try {
       const msg = await apiFetch<EmailMessage>(`/email/messages/${id}`);
-      setFullMessage(msg);
+      let atts: EmailAttachment[] = [];
+      try { atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); } catch { /* no attachments */ }
+      setAttachments(atts);
+
+      // Resolve cid: inline image references → data URLs
+      let resolvedHtml = msg.bodyHtml || '';
+      if (resolvedHtml && atts.length > 0) {
+        const inlineAtts = atts.filter(a => a.isInline && a.contentId && a.contentType?.startsWith('image/'));
+        if (inlineAtts.length > 0) {
+          const token = localStorage.getItem('rmpg_token');
+          const authHeader = token ? `Bearer ${token}` : '';
+          const cidReplacements = await Promise.allSettled(
+            inlineAtts.map(async (att) => {
+              try {
+                const res = await fetch(`/api/email/messages/${id}/attachments/${att.id}`, {
+                  headers: authHeader ? { Authorization: authHeader } : {},
+                });
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                return new Promise<{ cid: string; dataUrl: string } | null>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve({ cid: att.contentId!, dataUrl: reader.result as string });
+                  reader.onerror = () => resolve(null);
+                  reader.readAsDataURL(blob);
+                });
+              } catch { return null; }
+            })
+          );
+          for (const result of cidReplacements) {
+            if (result.status === 'fulfilled' && result.value) {
+              const { cid, dataUrl } = result.value;
+              // Replace all cid: variations (with or without angle brackets, URL-encoded)
+              resolvedHtml = resolvedHtml
+                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
+                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
+            }
+          }
+        }
+      }
+      setFullMessage({ ...msg, bodyHtml: resolvedHtml });
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
       catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }

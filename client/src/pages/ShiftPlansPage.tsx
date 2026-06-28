@@ -106,6 +106,20 @@ function PlanStatusBadge({ status }: { status: string }) {
 
 // ── Main Component ─────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -243,6 +257,24 @@ export default function ShiftPlansPage() {
       .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
       .finally(done);
   }, [selectedDate, addToast]);
+
+  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
+  const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [overtimeData, setOvertimeData] = useState<any>(null);
+  const [staffingLevels, setStaffingLevels] = useState<any>(null);
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+  }, [selectedDate]);
 
   // ── Computed ──
   const plansForDate = useMemo(() =>

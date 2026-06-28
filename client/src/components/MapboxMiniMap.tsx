@@ -13,6 +13,8 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles } from '../utils/mapboxLoader';
@@ -100,6 +102,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const geocoderRef = useRef<MapboxGeocoder | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,6 +158,24 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           if (!cancelled) {
             setLoaded(true);
             setError(null);
+
+            // Add compact geocoder control
+            if (!geocoderRef.current) {
+              const geocoder = new MapboxGeocoder({
+                accessToken: token!,
+                mapboxgl: mapboxgl as any,
+                marker: true,
+                placeholder: 'Search…',
+                proximity: { longitude: DEFAULT_CENTER[0], latitude: DEFAULT_CENTER[1] },
+                countries: 'US',
+                limit: 3,
+                collapsed: true,
+                clearOnBlur: true,
+                flyTo: { speed: 1.4, zoom: 16 },
+              });
+              map.addControl(geocoder, 'bottom-right');
+              geocoderRef.current = geocoder;
+            }
           }
         });
 
@@ -182,6 +203,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       cancelled = true;
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
+      geocoderRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -243,6 +265,55 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
     <div className={`relative bg-[#0a0a0a] border border-[#222] overflow-hidden ${fullHeight ? 'h-full' : 'h-[180px]'}`}>
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Geocoder compact dark theme override */}
+      <style>{`
+        .mapboxgl-ctrl-geocoder {
+          background: rgba(10,10,10,0.92) !important;
+          border: 1px solid #2b2b2b !important;
+          border-radius: 2px !important;
+          font-size: 9px !important;
+          min-width: 28px !important;
+          max-width: 180px !important;
+          box-shadow: none !important;
+        }
+        .mapboxgl-ctrl-geocoder--input {
+          color: #ccc !important;
+          font-size: 9px !important;
+          height: 24px !important;
+          padding: 2px 24px !important;
+        }
+        .mapboxgl-ctrl-geocoder--input::placeholder {
+          color: #555 !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions {
+          background: #0a0a0a !important;
+          border: 1px solid #2b2b2b !important;
+          font-size: 9px !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions > li > a {
+          color: #aaa !important;
+          font-size: 9px !important;
+          padding: 4px 8px !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions > .active > a,
+        .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
+          background: #1a1a1a !important;
+          color: #d4a017 !important;
+        }
+        .mapboxgl-ctrl-geocoder--icon-search {
+          fill: #d4a017 !important;
+          width: 14px !important;
+          height: 14px !important;
+        }
+        .mapboxgl-ctrl-geocoder--icon-close {
+          fill: #666 !important;
+        }
+        .mapboxgl-ctrl-geocoder--collapsed {
+          min-width: 28px !important;
+          width: 28px !important;
+        }
+      `}</style>
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-[#0a0a0a]/90 to-transparent z-10">

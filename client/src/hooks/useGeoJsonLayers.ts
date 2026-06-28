@@ -390,7 +390,7 @@ export function useGeoJsonLayers({
       try {
         const resp = await fetch(`/geojson/${cfg.file}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        geojson = await resp.json();
+        geojson = (await resp.json()) as FeatureCollection;
         geojsonCacheRef.current[cfg.id] = geojson;
       } catch (err) {
         console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
@@ -580,6 +580,12 @@ export function useGeoJsonLayers({
         for (const m of labels) {
           if (nowVisible) m.addTo(map!); else m.remove();
         }
+      }
+
+      // Show/hide label markers for this layer
+      const labels = labelMarkersRef.current[layerId];
+      if (labels) {
+        for (const m of labels) m.setMap(nowVisible ? map : null);
       }
 
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
