@@ -15,7 +15,6 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
 import ConfirmDialog from '../../../components/ConfirmDialog';
-import { toDisplayLabel } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────
 
