@@ -4,6 +4,8 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface RepeatAddress {
   location_address: string;
@@ -34,9 +36,9 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
     if (!map) return;
     visibleRef.current = false;
     try {
-      if (map.getLayer(LABEL_LAYER_ID)) map.removeLayer(LABEL_LAYER_ID);
-      if (map.getLayer(CIRCLE_LAYER_ID)) map.removeLayer(CIRCLE_LAYER_ID);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, LABEL_LAYER_ID);
+      safeRemoveLayer(map, CIRCLE_LAYER_ID);
+      safeRemoveSource(map, SOURCE_ID);
     } catch { /* ignore */ }
   }, [map]);
 
@@ -109,7 +111,7 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       );
       const addrs = data?.addresses || [];
       setAddresses(addrs);
-      if (map.loaded()) renderOnMap(addrs, map);
+      whenStyleReady(map, () => { renderOnMap(addrs, map); });
     } catch (err) {
       console.warn('[useMapboxRepeatAddresses] fetch failed:', err);
     } finally {

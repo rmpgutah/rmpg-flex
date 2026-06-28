@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
   Calendar,
@@ -10,6 +10,10 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Check,
+  RotateCcw,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,11 +34,15 @@ import {
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
@@ -59,9 +67,15 @@ interface DashboardData {
 }
 
 interface IncidentsSummaryData {
-  groupBy: string;
-  data: Array<{ group_key: string; count: number }>;
+  days?: number;
   total: number;
+  // The handler returns by_type (NOT a `data`/`group_key` array). Typing it
+  // correctly lets the chart and CSV export read the real shape without an
+  // `as any` cast — and fixes the CSV crash where `.data.forEach` ran on
+  // undefined.
+  by_type: Array<{ type: string; count: number }>;
+  by_status?: Array<{ status: string; count: number }>;
+  by_day?: Array<{ date: string; count: number }>;
 }
 
 interface ResponseTimesData {
@@ -89,21 +103,21 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', '#666666', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
-  P2: '#d4a017',
-  P3: '#888888',
-  P4: '#666666',
+  P2: 'var(--brand-gold)',
+  P3: 'var(--text-muted)',
+  P4: 'var(--rmpg-500)',
 };
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#050505',
-    border: '1px solid #2b2b2b',
+    backgroundColor: 'var(--surface-deep)',
+    border: '1px solid var(--border-default)',
     borderRadius: '2px',
-    color: '#e0e0e0',
+    color: 'var(--text-primary)',
     fontSize: '11px',
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
@@ -173,26 +187,8 @@ function formatGroupKey(key: string): string {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const date = parseTimestamp(dateStr);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function convertToCSV(data: any[], headers: string[]): string {
-  const rows = [headers.join(',')];
-
-  data.forEach(row => {
-    const values = headers.map(header => {
-      const value = row[header];
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'string' && value.includes(',')) {
-        return `"${value}"`;
-      }
-      return value;
-    });
-    rows.push(values.join(','));
-  });
-
-  return rows.join('\n');
 }
 
 function exportToCSV(
@@ -207,23 +203,32 @@ function exportToCSV(
   }
 ) {
   const sections: string[] = [];
+  // Quote every field and double internal quotes. Without this, an officer
+  // name in "Last, First" format (common) injected a stray comma and shifted
+  // every subsequent column in the export.
+  const cell = (v: unknown): string => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row = (...cells: unknown[]): string => cells.map(cell).join(',');
 
   // Summary section
   sections.push('SUMMARY STATISTICS');
-  sections.push('Metric,Value');
-  sections.push(`Total Calls,${stats.totalCalls}`);
-  sections.push(`Incidents Filed,${stats.incidentsFiled}`);
-  sections.push(`Avg Response Time,${stats.avgResponse}`);
-  sections.push(`SLA Met,${stats.slaMet}`);
-  sections.push(`Active Officers,${stats.activeOfficers}`);
+  sections.push(row('Metric', 'Value'));
+  sections.push(row('Total Calls', stats.totalCalls));
+  sections.push(row('Incidents Filed', stats.incidentsFiled));
+  sections.push(row('Avg Response Time', stats.avgResponse));
+  sections.push(row('SLA Met', stats.slaMet));
+  sections.push(row('Active Officers', stats.activeOfficers));
   sections.push('');
 
-  // Incidents by type
-  if (incidentsData) {
+  // Incidents by type — iterate the handler's real `by_type` shape (the old
+  // code read `.data`/`group_key`, which don't exist → empty/crash on export).
+  if (incidentsData?.by_type?.length) {
     sections.push('INCIDENTS BY TYPE');
-    sections.push('Type,Count');
-    incidentsData.data.forEach(item => {
-      sections.push(`${formatGroupKey(item.group_key)},${item.count}`);
+    sections.push(row('Type', 'Count'));
+    incidentsData.by_type.forEach(item => {
+      sections.push(row(formatGroupKey(item.type), item.count));
     });
     sections.push('');
   }
@@ -231,11 +236,12 @@ function exportToCSV(
   // Officer activity
   if (officerActivity.length > 0) {
     sections.push('OFFICER ACTIVITY');
-    sections.push('Officer Name,Badge Number,Calls Responded,Incidents Written,Total Hours');
+    sections.push(row('Officer Name', 'Badge Number', 'Calls Responded', 'Incidents Written', 'Total Hours'));
     officerActivity.forEach(officer => {
-      sections.push(
-        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${(Number(officer.total_hours) || 0).toFixed(1)}`
-      );
+      sections.push(row(
+        officer.full_name, officer.badge_number, officer.calls_responded,
+        officer.incidents_written, (Number(officer.total_hours) || 0).toFixed(1),
+      ));
     });
   }
 
@@ -259,10 +265,26 @@ function exportToCSV(
 // ═══════════════════════════════════════════════════════════
 // Feature 27: Report Approval Queue Component
 // ═══════════════════════════════════════════════════════════
-function ReportApprovalQueue() {
+function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  // Inline return-reason modal — replaces the native window.prompt() that
+  // previously gated the supervisor return-for-revision action. The native
+  // dialog had no a11y, no keyboard polish, and gave the supervisor no
+  // visible context for WHICH report they were rejecting until they hit
+  // Cancel and re-read the row. Same pattern as Court Tracker #1607 and
+  // Cases #1604 (last big native-dialog cluster in the audit).
+  const [returnTarget, setReturnTarget] = useState<any | null>(null);
+  const [returnReason, setReturnReason] = useState('');
+  // ConfirmDialog state for delete report — gated to admin/manager via
+  // the canDelete prop so officers and supervisors can't accidentally
+  // destroy a report from the queue. Replaces a potential window.confirm.
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -283,24 +305,86 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
-  const handleReturn = async (id: string) => {
-    const reason = prompt('Return reason:');
-    if (!reason) return;
+  const openReturnDialog = (r: any) => {
+    setReturnTarget(r);
+    setReturnReason('');
+  };
+
+  const submitReturn = async () => {
+    const target = returnTarget;
+    const reason = returnReason.trim();
+    if (!target || !reason) return;
+    const id = String(target.id);
     setProcessing(id);
     try {
       await apiFetch(`/records/reports/${id}/return`, { method: 'POST', body: JSON.stringify({ reason }) });
       setReports(prev => prev.filter(r => String(r.id) !== id));
     } catch { /* ignore */ }
-    finally { setProcessing(null); }
+    finally {
+      setProcessing(null);
+      setReturnTarget(null);
+      setReturnReason('');
+    }
   };
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
-  if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const id = String(deleteTarget.id);
+    setProcessing(id);
+    try {
+      await apiFetch(`/records/reports/${id}`, { method: 'DELETE' });
+      setReports(prev => prev.filter(r => String(r.id) !== id));
+    } catch { /* ignore */ }
+    finally {
+      setProcessing(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  // Esc cascade: delete confirm → return-reason modal. Implemented inside a
+  // single capture-phase effect so it fires before the parent page's Esc
+  // handler, giving the inner layer a chance to consume it first.
+  useEffect(() => {
+    if (!deleteTarget && !returnTarget) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (deleteTarget) { setDeleteTarget(null); return; }
+      if (returnTarget) { setReturnTarget(null); setReturnReason(''); }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [deleteTarget, returnTarget]);
+
+  const buildReportMenu = (r: any): ContextMenuItem[] => [
+    m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => openReturnDialog(r), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ...(canDelete ? [
+      m.separator(),
+      m.action('Delete report', () => setDeleteTarget(r), { icon: <Trash2 size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ] : []),
+    m.separator(),
+    m.copy('Copy incident #', r.incident_number),
+    m.copyId(r.id),
+  ];
+
+  if (loading) return (
+    <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
+      <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading approval queue" />
+      Loading queue...
+    </div>
+  );
+  if (reports.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-6 text-rmpg-500">
+      <FileText className="w-6 h-6 text-rmpg-600 mb-2" />
+      <span className="text-[10px]">No reports pending review</span>
+    </div>
+  );
 
   return (
     <div className="space-y-2">
       {reports.map((r: any) => (
-        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3">
+        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3" onContextMenu={(e) => openMenu(e, buildReportMenu(r))}>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-green-400 font-mono">{r.incident_number}</span>
@@ -310,7 +394,7 @@ function ReportApprovalQueue() {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
@@ -323,15 +407,119 @@ function ReportApprovalQueue() {
               Approve
             </button>
             <button type="button"
-              onClick={() => handleReturn(String(r.id))}
+              onClick={() => openReturnDialog(r)}
               disabled={processing === String(r.id)}
               className="toolbar-btn text-[9px] bg-red-900/30 text-red-400 border-red-700/30 hover:bg-red-800/40"
             >
               Return
             </button>
+            {canDelete && (
+              <button type="button"
+                onClick={() => setDeleteTarget(r)}
+                disabled={processing === String(r.id)}
+                className="toolbar-btn text-[9px] bg-red-900/20 text-red-500 border-red-800/30 hover:bg-red-900/40"
+                aria-label="Delete report"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
       ))}
+
+      {/* ConfirmDialog for report deletion — gated to admin/manager via canDelete. */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Report"
+        message="Permanently delete this report from the approval queue? This action cannot be undone."
+        details={deleteTarget && (
+          <>
+            <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{deleteTarget.incident_number || '—'}</span></div>
+            {deleteTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(deleteTarget.incident_type)}</div>}
+            {deleteTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {deleteTarget.officer_name}</div>}
+          </>
+        )}
+        confirmLabel="Delete Report"
+        confirmVariant="danger"
+        isLoading={processing === String(deleteTarget?.id)}
+      />
+
+      {/* Inline return-reason modal — replaces the native window.prompt(). */}
+      {returnTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="return-modal-title"
+          onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+          <div
+            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
+              style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
+            >
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-red-400" />
+                <h2 id="return-modal-title" className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Return Report for Revision</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-200 leading-relaxed">
+                Tell the author what needs to change. The supervisor note attaches to the report and shows in their queue on next login.
+              </p>
+              <div className="pl-3 border-l-2 border-rmpg-600 text-[10px] text-rmpg-300 space-y-0.5">
+                <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{returnTarget.incident_number || '—'}</span></div>
+                {returnTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(returnTarget.incident_type)}</div>}
+                {returnTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {returnTarget.officer_name}{returnTarget.badge_number ? ` #${returnTarget.badge_number}` : ''}</div>}
+              </div>
+              <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">
+                Return reason
+                <textarea
+                  autoFocus
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  rows={4}
+                  placeholder="e.g. Add witness statements, clarify timeline of events…"
+                  className="mt-1 w-full input-dark text-xs px-2 py-1.5 font-sans normal-case"
+                />
+              </label>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                  className="toolbar-btn text-xs"
+                  disabled={processing === String(returnTarget.id)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitReturn}
+                  disabled={!returnReason.trim() || processing === String(returnTarget.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing === String(returnTarget.id) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Return for revision
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -383,7 +571,7 @@ function DailyBriefingCard() {
                 <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
               </div>
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
-                <div className="text-lg font-bold font-mono text-gray-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-lg font-bold font-mono text-rmpg-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
               </div>
             </div>
@@ -466,13 +654,13 @@ function WeeklyDigestCard() {
       </div>
       {expanded && digest && (
         <div className="p-4 space-y-3 text-xs">
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {[
-              { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#888888' },
+              { label: 'Calls', value: digest.summary?.totalCalls || 0, color: 'var(--text-muted)' },
               { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
               { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
               { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
-              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#888888' },
+              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: 'var(--text-muted)' },
             ].map(s => (
               <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
                 <div className="text-lg font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
@@ -485,11 +673,11 @@ function WeeklyDigestCard() {
               <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Daily Breakdown</div>
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
-                  <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -545,9 +733,9 @@ function CrimeTrendCard() {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-              <XAxis dataKey="month" tick={{ fill: '#888888', fontSize: 9 }} />
-              <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
               <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
             </AreaChart>
@@ -556,7 +744,7 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+              <thead className="sticky top-0 z-10 bg-surface-sunken">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
@@ -611,7 +799,7 @@ function CitationRevenueCard() {
       <div className="p-4 space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
-            { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: '#888888' },
+            { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: 'var(--text-muted)' },
             { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
             { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: '#f59e0b' },
             { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: '#ef4444' },
@@ -625,11 +813,11 @@ function CitationRevenueCard() {
         {data.monthlyRevenue?.length > 0 && (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data.monthlyRevenue}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-              <XAxis dataKey="month" tick={{ fill: '#888888', fontSize: 9 }} />
-              <YAxis tick={{ fill: '#888888', fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Legend wrapperStyle={{ color: '#888888', fontSize: '9px' }} />
+              <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '9px' }} />
               <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
               <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
             </BarChart>
@@ -654,32 +842,28 @@ function BeatActivityCard() {
   return (
     <div className="bg-surface-base panel-beveled">
       <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
-        <MapPin className="w-3.5 h-3.5 text-gray-400" />
+        <MapPin className="w-3.5 h-3.5 text-rmpg-400" />
         <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Beat Activity Report</h3>
       </div>
       <div className="p-4">
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
+              <thead className="sticky top-0 z-10 bg-surface-sunken">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Incidents</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Citations</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Arrests</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Avg Resp</th>
                 </tr>
               </thead>
               <tbody>
                 {data.beats.map((b: any) => (
-                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
-                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
+                  <tr key={b.beat_code} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
+                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat_name || b.beat_code}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-brand-400">{b.avg_response_min ? `${b.avg_response_min}m` : 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -770,15 +954,146 @@ function ReportSchedulesCard() {
   );
 }
 
+// Valid date-range presets accepted by the URL deep-link. Anything outside
+// this list is silently dropped so a bad URL doesn't put the page into an
+// invalid state where the select shows nothing.
+const VALID_DATE_RANGES = new Set([
+  'today', 'last_7_days', 'last_14_days', 'last_30_days',
+  'this_month', 'last_month', 'this_quarter', 'custom',
+]);
+
+// IDs of report cards an operator can scroll-deep-link to. Used for the
+// optional `?card=` query param so a supervisor can hand a colleague a
+// URL that opens straight to the Patrol Tracking generator or Crime Trend
+// table without forcing them to scroll the long dashboard. The values are
+// matched against `data-report-card="..."` anchors on each card root.
+const SCROLLABLE_CARDS = new Set([
+  'patrol-tracking', 'crime-trends', 'beat-activity', 'citation-revenue',
+  'daily-briefing', 'weekly-digest', 'schedules-templates', 'approval-queue',
+]);
+
 export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [dateRange, setDateRange] = useState('last_14_days');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gates — create = admin|manager, delete = admin|manager only.
+  const canCreate = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+  const canDelete = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+
+  // Hydrate date-range state from URL params on first render so a deep-link
+  // like /reports?range=last_30_days lands the operator on the right window
+  // immediately — supervisors share Reports links in Slack/email all the
+  // time, and the previous behavior (always last_14_days regardless of URL)
+  // silently swallowed those params.
+  const initialRange = (() => {
+    const r = searchParams.get('range');
+    return r && VALID_DATE_RANGES.has(r) ? r : 'last_14_days';
+  })();
+  const initialCustomStart = searchParams.get('start_date') || '';
+  const initialCustomEnd = searchParams.get('end_date') || '';
+  const [dateRange, setDateRange] = useState(initialRange);
+  const [customStartDate, setCustomStartDate] = useState(initialCustomStart);
+  const [customEndDate, setCustomEndDate] = useState(initialCustomEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── URL deep-link: scroll-to-card ─────────────────────────────────
+  // Consumes ?card=<id> by scrolling that card into view once the page has
+  // finished its first data fetch (so the card is mounted). Honors the
+  // Dashboard-emit / page-consume contract used across the other audited
+  // pages — Reports is the natural cross-page drill-down target (a Crime
+  // Trend chip on the Dashboard, a "view full report" link from the
+  // Patrol page, etc.).
+  const pendingCardScrollRef = useRef<string | null>(searchParams.get('card'));
+  useEffect(() => {
+    const target = pendingCardScrollRef.current;
+    if (!target || loading) return;
+    if (!SCROLLABLE_CARDS.has(target)) {
+      pendingCardScrollRef.current = null;
+      return;
+    }
+    pendingCardScrollRef.current = null;
+    // requestAnimationFrame so the card's height settles before the scroll.
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-report-card="${target}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight so the operator's eye lands on the right card —
+        // pure CSS class toggle, no layout shift.
+        el.classList.add('ring-2', 'ring-brand-400/40');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+      }
+    });
+  }, [loading]);
+
+  // ── URL deep-link: ?report_id=<id> / ?type=<val> ──────────────────
+  // ?report_id: scroll to the approval-queue card + toast the queued ID.
+  // ?type: pre-select the date range corresponding to a report type slug
+  //        (e.g. ?type=crime-trends scrolls to that card).
+  // Both are consumed once on mount (useRef guard) and stripped from the
+  // URL so a back-forward doesn't re-trigger them.
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current || loading) return;
+    deepLinkConsumedRef.current = true;
+
+    const reportId = searchParams.get('report_id');
+    const typeParam = searchParams.get('type');
+
+    // Strip both one-shot params immediately so the URL stays clean.
+    if (reportId || typeParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('report_id');
+      next.delete('type');
+      setSearchParams(next, { replace: true });
+    }
+
+    if (reportId) {
+      // Scroll approval queue card into view and toast the target ID.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>('[data-report-card="approval-queue"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+      addToast(`Viewing report #${reportId} in approval queue`, 'info');
+    }
+
+    if (typeParam && SCROLLABLE_CARDS.has(typeParam)) {
+      // ?type matches a scrollable card slug — scroll to it.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>(`[data-report-card="${typeParam}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mirror state -> URL so a refresh keeps the window. Wrapped in an effect
+  // so we don't fight React's render cycle. We use replace:true to avoid
+  // polluting the back-button history with every preset change.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (dateRange !== 'last_14_days') next.set('range', dateRange); else next.delete('range');
+    if (dateRange === 'custom' && customStartDate) next.set('start_date', customStartDate);
+    else next.delete('start_date');
+    if (dateRange === 'custom' && customEndDate) next.set('end_date', customEndDate);
+    else next.delete('end_date');
+    // Strip the one-shot card param after the scroll effect consumed it.
+    if (pendingCardScrollRef.current === null && next.has('card')) next.delete('card');
+    const cur = searchParams.toString();
+    const nxt = next.toString();
+    if (cur !== nxt) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange, customStartDate, customEndDate]);
 
   // State for all API data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -819,27 +1134,46 @@ export default function ReportsPage() {
         }
         const dateParams = new URLSearchParams({ startDate });
         if (endDate) dateParams.append('endDate', endDate);
+        // The incidents-summary / response-times / officer-activity handlers
+        // honor ONLY `?days=N` — they ignore startDate/endDate. Without this the
+        // range picker did nothing: every selection returned the fixed 30-day
+        // default. Translate the chosen window into an inclusive day count.
+        const startMs = new Date(`${startDate}T00:00:00`).getTime();
+        const endMs = endDate ? new Date(`${endDate}T00:00:00`).getTime() : Date.now();
+        const days = Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1);
+        dateParams.append('days', String(days));
 
-        // Fetch all endpoints in parallel
+        // Fetch all endpoints in parallel. Each is independently fault-tolerant
+        // — /reports/dashboard and /officer-activity fall through to legacy and
+        // may 404/500; without per-fetch .catch one failure rejected Promise.all
+        // and blanked the ENTIRE Reports page. Now a missing endpoint only leaves
+        // its own card empty.
         const [dashboard, incidents, responseTimes, officers] = await Promise.all([
-          apiFetch<DashboardData>('/reports/dashboard'),
-          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`),
-          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`),
-          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`),
+          apiFetch<DashboardData>('/reports/dashboard').catch(() => null),
+          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`).catch(() => null),
+          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`).catch(() => null),
+          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`).catch(() => null),
         ]);
 
         if (cancelled) return;
-        setDashboardData(dashboard);
-        setIncidentsData(incidents);
-        setResponseTimesData(responseTimes);
-        setOfficerActivity(officers);
+        if (dashboard) setDashboardData(dashboard);
+        if (incidents) setIncidentsData(incidents);
+        if (responseTimes) setResponseTimesData(responseTimes);
+        if (Array.isArray(officers)) setOfficerActivity(officers);
 
         // Upgrade: Fetch comparison data and schedules in background
         apiFetch<any>('/reports/comparison?period=week')
           .then(data => { if (!cancelled && data) setComparisonData(data); })
           .catch(() => { /* optional */ });
-        apiFetch<{ data: any[] }>('/reports/schedules')
-          .then(data => { if (!cancelled && data?.data) setReportSchedules(data.data); })
+        apiFetch<any>('/reports/schedules')
+          .then(data => {
+            if (cancelled) return;
+            // Tolerate both shapes: the handler returns a bare array, but a
+            // legacy/stub path may wrap it as { data: [...] }. The old code
+            // only accepted the wrapped form, so the panel never populated.
+            const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : null);
+            if (list) setReportSchedules(list);
+          })
           .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;
@@ -869,8 +1203,8 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  const incidentsChartData = (Array.isArray(incidentsData?.data) ? incidentsData.data : []).map((item, i) => ({
-    name: formatGroupKey(item.group_key),
+  const incidentsChartData = (incidentsData?.by_type ?? []).map((item, i) => ({
+    name: formatGroupKey(item.type),
     value: item.count,
     fill: PIE_COLORS[i % PIE_COLORS.length],
   }));
@@ -878,7 +1212,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || '#666666',
+    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -900,13 +1234,47 @@ export default function ReportsPage() {
   // Set document title
   useEffect(() => { document.title = 'Reports & Analytics \u2014 RMPG Flex'; }, []);
 
+  // \u2500\u2500 Keyboard shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Esc smart-cascade: close error banner first, then exit custom range.
+  // stopPropagation per branch so inner layers (ReportApprovalQueue's own
+  // Esc handler for the delete confirm / return modal) consume it first.
+  //
+  // `N`: open the Custom Report Builder \u2014 gated to canCreate (admin|manager)
+  // so officers don't accidentally land on the builder. Typing-suppressed so
+  // it doesn't fire while editing the custom-range date inputs or modals.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (error) { e.stopPropagation(); setError(null); return; }
+        if (dateRange === 'custom') { e.stopPropagation(); setDateRange('last_14_days'); return; }
+        // No more open layers on this page \u2014 let the global Esc handler
+        // (if any) catch it. We don't navigate back to Dashboard on Esc
+        // because the operator might be reading a chart.
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canCreate) {
+        e.preventDefault();
+        navigate('/reports/custom');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [error, dateRange, navigate, canCreate]);
+
   return (
     <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-raised), var(--text-muted) 30%, var(--text-muted) 70%, var(--surface-raised))' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-100">Reports & Analytics</h1>
@@ -920,7 +1288,7 @@ export default function ReportsPage() {
       {!isMobile && <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 text-rmpg-300" />
-          <select
+          <select id="ff-reportspage-0"
             className="select-dark text-xs w-44"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -937,7 +1305,7 @@ export default function ReportsPage() {
           </select>
           {dateRange === 'custom' && (
             <div className="flex items-center gap-2 ml-1 pl-2 border-l border-rmpg-700">
-              <input
+              <input id="ff-reportspage-1"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customStartDate}
@@ -945,7 +1313,7 @@ export default function ReportsPage() {
                 style={{ colorScheme: 'dark' }}
               />
               <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide">to</span>
-              <input
+              <input id="ff-reportspage-2"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customEndDate}
@@ -956,12 +1324,14 @@ export default function ReportsPage() {
           )}
         </div>
         <PrintButton />
-        <button type="button"
-          className="toolbar-btn"
-          onClick={() => navigate('/reports/custom')}
-        >
-          <Database className="w-3.5 h-3.5" /> Custom Builder
-        </button>
+        {canCreate && (
+          <button type="button"
+            className="toolbar-btn"
+            onClick={() => navigate('/reports/custom')}
+          >
+            <Database className="w-3.5 h-3.5" /> Custom Builder
+          </button>
+        )}
         <button type="button"
           className="toolbar-btn"
           onClick={handleExport}
@@ -971,6 +1341,74 @@ export default function ReportsPage() {
           <Download className="w-3.5 h-3.5" /> Export
         </button>
       </PanelTitleBar>}
+
+      {/* Mobile control bar — desktop hides this and uses the PanelTitleBar above */}
+      {isMobile && (
+        <div className="panel-beveled bg-surface-base p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-brand-400 flex-shrink-0" />
+            <h1 className="text-xs font-bold tracking-wider uppercase text-rmpg-100 flex-1">Reports & Analytics</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 text-rmpg-300 flex-shrink-0" />
+            <select
+              className="select-dark text-xs flex-1 min-h-[44px]"
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              disabled={loading}
+              aria-label="Date range"
+            >
+              <option value="today">Today</option>
+              <option value="last_7_days">Last 7 Days</option>
+              <option value="last_14_days">Last 14 Days</option>
+              <option value="last_30_days">Last 30 Days</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          {dateRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="Start date"
+              />
+              <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide flex-shrink-0">to</span>
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="End date"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            {canCreate && (
+              <button type="button"
+                className="toolbar-btn justify-center min-h-[44px]"
+                onClick={() => navigate('/reports/custom')}
+              >
+                <Database className="w-3.5 h-3.5" /> Builder
+              </button>
+            )}
+            <button type="button"
+              className="toolbar-btn justify-center min-h-[44px]"
+              onClick={handleExport}
+              disabled={loading || !incidentsData}
+              style={{ opacity: (loading || !incidentsData) ? 0.4 : 1 }}
+            >
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error Banner */}
       {error && (
@@ -992,7 +1430,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-gray-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-rmpg-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
@@ -1006,11 +1444,15 @@ export default function ReportsPage() {
           </div>
 
           {/* Upgrade: Week-over-Week Comparison */}
-          {comparisonData && (
+          {/* Guard on responseTime specifically: a malformed/placeholder
+              comparison payload (e.g. the proxy stub's old {current,previous,
+              deltas} shape) lacks responseTime, and reading .current off it
+              threw and took down the whole page via the ErrorBoundary. */}
+          {comparisonData?.responseTime && (
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-brand-blue" />
-                <span className="text-xs font-bold text-white uppercase">This Week vs Last Week</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">This Week vs Last Week</span>
               </div>
               <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-4 gap-3'}`}>
                 {[
@@ -1020,7 +1462,7 @@ export default function ReportsPage() {
                   { label: 'Avg Response', current: comparisonData.responseTime.current, previous: comparisonData.responseTime.previous, change: comparisonData.responseTime.change },
                 ].map(item => (
                   <div key={item.label} className="bg-surface-sunken p-3 text-center">
-                    <div className="text-lg font-bold text-white font-mono">{item.current ?? '-'}{item.label === 'Avg Response' && item.current != null ? 'm' : ''}</div>
+                    <div className="text-lg font-bold text-rmpg-100 font-mono">{item.current ?? '-'}{item.label === 'Avg Response' && item.current != null ? 'm' : ''}</div>
                     <div className="text-[9px] text-rmpg-400 uppercase">{item.label}</div>
                     {item.change != null && (
                       <div className={`text-[10px] font-bold mt-0.5 ${item.change > 0 ? (item.label === 'Avg Response' ? 'text-red-400' : 'text-green-400') : item.change < 0 ? (item.label === 'Avg Response' ? 'text-green-400' : 'text-amber-400') : 'text-rmpg-400'}`}>
@@ -1039,7 +1481,7 @@ export default function ReportsPage() {
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <Calendar className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-bold text-white uppercase">Scheduled Reports</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">Scheduled Reports</span>
                 <span className="ml-auto text-[9px] text-rmpg-500">{reportSchedules.length} active</span>
               </div>
               <div className="space-y-1.5">
@@ -1056,12 +1498,12 @@ export default function ReportsPage() {
           )}
 
           {/* Feature 27: Report Approval Queue */}
-          <div className="panel-beveled p-4 bg-surface-base">
+          <div data-report-card="approval-queue" className="panel-beveled p-4 bg-surface-base transition-shadow">
             <div className="flex items-center gap-2 mb-3">
               <FileText className="w-4 h-4 text-purple-400" />
-              <span className="text-xs font-bold text-white uppercase">Report Approval Queue</span>
+              <span className="text-xs font-bold text-rmpg-100 uppercase">Report Approval Queue</span>
             </div>
-            <ReportApprovalQueue />
+            <ReportApprovalQueue canDelete={canDelete} />
           </div>
 
           {/* Charts Grid */}
@@ -1074,7 +1516,7 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
                 {incidentsChartData.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                     <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                     <p className="text-sm">No data for selected filters</p>
                   </div>
@@ -1091,7 +1533,7 @@ export default function ReportsPage() {
                         paddingAngle={3}
                         dataKey="value"
                       >
-                        {incidentsChartData.map((entry) => (
+                        {incidentsChartData.map((entry: { name: string; fill: string }) => (
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}
                       </Pie>
@@ -1100,10 +1542,10 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                   {/* Legend */}
                   <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
-                    {incidentsChartData.map((entry) => (
+                    {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
                       <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
                         <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
-                        <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
+                        <span className="text-[10px] text-rmpg-200 min-w-0 truncate flex-1">{entry.name}</span>
                         <span className="text-[10px] text-rmpg-400 font-mono font-bold tabular-nums">{entry.value}</span>
                       </div>
                     ))}
@@ -1121,16 +1563,16 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {priorityChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="priority" tick={{ fill: '#888888', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
@@ -1151,20 +1593,20 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {responseTimeChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="date" tick={{ fill: '#888888', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} domain={[0, 'auto']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#888888" strokeWidth={2} dot={{ fill: '#888888', r: 3 }} />
-                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
+                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
               )}
@@ -1179,20 +1621,20 @@ export default function ReportsPage() {
               </div>
               <div className="p-4">
               {officerChartData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                   <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 12 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#888888', fontSize: 11 }} width={70} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               )}
@@ -1215,15 +1657,15 @@ export default function ReportsPage() {
                 }))}>
                   <defs>
                     <linearGradient id="callVolumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
+                      <stop offset="5%" stopColor="var(--text-muted)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--text-muted)" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="date" tick={{ fill: '#888888', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="calls" name="Calls" stroke="#888888" strokeWidth={2} fill="url(#callVolumeGradient)" />
+                  <Area type="monotone" dataKey="calls" name="Calls" stroke="var(--text-muted)" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
               </div>
@@ -1243,16 +1685,16 @@ export default function ReportsPage() {
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || '#666666',
+                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="priority" tick={{ fill: '#888888', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#888888', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                  <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#888888', fontSize: '10px', fontFamily: 'monospace' }} />
+                  <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#666666'} />
+                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -1262,25 +1704,25 @@ export default function ReportsPage() {
           )}
 
           {/* ── Patrol Tracking Report Generator ── */}
-          <PatrolTrackingCard />
+          <div data-report-card="patrol-tracking" className="transition-shadow"><PatrolTrackingCard /></div>
 
           {/* ═══ Feature 3: Crime Trend Analysis ═══ */}
-          <CrimeTrendCard />
+          <div data-report-card="crime-trends" className="transition-shadow"><CrimeTrendCard /></div>
 
           {/* ═══ Feature 4: Beat Activity Report ═══ */}
-          <BeatActivityCard />
+          <div data-report-card="beat-activity" className="transition-shadow"><BeatActivityCard /></div>
 
           {/* ═══ Feature 9: Citation Revenue Report ═══ */}
-          <CitationRevenueCard />
+          <div data-report-card="citation-revenue" className="transition-shadow"><CitationRevenueCard /></div>
 
           {/* ═══ Feature 11 & 12: Briefing & Digest ═══ */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
-            <DailyBriefingCard />
-            <WeeklyDigestCard />
+            <div data-report-card="daily-briefing" className="transition-shadow"><DailyBriefingCard /></div>
+            <div data-report-card="weekly-digest" className="transition-shadow"><WeeklyDigestCard /></div>
           </div>
 
           {/* ═══ Feature 14 & 15: Schedules & Templates ═══ */}
-          <ReportSchedulesCard />
+          <div data-report-card="schedules-templates" className="transition-shadow"><ReportSchedulesCard /></div>
         </>
       )}
     </div>
@@ -1290,6 +1732,7 @@ export default function ReportsPage() {
 // ── Patrol Tracking Report Card ──────────────────────────
 function PatrolTrackingCard() {
   const { addToast } = useToast();
+  const isMobile = useIsMobile();
   const [mode, setMode] = useState<'hours' | 'range'>('hours');
   const [hours, setHours] = useState(8);
   const [startDate, setStartDate] = useState('');
@@ -1333,7 +1776,10 @@ function PatrolTrackingCard() {
 
       const data = await apiFetch<any>(`/reports/patrol-tracking?${params}`);
       if (!data?.trails?.length) {
-        alert('No patrol tracking data found for the selected period.');
+        // Native alert() blocked the page on render thread and the supervisor
+        // had to click OK to dismiss before being able to change the date
+        // range. A non-blocking toast lets them adjust filters immediately.
+        addToast('No patrol tracking data found for the selected period.', 'warning');
         return;
       }
 
@@ -1389,8 +1835,8 @@ function PatrolTrackingCard() {
 
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
-          <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
-          <select
+          <label htmlFor="ff-reportspage-3" className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
+          <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
             className="select-dark text-[10px] w-28"
@@ -1407,8 +1853,8 @@ function PatrolTrackingCard() {
       <div className="flex items-center gap-3 flex-wrap">
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
-            <select
+            <label htmlFor="ff-reportspage-4" className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
+            <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
               className="select-dark text-[10px] w-20"
@@ -1422,8 +1868,8 @@ function PatrolTrackingCard() {
         ) : (
           <>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
-              <input
+              <label htmlFor="ff-reportspage-5" className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
+              <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -1431,8 +1877,8 @@ function PatrolTrackingCard() {
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
-              <input
+              <label htmlFor="ff-reportspage-6" className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
+              <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
@@ -1443,7 +1889,7 @@ function PatrolTrackingCard() {
         )}
 
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
-          <input
+          <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}
             onChange={e => setIncludeGeocode(e.target.checked)}
@@ -1455,7 +1901,7 @@ function PatrolTrackingCard() {
         <button type="button"
           onClick={handleGenerate}
           disabled={generating}
-          className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"
+          className={`toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center justify-center gap-1.5 ${isMobile ? 'w-full min-h-[44px]' : 'ml-auto'}`}
         >
           {generating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3 h-3" />}
           {generating ? 'Generating...' : 'Export PDF'}
@@ -1464,11 +1910,11 @@ function PatrolTrackingCard() {
 
       {/* Preview stats */}
       {preview && (
-        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
-          <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
-          <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
+          <span>Units: <strong className="text-rmpg-100">{preview.totalUnits}</strong></span>
+          <span>Points: <strong className="text-rmpg-100">{preview.totalPoints}</strong></span>
           <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>
-          <span>Duration: <strong className="text-white">{preview.totalMinutes} min</strong></span>
+          <span>Duration: <strong className="text-rmpg-100">{preview.totalMinutes} min</strong></span>
         </div>
       )}
     </div>

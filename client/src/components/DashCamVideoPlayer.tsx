@@ -12,6 +12,8 @@ import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import { mapboxgl } from '../utils/mapboxLoader';
+import { parseTimestamp } from '../utils/dateUtils';
+import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -102,7 +104,7 @@ function geocodeCacheSet(key: string, value: string): void {
 
 // ── Component ───────────────────────────────────────────────
 
-export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
+export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, onEditVideo }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [hudVisible, setHudVisible] = useState(true);
@@ -117,6 +119,21 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   useEffect(() => { setLiveAddress(null); lastGeocodedPos.current = null; }, [video?.id]);
 
+  // Signed stream URL — short-lived HMAC params instead of leaking the
+  // session JWT into the URL (?token=). Empty until signing resolves;
+  // <video> tolerates a src-less frame for the round-trip.
+  const [streamUrl, setStreamUrl] = useState('');
+  useEffect(() => {
+    if (!video?.id) { setStreamUrl(''); return; }
+    let cancelled = false;
+    getSignedParams('dashcam', video.id).then((params) => {
+      if (cancelled) return;
+      const base = `${apiBase}/fleet/dashcam-videos/${video.id}/stream`;
+      setStreamUrl(params ? `${base}?${buildSignedQuerySync(params)}` : '');
+    });
+    return () => { cancelled = true; };
+  }, [video?.id, apiBase]);
+
   const reverseGeocode = useCallback((lat: number, lng: number) => {
     const key = cacheKey(lat, lng);
     const cached = geocodeCache.get(key);
@@ -124,7 +141,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
     const token = (mapboxgl as any)?.accessToken || '';
     if (!token) return;
     fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address&limit=1`)
-      .then(res => res.json())
+      .then(res => { if (!res.ok) throw new Error(`Geocode HTTP ${res.status}`); return res.json(); })
       .then(data => {
         const feature = data.features?.[0];
         if (feature) {
@@ -164,7 +181,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   // ── Format helpers ──────────────────────────────────────────
 
   const formatHudTime = (seconds: number) => {
-    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const d = video.recorded_at ? parseTimestamp(video.recorded_at) : new Date();
     const p = new Date(d.getTime() + seconds * 1000);
     return p.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '');
   };
@@ -186,9 +203,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   // ── Derived values ──────────────────────────────────────────
 
-  const headers = getAuthHeaders();
-  const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
   const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
   const displaySpeed = liveTelemetry?.speedMph ?? video.speed_mph;
   const displayLat = liveTelemetry?.lat ?? video.latitude;
@@ -322,7 +336,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
                 {/* Row 2 — Secondary context */}
                 <div className="flex items-center h-5 divide-x divide-[#2b2b2b] border-t border-[#2b2b2b]/50">
                   {/* Vehicle */}
-                  <div className="flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
+                  <div className="min-w-0 flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
                     VEH #{video.vehicle_number || '--'} {vehDesc}
                   </div>
                   {/* Altitude */}
@@ -330,7 +344,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
                     ALT: {liveTelemetry?.altitude != null ? formatAlt(liveTelemetry.altitude) : '--'}
                   </div>
                   {/* Address */}
-                  <div className="flex-1 px-2 font-mono text-[9px] text-white/40 truncate">
+                  <div className="min-w-0 flex-1 px-2 font-mono text-[9px] text-white/40 truncate">
                     {displayAddress ? displayAddress.toUpperCase() : '--'}
                   </div>
                   {/* GPS status LED */}
@@ -381,7 +395,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             <span className="px-2 text-[9px] font-mono uppercase tracking-wider ml-auto">
               <span className="text-white/15 mr-1">REC</span>
               <span className="text-white/50">
-                {video.recorded_at ? new Date(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
+                {video.recorded_at ? parseTimestamp(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
               </span>
             </span>
           </div>

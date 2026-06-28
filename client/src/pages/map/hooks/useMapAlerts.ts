@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export type SafetyAlertType =
   | 'shots_fired'
@@ -102,7 +104,7 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
     const interval = setInterval(() => {
       const now = Date.now();
       setAlerts((prev) => prev.map((a) => {
-        if (!a.expired && now - new Date(a.timestamp).getTime() > ALERT_EXPIRY_MS) return { ...a, expired: true };
+        if (!a.expired && now - parseTimestamp(a.timestamp).getTime() > ALERT_EXPIRY_MS) return { ...a, expired: true };
         return a;
       }));
     }, 30_000);
@@ -162,27 +164,29 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
       properties: { id: alert.id, type: alert.type, color: ALERT_SEVERITY_COLORS[alert.type] || '#f59e0b', radius: alert.radius, details: alert.details, acknowledged: alert.acknowledged, timestamp: alert.timestamp },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ['get', 'color'],
-        'circle-radius': ['get', 'radius'],
-        'circle-opacity': ['case', ['get', 'acknowledged'], 0.06, 0.12],
-        'circle-stroke-color': ['get', 'color'],
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': ['case', ['get', 'acknowledged'], 0.4, 0.8],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': ['case', ['get', 'acknowledged'], 0.06, 0.12],
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['case', ['get', 'acknowledged'], 0.4, 0.8],
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const p = feature.properties;
-      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;font-size:12px;color:${p.color};margin-bottom:4px">${ALERT_TYPE_LABELS[p.type as SafetyAlertType] || p.type}</div><div style="font-size:9px;color:#9ca3af">${p.details}</div><div style="font-size:8px;color:#545454;margin-top:4px">${new Date(p.timestamp as string).toLocaleString()}</div></div>`;
-      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;font-size:12px;color:${p.color};margin-bottom:4px">${ALERT_TYPE_LABELS[p.type as SafetyAlertType] || p.type}</div><div style="font-size:9px;color:#9ca3af">${p.details}</div><div style="font-size:8px;color:#545454;margin-top:4px">${parseTimestamp(p.timestamp as string).toLocaleString()}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     });
   }, [map, alerts]);
 
