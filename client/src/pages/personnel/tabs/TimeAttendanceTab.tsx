@@ -2,11 +2,14 @@
 // RMPG Flex — Personnel: Time & Attendance Tab
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from 'lucide-react';
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { parseTimestamp, displayClockTime } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -41,35 +44,43 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     return timeEntries.filter((te) => te.status === 'clocked_in' || te.status === 'on_break');
   }, [timeEntries]);
 
-  function formatClockTime(dateStr?: string): string {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  }
-
   function getElapsedHours(clockIn: string): string {
-    const diff = Date.now() - new Date(clockIn).getTime();
+    const diff = Date.now() - parseTimestamp(clockIn).getTime();
     const hrs = (diff / 3600000).toFixed(1);
     return `${hrs}h`;
   }
 
   const SUMMARY_CARDS = [
-    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
+    { label: 'Currently Clocked In', value: stats.clockedInCount, icon: LogIn, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Total Hours', value: stats.totalHours, icon: Clock, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
+    { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
-    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-[#0a1020]', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+    { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+  ];
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (te: TimeEntry): ContextMenuItem[] => [
+    ...(onEditTimeEntry ? [m.action('Edit time entry', () => onEditTimeEntry(te), { icon: <Pencil size={12} /> })] : []),
+    ...(onEditTimeEntry ? [m.separator()] : []),
+    m.copy('Copy officer', te.officer_name),
+    m.copyId(te.id),
+    ...(onDeleteTimeEntry
+      ? [m.separator(), m.action('Delete time entry', () => setDeleteTarget(te.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
   ];
 
   // Set document title
   useEffect(() => { document.title = 'Personnel - Time \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-brand-400" />
         <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Time & Attendance</h2>
+        <span className="text-[11px] font-mono text-rmpg-500">({timeEntries.length})</span>
       </div>
 
       {/* Summary Cards */}
@@ -88,7 +99,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
       {/* Active Clock-Ins */}
       {activeEntries.length > 0 && (
-        <div className="panel-beveled p-3 border border-green-700/30 border-l-2 border-l-green-500 bg-[#0a1a0a]">
+        <div className="panel-beveled p-3 border border-green-700/30 border-l-2 border-l-green-500 bg-surface-base">
           <h3 className="text-[9px] text-green-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Users className="w-3 h-3" />
             Currently Active ({activeEntries.length})
@@ -140,7 +151,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
               </tr>
             ) : (
               timeEntries.map((te) => (
-                <tr key={te.id}>
+                <tr key={te.id} onContextMenu={(e) => openMenu(e, buildRowMenu(te))}>
                   <td>
                     <div className="flex items-center gap-1.5">
                       {te.status === 'clocked_in' && <span className="led-dot led-green" />}
@@ -153,7 +164,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   <td>
                     <span className="text-xs font-mono text-rmpg-300">
                       <LogIn className="w-2.5 h-2.5 inline mr-0.5 text-green-400" />
-                      {formatClockTime(te.clock_in)}
+                      {displayClockTime(te.clock_in_local, te.clock_in)}
                     </span>
                   </td>
                   <td>
@@ -161,7 +172,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       {te.clock_out ? (
                         <>
                           <LogOut className="w-2.5 h-2.5 inline mr-0.5 text-rmpg-400" />
-                          {formatClockTime(te.clock_out)}
+                          {displayClockTime(te.clock_out_local, te.clock_out)}
                         </>
                       ) : (
                         <span className="text-rmpg-600">-</span>
@@ -187,7 +198,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                       </span>
                     )}
                     {te.status === 'edited' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-surface-sunken/50 text-rmpg-400 border border-border-default/50">
                         Edited
                       </span>
                     )}

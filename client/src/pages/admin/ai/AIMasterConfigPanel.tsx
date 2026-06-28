@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, Loader2, Brain, RotateCcw } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface MasterConfig {
   masterPrompt: string;
   chainMode: boolean;
@@ -92,15 +93,15 @@ export default function AIMasterConfigPanel({ setError }: Props) {
     <div className="space-y-5">
       {/* System Prompt */}
       <div>
-        <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2 flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide mb-2 flex items-center gap-2">
           <Brain className="w-3.5 h-3.5 text-brand-400" />
           System Prompt
         </h3>
-        <textarea
+        <RichTextArea
           value={masterPrompt}
           onChange={e => { setMasterPrompt(e.target.value); setDirty(true); }}
           rows={6}
-          className="w-full bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-3 py-2 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono leading-relaxed resize-y"
+          className="w-full bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-3 py-2 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono leading-relaxed resize-y"
           placeholder="Enter the master system prompt for all AI operations..."
         />
         <p className="text-[10px] text-rmpg-600 mt-1">
@@ -109,12 +110,12 @@ export default function AIMasterConfigPanel({ setError }: Props) {
       </div>
 
       {/* Chain Mode */}
-      <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+      <div className="bg-surface-base border border-border-default rounded p-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => { setChainMode(!chainMode); setDirty(true); }}
             className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
-              chainMode ? 'bg-brand-600' : 'bg-[#1a1a2e]'
+              chainMode ? 'bg-brand-600' : 'bg-rmpg-800'
             }`}
             aria-label="Toggle chain mode"
           >
@@ -125,7 +126,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
             />
           </button>
           <div>
-            <div className="text-xs text-white font-medium">Chain Mode</div>
+            <div className="text-xs text-rmpg-100 font-medium">Chain Mode</div>
             <p className="text-[10px] text-rmpg-500 mt-0.5">
               Two-step reasoning: fast classification then detailed analysis. Uses a lightweight model
               to classify the task first, then routes to the best provider for the detailed response.
@@ -136,19 +137,19 @@ export default function AIMasterConfigPanel({ setError }: Props) {
 
       {/* Routing Rules */}
       <div>
-        <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide mb-2">
           Task Routing Rules
         </h3>
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded divide-y divide-[#1a1a2e]">
+        <div className="bg-surface-base border border-border-default rounded divide-y divide-[var(--border-subtle)]">
           {TASK_TYPES.map(task => {
             const current = routingRules[task.key]?.provider || 'auto';
             return (
               <div key={task.key} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-xs text-white flex-1">{task.label}</span>
-                <select
+                <span className="text-xs text-rmpg-100 flex-1">{task.label}</span>
+                <select id="ff-aimasterconfigpanel-0"
                   value={current}
                   onChange={e => updateRouting(task.key, e.target.value)}
-                  className="bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none"
+                  className="bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none"
                 >
                   <option value="auto">Auto</option>
                   <option value="groq">Groq</option>
@@ -166,7 +167,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
       <div className="flex items-center justify-between">
         <button
           onClick={resetDefaults}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-rmpg-400 hover:text-white text-xs font-medium rounded border border-[#1a1a2e] hover:border-rmpg-500 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-rmpg-400 hover:text-rmpg-100 text-xs font-medium rounded border border-border-default hover:border-rmpg-500 transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           Reset to Defaults
@@ -174,7 +175,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
         <button
           onClick={handleSave}
           disabled={saving || !dirty}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           Save Master Config

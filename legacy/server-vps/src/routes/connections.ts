@@ -1,0 +1,1256 @@
+// ============================================================
+// RMPG Flex — Connection Analysis API
+// ============================================================
+// Graph traversal for visualizing relationships between
+// persons, vehicles, properties, cases, incidents, and evidence.
+// Uses BFS across record_links + all junction tables.
+// ============================================================
+
+import { Router, Request, Response } from 'express';
+import { getDb } from '../models/database';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { escapeLike } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
+import { auditLog } from '../utils/auditLogger';
+import { buildSuggestions } from '../utils/connectionSuggestions';
+
+const router = Router();
+router.use(authenticateToken);
+
+// ── Types ────────────────────────────────────────────────────
+
+interface GNode {
+  id: string;
+  type: string;
+  entityId: number;
+  label: string;
+  metadata: Record<string, any>;
+  depth: number;
+}
+
+interface GEdge {
+  source: string;
+  target: string;
+  relationship: string;
+  sourceTable: string;
+}
+
+interface Connection {
+  type: string;
+  id: number;
+  relationship: string;
+  sourceTable: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+
+function getRecordLabel(db: any, type: string, id: number): string {
+  try {
+    switch (type) {
+      case 'person': {
+        const p = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(id) as any;
+        return p ? `${p.first_name} ${p.last_name}` : `Person #${id}`;
+      }
+      case 'vehicle': {
+        const v = db.prepare('SELECT make, model, plate_number, color FROM vehicles_records WHERE id = ?').get(id) as any;
+        return v ? `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() : `Vehicle #${id}`;
+      }
+      case 'property': {
+        const pr = db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
+        return pr ? pr.name : `Property #${id}`;
+      }
+      case 'evidence': {
+        const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
+        return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
+      }
+      case 'case': {
+        const c = db.prepare('SELECT case_number, title FROM cases WHERE id = ?').get(id) as any;
+        return c ? `${c.case_number} - ${c.title}` : `Case #${id}`;
+      }
+      case 'incident': {
+        const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
+        return i ? `${i.incident_number || ''} ${i.incident_type}`.trim() : `Incident #${id}`;
+      }
+      case 'warrant': {
+        const w = db.prepare('SELECT warrant_number, status FROM warrants WHERE id = ?').get(id) as any;
+        return w ? `${w.warrant_number || `W-${id}`} (${w.status || '?'})` : `Warrant #${id}`;
+      }
+      case 'citation': {
+        const c = db.prepare('SELECT citation_number, status FROM citations WHERE id = ?').get(id) as any;
+        return c ? `${c.citation_number || `CIT-${id}`} (${c.status || '?'})` : `Citation #${id}`;
+      }
+      case 'arrest': {
+        const a = db.prepare('SELECT first_name, last_name, booking_date FROM arrest_records WHERE id = ?').get(id) as any;
+        return a ? `${a.first_name || ''} ${a.last_name || ''} arr. ${a.booking_date || ''}`.trim() : `Arrest #${id}`;
+      }
+      case 'field_interview': {
+        const f = db.prepare('SELECT fi_number, location FROM field_interviews WHERE id = ?').get(id) as any;
+        return f ? `${f.fi_number || `FI-${id}`}${f.location ? ` @ ${f.location}` : ''}` : `FI #${id}`;
+      }
+      case 'trespass_order': {
+        const t = db.prepare('SELECT order_number, status FROM trespass_orders WHERE id = ?').get(id) as any;
+        return t ? `${t.order_number || `TO-${id}`} (${(t.status || 'unknown').toUpperCase()})` : `Trespass #${id}`;
+      }
+      case 'serve_job': {
+        const s = db.prepare('SELECT sm_job_id, case_number, document_type, status FROM serve_queue WHERE id = ?').get(id) as any;
+        if (!s) return `Serve #${id}`;
+        const ref = s.sm_job_id ? `SM-${s.sm_job_id}` : s.case_number || `SJ-${id}`;
+        return `${ref}${s.document_type ? ` ${s.document_type}` : ''} (${(s.status || 'pending').toUpperCase()})`;
+      }
+      default:
+        return `${type} #${id}`;
+    }
+  } catch (err: any) {
+    console.error('[Connections] getRecordLabel error:', err?.message);
+    return `${type} #${id}`;
+  }
+}
+
+function getNodeMetadata(db: any, type: string, id: number): Record<string, any> {
+  try {
+    switch (type) {
+      case 'person': {
+        const p = db.prepare('SELECT first_name, last_name, dob, address, city, state, phone, flags FROM persons WHERE id = ?').get(id) as any;
+        return p || {};
+      }
+      case 'vehicle': {
+        const v = db.prepare('SELECT plate_number, state, make, model, year, color, vin, owner_person_id, flags FROM vehicles_records WHERE id = ?').get(id) as any;
+        return v || {};
+      }
+      case 'property': {
+        const pr = db.prepare('SELECT name, address, property_type, client_id FROM properties WHERE id = ?').get(id) as any;
+        return pr || {};
+      }
+      case 'evidence': {
+        const e = db.prepare('SELECT evidence_number, description, evidence_type, status, incident_id FROM evidence WHERE id = ?').get(id) as any;
+        return e || {};
+      }
+      case 'case': {
+        const c = db.prepare('SELECT case_number, title, case_type, status, priority FROM cases WHERE id = ?').get(id) as any;
+        return c || {};
+      }
+      case 'incident': {
+        const i = db.prepare('SELECT incident_number, incident_type, status, priority, location_address FROM incidents WHERE id = ?').get(id) as any;
+        return i || {};
+      }
+      case 'warrant': {
+        const w = db.prepare('SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?').get(id) as any;
+        return w || {};
+      }
+      case 'citation': {
+        const c = db.prepare('SELECT citation_number, type, status, person_id, vehicle_id, violation_date, violation_description, offense_level, fine_amount FROM citations WHERE id = ?').get(id) as any;
+        return c || {};
+      }
+      case 'arrest': {
+        const a = db.prepare('SELECT first_name, last_name, booking_date, charges, status, county, source_name FROM arrest_records WHERE id = ?').get(id) as any;
+        return a || {};
+      }
+      case 'field_interview': {
+        const f = db.prepare('SELECT fi_number, person_id, location, contact_reason, contact_type, action_taken, officer_name, status, created_at FROM field_interviews WHERE id = ?').get(id) as any;
+        return f || {};
+      }
+      case 'trespass_order': {
+        const t = db.prepare('SELECT order_number, person_id, property_id, location, status, order_type, effective_date, expiration_date, issued_by_name FROM trespass_orders WHERE id = ?').get(id) as any;
+        return t || {};
+      }
+      case 'serve_job': {
+        const s = db.prepare('SELECT sm_job_id, officer_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip, document_type, case_number, court_name, client_name, attorney_name, priority, deadline, status, attempt_count, recipient_person_id, property_id, serve_date FROM serve_queue WHERE id = ?').get(id) as any;
+        return s || {};
+      }
+      default:
+        return {};
+    }
+  } catch (err: any) {
+    console.error('[Connections] getNodeMetadata error:', err?.message);
+    return {};
+  }
+}
+
+// ── Connection Discovery ─────────────────────────────────────
+
+function findConnections(db: any, type: string, id: number): Connection[] {
+  const results: Connection[] = [];
+
+  // 1. record_links (bidirectional)
+  try {
+    const links = db.prepare(`
+      SELECT source_type, source_id, target_type, target_id, relationship
+      FROM record_links
+      WHERE (source_type = ? AND source_id = ?)
+         OR (target_type = ? AND target_id = ?)
+    
+      LIMIT 1000
+    `).all(type, id, type, id) as any[];
+
+    for (const link of links) {
+      const isSource = link.source_type === type && link.source_id === id;
+      results.push({
+        type: isSource ? link.target_type : link.source_type,
+        id: isSource ? link.target_id : link.source_id,
+        relationship: link.relationship,
+        sourceTable: 'record_links',
+      });
+    }
+  } catch (err: any) {
+    // Distinguish the "table doesn't exist" expected-on-fresh-DB case from
+    // genuine DB errors. Swallowing all errors silently lets real bugs
+    // (e.g. column drift) hide as "this user just sees no connections."
+    const msg = err?.message || '';
+    if (/no such table/i.test(msg)) {
+      // Expected on fresh installs before record_links migration runs.
+    } else {
+      console.error('[Connections] record_links query error:', msg);
+    }
+  }
+
+  // 2. Type-specific junction tables
+  try {
+    switch (type) {
+      case 'person': {
+        // incident_persons → incidents
+        const incPersons = db.prepare('SELECT incident_id, role FROM incident_persons WHERE person_id = ?').all(id) as any[];
+        for (const ip of incPersons) {
+          results.push({ type: 'incident', id: ip.incident_id, relationship: ip.role, sourceTable: 'incident_persons' });
+        }
+
+        // call_persons → incidents (via call_id)
+        const callPersons = db.prepare(`
+          SELECT cp.call_id, cp.role, i.id as incident_id
+          FROM call_persons cp
+          LEFT JOIN incidents i ON i.call_id = cp.call_id
+          WHERE cp.person_id = ?
+        
+          LIMIT 1000
+        `).all(id) as any[];
+        for (const cp of callPersons) {
+          if (cp.incident_id) {
+            results.push({ type: 'incident', id: cp.incident_id, relationship: cp.role, sourceTable: 'call_persons' });
+          }
+        }
+
+        // vehicles_records.owner_person_id → vehicles
+        const ownedVehicles = db.prepare('SELECT id FROM vehicles_records WHERE owner_person_id = ?').all(id) as any[];
+        for (const v of ownedVehicles) {
+          results.push({ type: 'vehicle', id: v.id, relationship: 'owner', sourceTable: 'vehicles_records' });
+        }
+
+        // case_person_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_person_links WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_person_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_person_links query error:', err?.message); }
+
+        // client_persons → properties (via client_id)
+        const clientPersons = db.prepare(`
+          SELECT cp.relationship, p.id as property_id
+          FROM client_persons cp
+          JOIN properties p ON p.client_id = cp.client_id
+          WHERE cp.person_id = ?
+        
+          LIMIT 1000
+        `).all(id) as any[];
+        for (const cp of clientPersons) {
+          results.push({ type: 'property', id: cp.property_id, relationship: cp.relationship, sourceTable: 'client_persons' });
+        }
+
+        // warrants → person's active/open warrants
+        try {
+          const warrants = db.prepare(
+            "SELECT id, status FROM warrants WHERE subject_person_id = ?"
+          ).all(id) as any[];
+          for (const w of warrants) {
+            results.push({
+              type: 'warrant',
+              id: w.id,
+              relationship: `warrant_${(w.status || '').toLowerCase()}`,
+              sourceTable: 'warrants',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] warrants(person) query error:', err?.message); }
+
+        try {
+          const citations = db.prepare(
+            "SELECT id, status FROM citations WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const c of citations) {
+            results.push({
+              type: 'citation', id: c.id,
+              relationship: `citation_${(c.status || '').toLowerCase()}`,
+              sourceTable: 'citations',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] citations(person) query error:', err?.message); }
+
+        try {
+          const arrests = db.prepare(
+            "SELECT arrest_record_id FROM arrest_cross_links WHERE linked_type = 'person' AND linked_id = ?"
+          ).all(id) as any[];
+          for (const a of arrests) {
+            results.push({
+              type: 'arrest', id: a.arrest_record_id,
+              relationship: 'arrested',
+              sourceTable: 'arrest_cross_links',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] arrest_cross_links(person) query error:', err?.message); }
+
+        try {
+          const fis = db.prepare(
+            "SELECT id FROM field_interviews WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const f of fis) {
+            results.push({
+              type: 'field_interview', id: f.id,
+              relationship: 'fi_contact',
+              sourceTable: 'field_interviews',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] field_interviews(person) query error:', err?.message); }
+
+        try {
+          const tos = db.prepare(
+            "SELECT id, status FROM trespass_orders WHERE person_id = ?"
+          ).all(id) as any[];
+          for (const t of tos) {
+            results.push({
+              type: 'trespass_order', id: t.id,
+              relationship: 'trespassed_from',
+              sourceTable: 'trespass_orders',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(person) query error:', err?.message); }
+
+        try {
+          const sjs = db.prepare(
+            "SELECT id FROM serve_queue WHERE recipient_person_id = ?"
+          ).all(id) as any[];
+          for (const s of sjs) {
+            results.push({
+              type: 'serve_job', id: s.id,
+              relationship: 'serve_recipient',
+              sourceTable: 'serve_queue',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(person) query error:', err?.message); }
+        break;
+      }
+
+      case 'vehicle': {
+        // incident_vehicles → incidents
+        try {
+          const incVehicles = db.prepare('SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?').all(id) as any[];
+          for (const iv of incVehicles) {
+            results.push({ type: 'incident', id: iv.incident_id, relationship: iv.role, sourceTable: 'incident_vehicles' });
+          }
+        } catch (err: any) { console.error('[Connections] incident_vehicles query error:', err?.message); }
+
+        // call_vehicles → incidents (via call_id)
+        try {
+          const callVehicles = db.prepare(`
+            SELECT cv.call_id, cv.role, i.id as incident_id
+            FROM call_vehicles cv
+            LEFT JOIN incidents i ON i.call_id = cv.call_id
+            WHERE cv.vehicle_id = ?
+
+            LIMIT 1000
+          `).all(id) as any[];
+          for (const cv of callVehicles) {
+            if (cv.incident_id) {
+              results.push({ type: 'incident', id: cv.incident_id, relationship: cv.role, sourceTable: 'call_vehicles' });
+            }
+          }
+        } catch (err: any) { console.error('[Connections] call_vehicles query error:', err?.message); }
+
+        // owner → person
+        try {
+          const vehicle = db.prepare('SELECT owner_person_id FROM vehicles_records WHERE id = ?').get(id) as any;
+          if (vehicle?.owner_person_id) {
+            results.push({ type: 'person', id: vehicle.owner_person_id, relationship: 'owner', sourceTable: 'vehicles_records' });
+          }
+        } catch (err: any) { console.error('[Connections] vehicles_records owner query error:', err?.message); }
+
+        try {
+          const citations = db.prepare(
+            "SELECT id, status FROM citations WHERE vehicle_id = ?"
+          ).all(id) as any[];
+          for (const c of citations) {
+            results.push({
+              type: 'citation', id: c.id,
+              relationship: `citation_${(c.status || '').toLowerCase()}`,
+              sourceTable: 'citations',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] citations(vehicle) query error:', err?.message); }
+        break;
+      }
+
+      case 'incident': {
+        // incident_persons → persons
+        const personsInInc = db.prepare('SELECT person_id, role FROM incident_persons WHERE incident_id = ?').all(id) as any[];
+        for (const ip of personsInInc) {
+          results.push({ type: 'person', id: ip.person_id, relationship: ip.role, sourceTable: 'incident_persons' });
+        }
+
+        // incident_vehicles → vehicles
+        const vehiclesInInc = db.prepare('SELECT vehicle_id, role FROM incident_vehicles WHERE incident_id = ?').all(id) as any[];
+        for (const iv of vehiclesInInc) {
+          results.push({ type: 'vehicle', id: iv.vehicle_id, relationship: iv.role, sourceTable: 'incident_vehicles' });
+        }
+
+        // evidence.incident_id → evidence
+        const evidenceInInc = db.prepare('SELECT id FROM evidence WHERE incident_id = ?').all(id) as any[];
+        for (const e of evidenceInInc) {
+          results.push({ type: 'evidence', id: e.id, relationship: 'collected_from', sourceTable: 'evidence' });
+        }
+
+        // incidents.property_id → property
+        const inc = db.prepare('SELECT property_id FROM incidents WHERE id = ?').get(id) as any;
+        if (inc?.property_id) {
+          results.push({ type: 'property', id: inc.property_id, relationship: 'location', sourceTable: 'incidents' });
+        }
+
+        // case_incident_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_incident_links WHERE incident_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_incident_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_incident_links query error:', err?.message); }
+        break;
+      }
+
+      case 'case': {
+        try {
+          const persons = db.prepare(
+            "SELECT person_id FROM case_person_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of persons) {
+            results.push({ type: 'person', id: r.person_id, relationship: 'linked', sourceTable: 'case_person_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_person_links(case) query error:', err?.message); }
+        try {
+          const incidents = db.prepare(
+            "SELECT incident_id FROM case_incident_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of incidents) {
+            results.push({ type: 'incident', id: r.incident_id, relationship: 'linked', sourceTable: 'case_incident_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_incident_links(case) query error:', err?.message); }
+        try {
+          const evidence = db.prepare(
+            "SELECT evidence_id FROM case_evidence_links WHERE case_id = ?"
+          ).all(id) as any[];
+          for (const r of evidence) {
+            results.push({ type: 'evidence', id: r.evidence_id, relationship: 'linked', sourceTable: 'case_evidence_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_evidence_links(case) query error:', err?.message); }
+        break;
+      }
+
+      case 'property': {
+        // incidents.property_id → incidents
+        const propIncidents = db.prepare('SELECT id FROM incidents WHERE property_id = ?').all(id) as any[];
+        for (const pi of propIncidents) {
+          results.push({ type: 'incident', id: pi.id, relationship: 'location', sourceTable: 'incidents' });
+        }
+
+        // client_persons (via client_id) → persons
+        const prop = db.prepare('SELECT client_id FROM properties WHERE id = ?').get(id) as any;
+        if (prop?.client_id) {
+          const cpRows = db.prepare('SELECT person_id, relationship FROM client_persons WHERE client_id = ?').all(prop.client_id) as any[];
+          for (const cp of cpRows) {
+            results.push({ type: 'person', id: cp.person_id, relationship: cp.relationship, sourceTable: 'client_persons' });
+          }
+        }
+
+        try {
+          const tos = db.prepare(
+            "SELECT id, status FROM trespass_orders WHERE property_id = ?"
+          ).all(id) as any[];
+          for (const t of tos) {
+            results.push({
+              type: 'trespass_order', id: t.id,
+              relationship: 'trespass_on_location',
+              sourceTable: 'trespass_orders',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(property) query error:', err?.message); }
+
+        try {
+          const sjs = db.prepare(
+            "SELECT id FROM serve_queue WHERE property_id = ?"
+          ).all(id) as any[];
+          for (const s of sjs) {
+            results.push({
+              type: 'serve_job', id: s.id,
+              relationship: 'serve_location',
+              sourceTable: 'serve_queue',
+            });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(property) query error:', err?.message); }
+        break;
+      }
+
+      case 'evidence': {
+        // evidence.incident_id → incident
+        const evRow = db.prepare('SELECT incident_id FROM evidence WHERE id = ?').get(id) as any;
+        if (evRow?.incident_id) {
+          results.push({ type: 'incident', id: evRow.incident_id, relationship: 'collected_from', sourceTable: 'evidence' });
+        }
+
+        // case_evidence_links → cases (indexed junction table, replaces JSON-LIKE scan)
+        try {
+          const caseLinks = db.prepare(
+            "SELECT case_id FROM case_evidence_links WHERE evidence_id = ?"
+          ).all(id) as any[];
+          for (const c of caseLinks) {
+            results.push({ type: 'case', id: c.case_id, relationship: 'linked', sourceTable: 'case_evidence_links' });
+          }
+        } catch (err: any) { console.error('[Connections] case_evidence_links query error:', err?.message); }
+        break;
+      }
+
+      case 'warrant': {
+        try {
+          const w = db.prepare('SELECT subject_person_id FROM warrants WHERE id = ?').get(id) as any;
+          if (w?.subject_person_id) {
+            results.push({ type: 'person', id: w.subject_person_id, relationship: 'subject', sourceTable: 'warrants' });
+          }
+        } catch (err: any) { console.error('[Connections] warrants(warrant) query error:', err?.message); }
+        break;
+      }
+
+      case 'citation': {
+        try {
+          const c = db.prepare('SELECT person_id, vehicle_id FROM citations WHERE id = ?').get(id) as any;
+          if (c?.person_id) {
+            results.push({ type: 'person', id: c.person_id, relationship: 'subject', sourceTable: 'citations' });
+          }
+          if (c?.vehicle_id) {
+            results.push({ type: 'vehicle', id: c.vehicle_id, relationship: 'cited_vehicle', sourceTable: 'citations' });
+          }
+        } catch (err: any) { console.error('[Connections] citations(citation) query error:', err?.message); }
+        break;
+      }
+
+      case 'arrest': {
+        try {
+          const rows = db.prepare(
+            "SELECT linked_type, linked_id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = 'person'"
+          ).all(id) as any[];
+          for (const r of rows) {
+            results.push({ type: 'person', id: r.linked_id, relationship: 'arrestee', sourceTable: 'arrest_cross_links' });
+          }
+        } catch (err: any) { console.error('[Connections] arrest_cross_links(arrest) query error:', err?.message); }
+        break;
+      }
+
+      case 'field_interview': {
+        try {
+          const f = db.prepare('SELECT person_id FROM field_interviews WHERE id = ?').get(id) as any;
+          if (f?.person_id) {
+            results.push({ type: 'person', id: f.person_id, relationship: 'subject', sourceTable: 'field_interviews' });
+          }
+        } catch (err: any) { console.error('[Connections] field_interviews(fi) query error:', err?.message); }
+        break;
+      }
+
+      case 'trespass_order': {
+        try {
+          const t = db.prepare('SELECT person_id, property_id FROM trespass_orders WHERE id = ?').get(id) as any;
+          if (t?.person_id) {
+            results.push({ type: 'person', id: t.person_id, relationship: 'subject', sourceTable: 'trespass_orders' });
+          }
+          if (t?.property_id) {
+            results.push({ type: 'property', id: t.property_id, relationship: 'location', sourceTable: 'trespass_orders' });
+          }
+        } catch (err: any) { console.error('[Connections] trespass_orders(to) query error:', err?.message); }
+        break;
+      }
+
+      case 'serve_job': {
+        try {
+          const s = db.prepare('SELECT recipient_person_id, property_id FROM serve_queue WHERE id = ?').get(id) as any;
+          if (s?.recipient_person_id) {
+            results.push({ type: 'person', id: s.recipient_person_id, relationship: 'recipient', sourceTable: 'serve_queue' });
+          }
+          if (s?.property_id) {
+            results.push({ type: 'property', id: s.property_id, relationship: 'location', sourceTable: 'serve_queue' });
+          }
+        } catch (err: any) { console.error('[Connections] serve_queue(sj) query error:', err?.message); }
+        break;
+      }
+    }
+  } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
+
+  return results;
+}
+
+// ── BFS Graph Builder ────────────────────────────────────────
+
+const MAX_NODES = 200;
+
+function buildGraph(db: any, seedType: string, seedId: number, maxDepth: number = 2): { nodes: GNode[]; edges: GEdge[] } {
+  const nodeMap = new Map<string, GNode>();
+  const edgeSet = new Set<string>();
+  const edges: GEdge[] = [];
+  const queue: Array<{ type: string; id: number; depth: number }> = [];
+
+  // Per-request caches: keyed by `${type}-${id}`.
+  // Scope: one buildGraph call. Keeps BFS revisits cheap.
+  const labelCache = new Map<string, string>();
+  const metadataCache = new Map<string, Record<string, any>>();
+
+  function nodeKey(type: string, id: number): string {
+    return `${type}-${id}`;
+  }
+
+  function cachedLabel(type: string, id: number): string {
+    const k = nodeKey(type, id);
+    const hit = labelCache.get(k);
+    if (hit !== undefined) return hit;
+    const miss = getRecordLabel(db, type, id);
+    labelCache.set(k, miss);
+    return miss;
+  }
+
+  function cachedMetadata(type: string, id: number): Record<string, any> {
+    const k = nodeKey(type, id);
+    const hit = metadataCache.get(k);
+    if (hit !== undefined) return hit;
+    const miss = getNodeMetadata(db, type, id);
+    metadataCache.set(k, miss);
+    return miss;
+  }
+
+  function addNode(type: string, id: number, depth: number): boolean {
+    if (nodeMap.size >= MAX_NODES) return false;
+    const key = nodeKey(type, id);
+    if (nodeMap.has(key)) return false;
+    nodeMap.set(key, {
+      id: key,
+      type,
+      entityId: id,
+      label: cachedLabel(type, id),
+      metadata: cachedMetadata(type, id),
+      depth,
+    });
+    return true;
+  }
+
+  function addEdge(srcType: string, srcId: number, tgtType: string, tgtId: number, relationship: string, sourceTable: string): void {
+    const src = nodeKey(srcType, srcId);
+    const tgt = nodeKey(tgtType, tgtId);
+    const edgeKey = [src, tgt].sort().join('|') + '|' + relationship;
+    if (edgeSet.has(edgeKey)) return;
+    edgeSet.add(edgeKey);
+    edges.push({ source: src, target: tgt, relationship, sourceTable });
+  }
+
+  // Seed
+  addNode(seedType, seedId, 0);
+  queue.push({ type: seedType, id: seedId, depth: 0 });
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.depth >= maxDepth) continue;
+    if (nodeMap.size >= MAX_NODES) break;
+
+    const nextDepth = current.depth + 1;
+    const connections = findConnections(db, current.type, current.id);
+
+    for (const conn of connections) {
+      if (nodeMap.size >= MAX_NODES) break;
+      const isNew = addNode(conn.type, conn.id, nextDepth);
+      addEdge(current.type, current.id, conn.type, conn.id, conn.relationship, conn.sourceTable);
+      if (isNew && nextDepth < maxDepth) {
+        queue.push({ type: conn.type, id: conn.id, depth: nextDepth });
+      }
+    }
+  }
+
+  return { nodes: Array.from(nodeMap.values()), edges };
+}
+
+// ── Shortest-path BFS ────────────────────────────────────────
+
+const PATH_MAX_DEPTH = 6;  // practical cap — deeper paths are analyst-unfriendly
+
+function findShortestPath(
+  db: any,
+  fromType: string,
+  fromId: number,
+  toType: string,
+  toId: number
+): { path: GNode[]; edges: GEdge[] } | null {
+  const fromKey = `${fromType}-${fromId}`;
+  const toKey = `${toType}-${toId}`;
+
+  if (fromKey === toKey) {
+    return {
+      path: [{
+        id: fromKey,
+        type: fromType,
+        entityId: fromId,
+        label: getRecordLabel(db, fromType, fromId),
+        metadata: getNodeMetadata(db, fromType, fromId),
+        depth: 0,
+      }],
+      edges: [],
+    };
+  }
+
+  // BFS with parent pointers. Each entry: (nodeKey, parentKey, relationshipFromParent, sourceTable, depth).
+  type Entry = { key: string; type: string; id: number; parent: string | null; rel: string; srcTable: string; depth: number };
+  const visited = new Map<string, Entry>();
+  visited.set(fromKey, { key: fromKey, type: fromType, id: fromId, parent: null, rel: '', srcTable: '', depth: 0 });
+  const queue: Entry[] = [visited.get(fromKey)!];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.depth >= PATH_MAX_DEPTH) continue;
+
+    const connections = findConnections(db, current.type, current.id);
+    for (const conn of connections) {
+      const ckey = `${conn.type}-${conn.id}`;
+      if (visited.has(ckey)) continue;
+      const entry: Entry = {
+        key: ckey, type: conn.type, id: conn.id,
+        parent: current.key, rel: conn.relationship, srcTable: conn.sourceTable,
+        depth: current.depth + 1,
+      };
+      visited.set(ckey, entry);
+
+      if (ckey === toKey) {
+        // Walk parent pointers back to the seed
+        const chain: Entry[] = [];
+        let cur: Entry | undefined = entry;
+        while (cur) {
+          chain.unshift(cur);
+          cur = cur.parent ? visited.get(cur.parent) : undefined;
+        }
+        const path: GNode[] = chain.map(e => ({
+          id: e.key, type: e.type, entityId: e.id,
+          label: getRecordLabel(db, e.type, e.id),
+          metadata: getNodeMetadata(db, e.type, e.id),
+          depth: e.depth,
+        }));
+        const edges: GEdge[] = chain.slice(1).map(e => ({
+          source: e.parent!,
+          target: e.key,
+          relationship: e.rel,
+          sourceTable: e.srcTable,
+        }));
+        return { path, edges };
+      }
+
+      queue.push(entry);
+    }
+  }
+
+  return null;
+}
+
+// ── Routes ───────────────────────────────────────────────────
+
+const VALID_TYPES = ['person', 'vehicle', 'property', 'evidence', 'case', 'incident', 'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order', 'serve_job'];
+
+// GET /connections/graph?type=person&id=123&depth=2
+router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { type, id, depth } = req.query;
+
+    if (!type || !id) {
+      return res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });
+    }
+    if (!VALID_TYPES.includes(String(type))) {
+      return res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+
+    if (isNaN(Number(id)) || Number(id) < 1) {
+      return res.status(400).json({ error: 'id must be a positive integer', code: 'ID_MUST_BE_A' });
+    }
+
+    const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
+    const graph = buildGraph(db, String(type), Number(id), maxDepth);
+
+    auditLog(req, 'SEARCH', 'record_link', Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
+
+    res.json(graph);
+  } catch (error: any) {
+    console.error('Connection graph error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to build connection graph', code: 'FAILED_TO_BUILD_CONNECTION' });
+  }
+});
+
+// GET /connections/path?fromType=X&fromId=Y&toType=A&toId=B
+router.get('/path', requireRole('admin','manager','supervisor','officer','dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { fromType, fromId, toType, toId } = req.query;
+
+    if (!fromType || !fromId || !toType || !toId) {
+      return res.status(400).json({
+        error: 'fromType, fromId, toType, and toId are all required',
+        code: 'PATH_PARAMS_REQUIRED',
+      });
+    }
+    if (!VALID_TYPES.includes(String(fromType))) {
+      return res.status(400).json({ error: `Invalid fromType. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+    if (!VALID_TYPES.includes(String(toType))) {
+      return res.status(400).json({ error: `Invalid toType. Must be one of: ${VALID_TYPES.join(', ')}` });
+    }
+    if (isNaN(Number(fromId)) || Number(fromId) < 1 || isNaN(Number(toId)) || Number(toId) < 1) {
+      return res.status(400).json({ error: 'fromId and toId must be positive integers' });
+    }
+
+    const result = findShortestPath(db, String(fromType), Number(fromId), String(toType), Number(toId));
+    if (!result) {
+      return res.status(404).json({
+        error: `No path found within ${PATH_MAX_DEPTH} hops`,
+        code: 'NO_PATH',
+      });
+    }
+
+    auditLog(
+      req, 'SEARCH', 'record_link', Number(fromId),
+      `Path search: ${fromType} #${fromId} → ${toType} #${toId} (${result.edges.length} hops)`
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Connection path error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to find path', code: 'PATH_FAILED' });
+  }
+});
+
+// GET /connections/search?q=term — cross-entity search
+router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+
+    if (!q || String(q).trim().length < 2) {
+      return res.json([]);
+    }
+
+    const term = `%${escapeLike(String(q).trim())}%`;
+    const results: Array<{ id: number; type: string; label: string }> = [];
+
+    // Persons
+    try {
+      const persons = db.prepare(`
+        SELECT id, first_name, last_name FROM persons
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term, term) as any[];
+      results.push(...persons.map((p: any) => ({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` })));
+    } catch (err: any) { console.error('[Connections] persons search error:', err?.message); }
+
+    // Vehicles
+    try {
+      const vehicles = db.prepare(`
+        SELECT id, make, model, plate_number, color FROM vehicles_records
+        WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term, term, term) as any[];
+      results.push(...vehicles.map((v: any) => ({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() })));
+    } catch (err: any) { console.error('[Connections] vehicles search error:', err?.message); }
+
+    // Properties
+    try {
+      const properties = db.prepare(`
+        SELECT id, name, address FROM properties
+        WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term) as any[];
+      results.push(...properties.map((p: any) => ({ id: p.id, type: 'property', label: p.name })));
+    } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
+
+    // Cases
+    try {
+      const cases = db.prepare(`
+        SELECT id, case_number, title FROM cases
+        WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term) as any[];
+      results.push(...cases.map((c: any) => ({ id: c.id, type: 'case', label: `${c.case_number} - ${c.title}` })));
+    } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
+
+    // Incidents
+    try {
+      const incidents = db.prepare(`
+        SELECT id, incident_number, incident_type FROM incidents
+        WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term, term) as any[];
+      results.push(...incidents.map((i: any) => ({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() })));
+    } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
+
+    // Evidence
+    try {
+      const evidence = db.prepare(`
+        SELECT id, evidence_number, description FROM evidence
+        WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
+        LIMIT 8
+      `).all(term, term) as any[];
+      results.push(...evidence.map((e: any) => ({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() })));
+    } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
+
+    res.json(results);
+  } catch (error: any) {
+    console.error('Connection search error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /connections/export/csv — Export all connections (record_links + junction tables)
+//   Optional: ?seedType=person&seedId=123 exports only the graph rooted at that seed.
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { seedType, seedId } = req.query;
+    const rows: any[] = [];
+
+    if (seedType && seedId) {
+      // Single-graph export
+      if (!VALID_TYPES.includes(String(seedType))) {
+        return res.status(400).json({ error: 'Invalid seedType', code: 'INVALID_SEED_TYPE' });
+      }
+      const graph = buildGraph(db, String(seedType), Number(seedId), 3);
+      for (const e of graph.edges) {
+        const [sType, sId] = e.source.split('-');
+        const [tType, tId] = e.target.split('-');
+        rows.push({
+          source_type: sType, source_id: sId,
+          target_type: tType, target_id: tId,
+          relationship: e.relationship, source_table: e.sourceTable,
+        });
+      }
+    } else {
+      // Full export: record_links + all junction tables UNIONed.
+      // Each block is wrapped in try/catch so missing tables in minimum test
+      // schemas don't abort the full export.
+      try {
+        rows.push(...(db.prepare(
+          `SELECT source_type, source_id, target_type, target_id, relationship,
+                  'record_links' as source_table FROM record_links`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] record_links export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, person_id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  role as relationship, 'incident_persons' as source_table
+           FROM incident_persons`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incident_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'vehicle' as source_type, vehicle_id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  role as relationship, 'incident_vehicles' as source_table
+           FROM incident_vehicles`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incident_vehicles export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, cp.person_id as source_id,
+                  'incident' as target_type, i.id as target_id,
+                  cp.role as relationship, 'call_persons' as source_table
+           FROM call_persons cp
+           JOIN incidents i ON i.call_id = cp.call_id
+           WHERE i.id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] call_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'vehicle' as source_type, cv.vehicle_id as source_id,
+                  'incident' as target_type, i.id as target_id,
+                  cv.role as relationship, 'call_vehicles' as source_table
+           FROM call_vehicles cv
+           JOIN incidents i ON i.call_id = cv.call_id
+           WHERE i.id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] call_vehicles export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, cp.person_id as source_id,
+                  'property' as target_type, p.id as target_id,
+                  cp.relationship as relationship, 'client_persons' as source_table
+           FROM client_persons cp
+           JOIN properties p ON p.client_id = cp.client_id`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] client_persons export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'evidence' as source_type, id as source_id,
+                  'incident' as target_type, incident_id as target_id,
+                  'collected_from' as relationship, 'evidence' as source_table
+           FROM evidence WHERE incident_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] evidence export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'person' as source_type, owner_person_id as source_id,
+                  'vehicle' as target_type, id as target_id,
+                  'owner' as relationship, 'vehicles_records' as source_table
+           FROM vehicles_records WHERE owner_person_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] vehicles_records export error:', err?.message); }
+
+      try {
+        rows.push(...(db.prepare(
+          `SELECT 'incident' as source_type, id as source_id,
+                  'property' as target_type, property_id as target_id,
+                  'location' as relationship, 'incidents' as source_table
+           FROM incidents WHERE property_id IS NOT NULL`
+        ).all() as any[]));
+      } catch (err: any) { console.error('[Connections] incidents export error:', err?.message); }
+    }
+
+    sendCsv(res, 'connections_export.csv', [
+      { key: 'source_type', header: 'Source Type' },
+      { key: 'source_id', header: 'Source ID' },
+      { key: 'target_type', header: 'Target Type' },
+      { key: 'target_id', header: 'Target ID' },
+      { key: 'relationship', header: 'Relationship' },
+      { key: 'source_table', header: 'Source Table' },
+    ], rows);
+
+    auditLog(req, 'EXPORT', 'record_link', 0, `CSV export: ${rows.length} rows`);
+  } catch (err: any) {
+    console.error('[Connections] CSV export error:', err?.message);
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
+  }
+});
+
+// ─── INVESTIGATIONS CRUD ────────────────────────────────────
+// Saved Connections Analyst workspaces: user-owned graph + pinned
+// layout + annotations. Private by default; read-shared via the
+// explicit `shared_user_ids` JSON array. Only the owner writes.
+
+const INVESTIGATION_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
+function canReadInvestigation(inv: any, userId: number): boolean {
+  if (inv.user_id === userId) return true;
+  try {
+    const shared = JSON.parse(inv.shared_user_ids || '[]');
+    return Array.isArray(shared) && shared.includes(userId);
+  } catch { return false; }
+}
+
+// POST /connections/investigations
+router.post('/investigations', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const { name, description, seed_nodes, pinned_layout, annotations, shared_user_ids } = req.body || {};
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' });
+    }
+
+    const info = db.prepare(
+      `INSERT INTO connection_investigations (user_id, name, description, seed_nodes, pinned_layout, annotations, shared_user_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      userId,
+      name.trim(),
+      description || null,
+      JSON.stringify(seed_nodes || []),
+      pinned_layout ? JSON.stringify(pinned_layout) : null,
+      annotations ? JSON.stringify(annotations) : null,
+      JSON.stringify(shared_user_ids || []),
+    );
+
+    const created = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(Number(info.lastInsertRowid));
+    auditLog(req, 'CREATE', 'connection_investigation', Number(info.lastInsertRowid), `Investigation: ${name.trim()}`);
+    res.status(201).json(created);
+  } catch (err: any) {
+    console.error('[Connections] investigation create error:', err?.message);
+    res.status(500).json({ error: 'Create failed', code: 'INV_CREATE_FAILED' });
+  }
+});
+
+// GET /connections/investigations — mine + shared-with-me
+router.get('/investigations', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    // Filter in SQL so legitimate shared investigations aren't silently dropped at scale.
+    // shared_user_ids is a JSON array like '[1,2,3]'. Normalize to ',1,2,3,' and match
+    // ',<userId>,' so that `1` doesn't falsely match inside `12`.
+    const sharedPattern = `%,${userId},%`;
+    const visible = db.prepare(
+      `SELECT * FROM connection_investigations
+       WHERE user_id = ?
+          OR ',' || REPLACE(REPLACE(shared_user_ids, '[', ''), ']', '') || ',' LIKE ?
+       ORDER BY updated_at DESC
+       LIMIT 500`
+    ).all(userId, sharedPattern) as any[];
+
+    auditLog(req, 'READ', 'connection_investigation' as any, 0, `Investigation list: ${visible.length} items`);
+    res.json(visible);
+  } catch (err: any) {
+    console.error('[Connections] investigations list error:', err?.message);
+    res.status(500).json({ error: 'List failed', code: 'INV_LIST_FAILED' });
+  }
+});
+
+// GET /connections/investigations/:id
+router.get('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (!canReadInvestigation(row, userId)) return res.status(403).json({ error: 'Forbidden', code: 'INV_FORBIDDEN' });
+
+    auditLog(req, 'READ' as any, 'connection_investigation', id, 'Investigation read');
+    res.json(row);
+  } catch (err: any) {
+    console.error('[Connections] investigation read error:', err?.message);
+    res.status(500).json({ error: 'Read failed', code: 'INV_READ_FAILED' });
+  }
+});
+
+// PUT /connections/investigations/:id — owner only
+router.put('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (row.user_id !== userId) return res.status(403).json({ error: 'Only owner can update', code: 'INV_NOT_OWNER' });
+
+    const { name, description, seed_nodes, pinned_layout, annotations, shared_user_ids } = req.body || {};
+
+    const updates: string[] = [];
+    const params: any[] = [];
+    if (name !== undefined) { updates.push('name = ?'); params.push(String(name).trim()); }
+    if (description !== undefined) { updates.push('description = ?'); params.push(description); }
+    if (seed_nodes !== undefined) { updates.push('seed_nodes = ?'); params.push(JSON.stringify(seed_nodes)); }
+    if (pinned_layout !== undefined) { updates.push('pinned_layout = ?'); params.push(pinned_layout ? JSON.stringify(pinned_layout) : null); }
+    if (annotations !== undefined) { updates.push('annotations = ?'); params.push(annotations ? JSON.stringify(annotations) : null); }
+    if (shared_user_ids !== undefined) { updates.push('shared_user_ids = ?'); params.push(JSON.stringify(shared_user_ids)); }
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+
+    if (updates.length === 1) return res.json(row);  // nothing to update besides timestamp
+
+    params.push(id);
+    db.prepare(`UPDATE connection_investigations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    const updated = db.prepare('SELECT * FROM connection_investigations WHERE id = ?').get(id);
+    auditLog(req, 'UPDATE', 'connection_investigation', id, 'Investigation updated');
+    res.json(updated);
+  } catch (err: any) {
+    console.error('[Connections] investigation update error:', err?.message);
+    res.status(500).json({ error: 'Update failed', code: 'INV_UPDATE_FAILED' });
+  }
+});
+
+// DELETE /connections/investigations/:id — owner only
+router.delete('/investigations/:id', requireRole(...INVESTIGATION_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const id = Number(req.params.id);
+    if (isNaN(id) || id < 1) return res.status(400).json({ error: 'Invalid id' });
+
+    const row = db.prepare('SELECT user_id FROM connection_investigations WHERE id = ?').get(id) as any;
+    if (!row) return res.status(404).json({ error: 'Not found', code: 'INV_NOT_FOUND' });
+    if (row.user_id !== userId) return res.status(403).json({ error: 'Only owner can delete', code: 'INV_NOT_OWNER' });
+
+    db.prepare('DELETE FROM connection_investigations WHERE id = ?').run(id);
+    auditLog(req, 'DELETE', 'connection_investigation', id, 'Investigation deleted');
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Connections] investigation delete error:', err?.message);
+    res.status(500).json({ error: 'Delete failed', code: 'INV_DELETE_FAILED' });
+  }
+});
+
+// ─── SUGGESTIONS (rule-based, admin/manager/supervisor only) ────
+
+const SUGGESTIONS_DISCLAIMER =
+  'Heuristic — not evidence. Surfaces patterns for investigative follow-up only.';
+
+function suggestionsEnabled(db: any): boolean {
+  try {
+    const row = db.prepare("SELECT config_value as value FROM system_config WHERE config_key = 'connections.suggestions_enabled'").get() as any;
+    if (!row) return false;
+    const v = String(row.value).toLowerCase();
+    return v === 'true' || v === '1' || v === 'yes';
+  } catch { return false; }
+}
+
+// GET /connections/suggestions?type=person&id=123
+router.get('/suggestions', requireRole('admin','manager','supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    if (!suggestionsEnabled(db)) {
+      return res.status(403).json({
+        error: 'Suggestions feature is disabled. Enable via system_config key connections.suggestions_enabled.',
+        code: 'FEATURE_DISABLED',
+      });
+    }
+
+    const { type, id } = req.query;
+    if (type !== 'person') {
+      return res.status(400).json({
+        error: 'Only type=person is supported in v1',
+        code: 'UNSUPPORTED_SEED_TYPE',
+      });
+    }
+    if (!id || isNaN(Number(id)) || Number(id) < 1) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
+    const suggestions = buildSuggestions(db, Number(id));
+    auditLog(req, 'SEARCH', 'record_link', Number(id), `Suggestions: person #${id} → ${suggestions.length} hits`);
+
+    res.json({
+      disclaimer: SUGGESTIONS_DISCLAIMER,
+      seed: { type: 'person', id: Number(id) },
+      suggestions,
+    });
+  } catch (err: any) {
+    console.error('[Connections] suggestions error:', err?.message);
+    res.status(500).json({ error: 'Suggestions failed', code: 'SUGGESTIONS_FAILED' });
+  }
+});
+
+export default router;
