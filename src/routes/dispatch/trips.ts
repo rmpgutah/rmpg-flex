@@ -5,7 +5,7 @@
 // audit Trip Log PDF.
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst } from '../../utils/db';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
 
 const trips = new Hono<Env>();
 
@@ -74,6 +74,57 @@ trips.get('/:id', async (c) => {
     return c.json({ ...trip, points });
   } catch (e) {
     return c.json({ error: 'Failed to load trip' }, 500);
+  }
+});
+
+// DELETE /dispatch/trips/:id — remove a falsely-detected trip record.
+//
+// Auto-detection can log spurious trips (GPS jumps, parking-lot creep before
+// the noise filter existed), and those false rows pollute the audit Trip Log.
+// Guarded per the CFS-delete lesson (PR #960): only privileged roles or the
+// trip's own officer may delete, the deletion is written to audit_log, and the
+// trip's gps_breadcrumbs are DETACHED (trip_id = NULL), never destroyed — the
+// raw GPS history survives even if the trip grouping was wrong.
+const TRIP_DELETE_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']);
+
+trips.delete('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+    const trip = await queryFirst<{ id: number; officer_id: number | null; status: string; trip_type: string; start_time: string; distance_m: number | null }>(
+      db, 'SELECT id, officer_id, status, trip_type, start_time, distance_m FROM unit_trips WHERE id = ?', id);
+    if (!trip) return c.json({ error: 'Not found' }, 404);
+
+    const isPrivileged = TRIP_DELETE_ROLES.has(user.role);
+    const isOwner = trip.officer_id != null && trip.officer_id === user.id;
+    if (!isPrivileged && !isOwner) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    if (trip.status === 'active') {
+      return c.json({ error: 'Cannot delete an active trip — end it first' }, 409);
+    }
+
+    await execute(db, 'UPDATE gps_breadcrumbs SET trip_id = NULL WHERE trip_id = ?', id);
+    await execute(db, 'DELETE FROM unit_trips WHERE id = ?', id);
+
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        user.id, 'DELETE', 'unit_trip', id,
+        `Deleted ${trip.trip_type} trip #${id} (start ${trip.start_time}, ${((trip.distance_m ?? 0) / 1609.34).toFixed(2)} mi) as false record`);
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for trip delete:', auditErr);
+    }
+
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: 'Failed to delete trip' }, 500);
   }
 });
 

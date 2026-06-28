@@ -17,6 +17,54 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { openNationalWarrantPdf, type NationalWarrantHit } from '../utils/nationalWarrantPdf';
 import { toDisplayLabel } from '../utils/formatters';
 
+type CoverageStatus = 'active' | 'pending' | 'disabled';
+
+interface NationalCoverageState {
+  stateCode: string;
+  stateName: string;
+  available: boolean;
+  message?: string;
+}
+
+interface NationalCoverageResponse {
+  states: NationalCoverageState[];
+  updatedAt?: string;
+  sources?: number;
+  states_covered?: number;
+  active_warrants?: number;
+  state_status?: Record<string, CoverageStatus>;
+  state_sources?: Record<string, number>;
+  state_warrants?: Record<string, number>;
+}
+
+interface NationalWarrantSearchResults {
+  total?: number;
+  search_time_ms?: number;
+  by_state?: Record<string, Warrant[]>;
+  local?: Warrant[];
+  error?: string;
+}
+
+interface Warrant {
+  id?: string | number;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  dob?: string;
+  age?: number | string;
+  state?: string;
+  warrant_type?: string | null;
+  offense_level?: string | null;
+  charge?: string;
+  charges?: string;
+  issued_date?: string | null;
+  photo_url?: string | null;
+  status?: string | null;
+  bond_amount?: number | string | null;
+  court?: string;
+  source?: string;
+}
+
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
   { code: '', label: 'All States' },
@@ -237,6 +285,9 @@ export default function NationalWarrantSearchPage() {
   // ── Ref: first name input (for N / `/` shortcut focus) ────
   const firstNameRef = useRef<HTMLInputElement>(null);
 
+  // ── Ref: first name input (for N / `/` shortcut focus) ────
+  const firstNameRef = useRef<HTMLInputElement>(null);
+
   // URL deep-link contract — operators land here from /persons, /warrants,
   // dispatch, NCIC, etc. with the subject's name + DOB. Honored params:
   //   ?last_name=  ?first_name=  ?dob=  ?state=  ?offense_level=
@@ -282,6 +333,7 @@ export default function NationalWarrantSearchPage() {
   const [searched, setSearched] = useState(false);
   const [coverage, setCoverage] = useState<any>(null);
   const [coverageLoading, setCoverageLoading] = useState(true);
+  const [searchValidationError, setSearchValidationError] = useState<string | null>(null);
 
   // ?warrant_id= deep-link — highlights a specific result row and scrolls
   // to it once the auto-triggered search resolves. Cleared on Esc or click.
@@ -297,7 +349,7 @@ export default function NationalWarrantSearchPage() {
   // ── Load Coverage ─────────────────────────────────────────
   useEffect(() => {
     setCoverageLoading(true);
-    apiFetch<any>('/api/warrants/national-coverage')
+    apiFetch<NationalCoverageResponse>('/api/warrants/national-coverage')
       .then(data => setCoverage(data))
       .catch(() => setCoverage(null))
       .finally(() => setCoverageLoading(false));
@@ -326,11 +378,12 @@ export default function NationalWarrantSearchPage() {
     };
     if (!body.first_name && !body.last_name && !body.dob && !body.state && !body.charge_keyword) return;
 
+    setSearchValidationError(null);
     setSearching(true);
     setSearched(true);
     setResults(null);
     try {
-      const data = await apiFetch<any>('/api/warrants/national-search', {
+      const data = await apiFetch<NationalWarrantSearchResults>('/api/warrants/national-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -453,8 +506,8 @@ export default function NationalWarrantSearchPage() {
 
   const totalResults = results?.total ?? 0;
   const searchTime = results?.search_time_ms ?? 0;
-  const stateGroups: Record<string, any[]> = results?.by_state ?? {};
-  const localResults: any[] = results?.local ?? [];
+  const stateGroups: Record<string, Warrant[]> = results?.by_state ?? {};
+  const localResults: Warrant[] = results?.local ?? [];
   const stateGroupKeys = Object.keys(stateGroups).sort();
 
   // Officer signature line for every PDF pulled from this page — same
@@ -583,6 +636,14 @@ export default function NationalWarrantSearchPage() {
             />
           </div>
         </form>
+
+        {/* ─── Validation Error ────────────────────────── */}
+        {searchValidationError && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-950/40 border border-red-800/50 text-red-400 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            {searchValidationError}
+          </div>
+        )}
 
         {/* ─── US Coverage Map ────────────────────────── */}
         <div className="panel-raised p-3">
@@ -768,7 +829,6 @@ export default function NationalWarrantSearchPage() {
                         preparedBy={preparedBy}
                         highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                         onClearHighlight={() => setHighlightId('')}
-                        canPrint={canPrint}
                       />
                     ))}
                   </div>
@@ -806,7 +866,6 @@ export default function NationalWarrantSearchPage() {
                           preparedBy={preparedBy}
                           highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                           onClearHighlight={() => setHighlightId('')}
-                          canPrint={canPrint}
                         />
                       ))}
                     </div>
@@ -863,13 +922,11 @@ function WarrantRow({
   preparedBy,
   highlighted,
   onClearHighlight,
-  canPrint,
 }: {
   warrant: any;
   preparedBy?: string;
   highlighted?: boolean;
   onClearHighlight?: () => void;
-  canPrint?: boolean;
 }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
