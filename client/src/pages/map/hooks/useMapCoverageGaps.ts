@@ -301,6 +301,7 @@ export function useMapCoverageGaps(
         if (map.getSource(id)) map.removeSource(id);
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, units, enabled, radiusMiles]);
 
   useEffect(() => {
@@ -310,6 +311,7 @@ export function useMapCoverageGaps(
         popupRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { coverageCount, uncoveredArea: coverageCount === 0, deadZones, repositionSuggestions };

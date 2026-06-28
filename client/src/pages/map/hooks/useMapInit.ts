@@ -52,6 +52,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
     if (!mapRef.current) return;
 
     injectKeyframes();
+    injectMapStyles();
     setMapError(null);
 
     if (mapInstanceRef.current) {

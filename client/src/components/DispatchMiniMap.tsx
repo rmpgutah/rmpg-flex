@@ -126,7 +126,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // GPS poll never re-centers the map ("reload while the unit moves") or
   // disturbs the static call pin.
   useEffect(() => {
-    if (!loaded || !mapContainerRef.current) return;
+    if (!loaded || !mapRef.current) return;
+    const map = mapRef.current;
 
     // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
     // so a call with bad coordinates never anchors the map / drops a teardrop.

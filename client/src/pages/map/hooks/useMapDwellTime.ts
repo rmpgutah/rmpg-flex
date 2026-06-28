@@ -49,6 +49,23 @@ export function useMapDwellTime(
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const sourceId = 'dwell-time';
   const pulseIntervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+
+  function removeDwellLayers() {
+    if (!map) return;
+    layerIdsRef.current.forEach((id) => {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ignore */ }
+    });
+    sourceIdsRef.current.forEach((id) => {
+      try { if (map.getSource(id)) map.removeSource(id); } catch { /* ignore */ }
+    });
+    layerIdsRef.current = [];
+    sourceIdsRef.current = [];
+    pulseIntervalsRef.current.forEach((id) => clearInterval(id));
+    pulseIntervalsRef.current = [];
+    popupRef.current?.remove();
+    popupRef.current = null;
+  }
 
   useEffect(() => {
     if (!enabled) {
@@ -169,6 +186,7 @@ export function useMapDwellTime(
       pulseIntervalsRef.current.forEach((id) => clearInterval(id));
       pulseIntervalsRef.current = [];
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, dwellData]);
 
   useEffect(() => {
@@ -178,6 +196,7 @@ export function useMapDwellTime(
         popupRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const dwellAlertCount = dwellData.filter((d) => d.dwell_minutes > 15).length;
