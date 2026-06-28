@@ -106,16 +106,20 @@ export default function FuelAnalyticsPage() {
     setError('');
     try {
       const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
-      // Kick all three requests off in parallel — independent aggregates,
-      // no reason to serialize.
-      const [ov, officers, cards] = await Promise.all([
+      // Kick all three requests off in parallel — independent aggregates, no
+      // reason to serialize. Use allSettled (not all): these endpoints can fail
+      // independently, and a single rejection must NOT discard the other two
+      // datasets (the old Promise.all blanked the entire page when one 404'd).
+      const [ovR, offR, cardR] = await Promise.allSettled([
         apiFetch<FuelAnalyticsOverview>(`/fleet/fuel/analytics/overview?days=${days}`),
         apiFetch<{ data: FuelAnalyticsByOfficer[] }>(`/fleet/fuel/analytics/by-officer?since=${since}`),
         apiFetch<{ data: FuelAnalyticsByCard[] }>('/fleet/fuel/analytics/by-card'),
       ]);
-      setOverview(ov);
-      setByOfficer(officers.data || []);
-      setByCard(cards.data || []);
+      if (ovR.status === 'fulfilled') setOverview(ovR.value);
+      if (offR.status === 'fulfilled') setByOfficer(offR.value.data || []);
+      if (cardR.status === 'fulfilled') setByCard(cardR.value.data || []);
+      const failed = [ovR, offR, cardR].filter((r) => r.status === 'rejected').length;
+      if (failed) setError(`${failed} of 3 analytics sections failed to load`);
     } catch (e: any) {
       setError(e?.message || 'Failed to load analytics');
     } finally {
@@ -126,7 +130,7 @@ export default function FuelAnalyticsPage() {
   useEffect(() => { load(windowDays); /* eslint-disable-next-line */ }, [windowDays]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-base">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -138,7 +142,7 @@ export default function FuelAnalyticsPage() {
           </h1>
         </div>
         <div className="flex items-center gap-1.5">
-          <label className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
+          <label htmlFor="ff-fuelanalyticspage-0" className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
           <select id="ff-fuelanalyticspage-0" className="select-dark text-[10px] min-h-[28px] py-0.5"
             value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
             {WINDOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -177,8 +181,8 @@ export default function FuelAnalyticsPage() {
       {/* Totals strip */}
       {overview && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <Stat icon={Fuel} color="text-gray-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
-          <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Fills" value={fmtNumber(overview.totals.fill_count)} />
+          <Stat icon={Fuel} color="text-rmpg-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
           <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={overview.totals.flag_rate != null ? `${overview.totals.flag_rate.toFixed(1)}%` : '—'} />
@@ -199,7 +203,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Vehicles by Cost" icon={Gauge} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Vehicle</th>
@@ -225,7 +229,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No fills in this window</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -233,7 +237,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Top Stations" icon={MapPin} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Station</th>
@@ -255,7 +259,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={4} className="text-center text-[10px] text-rmpg-500 py-4">No stations recorded</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -263,7 +267,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Drivers" icon={Users} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Driver</th>
@@ -292,7 +296,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No driver attribution recorded yet</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -300,7 +304,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Fuel Cards — Monthly Spend" icon={CreditCard} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Card</th>
@@ -337,7 +341,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={5} className="text-center text-[10px] text-rmpg-500 py-4">No fuel cards configured</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -404,7 +408,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
           <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full gap-px"
             title={`${d.month}: ${d.gallons.toFixed(1)} gal, $${d.cost.toFixed(2)}, ${d.fills} fills`}>
             <div className="w-full flex items-end justify-center gap-0.5 h-full">
-              <div className="bg-gray-600/60 w-1/2 border-t border-gray-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
+              <div className="bg-rmpg-600/60 w-1/2 border-t border-rmpg-400" style={{ height: `${(d.gallons / maxGal) * 100}%`, minHeight: '1px' }} />
               <div className="bg-amber-600/60 w-1/2 border-t border-amber-400" style={{ height: `${(d.cost / maxCost) * 100}%`, minHeight: '1px' }} />
             </div>
           </div>
@@ -418,7 +422,7 @@ function MonthlyTrendChart({ data }: { data: Array<{ month: string; cost: number
         ))}
       </div>
       <div className="flex justify-center gap-3 mt-2 text-[8px] text-rmpg-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-gray-400"></span>Gallons</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-rmpg-400"></span>Gallons</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400"></span>Cost</span>
       </div>
     </div>

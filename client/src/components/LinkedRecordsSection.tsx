@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link2, Plus, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from './ToastProvider';
 import type { RecordEntityType } from '../types';
 import {
   getRecordTypeIcon,
@@ -46,6 +47,7 @@ interface Props {
 /* ------------------------------------------------------------------ */
 
 export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkModal }: Props) {
+  const { addToast } = useToast();
   const [links, setLinks] = useState<EnrichedLink[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
         await fetchLinks();
       } catch (err) {
         console.error('Failed to delete link:', err);
+        addToast((err as any)?.message || 'Failed to delete link', 'error');
       } finally {
         setDeletingId(null);
       }
@@ -88,7 +91,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
   /* ---- Render ---------------------------------------------------- */
 
   return (
-    <div className="panel-beveled p-3" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled p-3" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -141,7 +144,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                 <Icon size={14} className={color.text} />
 
                 {/* Label */}
-                <span className="text-rmpg-200 truncate flex-1">{link.linked_label}</span>
+                <span className="text-rmpg-200 min-w-0 truncate flex-1">{link.linked_label}</span>
 
                 {/* Type badge — Title-cased plain label ("Incident") */}
                 <span

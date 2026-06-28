@@ -7,9 +7,11 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { evaluateNotificationRules } from './notificationEngine';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { runAllSourceScans } from '../utils/warrantSources/runScan';
 
 const warrants = new Hono<Env>();
 
@@ -53,7 +55,7 @@ warrants.get('/watch/runs', requireRole(...READ_ROLES), async (c) => {
 warrants.post('/watch/scan', requireRole(...SCAN_ROLES), async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
-    runUtahWarrantScan(db).catch((err) => {
+    runAllSourceScans(db).catch((err) => {
       console.error('[warrants] manual scan failed:', err);
     }),
   );
@@ -115,9 +117,9 @@ warrants.get('/utah', requireRole(...READ_ROLES), async (c) => {
 // utah_warrants table (the cron poller's cache) and returns the SPA's
 // UnifiedSearchResults shape { local, utah, scraped, meta }. Was 404 in both
 // Workers → the tab threw "API endpoint not found" and the unhandled rejection
-// surfaced in the console. `scraped` is empty: there is no separate scraped
-// table on live D1 (the rewrite synthesizes scrapers from utah_warrants), so
-// folding scraped results in would double-list the Utah hits.
+// surfaced in the console. `scraped` is now backed by the scraped_warrants
+// table populated by the multi-source orchestrator (Ada/Natrona/etc.); it
+// mirrors the utah branch (filter guard + LIKE escaping + defensive []).
 warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
   const startedAt = Date.now();
   let body: Record<string, unknown> = {};
@@ -211,7 +213,37 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     utah = [];
   }
 
-  const scraped: Record<string, unknown>[] = [];
+  // ── Multi-State scraped warrants (multi-source orchestrator cache) ──
+  // Mirrors the utah branch: only run with a name/court/charge/number filter,
+  // reuse the same like() ESCAPE pattern, and defensively fall back to [] if
+  // the table is cold. Feeds the WarrantsPage "Multi-State Scraped" panel.
+  let scraped: Record<string, unknown>[] = [];
+  try {
+    const hasScrapedFilter = firstName || lastName || court || chargeKeyword || warrantNumber;
+    if (hasScrapedFilter) {
+      const f: string[] = ["status = 'active'"];
+      const p: unknown[] = [];
+      if (firstName) { f.push("first_name LIKE ? ESCAPE '\\'"); p.push(like(firstName)); }
+      if (lastName) { f.push("last_name LIKE ? ESCAPE '\\'"); p.push(like(lastName)); }
+      if (court) { f.push("court_name LIKE ? ESCAPE '\\'"); p.push(like(court)); }
+      if (chargeKeyword) { f.push("charge_description LIKE ? ESCAPE '\\'"); p.push(like(chargeKeyword)); }
+      if (warrantNumber) { f.push("(case_number LIKE ? ESCAPE '\\' OR warrant_id LIKE ? ESCAPE '\\')"); p.push(like(warrantNumber), like(warrantNumber)); }
+      scraped = await query<Record<string, unknown>>(
+        db,
+        `SELECT source_key, first_name, last_name, charge_description, court_name,
+                case_number, issue_date, bail_amount, offense_level, warrant_id,
+                city, state
+           FROM scraped_warrants
+           WHERE ${f.join(' AND ')}
+           ORDER BY last_seen_at DESC
+           LIMIT 100`,
+        ...p,
+      );
+    }
+  } catch (err) {
+    console.error('[warrants] search-all scraped query error:', (err as Error)?.message);
+    scraped = [];
+  }
 
   return c.json({
     local,
@@ -219,7 +251,7 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     scraped,
     meta: {
       duration: Date.now() - startedAt,
-      sources: ['local', 'utah'],
+      sources: ['local', 'utah', 'scraped'],
       utahBlocked: false,
       searchedAt: new Date().toISOString(),
       totalHits: local.length + utah.length + scraped.length,
@@ -706,6 +738,22 @@ const SOURCE_REGISTRY: Record<string, ScraperRegistryEntry> = {
     source_type: 'api',
     priority: 1,
   },
+  'ada-county-id': {
+    display_name: 'Ada County Sheriff (ID)',
+    state: 'ID',
+    county: 'Ada',
+    source_url: 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx',
+    source_type: 'html',
+    priority: 2,
+  },
+  'natrona-county-wy': {
+    display_name: 'Natrona County Sheriff (WY)',
+    state: 'WY',
+    county: 'Natrona',
+    source_url: 'https://warrants.natronacounty-wy.gov',
+    source_type: 'html',
+    priority: 2,
+  },
 };
 
 // A-F grade per client/src/types/scrapers.ts cutoffs. Threshold-only —
@@ -865,7 +913,10 @@ warrants.get('/scrapers', requireRole(...READ_ROLES), async (c) => {
           county: registry.county,
           source_url: registry.source_url,
           source_type: registry.source_type,
-          enabled: 1 as const,
+          // `enabled` column added in mig 0151. Older rows / pre-migration
+          // DBs return undefined → default to 1 (the prior hardcoded value)
+          // so the UI doesn't show every source as disabled.
+          enabled: (cfg.enabled === 0 ? 0 : 1) as 0 | 1,
           circuit_broken,
           priority: registry.priority,
           consecutive_errors: metrics.consecutive_errors,
@@ -1036,6 +1087,81 @@ warrants.post('/scrapers/:source_key/reset-circuit', requireRole(...SCAN_ROLES),
   } catch (err) {
     console.error('[warrants] reset-circuit error', err);
     return c.json({ error: 'Failed to reset circuit' }, 500);
+  }
+});
+
+// Bulk-action support: the `enabled` column was added in mig 0151. Because
+// deploy.yml applies migrations with `continue-on-error: true`, we reconcile
+// at runtime — same idiom as ensureAssessorColumns / clearpathAlpr.ts.
+async function ensureScraperEnabledColumn(db: D1Database): Promise<void> {
+  if (!(await columnExists(db, 'warrant_scraper_config', 'enabled'))) {
+    await execute(db, 'ALTER TABLE warrant_scraper_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  }
+}
+
+// POST /warrants/scrapers/bulk — multi-source bulk action endpoint.
+// Backs the bulk toolbar + right-click menu in AdminWarrantScrapersTab.
+// Body: { action: 'enable'|'disable'|'reset'|'set_priority', source_keys: string[], priority?: 1..4 }
+// Response: { success: boolean, affected: number }
+warrants.post('/scrapers/bulk', requireRole(...SCAN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      action?: string;
+      source_keys?: unknown;
+      priority?: unknown;
+    }>();
+
+    const action = body.action;
+    const keys = Array.isArray(body.source_keys)
+      ? body.source_keys.filter((k): k is string => typeof k === 'string' && k.length > 0)
+      : [];
+
+    if (!action || !['enable', 'disable', 'reset', 'set_priority'].includes(action)) {
+      return c.json({ error: `Invalid action '${String(action)}'` }, 400);
+    }
+    if (keys.length === 0) {
+      return c.json({ error: 'source_keys must be a non-empty string array' }, 400);
+    }
+
+    // ?,?,?... — D1 doesn't support array bindings, so expand manually.
+    const placeholders = keys.map(() => '?').join(', ');
+
+    let sql: string;
+    let bindings: unknown[];
+
+    switch (action) {
+      case 'enable':
+      case 'disable': {
+        await ensureScraperEnabledColumn(db);
+        sql = `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name IN (${placeholders})`;
+        bindings = [action === 'enable' ? 1 : 0, ...keys];
+        break;
+      }
+      case 'reset': {
+        sql = `UPDATE warrant_scraper_config SET last_error = NULL WHERE source_name IN (${placeholders})`;
+        bindings = keys;
+        break;
+      }
+      case 'set_priority': {
+        const p = Number(body.priority);
+        if (!Number.isInteger(p) || p < 1 || p > 4) {
+          return c.json({ error: 'priority must be an integer in 1..4 for set_priority' }, 400);
+        }
+        sql = `UPDATE warrant_scraper_config SET priority = ? WHERE source_name IN (${placeholders})`;
+        bindings = [p, ...keys];
+        break;
+      }
+      default:
+        // Unreachable — guarded above.
+        return c.json({ error: 'unreachable' }, 500);
+    }
+
+    const result = await db.prepare(sql).bind(...bindings).run();
+    return c.json({ success: true, affected: result.meta?.changes ?? 0 });
+  } catch (err) {
+    console.error('[warrants] /scrapers/bulk error', err);
+    return c.json({ error: 'Bulk action failed' }, 500);
   }
 });
 
@@ -1227,7 +1353,7 @@ warrants.get('/', requireRole(...ROLES_CRUD_READ), async (c) => {
     if (sinceDays) {
       const n = parseInt(sinceDays, 10);
       if (Number.isFinite(n)) {
-        where.push("julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) <= ?");
+        where.push("julianday('now') - julianday(COALESCE(w.issued_date, w.created_at)) <= ?");
         params.push(n);
       }
     }
@@ -1260,7 +1386,7 @@ warrants.get('/', requireRole(...ROLES_CRUD_READ), async (c) => {
     // Sort — pick from a whitelist so an attacker can't inject ORDER BY.
     const sortMap: Record<string, string> = {
       priority: 'COALESCE(w.priority_score, 0)',
-      age: "julianday('now') - julianday(COALESCE(w.issue_date, w.created_at))",
+      age: "julianday('now') - julianday(COALESCE(w.issued_date, w.created_at))",
       freshness: "julianday('now') - julianday(COALESCE(w.last_checked_at, w.updated_at))",
       alpha: 'w.warrant_number',
       created_at: 'w.created_at',
@@ -1389,6 +1515,29 @@ warrants.post('/', requireRole(...ROLES_CRUD_WRITE), async (c) => {
       `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
       warrantId,
     );
+
+    // Alert Rules engine — fire 'warrant_created' so configured rules
+    // notify their targets. Best-effort; never blocks the create.
+    await evaluateNotificationRules(db, 'warrant_created', {
+      title: 'Warrant Created',
+      message: `${created?.warrant_number ?? 'New warrant'} — ${created?.subject_name ?? created?.charge_description ?? ''}`,
+      priority: 'normal',
+      entity_type: 'warrant',
+      entity_id: warrantId as number,
+    }, c.env);
+
+    // NSOPW: every warrant subject auto-screens against the nationwide
+    // SOR. Fire-and-forget so a SOR miss / timeout never blocks the
+    // warrant create. Confirmed hits land in screening_hits and surface
+    // on the warrant detail page (NSOPW Status section).
+    if (subjectPersonId != null) {
+      c.executionCtx.waitUntil(
+        import('../utils/screening/nsopwAdapter')
+          .then(({ screenPersonForSor }) =>
+            screenPersonForSor(c.env, subjectPersonId, { triggeredBy: 'warrant_create' }))
+          .catch((err) => console.warn('[nsopw] warrant_create screen failed:', err)),
+      );
+    }
 
     return c.json(created, 201);
   } catch (err) {
@@ -1722,6 +1871,124 @@ warrants.post('/ingest-utah', requireRole(...ROLES_CRUD_WRITE), async (c) => {
     console.error('[warrants] ingest-utah error', err);
     return c.json({ error: 'Failed to ingest utah warrants', code: 'INGEST_UTAH_WARRANTS_ERROR' }, 500);
   }
+});
+
+// ============================================================
+// National warrant search + coverage routes
+// Backs client/src/pages/NationalWarrantSearchPage.tsx
+// ============================================================
+
+// GET /warrants/national-coverage — drives the NationalWarrantSearchPage coverage map.
+// Returns { sources, states_covered, active_warrants, state_status, state_sources, state_warrants }.
+// Falls back to safe zeros on any DB error (pre-migration / cold D1).
+warrants.get('/national-coverage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sources = await query<{ state: string | null; source_key: string }>(db,
+      "SELECT state, source_key FROM national_warrant_sources WHERE enabled = 1").catch(() => []);
+    // FBI (US) and Utah County (UT) are code-resident adapters — always counted.
+    const stateSources: Record<string, number> = { US: 1, UT: 1 };
+    for (const s of sources) {
+      const st = (s.state || 'US').toUpperCase();
+      stateSources[st] = (stateSources[st] ?? 0) + 1;
+    }
+    const counts = await query<{ state: string; n: number }>(db,
+      "SELECT COALESCE(state,'US') AS state, COUNT(*) n FROM scraped_warrants WHERE status='active' GROUP BY state").catch(() => []);
+    const stateWarrants: Record<string, number> = {};
+    let activeWarrants = 0;
+    for (const r of counts) {
+      const st = (r.state || 'US').toUpperCase();
+      stateWarrants[st] = (stateWarrants[st] ?? 0) + Number(r.n);
+      activeWarrants += Number(r.n);
+    }
+    const stateStatus: Record<string, 'active' | 'pending' | 'disabled'> = {};
+    for (const st of Object.keys(stateSources)) {
+      stateStatus[st] = (stateWarrants[st] ?? 0) > 0 ? 'active' : 'pending';
+    }
+    return c.json({
+      sources: Object.values(stateSources).reduce((a, b) => a + b, 0),
+      states_covered: Object.keys(stateSources).length,
+      active_warrants: activeWarrants,
+      state_status: stateStatus,
+      state_sources: stateSources,
+      state_warrants: stateWarrants,
+    });
+  } catch {
+    return c.json({ sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} });
+  }
+});
+
+// POST /warrants/national-search — query the cached scraped_warrants across all sources.
+// Body: { last_name, first_name, dob, state, charge_keyword, warrant_type, offense_level }
+// Returns { total, search_time_ms, by_state, local }.
+// Field names in the SELECT are aliased to match what NationalWarrantSearchPage reads:
+//   source_key→source, date_of_birth→dob, charge_description→charges,
+//   court_name→court, bail_amount→bond_amount, issue_date→issued_date.
+//   offense_level and status are included verbatim (page reads both).
+warrants.post('/national-search', requireRole(...READ_ROLES), async (c) => {
+  const startedAt = Date.now();
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  // Escape LIKE metacharacters so user input can't accidentally widen the match.
+  const likeContains = (v: string) => `%${v.replace(/[%_\\]/g, '\\$&')}%`;
+  try {
+    const db = getDb(c.env);
+    const filters: string[] = ["status = 'active'"];
+    const params: unknown[] = [];
+    const last = s(body.last_name);
+    if (last) { filters.push("(last_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(last), likeContains(last)); }
+    const first = s(body.first_name);
+    if (first) { filters.push("(first_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(first), likeContains(first)); }
+    const dob = s(body.dob);
+    if (dob) { filters.push('date_of_birth = ?'); params.push(dob); }
+    const st = s(body.state);
+    if (st) { filters.push('UPPER(state) = ?'); params.push(st.toUpperCase()); }
+    const chg = s(body.charge_keyword);
+    if (chg) { filters.push("charge_description LIKE ? ESCAPE '\\'"); params.push(likeContains(chg)); }
+    const wt = s(body.warrant_type);
+    if (wt) { filters.push("warrant_type LIKE ? ESCAPE '\\'"); params.push(likeContains(wt)); }
+    const ol = s(body.offense_level);
+    if (ol) { filters.push("offense_level LIKE ? ESCAPE '\\'"); params.push(likeContains(ol)); }
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT source_key AS source, full_name, first_name, last_name,
+              date_of_birth AS dob, age, city, state,
+              charge_description AS charges, court_name AS court, case_number,
+              bail_amount AS bond_amount, issue_date AS issued_date,
+              warrant_type, offense_level, status, photo_url, detail_url, kind
+         FROM scraped_warrants WHERE ${filters.join(' AND ')} ORDER BY last_seen_at DESC LIMIT 500`,
+      ...params);
+    const byState: Record<string, Record<string, unknown>[]> = {};
+    for (const r of rows) {
+      const k = String(r.state || 'US').toUpperCase();
+      (byState[k] ??= []).push(r);
+    }
+    return c.json({ total: rows.length, search_time_ms: Date.now() - startedAt, by_state: byState, local: [] });
+  } catch (err) {
+    console.error('[warrants/national-search]', err);
+    return c.json({ total: 0, search_time_ms: Date.now() - startedAt, by_state: {}, local: [], error: 'search failed' }, 500);
+  }
+});
+
+// GET /warrants/national/sources — registry + state for the NationalWarrantSearchPage sources panel.
+warrants.get('/national/sources', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT source_key, family, display_name, state, kind, enabled FROM national_warrant_sources ORDER BY state, source_key');
+    return c.json({ data: rows });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// POST /warrants/national/scan — manual full scan across all national sources (fire-and-forget).
+// Same waitUntil pattern as /watch/scan — returns 202 immediately; poll /warrants/watch/runs.
+warrants.post('/national/scan', requireRole(...SCAN_ROLES), async (c) => {
+  c.executionCtx.waitUntil(
+    runAllSourceScans(getDb(c.env)).catch((err) => {
+      console.error('[warrants/national/scan]', err);
+    }),
+  );
+  return c.json({ success: true, started: true, message: 'National scan started; poll /warrants/watch/runs.' }, 202);
 });
 
 export default warrants;

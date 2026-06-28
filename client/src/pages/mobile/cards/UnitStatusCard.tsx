@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Copy } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// See BolosCard for why we build menus inline (useMenuActions throws without
+// ToastProvider/Router, which the bare-render tests don't mount).
 
 // Backend status vocabulary (see server/src/routes/dispatch/units.ts):
 // available | dispatched | enroute | onscene | busy | off_duty | out_of_service
@@ -56,6 +62,7 @@ function ledColor(status?: string): string {
 export default function UnitStatusCard() {
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [unit, setUnit] = useState<Unit | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,23 +135,23 @@ export default function UnitStatusCard() {
   // ─── Render ───────────────────────────────────────────────
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">UNIT STATUS</h2>
-        <div className="h-[140px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[140px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">UNIT STATUS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
           <button
             type="button"
             onClick={() => { setLoading(true); fetchUnit(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
+            className="min-h-[44px] h-11 px-3 bg-surface-raised border border-border-default text-rmpg-300 text-xs uppercase tracking-widest"
           >
             Retry
           </button>
@@ -155,9 +162,9 @@ export default function UnitStatusCard() {
 
   if (!unit) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">UNIT STATUS</h2>
-        <p className="text-gray-500 text-xs italic">Not on a unit. Use /dispatch to log on.</p>
+        <p className="text-rmpg-500 text-xs italic">Not on a unit. Use /dispatch to log on.</p>
       </section>
     );
   }
@@ -168,24 +175,54 @@ export default function UnitStatusCard() {
     ? `${unit.call_number}${unit.current_call_type ? ' · ' + unit.current_call_type : ''}${unit.current_call_location ? ' · ' + unit.current_call_location : ''}`
     : null;
 
+  // Right-click menu for the unit identity row. No detail route / row onClick
+  // exists to reuse for 'Open', so we omit it (copy actions only, no toast).
+  const buildUnitMenu = (): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Copy unit',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(unitLabel); },
+      },
+    ];
+    if (unit.officer_id != null) {
+      items.push({
+        label: 'Copy officer ID',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(String(unit.officer_id)); },
+      });
+    }
+    if (assignment) {
+      items.push(separator(), {
+        label: 'Copy assignment',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(assignment); },
+      });
+    }
+    return items;
+  };
+
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">UNIT STATUS</h2>
 
-      <div className="flex items-center justify-between mb-2">
+      <div
+        className="flex items-center justify-between mb-2"
+        onContextMenu={(e) => openMenu(e, buildUnitMenu())}
+      >
         <div className="flex items-center gap-2">
           <span
             className={`inline-block w-2 h-2 rounded-full ${ledColor(current)}`}
             style={{ boxShadow: '0 0 6px currentColor' }}
             aria-hidden="true"
           />
-          <span className="text-white text-sm font-mono">{unitLabel}</span>
+          <span className="text-rmpg-100 text-sm font-mono">{unitLabel}</span>
         </div>
-        <span className="text-white text-sm font-mono">{toTenCode(current)}</span>
+        <span className="text-rmpg-100 text-sm font-mono">{toTenCode(current)}</span>
       </div>
 
       {assignment && (
-        <div className="text-gray-500 text-xs mb-2 truncate" title={assignment}>
+        <div className="text-rmpg-500 text-xs mb-2 truncate" title={assignment}>
           {assignment}
         </div>
       )}
@@ -200,8 +237,8 @@ export default function UnitStatusCard() {
               disabled={busy}
               onClick={() => changeStatus(btn.backend)}
               className={[
-                'min-h-[44px] h-11 bg-[#1a1a1a] border text-xs uppercase tracking-widest',
-                active ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#222] text-gray-300',
+                'min-h-[44px] h-11 bg-surface-raised border text-xs uppercase tracking-widest',
+                active ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-300',
                 busy ? 'opacity-50' : '',
               ].join(' ')}
             >
