@@ -1,22 +1,110 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2,
-  Search, Reply, ReplyAll, Forward, Paperclip, X, ChevronLeft,
-  AlertTriangle, Download, Eye, Flag, MailOpen, Plus,
-  Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
-  Settings2, ChevronDown, ChevronRight as ChevronRightIcon,
-  MessageSquare, CheckSquare, Square, CheckCircle, EyeOff,
-  FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
-  Clock, FileStack, Users, Printer, Bell, BellOff,
-  Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
-  ExternalLink, Shield, Hash, Upload,
+  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
+  ReplyAll, Forward, Paperclip, X, ChevronLeft, AlertTriangle, Download, Eye, Flag,
+  MailOpen, Plus, Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
+  Settings2, ChevronDown, ChevronRight as ChevronRightIcon, MessageSquare,
+  CheckSquare, Square, CheckCircle, EyeOff, FolderPlus, Edit3, Trash,
+  PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
+  BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload, Sun, Moon,
+  FileDown,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useAuth } from '../context/AuthContext';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import DocumentViewer from '../components/DocumentViewer';
+import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { openEmailThreadPdf } from '../utils/emailThreadPdf';
+import sanitizeHtml from 'sanitize-html';
+import EnrollmentBanner from '../components/email/EnrollmentBanner';
+
+// ─── Per-user localStorage scoping ──────────────────────────────────────
+// The Email page used to write every preference and the compose-draft cache
+// under bare keys (`email_compose_draft`, `email_reading_theme`, …). On a
+// shared MDT/admin workstation that meant: officer A's half-typed draft to
+// the city attorney was restored under officer B's session; B's reading-
+// theme override surfaced for A; the notif/folder/list-width preferences
+// leaked across logins. Same fix the Fleet Insights route used in
+// v1041 (`rmpg_fleet_insights_period_<id>`) — suffix the key with the user
+// id and migrate the bare key once so existing operators don't lose their
+// preference. Anonymous / pre-auth callers fall back to the bare key so
+// tests + the (rare) un-logged-in render still work.
+function scopedKey(base: string, userId: string | number | undefined | null): string {
+  return userId != null && userId !== '' ? `${base}_${userId}` : base;
+}
+
+function readScoped(base: string, userId: string | number | undefined | null): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const k = scopedKey(base, userId);
+    let raw = window.localStorage.getItem(k);
+    // One-time migration from the bare key — copy + leave the bare key
+    // in place so OTHER not-yet-logged-in tabs don't lose state mid-flight.
+    if (raw == null && userId != null && userId !== '') {
+      const legacy = window.localStorage.getItem(base);
+      if (legacy != null) {
+        try { window.localStorage.setItem(k, legacy); } catch { /* quota — silent */ }
+        raw = legacy;
+      }
+    }
+    return raw;
+  } catch { return null; }
+}
+
+function writeScoped(base: string, userId: string | number | undefined | null, value: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try { window.localStorage.setItem(scopedKey(base, userId), value); } catch { /* quota — silent */ }
+}
+
+function removeScoped(base: string, userId: string | number | undefined | null): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try { window.localStorage.removeItem(scopedKey(base, userId)); } catch { /* private — silent */ }
+}
+
+// Shared sanitize-html options for email HTML content
+const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+    'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+    'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+  ]),
+  allowedAttributes: {
+    a: ['href', 'name', 'target', 'rel'],
+    img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+    '*': ['style', 'class']
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: {
+    img: ['http', 'https']
+  },
+  disallowedTagsMode: 'discard'
+};
+
+// ─── Avatar color palette ──────────────────────────────────────────────
+// Sender-stable colors for the per-message avatar circles. Picked from the
+// content-flavor palette (NOT the brand-gold token) — these communicate
+// "different person" the same way Slack/Gmail use a per-user hash. Index
+// 0 and 7 used to both be `#888888` (a copy/paste slip in the original
+// 10-element array); the duplicate halved the effective hashing space for
+// every other color, so neutral grey appeared roughly twice as often as
+// any other shade. Replaced index 7 with `#3b82f6` (blue-500) so the
+// distribution is uniform across all 10 buckets.
+const AVATAR_COLORS = [
+  '#888888', '#8b5cf6', '#22c55e', '#10b981', '#f59e0b',
+  '#ef4444', '#ec4899', '#3b82f6', '#14b8a6', '#f97316',
+] as const;
+
+function avatarColorFor(senderKey: string): string {
+  if (!senderKey) return AVATAR_COLORS[0];
+  const hash = [...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -27,7 +115,7 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -89,9 +177,9 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
-      <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
+      <RichTextArea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
       <div className="flex justify-end gap-1.5">
         <button type="button" onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
@@ -196,8 +284,8 @@ function ContactAutocompleteInput({
 
   return (
     <div ref={containerRef} className="relative">
-      {label && <label className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
-      <input
+      {label && <label htmlFor="ff-emailpage-0" className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
+      <input id="ff-emailpage-0"
         ref={inputRef}
         value={value}
         onChange={handleInputChange}
@@ -207,13 +295,13 @@ function ContactAutocompleteInput({
         className="input-dark w-full text-xs min-h-[36px]"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {suggestions.map((contact, idx) => (
             <button type="button"
               key={`${contact.email}-${idx}`}
               onClick={() => selectSuggestion(contact)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
-                idx === activeIdx ? 'bg-brand-500/20 text-white' : 'text-rmpg-300 hover:bg-brand-500/10 hover:text-white'
+                idx === activeIdx ? 'bg-brand-500/20 text-rmpg-100' : 'text-rmpg-300 hover:bg-brand-500/10 hover:text-rmpg-100'
               }`}
             >
               <div className="w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center text-[9px] text-brand-400 font-bold flex-shrink-0">
@@ -273,18 +361,18 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
     <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
         <button type="button" onClick={() => setFilter('')}
-          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
+          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-100'}`}>All</button>
         {categories.map(cat => (
           <button type="button" key={cat} onClick={() => setFilter(cat)}
-            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
+            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-100'}`}>{cat}</button>
         ))}
       </div>
-      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
         {loading ? (
           <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
         ) : filtered.length === 0 ? (
@@ -293,7 +381,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
           filtered.map(t => (
             <button type="button" key={t.id} onClick={() => { onSelect(t); onClose(); }}
               className="w-full text-left px-3 py-2 hover:bg-brand-500/10 transition-colors border-b border-border-subtle/30 last:border-0">
-              <div className="text-[11px] text-white font-medium truncate">{t.name}</div>
+              <div className="text-[11px] text-rmpg-100 font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{(t.category || '').replace(/_/g, ' ')}</span>
@@ -339,8 +427,8 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           {/* Quick presets */}
@@ -351,7 +439,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
                 const d = preset.getDate();
                 return (
                   <button type="button" key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
-                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded-sm transition-colors">
+                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-rmpg-100 rounded-sm transition-colors">
                     {preset.label}
                   </button>
                 );
@@ -361,9 +449,9 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
           <div className="border-t border-border-subtle pt-3">
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              <input id="ff-emailpage-1" type="date" value={date} onChange={e => setDate(e.target.value)}
                 className="input-dark text-xs flex-1 min-h-[36px]" min={localToday()} />
-              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+              <input id="ff-emailpage-2" type="time" value={time} onChange={e => setTime(e.target.value)}
                 className="input-dark text-xs w-28 min-h-[36px]" />
             </div>
           </div>
@@ -394,28 +482,35 @@ interface DraftState {
   savedAt: string;
 }
 
-function saveDraft(draft: Omit<DraftState, 'savedAt'>): void {
+// User-scoped — shared-MDT pattern is real (one machine, multiple officers
+// across a shift). Without the suffix, officer A's half-typed draft (often
+// containing the recipient/subject of a sensitive case email) was restored
+// under officer B's session. See scopedKey/readScoped at the top of this
+// file. userId may be undefined during the pre-enrollment splash; we
+// preserve the legacy bare-key behavior there so existing drafts still
+// surface on first paint, and the next save promotes them.
+function saveDraft(draft: Omit<DraftState, 'savedAt'>, userId?: string | number | null): void {
   try {
     if (!draft.to && !draft.cc && !draft.subject && !draft.body) {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      removeScoped(DRAFT_STORAGE_KEY, userId);
       return;
     }
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+    writeScoped(DRAFT_STORAGE_KEY, userId, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
   } catch { /* quota exceeded or private browsing — ignore */ }
 }
 
-function loadDraft(): DraftState | null {
+function loadDraft(userId?: string | number | null): DraftState | null {
   try {
-    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    const raw = readScoped(DRAFT_STORAGE_KEY, userId);
     if (!raw) return null;
     const draft = JSON.parse(raw) as DraftState;
     // Discard drafts older than 24 hours
-    if (Date.now() - new Date(draft.savedAt).getTime() > 24 * 60 * 60 * 1000) { localStorage.removeItem(DRAFT_STORAGE_KEY); return null; }
+    if (Date.now() - new Date(draft.savedAt).getTime() > 24 * 60 * 60 * 1000) { removeScoped(DRAFT_STORAGE_KEY, userId); return null; }
     return draft;
   } catch { return null; }
 }
 
-function clearDraft(): void { localStorage.removeItem(DRAFT_STORAGE_KEY); }
+function clearDraft(userId?: string | number | null): void { removeScoped(DRAFT_STORAGE_KEY, userId); }
 
 // ============================================================
 // Email-Incident Link Panel
@@ -518,7 +613,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -530,29 +625,29 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
       {showForm && (
         <div className="px-4 pb-2 space-y-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <select value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
+            <select id="ff-emailpage-3" value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
               className="input-dark text-[10px] px-2 py-1 w-24 min-h-[36px]">
               <option value="incident">Incident</option>
               <option value="call">Call</option>
               <option value="warrant">Warrant</option>
               <option value="person">Person</option>
             </select>
-            <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
+            <input id="ff-emailpage-4" value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
               className="input-dark text-[10px] px-2 py-1 w-20 min-h-[36px]" type="number" />
-            <select value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
+            <select id="ff-emailpage-5" value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
               className="input-dark text-[10px] px-2 py-1 w-28 min-h-[36px]">
               <option value="related">Related</option>
               <option value="evidence">Evidence</option>
               <option value="notification">Notification</option>
               <option value="correspondence">Correspondence</option>
             </select>
-            <input value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
+            <input id="ff-emailpage-6" value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
               className="input-dark text-[10px] px-2 py-1 flex-1 min-h-[36px]"
               onKeyDown={e => { if (e.key === 'Enter') handleLink(); }} />
             <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Link'}
             </button>
-            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-white">
+            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -604,16 +699,16 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
     <div className="space-y-1 py-1">
       {emails.map(email => {
         const toList = (() => { try { return JSON.parse(email.to_addresses) as string[]; } catch { return [email.to_addresses]; } })();
-        const scheduledDate = new Date(email.scheduled_at);
+        const scheduledDate = parseTimestamp(email.scheduled_at);
         const isPast = scheduledDate.getTime() < Date.now();
         return (
           <div key={email.id} className="px-3 py-1.5 border-b border-border-subtle/30 group">
             <div className="flex items-center gap-1.5">
               <CalendarClock className={`w-3 h-3 flex-shrink-0 ${email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : isPast ? 'text-amber-400' : 'text-brand-400'}`} />
-              <span className="text-[10px] text-rmpg-300 truncate flex-1">{email.subject || '(No subject)'}</span>
+              <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{email.subject || '(No subject)'}</span>
               {email.status === 'pending' && (
                 <button type="button" onClick={() => handleCancel(email.id)}
-                  className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
+                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -636,30 +731,73 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 
 // ============================================================
 // Email Body Frame — renders HTML email in a blob: URL iframe
-// Uses blob: instead of srcdoc so the iframe inherits the page origin,
-// allowing external images to load (srcdoc has null origin which many CDNs reject).
+// blob: URLs inherit the parent page origin, allowing external images.
+// Scripts blocked via CSP meta tag. Images explicitly allowed.
 // ============================================================
-const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
-  ({ bodyHtml, onLoad }, ref) => {
+/** Rewrite external image URLs to go through our server-side proxy.
+ *  This bypasses referrer/origin checks on government and corporate image servers. */
+function proxyEmailImages(html: string): string {
+  const token = localStorage.getItem('rmpg_token') || '';
+  // Rewrite src="http..." on img tags to go through /api/email/image-proxy
+  return html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi,
+    (_match, before, url, after) => {
+      // Skip data: URLs and already-proxied URLs
+      if (url.startsWith('data:') || url.includes('/api/email/image-proxy')) return _match;
+      // ABSOLUTE url (origin-qualified) is required: the body renders inside a
+      // blob: URL iframe, and a relative "/api/..." src does NOT resolve against
+      // the parent page origin there — it resolves against the opaque blob: URL
+      // and the request never reaches the server, so every external image showed
+      // as a broken-image icon. Qualifying with window.location.origin fixes it.
+      const proxyUrl = `${window.location.origin}/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+      return `${before}${proxyUrl}${after}`;
+    }
+  );
+}
+
+// Reading-pane theme. Most marketing/transactional email is designed for a
+// white canvas — the dark frame inverts nothing, so light-on-light artwork
+// (e.g. white-background hero images) reads badly. Light mode renders the
+// body the way the sender designed it; app chrome stays Spillman black.
+type ReadingTheme = 'dark' | 'light';
+const READING_THEME_KEY = 'email_reading_theme';
+
+function getReadingTheme(userId?: string | number | null): ReadingTheme {
+  return readScoped(READING_THEME_KEY, userId) === 'light' ? 'light' : 'dark';
+}
+
+const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
+  dark: `
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+  `,
+  light: `
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #555555; text-decoration: underline; } a:hover { color: #1a1a1a; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #d8d8d8; margin: 8px 0; padding: 4px 12px; color: #555; }
+        pre { background: #f4f4f4; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+  `,
+};
+
+const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; theme?: ReadingTheme; onLoad?: () => void }>(
+  ({ bodyHtml, theme = 'dark', onLoad }, ref) => {
     const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
     React.useEffect(() => {
-      // Sanitize: strip <script> tags + inline event handlers
-      const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none';"><style>
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-        pre { background: #0a0a0a; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #222222; margin: 16px 0; }
-      </style></head><body>${sanitized}</body></html>`;
+      // Use a vetted sanitizer instead of regex stripping to avoid incomplete
+      // multi-character sanitization bypasses.
+      const sanitized = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
+      // Proxy all external images through our server
+      const proxied = proxyEmailImages(sanitized);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>${BODY_FRAME_CSS[theme]}</style></head><body>${proxied}</body></html>`;
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
       return () => URL.revokeObjectURL(url);
-    }, [bodyHtml]);
+    }, [bodyHtml, theme]);
     if (!blobUrl) return null;
-    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
@@ -720,11 +858,12 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   bodyDiv.className = 'body-content';
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
-    // This is the same HTML we already render from the email server in a sandboxed iframe
+    // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
+    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -792,28 +931,28 @@ function SearchFilterPanel({
     <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div>
-        <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
-        <input value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
+        <label htmlFor="ff-emailpage-7" className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
+        <input id="ff-emailpage-7" value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
           className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" placeholder="name or email" />
       </div>
 
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
+          <input id="ff-emailpage-8" type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
+          <input id="ff-emailpage-9" type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
+          <input id="ff-emailpage-10" type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
         </label>
@@ -821,20 +960,20 @@ function SearchFilterPanel({
 
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
-          <input type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
+          <label htmlFor="ff-emailpage-11" className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
+          <input id="ff-emailpage-11" type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
-          <input type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
+          <label htmlFor="ff-emailpage-12" className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
+          <input id="ff-emailpage-12" type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-border-subtle">
         {hasActiveFilters(local) ? (
-          <button type="button" onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-white">Clear filters</button>
+          <button type="button" onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-rmpg-100">Clear filters</button>
         ) : <div />}
         <button type="button" onClick={handleApply} className="btn-primary text-[10px] px-3 py-0.5">Apply</button>
       </div>
@@ -848,20 +987,23 @@ function SearchFilterPanel({
 
 const NOTIF_PREF_KEY = 'email_notifications_enabled';
 
-function getNotificationsEnabled(): boolean {
-  try { return localStorage.getItem(NOTIF_PREF_KEY) !== 'false'; } catch { return true; }
+function getNotificationsEnabled(userId?: string | number | null): boolean {
+  return readScoped(NOTIF_PREF_KEY, userId) !== 'false';
 }
 
-function setNotificationsEnabled(enabled: boolean) {
-  try { localStorage.setItem(NOTIF_PREF_KEY, String(enabled)); } catch { /* ignore */ }
+function setNotificationsEnabled(enabled: boolean, userId?: string | number | null) {
+  writeScoped(NOTIF_PREF_KEY, userId, String(enabled));
 }
 
 async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
-  const result = await Notification.requestPermission();
-  return result === 'granted';
+  try {
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch {
+    return (Notification.permission as string) === 'granted';
+  }
 }
 
 function showDesktopNotification(title: string, body: string) {
@@ -893,11 +1035,13 @@ interface FileAttachment {
 interface ComposeModalProps {
   mode: 'new' | 'reply' | 'reply-all' | 'forward';
   replyMessage?: EmailMessage | null;
+  /** User id for per-user draft scoping. */
+  userId?: string | number | null;
   onClose: () => void;
   onSent: () => void;
 }
 
-function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps) {
+function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeModalProps) {
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
@@ -911,6 +1055,9 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [draftStatus, setDraftStatus] = useState<string>('');
+  const [importance, setImportance] = useState<'low' | 'normal' | 'high'>('normal');
+  const [readReceipt, setReadReceipt] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -930,7 +1077,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       }
     } else if (mode === 'new') {
       // Restore draft for new compositions
-      const draft = loadDraft();
+      const draft = loadDraft(userId);
       if (draft) {
         setTo(draft.to); setCc(draft.cc); setBcc(draft.bcc);
         setSubject(draft.subject); setBody(draft.body);
@@ -938,18 +1085,18 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         setDraftStatus(`Draft restored from ${formatDate(draft.savedAt)}`);
       }
     }
-  }, [mode, replyMessage]);
+  }, [mode, replyMessage, userId]);
 
   // Auto-save draft on changes (debounced, only for new compositions)
   useEffect(() => {
     if (mode !== 'new') return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
-      saveDraft({ to, cc, bcc, subject, body });
+      saveDraft({ to, cc, bcc, subject, body }, userId);
       if (to || cc || subject || body) setDraftStatus('Draft saved');
     }, 2000);
     return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
-  }, [to, cc, bcc, subject, body, mode]);
+  }, [to, cc, bcc, subject, body, mode, userId]);
 
   useEffect(() => { const t = setTimeout(() => textareaRef.current?.focus(), 100); return () => clearTimeout(t); }, []);
 
@@ -976,7 +1123,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           scheduledAt,
         }),
       });
-      clearDraft();
+      clearDraft(userId);
       onSent();
       onClose();
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
@@ -1040,6 +1187,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         subject,
         body,
         attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
+        importance: importance !== 'normal' ? importance : undefined,
+        requestReadReceipt: readReceipt || undefined,
       };
       if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body }; }
       else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body }; }
@@ -1049,7 +1198,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
       await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
-      clearDraft();
+      clearDraft(userId);
       onSent();
       onClose();
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
@@ -1084,14 +1233,14 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#0a0a0a] border border-[#222222] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#0a0a0a]' : ''}`}
+        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[var(--surface-sunken)]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505] rounded-t-sm">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken rounded-t-sm">
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
              mode === 'forward' ? <Forward className="w-4 h-4 text-brand-400" /> :
@@ -1100,7 +1249,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <button type="button" onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
@@ -1127,8 +1276,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">To</span>
             <div className="flex-1"><ContactAutocompleteInput value={to} onChange={setTo} placeholder="Recipients..." /></div>
             <div className="flex items-center gap-1 text-[9px] flex-shrink-0">
-              <button type="button" onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
-              <button type="button" onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
+              <button type="button" onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}>Cc</button>
+              <button type="button" onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}>Bcc</button>
             </div>
           </div>
 
@@ -1148,44 +1297,56 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
 
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Sub</span>
-            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
-              className="flex-1 bg-transparent text-xs text-white border-0 outline-none placeholder:text-rmpg-600 py-1" />
+            <input id="ff-emailpage-13" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+              className="flex-1 bg-transparent text-xs text-rmpg-100 border-0 outline-none placeholder:text-rmpg-600 py-1" />
           </div>
         </div>
 
-        <div className="border-t border-[#222222] mx-4 my-0" />
+        <div className="border-t border-rmpg-700 mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
-          <button type="button" onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
-          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
+          <IconButton onClick={handleInlineImage}
+            className="p-1.5 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
+          <input id="ff-emailpage-14" ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
             <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
               <FileStack className="w-3 h-3" /> Templates
             </button>
             {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
           </div>
           <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
-            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
             <Settings2 className="w-3 h-3" /> Sig
+          </button>
+          <select value={importance} onChange={e => setImportance(e.target.value as 'low' | 'normal' | 'high')}
+            className={`input-dark text-[9px] px-1 py-0.5 ${importance === 'high' ? 'text-red-400' : importance === 'low' ? 'text-rmpg-500' : 'text-rmpg-400'}`}
+            title="Importance" aria-label="Importance">
+            <option value="low">! Low</option>
+            <option value="normal">! Normal</option>
+            <option value="high">! High</option>
+          </select>
+          <button type="button" onClick={() => setReadReceipt(!readReceipt)}
+            className={`flex items-center gap-1 px-2 py-1 text-[9px] rounded-sm transition-colors ${readReceipt ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
+            title="Request a read receipt">
+            <CheckCircle className="w-3 h-3" /> Receipt
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
-          <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
+        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          <RichTextArea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
 
@@ -1197,7 +1358,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#050505] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-surface-sunken border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1224,12 +1385,12 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#050505] border border-[#222222] rounded-sm text-[10px] text-rmpg-300 group">
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -1238,23 +1399,46 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#222222] bg-[#050505] rounded-b-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-rmpg-700 bg-surface-sunken rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
               Discard
             </button>
             {mode === 'new' && (
+              <button type="button" disabled={savingDraft || (!to.trim() && !subject.trim() && !body.trim())}
+                onClick={async () => {
+                  setSavingDraft(true);
+                  try {
+                    await apiFetch('/email/drafts', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        to: to.trim() ? to.split(',').map(s => s.trim()) : [],
+                        cc: cc.trim() ? cc.split(',').map(s => s.trim()) : undefined,
+                        bcc: bcc.trim() ? bcc.split(',').map(s => s.trim()) : undefined,
+                        subject, body, importance, attachments: fileAttachments.length ? fileAttachments : undefined,
+                      }),
+                    });
+                    clearDraft(userId);
+                    setDraftStatus('Saved to Drafts folder');
+                  } catch { setError('Failed to save draft to mailbox'); }
+                  finally { setSavingDraft(false); }
+                }}
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3.5 h-3.5" />} Draft
+              </button>
+            )}
+            {mode === 'new' && (
               <button type="button" onClick={() => setShowScheduleModal(true)} disabled={sending}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
                 <Clock className="w-3.5 h-3.5" /> Later
               </button>
             )}
             <button type="button" onClick={handleSend} disabled={sending}
-              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Sending...' : 'Send'}
             </button>
@@ -1295,14 +1479,14 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
 
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
+      <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
               <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
                 <Icon className="w-3 h-3" /> {f.displayName}
               </button>
             );
@@ -1349,7 +1533,7 @@ function ContextMenu({
 
   const MenuItem = ({ icon: Icon, label, onClick, danger }: { icon: React.ElementType; label: string; onClick: () => void; danger?: boolean }) => (
     <button type="button" onClick={() => { onClick(); onClose(); }}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-rmpg-300 hover:bg-brand-500/15 hover:text-white'}`}>
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100'}`}>
       <Icon className="w-3 h-3" /> {label}
     </button>
   );
@@ -1377,16 +1561,16 @@ function ContextMenu({
       <div className="relative"
         onMouseEnter={() => setShowMoveMenu(true)}
         onMouseLeave={() => setShowMoveMenu(false)}>
-        <div className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white cursor-default">
+        <div className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 cursor-default">
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
                 <button type="button" key={f.id} onClick={() => { onMove(getFolderKey(f)); onClose(); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
                   <Icon className="w-3 h-3" /> {f.displayName}
                 </button>
               );
@@ -1422,9 +1606,19 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
 
   if (!expanded) {
     return (
-      <div className="border-t border-[#222222] bg-[#050505]">
-        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#222222] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+      <div className="border-t border-rmpg-700 bg-surface-sunken">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-rmpg-700 rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
@@ -1433,18 +1627,18 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   }
 
   return (
-    <div className="border-t border-[#222222] bg-[#050505]">
-      <div className="mx-4 my-3 border border-[#222222] rounded-sm bg-[#0a0a0a] overflow-hidden focus-within:border-brand-500/40 transition-colors">
-        <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
+    <div className="border-t border-rmpg-700 bg-surface-sunken">
+      <div className="mx-4 my-3 border border-rmpg-700 rounded-sm bg-surface-base overflow-hidden focus-within:border-brand-500/40 transition-colors">
+        <RichTextArea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-[#050505]/50">
+        <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken/50">
           <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
+            <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
             <button type="button" onClick={handleSend} disabled={sending || !body.trim()}
-              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
+              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-rmpg-100 rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
               {sending ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3 h-3" />} Reply
             </button>
           </div>
@@ -1472,39 +1666,358 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 }
 
 // ============================================================
+// Snooze Menu — Outlook-style presets + custom date
+// ============================================================
+
+function toLocalIso(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+}
+
+function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (untilIso: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('08:00');
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+  const presets = [
+    { label: 'Later today (+3 hrs)', get: () => { const d = new Date(); d.setHours(d.getHours() + 3, 0, 0, 0); return d; } },
+    { label: 'This evening (6 PM)', get: () => { const d = new Date(); d.setHours(18, 0, 0, 0); if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1); return d; } },
+    { label: 'Tomorrow 8 AM', get: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d; } },
+    { label: 'This weekend (Sat 9 AM)', get: () => { const d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); d.setHours(9, 0, 0, 0); return d; } },
+    { label: 'Next week (Mon 8 AM)', get: () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(8, 0, 0, 0); return d; } },
+  ];
+  return (
+    <div ref={ref} className="absolute right-0 top-full mt-1 z-50 w-60 bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
+      <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Snooze until…</div>
+      {presets.map(p => (
+        <button type="button" key={p.label} onClick={() => { onSnooze(toLocalIso(p.get())); onClose(); }}
+          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">{p.label}</button>
+      ))}
+      <div className="border-t border-border-subtle mt-1 px-3 py-2 space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} min={localToday()}
+            className="input-dark text-[10px] flex-1 min-h-[30px]" aria-label="Snooze date" />
+          <input type="time" value={customTime} onChange={e => setCustomTime(e.target.value)}
+            className="input-dark text-[10px] w-20 min-h-[30px]" aria-label="Snooze time" />
+        </div>
+        <button type="button" disabled={!customDate} onClick={() => { onSnooze(`${customDate}T${customTime}:00`); onClose(); }}
+          className="btn-primary text-[10px] px-2 py-0.5 w-full disabled:opacity-40">Snooze</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Internet Headers Modal (message provenance / spam forensics)
+// ============================================================
+
+function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () => void }) {
+  const [headers, setHeaders] = useState<Array<{ name: string; value: string }>>([]);
+  const [internetMessageId, setInternetMessageId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [hFilter, setHFilter] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ internetMessageId?: string; headers: Array<{ name: string; value: string }> }>(`/email/messages/${messageId}/headers`)
+      .then(d => { if (!cancelled) { setHeaders(d.headers || []); setInternetMessageId(d.internetMessageId || ''); } })
+      .catch(() => { /* keep empty */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [messageId]);
+  const shown = hFilter ? headers.filter(h => `${h.name}: ${h.value}`.toLowerCase().includes(hFilter.toLowerCase())) : headers;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[640px] max-w-[95vw] max-h-[80vh] mx-4 flex flex-col">
+        <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><FileText className="w-4 h-4 text-brand-400" /> Internet Headers</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+        </div>
+        <div className="px-4 py-2 border-b border-border-subtle">
+          <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
+            className="input-dark w-full text-[10px] px-2 py-1 min-h-[32px]" aria-label="Filter headers" />
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /> : (
+            <div className="space-y-1 font-mono text-[10px]">
+              {internetMessageId && <div className="text-rmpg-400 break-all"><span className="text-brand-400">Message-ID:</span> {internetMessageId}</div>}
+              {shown.length === 0 && <div className="text-rmpg-500">No headers{hFilter ? ' match the filter' : ' available'}.</div>}
+              {shown.map((h, i) => (
+                <div key={i} className="text-rmpg-400 break-all"><span className="text-brand-400">{h.name}:</span> {h.value}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Automatic Replies (Out of Office) Modal
+// ============================================================
+
+function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackbar: (m: string, t?: 'success' | 'error') => void }) {
+  const [oofStatus, setOofStatus] = useState<'disabled' | 'alwaysEnabled' | 'scheduled'>('disabled');
+  const [message, setMessage] = useState('');
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ status?: string; internalReplyMessage?: string; scheduledStartDateTime?: { dateTime?: string }; scheduledEndDateTime?: { dateTime?: string } }>('/email/settings/auto-reply')
+      .then(d => {
+        if (cancelled) return;
+        if (d.status === 'alwaysEnabled' || d.status === 'scheduled') setOofStatus(d.status);
+        // Graph returns the reply as HTML — strip tags for the textarea.
+        setMessage((d.internalReplyMessage || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+        setStartAt((d.scheduledStartDateTime?.dateTime || '').slice(0, 16));
+        setEndAt((d.scheduledEndDateTime?.dateTime || '').slice(0, 16));
+      })
+      .catch(() => { /* defaults */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiFetch('/email/settings/auto-reply', {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: oofStatus,
+          internalReplyMessage: message,
+          ...(oofStatus === 'scheduled' && startAt && endAt ? { scheduledStartDateTime: startAt, scheduledEndDateTime: endAt } : {}),
+        }),
+      });
+      onSnackbar(oofStatus === 'disabled' ? 'Automatic replies turned off' : 'Automatic replies saved');
+      onClose();
+    } catch { onSnackbar('Failed to save automatic replies', 'error'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4">
+        <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+        </div>
+        {loading ? <div className="p-6 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> : (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              {(['disabled', 'alwaysEnabled', 'scheduled'] as const).map(s => (
+                <button type="button" key={s} onClick={() => setOofStatus(s)}
+                  className={`text-[10px] px-2 py-1 rounded-sm border transition-colors ${oofStatus === s ? 'bg-brand-500/20 text-brand-400 border-brand-500/40' : 'text-rmpg-400 border-border-subtle hover:text-rmpg-100'}`}>
+                  {s === 'disabled' ? 'Off' : s === 'alwaysEnabled' ? 'On' : 'Scheduled'}
+                </button>
+              ))}
+            </div>
+            {oofStatus === 'scheduled' && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <label htmlFor="ff-emailpage-16" className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
+                  <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
+                </div>
+                <div className="flex-1">
+                  <label htmlFor="ff-emailpage-15" className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
+                  <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
+                </div>
+              </div>
+            )}
+            {oofStatus !== 'disabled' && (
+              <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
+                className="input-dark w-full text-xs resize-y" placeholder="I'm out of the office until… For urgent dispatch matters call…" aria-label="Auto-reply message" />
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+              <button type="button" onClick={handleSave} disabled={saving} className="btn-primary text-xs px-3 py-1">{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Category Assign Menu (Outlook master categories)
+// ============================================================
+
+const CATEGORY_PRESET_COLORS: Record<string, string> = {
+  preset0: '#ef4444', preset1: '#f97316', preset2: '#d4a017', preset3: '#22c55e', preset4: '#10b981',
+  preset5: '#14b8a6', preset6: '#8b5cf6', preset7: '#ec4899', preset8: '#888888', preset9: '#a16207',
+};
+
+function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
+  messageId: string; onApplied: () => void; onClose: () => void; onSnackbar: (m: string, t?: 'success' | 'error') => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cats, setCats] = useState<Array<{ id: string; displayName: string; color: string }>>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [newCat, setNewCat] = useState('');
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+  useEffect(() => {
+    apiFetch<{ categories: Array<{ id: string; displayName: string; color: string }> }>('/email/categories')
+      .then(d => setCats(d.categories || []))
+      .catch(() => { /* empty */ })
+      .finally(() => setLoading(false));
+  }, []);
+  const toggle = (name: string) => setSelected(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n; });
+  const apply = async () => {
+    try {
+      await apiFetch(`/email/messages/${messageId}/categories`, { method: 'PATCH', body: JSON.stringify({ categories: [...selected] }) });
+      onSnackbar(selected.size ? `Applied ${selected.size} categor${selected.size > 1 ? 'ies' : 'y'}` : 'Categories cleared');
+      onApplied(); onClose();
+    } catch { onSnackbar('Failed to apply categories', 'error'); }
+  };
+  const create = async () => {
+    const name = newCat.trim();
+    if (!name) return;
+    try {
+      await apiFetch('/email/categories', { method: 'POST', body: JSON.stringify({ displayName: name, color: `preset${cats.length % 10}` }) });
+      setCats(prev => [...prev, { id: name, displayName: name, color: `preset${cats.length % 10}` }]);
+      setSelected(prev => new Set(prev).add(name));
+      setNewCat('');
+    } catch { onSnackbar('Failed to create category', 'error'); }
+  };
+  return (
+    <div ref={ref} className="absolute right-0 top-full mt-1 z-50 w-56 bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
+      <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Categorize</div>
+      <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        {loading ? <div className="py-3 text-center"><Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> :
+          cats.length === 0 ? <div className="py-3 text-center text-[10px] text-rmpg-600">No categories yet</div> :
+          cats.map(cat => (
+            <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
+              <span className="min-w-0 flex-1 text-left truncate">{cat.displayName}</span>
+              {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
+            </button>
+          ))}
+      </div>
+      <div className="border-t border-border-subtle px-2 py-1.5 flex items-center gap-1">
+        <input value={newCat} onChange={e => setNewCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') create(); }}
+          placeholder="New category…" className="input-dark flex-1 text-[10px] px-2 py-0.5 min-h-[28px]" aria-label="New category name" />
+        <button type="button" onClick={create} className="p-0.5 text-brand-400 hover:text-brand-300" title="Create category"><Plus className="w-3.5 h-3.5" /></button>
+      </div>
+      <div className="border-t border-border-subtle px-2 py-1.5">
+        <button type="button" onClick={apply} className="btn-primary text-[10px] px-2 py-0.5 w-full">Apply</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Main Email Page
 // ============================================================
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const uid = user?.id;
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
   // Status
   const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
 
-  // Folders
+  // Phase 4: per-user enrollment gate
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+
+  // Fetch enrollment status on mount
+  useEffect(() => {
+    apiFetch<{ enrolled: boolean }>('/api/email/status')
+      .then(s => setEnrolled(s.enrolled))
+      .catch(() => setEnrolled(false));
+  }, []);
+
+  // Handle ?enrolled=1 callback after Microsoft consent. Strip ONLY the
+  // enrolled flag — earlier this used `replaceState({}, '', '/email')` and
+  // nuked every other query param, which made it impossible to land an
+  // operator on a deep-link AFTER OAuth (the auth bounce always cleared
+  // ?message_id/?thread_id/?folder).
+  useEffect(() => {
+    if (searchParams.get('enrolled') === '1') {
+      setEnrolled(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('enrolled');
+      setSearchParams(next, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── URL deep-link contract ──────────────────────────────────────────
+  // /email?folder=<name>       — switch to that folder on mount (well-known
+  //                              keys like "inbox", "sentitems", "drafts",
+  //                              or the Graph folder id).
+  // /email?thread_id=<convId>  — once messages hydrate, auto-select the
+  //                              latest message in that conversation.
+  // /email?message_id=<graphId>— once messages hydrate, auto-select that
+  //                              specific message.
+  // /email?compose=1           — open the New Message modal on mount
+  //                              (useful for `mailto`-style deep-links from
+  //                              other RMPG pages).
+  // All consumed params are stripped (replaceState) so a manual refresh
+  // doesn't re-fire the deep-link. Mirrors the WarrantsPage / Cases /
+  // Communications pattern (PRs #1597 / #1604 / #1625).
+  //
+  // Refs (not state) so the value is read by the first fetch without
+  // forcing an additional render cycle.
+  const pendingFolderRef = useRef<string | null>(null);
+  const pendingComposeRef = useRef<boolean>(false);
+  const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  useEffect(() => {
+    let consumedAny = false;
+
+    const folderParam = searchParams.get('folder');
+    if (folderParam) {
+      // Folder names are normalized lowercase via the well-known map. The
+      // value is honored on first fetch (the initial fetchMessages reads
+      // the ref); after that it's left null so subsequent clicks own
+      // the folder state.
+      const map: Record<string, string> = {
+        inbox: 'inbox', sent: 'sentitems', sentitems: 'sentitems',
+        drafts: 'drafts', deleted: 'deleteditems', deleteditems: 'deleteditems',
+        trash: 'deleteditems', junk: 'junkemail', junkemail: 'junkemail',
+        spam: 'junkemail', archive: 'archive',
+      };
+      pendingFolderRef.current = map[folderParam.toLowerCase()] || folderParam;
+      consumedAny = true;
+    }
+    const threadId = searchParams.get('thread_id');
+    if (threadId) { setPendingThreadId(threadId); consumedAny = true; }
+    const messageId = searchParams.get('message_id');
+    if (messageId) { setPendingMessageId(messageId); consumedAny = true; }
+    if (searchParams.get('compose') === '1') { pendingComposeRef.current = true; consumedAny = true; }
+
+    if (consumedAny) {
+      const next = new URLSearchParams(searchParams);
+      ['folder', 'thread_id', 'message_id', 'compose'].forEach((k) => next.delete(k));
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Folders. Initial value honors `?folder=` (the deep-link effect above
+  // already populated `pendingFolderRef.current` synchronously on mount).
   const [folders, setFolders] = useState<EmailFolder[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState('inbox');
+  const [selectedFolder, setSelectedFolder] = useState(() => pendingFolderRef.current || 'inbox');
   const [childFolders, setChildFolders] = useState<Map<string, EmailFolder[]>>(new Map());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [folderCollapsed, setFolderCollapsed] = useState(() => localStorage.getItem('email_folder_collapsed') === 'true');
+  const [folderCollapsed, setFolderCollapsed] = useState(() => readScoped('email_folder_collapsed', uid) === 'true');
 
   // Folder management
   const [newFolderName, setNewFolderName] = useState('');
@@ -1526,10 +2039,58 @@ export default function EmailPage() {
   const [loadingMessage, setLoadingMessage] = useState(false);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
 
+  // Attachment viewer — fetch via authed blob (bare <a href> can't send the JWT)
+  const [attViewer, setAttViewer] = useState<{ url: string; title: string; type: 'pdf' | 'image' } | null>(null);
+  const [attBusyId, setAttBusyId] = useState<string | null>(null);
+
+  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment): Promise<string> => {
+    const blob = await apiFetchBlob(`/email/messages/${encodeURIComponent(selectedMessage!.id)}/attachments/${encodeURIComponent(att.id)}?inline=1`);
+    return URL.createObjectURL(blob);
+  }, [selectedMessage]);
+
+  const handleDownloadAttachment = useCallback(async (att: EmailAttachment) => {
+    setAttBusyId(att.id);
+    try {
+      const url = await fetchAttachmentBlob(att);
+      const a = document.createElement('a');
+      a.href = url; a.download = att.name || 'attachment';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err) {
+      console.error('[EmailPage] attachment download failed:', err);
+      showSnackbar('Failed to download attachment', 'error');
+    } finally { setAttBusyId(null); }
+  }, [fetchAttachmentBlob]);
+
+  const handleOpenAttachment = useCallback(async (att: EmailAttachment) => {
+    const ext = (att.name || '').split('.').pop()?.toLowerCase() || '';
+    const ct = (att.contentType || '').toLowerCase();
+    const isImage = ct.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+    const isPdf = ct === 'application/pdf' || ext === 'pdf';
+    if (!isImage && !isPdf) { void handleDownloadAttachment(att); return; } // no in-browser renderer for doc/xlsx etc.
+    setAttBusyId(att.id);
+    try {
+      const url = await fetchAttachmentBlob(att);
+      setAttViewer({ url, title: att.name || 'Attachment', type: isPdf ? 'pdf' : 'image' });
+    } catch (err) {
+      console.error('[EmailPage] attachment open failed:', err);
+      showSnackbar('Failed to open attachment', 'error');
+    } finally { setAttBusyId(null); }
+  }, [fetchAttachmentBlob, handleDownloadAttachment]);
+
+  const closeAttViewer = useCallback(() => {
+    setAttViewer(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
+  }, []);
+
   // Search
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Task 2.4: FTS search — debounced call to /api/email/messages/search
+  // When searchResults is non-null, it replaces the folder message list
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<EmailMessage[] | null>(null);
 
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
@@ -1551,13 +2112,40 @@ export default function EmailPage() {
   const [showSearchFilters, setShowSearchFilters] = useState(false);
 
   // Notifications
-  const [notificationsOn, setNotificationsOn] = useState(getNotificationsEnabled);
+  const [notificationsOn, setNotificationsOn] = useState(() => getNotificationsEnabled(uid));
 
   // Scheduled emails panel
   const [showScheduledPanel, setShowScheduledPanel] = useState(false);
 
   // Feature 23: Auto-categorization
   const [categorizing, setCategorizing] = useState(false);
+
+  // Reading-pane theme (dark chrome stays; only the email body canvas flips)
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(() => getReadingTheme(uid));
+  const toggleReadingTheme = () => {
+    const next: ReadingTheme = readingTheme === 'dark' ? 'light' : 'dark';
+    setReadingTheme(next);
+    writeScoped(READING_THEME_KEY, uid, next);
+  };
+
+  // Outlook-parity UI state (snooze / headers / categories / OOF / more menu)
+  const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
+  const [showHeadersModal, setShowHeadersModal] = useState(false);
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [showAutoReply, setShowAutoReply] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // Confirm-dialog action union. Replaces 3 native window.confirm() calls
+  // (block sender / sweep sender / empty folder) plus the previously-bare
+  // folder-delete click. Pattern mirrors v1044 Communications + v1042
+  // Body Cameras: one state slot, one ConfirmDialog mount, branch by kind.
+  type ConfirmActionState =
+    | { kind: 'block-sender'; message: EmailMessage }
+    | { kind: 'sweep-sender'; message: EmailMessage; folder: string }
+    | { kind: 'empty-folder'; folder: string }
+    | { kind: 'delete-folder'; folder: EmailFolder };
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Feature 25: Thread view mode
   const [viewMode, setViewMode] = useState<'messages' | 'threads'>('messages');
@@ -1583,9 +2171,10 @@ export default function EmailPage() {
     finally { setLoadingThreads(false); }
   }, [selectedFolder]);
 
-  // Resizable list panel
+  // Resizable list panel — user-scoped so the right MDT operator keeps their
+  // chosen list/reading-pane split across logouts.
   const [listWidth, setListWidth] = useState(() => {
-    const saved = localStorage.getItem('email_list_width');
+    const saved = readScoped('email_list_width', uid);
     return saved ? Math.max(240, Math.min(500, parseInt(saved, 10))) : 320;
   });
   const resizingRef = useRef(false);
@@ -1652,6 +2241,21 @@ export default function EmailPage() {
     if (status?.authorized) { fetchFolders(); fetchMessages(1); }
   }, [status?.authorized]); // eslint-disable-line
 
+  // Open compose on mount when `?compose=1` was deep-linked. Fires once the
+  // enrollment + authorization gates have passed so the modal lands inside
+  // the real shell, not the splash.
+  useEffect(() => {
+    if (status?.authorized && enrolled && pendingComposeRef.current) {
+      pendingComposeRef.current = false;
+      setComposing('new');
+    }
+  }, [status?.authorized, enrolled]);
+
+  // Once the folder messages hydrate, consume `?thread_id=` / `?message_id=`.
+  // The list is paginated 25 at a time — if the target isn't on page 1 a
+  // toast tells the operator (rather than silently failing the deep-link).
+  // The hydrate watcher fires once per pending target then clears it.
+
   useEffect(() => {
     const unsub = subscribe('email:new_messages', (data: any) => {
       if (selectedFolder === 'inbox') fetchMessages(1);
@@ -1676,32 +2280,113 @@ export default function EmailPage() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput, search, selectedFolder, fetchMessages]);
 
-  // Keyboard shortcuts
+  // Task 2.4: Debounced FTS search (300ms, ≥2 chars) — populates searchResults
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults(null); return; }
+    const t = setTimeout(() => {
+      const folder = selectedFolder;
+      apiFetch<{ results: any[] }>(`/email/messages/search?q=${encodeURIComponent(searchQuery)}&folder=${encodeURIComponent(folder || '')}`)
+        .then(r => {
+          // FTS endpoint returns raw snake_case DB rows — map to EmailMessage camelCase shape
+          const mapped: EmailMessage[] = (r.results || []).map((row: any) => ({
+            id: row.graph_id || row.id,
+            conversationId: row.conversation_id,
+            subject: row.subject || '',
+            fromAddress: row.from_address || '',
+            fromName: row.from_name || '',
+            toAddresses: [],
+            ccAddresses: [],
+            bodyPreview: row.body_preview || '',
+            hasAttachments: !!row.has_attachments,
+            isRead: !!row.is_read,
+            isFlagged: !!row.is_flagged,
+            importance: 'normal',
+            receivedAt: row.received_at || '',
+          }));
+          setSearchResults(mapped);
+        })
+        .catch(() => setSearchResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, selectedFolder]);
+
+  // Keyboard shortcuts. Esc follows a smart cascade — close the top-most
+  // open layer (confirm dialog → menu/popover → modal → context menu →
+  // reading-pane → search) so a frantic operator can always back out one
+  // step at a time. `N` opens Compose (typing-suppressed); Ctrl/Cmd+N
+  // continues to work too. Matches the v1024–v1048 contract.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const tEl = e.target as HTMLElement | null;
+      const tag = tEl?.tagName;
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || !!tEl?.isContentEditable;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
-      if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
-      if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
-      if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); handleDelete(selectedMessage); } return; }
+
+      if (!inField) {
+        if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
+        if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
+        if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
+        if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
+        // Bare `N` — typing-suppressed. Don't fire when ANY modal/menu/confirm
+        // already owns the page (operator might be hunting through a list).
+        if (!mod && !e.altKey && (e.key === 'n' || e.key === 'N')) {
+          if (composing || confirmAction || contextMenu || folderContextMenu
+            || showSnoozeMenu || showCategoryMenu || showMoreMenu
+            || showHeadersModal || showAutoReply || showSearchFilters
+            || showScheduledPanel || showNewFolder || renamingFolder
+            || attViewer) return;
+          e.preventDefault();
+          setComposing('new');
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selectedMessage && !composing && !confirmAction) {
+            e.preventDefault();
+            handleDelete(selectedMessage);
+          }
+          return;
+        }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          if (composing || confirmAction || contextMenu) return;
+          e.preventDefault();
+          const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
+          const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+          if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
+          return;
+        }
+      }
+
       if (e.key === 'Escape') {
+        // Order = top of stack → bottom. ConfirmDialog has its own Esc but
+        // ours runs first; we no-op if a confirm is loading so we don't
+        // race the API. Folder-context-menu / folder-rename / new-folder
+        // are nested inside the side panel; they close before the broader
+        // shell layers.
+        if (confirmAction) { if (!confirmLoading) setConfirmAction(null); return; }
+        if (showHeadersModal) { setShowHeadersModal(false); return; }
+        if (showAutoReply) { setShowAutoReply(false); return; }
+        if (attViewer) { closeAttViewer(); return; }
+        if (showSnoozeMenu) { setShowSnoozeMenu(false); return; }
+        if (showCategoryMenu) { setShowCategoryMenu(false); return; }
+        if (showMoreMenu) { setShowMoreMenu(false); return; }
+        if (folderContextMenu) { setFolderContextMenu(null); return; }
+        if (renamingFolder) { setRenamingFolder(null); setRenameValue(''); return; }
+        if (showNewFolder) { setShowNewFolder(false); setNewFolderName(''); return; }
+        if (showSearchFilters) { setShowSearchFilters(false); return; }
+        if (showScheduledPanel) { setShowScheduledPanel(false); return; }
         if (contextMenu) { setContextMenu(null); return; }
         if (composing) { setComposing(null); return; }
+        if (searchInput || searchQuery) { handleClearSearch(); return; }
         if (fullMessage) { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); return; }
-      }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
-        const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
-        if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedMessage, fullMessage, composing, messages, contextMenu]); // eslint-disable-line
+  }, [selectedMessage, fullMessage, composing, messages, contextMenu, confirmAction, confirmLoading,
+      showHeadersModal, showAutoReply, attViewer, showSnoozeMenu, showCategoryMenu, showMoreMenu,
+      folderContextMenu, renamingFolder, showNewFolder, showSearchFilters, showScheduledPanel,
+      searchInput, searchQuery]); // eslint-disable-line
 
   // Resize handler
   useEffect(() => {
@@ -1711,7 +2396,7 @@ export default function EmailPage() {
       setListWidth(Math.max(240, Math.min(500, e.clientX - folderWidth)));
     };
     const handleMouseUp = () => {
-      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; try { localStorage.setItem('email_list_width', String(listWidth)); } catch { /* ignore */ } }
+      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; writeScoped('email_list_width', uid, String(listWidth)); }
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -1738,14 +2423,47 @@ export default function EmailPage() {
 
   const handleSelectFolder = (folderId: string) => {
     setSelectedFolder(folderId); setSelectedMessage(null); setFullMessage(null); setSelectedIds(new Set()); setPage(1);
-    fetchMessages(1, folderId, search);
+    // Task 2.4: clear FTS search on folder change — simpler & more predictable UX
+    setSearchQuery(''); setSearchInput(''); setSearch(''); setSearchResults(null);
+    fetchMessages(1, folderId, '');
   };
 
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedMessage(msg); setMobileView('detail'); fetchFullMessage(msg.id);
   };
 
-  const handleClearSearch = () => { setSearchInput(''); setSearch(''); setPage(1); fetchMessages(1, selectedFolder, ''); };
+  // Consume pending ?thread_id / ?message_id once the visible folder has
+  // messages. Lives down here (after handleSelectMessage) so the lookup
+  // reuses the same handler the click does — no hidden divergence.
+  useEffect(() => {
+    if (loading || messages.length === 0) return;
+    if (pendingMessageId) {
+      const hit = messages.find(m => m.id === pendingMessageId);
+      if (hit) {
+        handleSelectMessage(hit);
+      } else {
+        showSnackbar('Linked message is not on this page — try searching or switch folders', 'error');
+      }
+      setPendingMessageId(null);
+      return;
+    }
+    if (pendingThreadId) {
+      // Latest (top of the list) is what the thread group's `latest` would
+      // surface in the on-screen rollup, so we mirror that behavior here.
+      const hit = messages.find(m => (m.conversationId || m.id) === pendingThreadId);
+      if (hit) {
+        handleSelectMessage(hit);
+      } else {
+        showSnackbar('Linked thread is not on this page — try searching or switch folders', 'error');
+      }
+      setPendingThreadId(null);
+    }
+  }, [loading, messages, pendingMessageId, pendingThreadId]); // eslint-disable-line
+
+  const handleClearSearch = () => {
+    setSearchInput(''); setSearch(''); setSearchQuery(''); setSearchResults(null);
+    setPage(1); fetchMessages(1, selectedFolder, '');
+  };
   const handleRefresh = () => { fetchFolders(); fetchMessages(1, selectedFolder, search); };
 
   const handleToggleRead = async (msg: EmailMessage) => {
@@ -1806,12 +2524,18 @@ export default function EmailPage() {
   const toggleSelectId = (id: string) => { setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }); };
   const selectAll = () => { setSelectedIds(selectedIds.size === messages.length ? new Set() : new Set(messages.map(m => m.id))); };
 
-  const handleBatchAction = async (action: 'delete' | 'archive' | 'markRead' | 'markUnread') => {
+  const handleBatchAction = async (action: 'delete' | 'archive' | 'markRead' | 'markUnread' | 'flag' | 'junk') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     try {
       await apiFetch('/email/messages/batch', { method: 'POST', body: JSON.stringify({ action, ids }) });
-      if (action === 'delete' || action === 'archive') {
+      if (action === 'flag') {
+        setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, isFlagged: true } : m));
+        setSelectedIds(new Set());
+        showSnackbar(`Flagged ${ids.length} message${ids.length > 1 ? 's' : ''}`);
+        return;
+      }
+      if (action === 'delete' || action === 'archive' || action === 'junk') {
         if (selectedMessage && selectedIds.has(selectedMessage.id)) {
           const remaining = messages.filter(m => !selectedIds.has(m.id));
           if (remaining.length > 0) handleSelectMessage(remaining[0]); else { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }
@@ -1822,10 +2546,118 @@ export default function EmailPage() {
         setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, isRead } : m));
       }
       setSelectedIds(new Set());
-      const label = action === 'delete' ? 'Deleted' : action === 'archive' ? 'Archived' : action === 'markRead' ? 'Marked as read' : 'Marked as unread';
+      const label = action === 'delete' ? 'Deleted' : action === 'archive' ? 'Archived' : action === 'junk' ? 'Moved to Junk' : action === 'markRead' ? 'Marked as read' : 'Marked as unread';
       showSnackbar(`${label} ${ids.length} message${ids.length > 1 ? 's' : ''}`);
       debouncedFolderRefresh();
     } catch { showSnackbar(`Batch ${action} failed`, 'error'); }
+  };
+
+  // ─── Outlook-parity handlers ───
+  const removeFromList = (id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+    if (selectedMessage?.id === id) { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }
+  };
+
+  const handleSnooze = async (untilIso: string) => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch(`/email/messages/${selectedMessage.id}/snooze`, { method: 'POST', body: JSON.stringify({ until: untilIso }) });
+      removeFromList(selectedMessage.id);
+      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to snooze', 'error'); }
+  };
+
+  const handleDownloadEml = async () => {
+    if (!selectedMessage) return;
+    try {
+      const blob = await apiFetchBlob(`/email/messages/${selectedMessage.id}/raw`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(selectedMessage.subject || 'message').replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 60) || 'message'}.eml`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      showSnackbar('Message downloaded (.eml)');
+    } catch { showSnackbar('Failed to download message', 'error'); }
+  };
+
+  const handleBlockSender = () => {
+    if (!selectedMessage) return;
+    setConfirmAction({ kind: 'block-sender', message: selectedMessage });
+  };
+  const confirmBlockSender = async () => {
+    const target = confirmAction?.kind === 'block-sender' ? confirmAction.message : null;
+    if (!target) return;
+    setConfirmLoading(true);
+    try {
+      await apiFetch('/email/block-sender', {
+        method: 'POST',
+        body: JSON.stringify({ address: target.fromAddress, reason: 'blocked', messageId: target.id }),
+      });
+      removeFromList(target.id);
+      showSnackbar(`Blocked ${target.fromAddress}`);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to block sender', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
+  };
+
+  const handleReport = async (kind: 'junk-report' | 'phishing-report') => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch('/email/block-sender', {
+        method: 'POST',
+        body: JSON.stringify({ address: selectedMessage.fromAddress, reason: kind, messageId: selectedMessage.id }),
+      });
+      removeFromList(selectedMessage.id);
+      showSnackbar(kind === 'phishing-report' ? 'Reported as phishing and blocked' : 'Reported as junk and blocked');
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to report', 'error'); }
+  };
+
+  const handleSweepSender = () => {
+    if (!selectedMessage) return;
+    setConfirmAction({ kind: 'sweep-sender', message: selectedMessage, folder: selectedFolder });
+  };
+  const confirmSweepSender = async () => {
+    const target = confirmAction?.kind === 'sweep-sender' ? confirmAction : null;
+    if (!target) return;
+    setConfirmLoading(true);
+    try {
+      const r = await apiFetch<{ swept: number }>('/email/sweep', {
+        method: 'POST',
+        body: JSON.stringify({ fromAddress: target.message.fromAddress, folder: target.folder, action: 'archive' }),
+      });
+      showSnackbar(`Swept ${r.swept} message${r.swept === 1 ? '' : 's'} to Archive`);
+      fetchMessages(1, target.folder, search);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Sweep failed', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
+  };
+
+  const handleToggleFocused = async (focused: boolean) => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch(`/email/messages/${selectedMessage.id}/focused`, { method: 'PATCH', body: JSON.stringify({ focused }) });
+      showSnackbar(focused ? 'Moved to Focused' : 'Moved to Other');
+    } catch { showSnackbar('Failed to update Focused inbox', 'error'); }
+  };
+
+  const handleEmptyFolder = () => {
+    setConfirmAction({ kind: 'empty-folder', folder: selectedFolder });
+  };
+  const confirmEmptyFolder = async () => {
+    const target = confirmAction?.kind === 'empty-folder' ? confirmAction : null;
+    if (!target) return;
+    setConfirmLoading(true);
+    const label = target.folder === 'deleteditems' ? 'Deleted Items' : 'Junk Email';
+    try {
+      const r = await apiFetch<{ deleted: number }>(`/email/folders/${target.folder}/empty`, { method: 'POST' });
+      showSnackbar(`Emptied ${label} (${r.deleted} deleted)`);
+      fetchMessages(1, target.folder, search);
+      debouncedFolderRefresh();
+    } catch { showSnackbar(`Failed to empty ${label}`, 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const handleMarkAllRead = async () => {
@@ -1855,11 +2687,19 @@ export default function EmailPage() {
     } catch { showSnackbar('Failed to rename folder', 'error'); }
   };
 
-  const handleDeleteFolder = async (folderId: string) => {
+  // The user-folder Delete used to fire DELETE on click with NO confirmation
+  // (only well-known folders were filtered). A right-click slip on a deeply
+  // nested case-correspondence folder erased every message inside it without
+  // recourse. Two-stage now via ConfirmDialog.
+  const confirmDeleteFolder = async () => {
+    const target = confirmAction?.kind === 'delete-folder' ? confirmAction.folder : null;
+    if (!target) return;
+    setConfirmLoading(true);
     try {
-      await apiFetch(`/email/folders/${folderId}`, { method: 'DELETE' });
+      await apiFetch(`/email/folders/${target.id}`, { method: 'DELETE' });
       fetchFolders(); showSnackbar('Folder deleted');
     } catch { showSnackbar('Failed to delete folder', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const toggleFolderExpand = (folderId: string) => {
@@ -1873,7 +2713,7 @@ export default function EmailPage() {
   const toggleFolderCollapse = () => {
     const next = !folderCollapsed;
     setFolderCollapsed(next);
-    try { localStorage.setItem('email_folder_collapsed', String(next)); } catch { /* ignore */ }
+    writeScoped('email_folder_collapsed', uid, String(next));
   };
 
   // Context menu handler
@@ -1894,7 +2734,7 @@ export default function EmailPage() {
           <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
             <WifiOff className="w-8 h-8 text-red-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white tracking-wide">Email Not Configured</h2>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Email Not Configured</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft 365 email integration needs to be set up by an administrator.
           </p>
@@ -1919,7 +2759,7 @@ export default function EmailPage() {
           <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
             <AlertTriangle className="w-8 h-8 text-amber-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white tracking-wide">Authorization Required</h2>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Authorization Required</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
             An administrator needs to sign in with the Microsoft 365 account.
@@ -1951,9 +2791,12 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
+  // Task 2.4: When FTS search is active, searchResults replaces the folder message list
+  const displayedMessages: EmailMessage[] = searchResults ?? messages;
+
   // Apply client-side search filters
   const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
+    ? displayedMessages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
           if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
@@ -1965,7 +2808,7 @@ export default function EmailPage() {
         if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
         return true;
       })
-    : messages;
+    : displayedMessages;
 
   const conversationThreads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
@@ -1987,7 +2830,7 @@ export default function EmailPage() {
       <div key={f.id}>
         <div
           className={`group w-full flex items-center gap-1.5 py-1.5 text-xs transition-colors cursor-pointer ${
-            isActive ? 'bg-brand-500/15 text-brand-400 border-l-2 border-brand-500' : 'text-rmpg-300 hover:bg-surface-base hover:text-white border-l-2 border-transparent'
+            isActive ? 'bg-brand-500/15 text-brand-400 border-l-2 border-brand-500' : 'text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 border-l-2 border-transparent'
           }`}
           style={{ paddingLeft: folderCollapsed ? 12 : 12 + depth * 16 }}
           onClick={() => handleSelectFolder(key)}
@@ -2002,7 +2845,7 @@ export default function EmailPage() {
           }}
         >
           {hasChildren && !folderCollapsed ? (
-            <button type="button" onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-white">
+            <button type="button" onClick={e => { e.stopPropagation(); toggleFolderExpand(f.id); }} className="p-0.5 -ml-0.5 text-rmpg-500 hover:text-rmpg-100">
               {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
             </button>
           ) : !folderCollapsed ? <div className="w-3.5" /> : null}
@@ -2011,13 +2854,13 @@ export default function EmailPage() {
 
           {!folderCollapsed && (
             renamingFolder === f.id ? (
-              <input value={renameValue} onChange={e => setRenameValue(e.target.value)}
+              <input id="ff-emailpage-15" value={renameValue} onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') { setRenamingFolder(null); setRenameValue(''); } }}
                 onBlur={() => { setRenamingFolder(null); setRenameValue(''); }}
-                className="flex-1 bg-transparent text-xs text-white border-b border-brand-500 outline-none" autoFocus
+                className="flex-1 bg-transparent text-xs text-rmpg-100 border-b border-brand-500 outline-none" autoFocus
                 onClick={e => e.stopPropagation()} />
             ) : (
-              <span className="flex-1 text-left truncate">{f.displayName}</span>
+              <span className="min-w-0 flex-1 text-left truncate">{f.displayName}</span>
             )
           )}
 
@@ -2036,22 +2879,26 @@ export default function EmailPage() {
 
   // ─── Render ───
 
+  // Phase 4: per-user enrollment gate
+  if (enrolled === false) return <EnrollmentBanner />;
+  if (enrolled === null) return <div className="p-8 text-center text-xs text-rmpg-500">Checking enrollment...</div>;
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* ─── Folder Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
         <div className="px-2 py-2 border-b border-border-subtle flex items-center gap-1">
-          <button type="button" onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
+          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-rmpg-100" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
-          </button>
+          </IconButton>
           {!folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
+            <button type="button" onClick={() => setComposing('new')} title="New Message (N)" className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-rmpg-100 font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
           {folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="Compose">
+            <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="New Message (N)">
               <Plus className="w-3.5 h-3.5" />
             </button>
           )}
@@ -2063,7 +2910,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2072,15 +2919,15 @@ export default function EmailPage() {
           <div className="px-2 py-1.5 border-t border-border-subtle">
             {showNewFolder ? (
               <div className="flex items-center gap-1">
-                <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                <input id="ff-emailpage-16" value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
                   className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
                 <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowNewFolder(true)}
-                className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+                className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
                 <FolderPlus className="w-3 h-3" /> New Folder
               </button>
             )}
@@ -2091,7 +2938,7 @@ export default function EmailPage() {
         {!folderCollapsed && (
           <div className="border-t border-border-subtle">
             <button type="button" onClick={() => setShowScheduledPanel(!showScheduledPanel)}
-              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-white transition-colors">
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-rmpg-100 transition-colors">
               <CalendarClock className="w-3 h-3" />
               <span className="flex-1 text-left">Scheduled</span>
               {showScheduledPanel ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
@@ -2107,15 +2954,19 @@ export default function EmailPage() {
               const newState = !notificationsOn;
               if (newState) {
                 const granted = await requestNotificationPermission();
-                if (!granted) { showSnackbar('Notifications blocked by browser', 'error'); return; }
+                if (!granted) { showSnackbar('Notifications blocked — click the lock icon in the address bar → Allow notifications, then reload', 'error'); return; }
               }
-              setNotificationsEnabled(newState);
+              setNotificationsEnabled(newState, uid);
               setNotificationsOn(newState);
               showSnackbar(newState ? 'Email notifications enabled' : 'Email notifications disabled');
             }}
-              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
               {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
               {notificationsOn ? 'Notifications on' : 'Notifications off'}
+            </button>
+            <button type="button" onClick={() => setShowAutoReply(true)}
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
+              <CalendarClock className="w-3 h-3" /> Automatic replies
             </button>
             <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
               <div>Ctrl+N New &middot; Ctrl+R Reply</div>
@@ -2136,12 +2987,14 @@ export default function EmailPage() {
               }
             }}>
             <button type="button" onClick={() => { setRenamingFolder(folderContextMenu.folder.id); setRenameValue(folderContextMenu.folder.displayName); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Edit3 className="w-3 h-3" /> Rename</button>
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Edit3 className="w-3 h-3" /> Rename</button>
             <button type="button" onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
-            <div className="border-t border-border-subtle my-1" />
-            <button type="button" onClick={() => { handleDeleteFolder(folderContextMenu.folder.id); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
+            {canManage && <>
+              <div className="border-t border-border-subtle my-1" />
+              <button type="button" onClick={() => { setConfirmAction({ kind: 'delete-folder', folder: folderContextMenu.folder }); setFolderContextMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+            </>}
           </div>
         </div>
       )}
@@ -2152,17 +3005,17 @@ export default function EmailPage() {
 
         {/* Mobile folder selector */}
         <div className="md:hidden flex items-center gap-1.5 px-2 py-1.5 border-b border-border-subtle bg-surface-base">
-          <select
+          <select id="ff-emailpage-17"
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#050505] border border-[#222222] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-rmpg-100 focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
               return <option key={f.id} value={key}>{f.displayName}{f.unreadItemCount > 0 ? ` (${f.unreadItemCount})` : ''}</option>;
             })}
           </select>
-          <button type="button" onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-white" title="Compose">
+          <button type="button" onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-rmpg-100" title="Compose">
             <Plus className="w-4 h-4" />
           </button>
         </div>
@@ -2174,68 +3027,79 @@ export default function EmailPage() {
           }`}>
             {snackbar.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
             <span className="flex-1">{snackbar.text}</span>
-            <button type="button" onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+            <IconButton onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
           </div>
         )}
 
         {/* Batch action bar OR Search bar */}
         {selectedIds.size > 0 ? (
           <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 bg-brand-500/5">
-            <button type="button" onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all">
+            <IconButton onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all" aria-label="Toggle select all">
               {selectedIds.size === messages.length ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
+            </IconButton>
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
-            <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-white" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-white" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-white" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('flag')} className="p-1 text-rmpg-400 hover:text-yellow-400" title="Flag"><Flag className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('junk')} className="p-1 text-rmpg-400 hover:text-amber-400" title="Move to Junk"><AlertTriangle className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
+            {canManage && <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>}
+            <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
           <div className="px-2 py-1.5 border-b border-border-subtle flex flex-col gap-1">
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..." aria-label="Search emails..."
+                <input id="ff-emailpage-18" value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <button type="button" onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
                 )}
               </div>
               <button type="button" onClick={() => setShowSearchFilters(!showSearchFilters)}
-                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}
                 title="Search filters">
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <button type="button" onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              <button type="button" onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh">
+              {canManage && (selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
+                <IconButton onClick={handleEmptyFolder} className="p-1 text-rmpg-500 hover:text-red-400 rounded-sm" title="Empty folder" aria-label="Empty folder"><Trash className="w-3.5 h-3.5" /></IconButton>
+              )}
+              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+              </IconButton>
               {/* Feature 25: Thread View Toggle */}
               <button type="button"
                 onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}
-                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-rmpg-100'}`}
                 title={viewMode === 'threads' ? 'Switch to messages view' : 'Switch to thread view'}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
               </button>
-              {/* Feature 23: Auto-categorize */}
-              <button type="button"
-                onClick={handleAutoCategorize}
-                disabled={categorizing}
-                className="p-1 text-rmpg-500 hover:text-white rounded-sm"
-                title="Auto-categorize emails"
-              >
-                {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
-              </button>
+              {/* Feature 23: Auto-categorize (admin/manager only) */}
+              {canManage && (
+                <button type="button"
+                  onClick={handleAutoCategorize}
+                  disabled={categorizing}
+                  className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
+                  title="Auto-categorize emails"
+                >
+                  {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
+                </button>
+              )}
               <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
+            {/* Task 2.4: FTS search result count */}
+            {searchResults !== null && (
+              <div className="text-[10px] text-rmpg-500">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</div>
+            )}
             {/* Active filter indicators */}
             {hasActiveFilters(searchFilters) && (
               <div className="flex items-center gap-1 flex-wrap">
@@ -2246,7 +3110,7 @@ export default function EmailPage() {
                 {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">unread</span>}
                 {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.dateFrom}</span>}
                 {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">to: {searchFilters.dateTo}</span>}
-                <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
+                <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-rmpg-100 ml-1">clear</button>
               </div>
             )}
           </div>
@@ -2263,13 +3127,30 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
-          {loading && messages.length === 0 ? (
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
-          ) : messages.length === 0 ? (
+          ) : displayedMessages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
               <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
-              {search ? (<><div>No results for &ldquo;{search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
+              {(search || searchQuery) ? (
+                <>
+                  <div>No results for &ldquo;{searchQuery || search}&rdquo;</div>
+                  <button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button>
+                </>
+              ) : (
+                <>
+                  <div>No messages in this folder</div>
+                  <div className="text-[10px] text-rmpg-600 mt-1">Press <kbd className="px-1 bg-surface-base/60 border border-border-subtle rounded">N</kbd> to compose</div>
+                </>
+              )}
+            </div>
+          ) : filteredMessages.length === 0 ? (
+            <div className="text-center py-12 text-rmpg-500 text-xs">
+              <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
+              <div>No messages match the active filters</div>
+              <div className="text-[10px] text-rmpg-600 mt-1">{displayedMessages.length} message{displayedMessages.length === 1 ? '' : 's'} hidden by sender/date/flag filters</div>
+              <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-brand-400 hover:text-brand-300 mt-2">Clear filters</button>
             </div>
           ) : (
             <>
@@ -2291,10 +3172,9 @@ export default function EmailPage() {
                     )}
 
                     {displayMessages.map(msg => {
-                      // Generate consistent avatar color from sender
-                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                      // Generate consistent avatar color from sender (hash → AVATAR_COLORS at top of file).
                       const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
-                      const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                      const avatarColor = avatarColorFor(senderKey);
                       const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
 
                       return (
@@ -2313,7 +3193,7 @@ export default function EmailPage() {
                             {selectedIds.has(msg.id) ? (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
-                                <CheckCircle className="w-4 h-4 text-white" />
+                                <CheckCircle className="w-4 h-4 text-rmpg-100" />
                               </button>
                             ) : (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
@@ -2327,9 +3207,20 @@ export default function EmailPage() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectMessage(msg)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectMessage(msg);
+                              }
+                            }}
+                          >
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
+                              <span className={`text-[11px] min-w-0 truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-rmpg-100 font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}
                               </span>
                               {isMulti && !isExpanded && (
@@ -2362,9 +3253,9 @@ export default function EmailPage() {
                           </div>
 
                           {/* Hover quick actions */}
-                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-                            <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
+                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
+                            <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
                             <button type="button" onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2376,7 +3267,7 @@ export default function EmailPage() {
                   </div>
                 );
               })}
-              {hasMore && (
+              {hasMore && searchResults === null && (
                 <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} disabled={loadingMore} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
                   {loadingMore ? <><Loader2 size={10} className="animate-spin" /> Loading...</> : 'Load more...'}</button>
               )}
@@ -2390,15 +3281,15 @@ export default function EmailPage() {
         onMouseDown={() => { resizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
 
       {/* ─── Reading Pane ─── */}
-      <div className={`flex-1 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 min-h-0 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
         {fullMessage ? (
           <>
             {/* Message Header */}
             <div className="border-b border-border-subtle bg-surface-base">
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
-                <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
+                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <h2 className="text-sm font-semibold text-rmpg-100 min-w-0 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
                   <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
                 )}
@@ -2407,8 +3298,7 @@ export default function EmailPage() {
               {/* Sender info with avatar */}
               {(() => {
                 const senderKey = (fullMessage.fromAddress || '').toLowerCase();
-                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
-                const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                const avatarColor = avatarColorFor(senderKey);
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
@@ -2417,11 +3307,11 @@ export default function EmailPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[12px] text-white font-semibold">{fullMessage.fromName || fullMessage.fromAddress}</span>
+                        <span className="text-[12px] text-rmpg-100 font-semibold">{fullMessage.fromName || fullMessage.fromAddress}</span>
                         <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {new Date(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                       {fullMessage.toAddresses.length > 0 && (
                         <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">
@@ -2443,23 +3333,92 @@ export default function EmailPage() {
                 <button type="button" onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded-sm transition-colors">
                   <Reply className="w-3 h-3" /> Reply
                 </button>
-                <button type="button" onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+                <button type="button" onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <ReplyAll className="w-3 h-3" /> Reply All
                 </button>
-                <button type="button" onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
+                <button type="button" onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <Forward className="w-3 h-3" /> Forward
                 </button>
                 <div className="w-px h-4 bg-rmpg-700 mx-1" />
-                <button type="button" onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                 <MoveToFolderDropdown folders={folders} currentFolder={selectedFolder} onMove={handleMoveToFolder} />
                 <div className="flex-1" />
-                <button type="button" onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
+                <button type="button" onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
                   {selectedMessage?.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
                 <button type="button" onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
-                <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowSnoozeMenu(!showSnoozeMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Snooze"><Clock className="w-3.5 h-3.5" /></button>
+                  {showSnoozeMenu && <SnoozeMenu onSnooze={handleSnooze} onClose={() => setShowSnoozeMenu(false)} />}
+                </div>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowCategoryMenu(!showCategoryMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Categorize"><Hash className="w-3.5 h-3.5" /></button>
+                  {showCategoryMenu && fullMessage && (
+                    <CategoryMenu messageId={fullMessage.id} onApplied={() => fetchFullMessage(fullMessage.id)} onClose={() => setShowCategoryMenu(false)} onSnackbar={showSnackbar} />
+                  )}
+                </div>
+                <button type="button" onClick={toggleReadingTheme} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors"
+                  title={readingTheme === 'dark' ? 'Light reading mode' : 'Dark reading mode'}>
+                  {readingTheme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!fullMessage) return;
+                    // Court-ready PDF — banner + agency strap + summary + per-
+                    // message envelope + attachments + signature block. The
+                    // thread is whatever messages share the conversationId; if
+                    // multiple are loaded we include them all, otherwise the
+                    // single-message export still renders correctly.
+                    const convId = fullMessage.conversationId || fullMessage.id;
+                    const threadMsgs = messages.filter(m =>
+                      (m.conversationId || m.id) === convId
+                    );
+                    // If the focused message isn't in the list (e.g. opened
+                    // via deep-link to a different folder), fall back to the
+                    // one focused message.
+                    const finalList = threadMsgs.length > 0 ? threadMsgs : [fullMessage];
+                    // Substitute the hydrated `fullMessage` (it has bodyHtml,
+                    // toAddresses, ccAddresses populated) for the lighter list
+                    // entry of the same id — list rows arrive without those.
+                    const hydrated = finalList.map(m => m.id === fullMessage.id ? fullMessage : m);
+                    const folderName = folders.find(f => {
+                      const map: Record<string, string> = { 'Inbox': 'inbox', 'Sent Items': 'sentitems', 'Deleted Items': 'deleteditems', 'Drafts': 'drafts', 'Junk Email': 'junkemail', 'Archive': 'archive' };
+                      return (map[f.displayName] || f.id) === selectedFolder;
+                    })?.displayName || selectedFolder;
+                    openEmailThreadPdf({
+                      threadId: convId,
+                      folder: folderName,
+                      messages: hydrated,
+                      attachmentsByMessageId: { [fullMessage.id]: attachments },
+                      exportedBy: user?.full_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || undefined,
+                    });
+                    showSnackbar('Court-ready PDF opened in new tab');
+                  }}
+                  className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors"
+                  title="Court-ready thread PDF"
+                ><FileDown className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
+                  {showMoreMenu && (
+                    <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1"
+                      onMouseLeave={() => setShowMoreMenu(false)}>
+                      <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FileText className="w-3 h-3" /> View internet headers</button>
+                      <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Download className="w-3 h-3" /> Download as .eml</button>
+                      <div className="border-t border-border-subtle my-1" />
+                      {canManage && <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>}
+                      <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Eye className="w-3 h-3" /> Move to Focused</button>
+                      <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><EyeOff className="w-3 h-3" /> Move to Other</button>
+                      <div className="border-t border-border-subtle my-1" />
+                      <button type="button" onClick={() => { handleReport('junk-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10"><AlertTriangle className="w-3 h-3" /> Report junk</button>
+                      <button type="button" onClick={() => { handleReport('phishing-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Shield className="w-3 h-3" /> Report phishing</button>
+                      {canManage && <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>}
+                    </div>
+                  )}
+                </div>
                 <button type="button" onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
@@ -2477,19 +3436,27 @@ export default function EmailPage() {
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
                       const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
+                      const viewable = isImage || isPdf;
                       return (
-                        <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
-                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
-                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
-                            style={{ backgroundColor: fileColor + '15', color: fileColor }}>
-                            {ext.slice(0, 4)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate max-w-[140px] text-[10px] font-medium">{att.name}</div>
-                            <div className="text-[9px] text-rmpg-500">{formatSize(att.size)}</div>
-                          </div>
-                          <Download className="w-3.5 h-3.5 text-rmpg-500 group-hover:text-brand-400 transition-colors flex-shrink-0" />
-                        </a>
+                        <div key={att.id}
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
+                          <button type="button" onClick={() => handleOpenAttachment(att)} disabled={attBusyId === att.id}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-50"
+                            title={viewable ? 'Open in viewer' : 'Download'}>
+                            <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
+                              style={{ backgroundColor: fileColor + '15', color: fileColor }}>
+                              {attBusyId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : ext.slice(0, 4)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate max-w-[140px] text-[10px] font-medium">{att.name}</div>
+                              <div className="text-[9px] text-rmpg-500">{formatSize(att.size)}{viewable ? ' · click to view' : ''}</div>
+                            </div>
+                          </button>
+                          <IconButton aria-label={`Download ${att.name}`} onClick={() => handleDownloadAttachment(att)}
+                            className="flex-shrink-0 p-0.5">
+                            <Download className="w-3.5 h-3.5 text-rmpg-500 group-hover:text-brand-400 transition-colors" />
+                          </IconButton>
+                        </div>
                       );
                     })}
                   </div>
@@ -2501,13 +3468,13 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className={`flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent ${readingTheme === 'light' ? 'bg-white' : ''}`}>
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (
-                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} onLoad={handleIframeLoad} />
+                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} theme={readingTheme} onLoad={handleIframeLoad} />
               ) : (
-                <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
+                <div className={`p-4 text-xs whitespace-pre-wrap font-mono ${readingTheme === 'light' ? 'bg-white text-neutral-800' : 'text-rmpg-400'}`}>{fullMessage.bodyPreview}</div>
               )}
             </div>
 
@@ -2524,11 +3491,11 @@ export default function EmailPage() {
                 <p className="text-sm text-rmpg-400 font-medium">Select an email to read</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">Click any message in the list, or compose a new one</p>
               </div>
-              <button type="button" onClick={() => setComposing('new')} className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+              <button type="button" onClick={() => setComposing('new')} title="New Message (N)" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> Compose New
               </button>
               <div className="text-[9px] text-rmpg-600 space-y-0.5 pt-2">
-                <div className="font-mono">Ctrl+N <span className="text-rmpg-500">Compose</span> • Ctrl+R <span className="text-rmpg-500">Reply</span></div>
+                <div className="font-mono">N <span className="text-rmpg-500">Compose</span> • Ctrl+R <span className="text-rmpg-500">Reply</span></div>
                 <div className="font-mono">Ctrl+F <span className="text-rmpg-500">Forward</span> • ↑↓ <span className="text-rmpg-500">Navigate</span></div>
                 <div className="font-mono">Del <span className="text-rmpg-500">Delete</span> • Right-click <span className="text-rmpg-500">More</span></div>
               </div>
@@ -2556,15 +3523,92 @@ export default function EmailPage() {
         />
       )}
 
+      {/* ─── Outlook-parity modals ─── */}
+      {showHeadersModal && fullMessage && (
+        <HeadersModal messageId={fullMessage.id} onClose={() => setShowHeadersModal(false)} />
+      )}
+      {showAutoReply && (
+        <AutoReplyModal onClose={() => setShowAutoReply(false)} onSnackbar={showSnackbar} />
+      )}
+
       {/* ─── Compose Modal ─── */}
       {composing && (
         <ComposeModal
           mode={composing}
           replyMessage={fullMessage || selectedMessage}
+          userId={uid}
           onClose={() => setComposing(null)}
           onSent={() => { showSnackbar('Email sent'); handleRefresh(); }}
         />
       )}
+
+      {/* ─── Attachment Viewer (in-app PDF/image overlay) ─── */}
+      {attViewer && (
+        <DocumentViewer isOpen onClose={closeAttViewer} src={attViewer.url} title={attViewer.title} type={attViewer.type} />
+      )}
+
+      {/* ─── ConfirmDialog (block sender / sweep sender / empty folder / delete folder) ─── */}
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'block-sender'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmBlockSender}
+        title="Block Sender"
+        message="Future mail from this address goes straight to Junk and the current message is removed from this folder. Email rules cannot be reversed from this dialog."
+        details={confirmAction?.kind === 'block-sender' ? (
+          <>
+            <div><span className="text-rmpg-500">From:</span> {confirmAction.message.fromName || confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Address:</span> {confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Subject:</span> {confirmAction.message.subject || '(no subject)'}</div>
+          </>
+        ) : undefined}
+        confirmLabel="Block sender"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'block-sender'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'sweep-sender'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmSweepSender}
+        title="Sweep Sender"
+        message="Archive every message from this address in the current folder. The messages move to Archive — they are not deleted, but bulk-undo is not available."
+        details={confirmAction?.kind === 'sweep-sender' ? (
+          <>
+            <div><span className="text-rmpg-500">From:</span> {confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Folder:</span> {confirmAction.folder}</div>
+          </>
+        ) : undefined}
+        confirmLabel="Sweep to Archive"
+        confirmVariant="warning"
+        isLoading={confirmLoading && confirmAction?.kind === 'sweep-sender'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'empty-folder'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmEmptyFolder}
+        title={`Empty ${confirmAction?.kind === 'empty-folder' && confirmAction.folder === 'deleteditems' ? 'Deleted Items' : 'Junk Email'}`}
+        message="Permanently delete every message in this folder. This action cannot be undone — the messages will no longer be recoverable from Deleted Items either."
+        confirmLabel="Permanently delete"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'empty-folder'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'delete-folder'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmDeleteFolder}
+        title="Delete Folder"
+        message="Delete this folder. Any messages still in it move to Deleted Items; sub-folders are also removed."
+        details={confirmAction?.kind === 'delete-folder' ? (
+          <>
+            <div><span className="text-rmpg-500">Folder:</span> {confirmAction.folder.displayName}</div>
+            {confirmAction.folder.totalItemCount > 0 && (
+              <div><span className="text-rmpg-500">Contains:</span> {confirmAction.folder.totalItemCount} message{confirmAction.folder.totalItemCount === 1 ? '' : 's'}</div>
+            )}
+          </>
+        ) : undefined}
+        confirmLabel="Delete folder"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'delete-folder'}
+      />
     </div>
   );
 }

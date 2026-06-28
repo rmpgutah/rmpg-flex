@@ -47,7 +47,7 @@ export const SHIFT_TYPES: Record<ShiftType, { label: string; defaultStart: strin
   day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: '#f59e0b' },
   swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#888888' },
   night:  { label: 'Night Shift', defaultStart: '22:00', defaultEnd: '06:00', color: '#a855f7' },
-  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#666666' },
+  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: 'var(--rmpg-500)' },
 };
 
 const LS_KEY = 'rmpg_shift_plans';
@@ -310,7 +310,7 @@ export function useShiftPlanning() {
     const plan = plansRef.current.find((p) => p.id === planId);
     if (!plan) return;
     try {
-      await apiFetch('/admin/shift-plans', {
+      await apiFetch('/shift-plans', {
         method: 'POST',
         body: JSON.stringify(plan),
       });
@@ -322,7 +322,7 @@ export function useShiftPlanning() {
 
   const loadPlansFromServer = useCallback(async () => {
     try {
-      const data = await apiFetch('/admin/shift-plans') as ShiftPlan[];
+      const data = await apiFetch('/shift-plans') as ShiftPlan[];
       if (Array.isArray(data) && data.length > 0) {
         setPlans((prev) => {
           // Merge server plans with local (server wins on conflict)

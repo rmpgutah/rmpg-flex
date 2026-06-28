@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Siren, Check, ChevronDown, ChevronRight, Trash2, Clock, ShieldCheck } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 const ALERT_TYPE_COLORS: Record<string, string> = {
   officer_down: '#ef4444',
@@ -50,7 +51,7 @@ interface AlertSystemPanelProps {
 
 function formatTimestamp(ts: string): string {
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -64,7 +65,7 @@ function formatTimestamp(ts: string): string {
 
 function relativeTime(ts: string): string {
   try {
-    const diff = Date.now() - new Date(ts).getTime();
+    const diff = Date.now() - parseTimestamp(ts).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
@@ -93,7 +94,7 @@ export default function AlertSystemPanel({
         maxWidth: 300,
         width: 300,
         backgroundColor: '#0a0a0a',
-        borderColor: 'var(--rmpg-700, #2a3a4e)',
+        borderColor: 'var(--rmpg-700, #373737)',
       }}
       role="complementary"
       aria-label="Alert system panel"
@@ -117,7 +118,7 @@ export default function AlertSystemPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="text-rmpg-400 hover:text-white hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
+          className="text-rmpg-400 hover:text-rmpg-100 hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] p-0.5 rounded-sm"
           title="Close"
           aria-label="Close alert system panel"
         >
@@ -137,17 +138,17 @@ export default function AlertSystemPanel({
             <span className="text-[9px] font-mono text-rmpg-400">No active alerts</span>
           </div>
         ) : (
-          <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {activeAlerts.map((alert) => {
-              const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
+              const color = ALERT_TYPE_COLORS[alert.type] || 'var(--rmpg-500)';
               const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
               return (
                 <div
                   key={alert.id}
-                  className={`rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
+                  className={`rounded-sm hover:bg-surface-raised/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
                   style={{
-                    backgroundColor: '#050505',
+                    backgroundColor: 'var(--surface-overlay)',
                     borderLeft: `3px solid ${color}`,
                   }}
                 >
@@ -182,7 +183,7 @@ export default function AlertSystemPanel({
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                           style={{
                             backgroundColor: '#88888833',
-                            color: '#aaaaaa',
+                            color: 'var(--rmpg-400)',
                             border: '1px solid #88888855',
                           }}
                           title="Acknowledge"
@@ -218,7 +219,7 @@ export default function AlertSystemPanel({
       <div className="px-2.5 py-1.5 border-t border-rmpg-700">
         <button type="button"
           onClick={() => setHistoryExpanded(!historyExpanded)}
-          className="flex items-center gap-1 w-full text-left transition-all duration-150 active:scale-[0.97] hover:bg-[#141414]/50 rounded-sm px-1 py-0.5"
+          className="flex items-center gap-1 w-full text-left transition-all duration-150 active:scale-[0.97] hover:bg-surface-raised/50 rounded-sm px-1 py-0.5"
           aria-label={historyExpanded ? 'Collapse alert history' : 'Expand alert history'}
         >
           {historyExpanded ? (
@@ -237,21 +238,21 @@ export default function AlertSystemPanel({
         </button>
 
         {historyExpanded && (
-          <div className="mt-1.5 space-y-1 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="mt-1.5 space-y-1 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {alertHistory.length === 0 ? (
               <div className="text-[9px] font-mono text-rmpg-400 text-center py-2 opacity-60">
                 No alert history
               </div>
             ) : (
               alertHistory.map((alert) => {
-                const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
+                const color = ALERT_TYPE_COLORS[alert.type] || 'var(--rmpg-500)';
                 const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
                 return (
                   <div
                     key={alert.id}
                     className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm opacity-60"
-                    style={{ backgroundColor: '#050505' }}
+                    style={{ backgroundColor: 'var(--surface-overlay)' }}
                   >
                     <Clock size={8} className="text-rmpg-400 flex-shrink-0" />
                     <span

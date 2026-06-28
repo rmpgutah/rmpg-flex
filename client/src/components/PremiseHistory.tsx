@@ -4,11 +4,12 @@
 // when hazardous history is found. Used inline in call creation.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Clock, Shield, ShieldBan, MapPin, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 import { safeDateStr } from '../utils/dateUtils';
 
 interface PremiseCall {
@@ -33,6 +34,21 @@ interface PremiseResult {
   hasWarnings: boolean;
   warningTypes: string[];
   propertyHazard: string | null;
+}
+
+interface Occupant {
+  id: number;
+  name: string;
+  dob: string | null;
+  flags: string[];
+  gang: string | null;
+  active_warrants: number;
+  caution: boolean;
+}
+interface OccupantResult {
+  occupants: Occupant[];
+  occupant_count: number;
+  has_flagged: boolean;
 }
 
 interface TrespassOrderHit {
@@ -65,6 +81,7 @@ interface PremiseHistoryProps {
 export default function PremiseHistory({ address, propertyId, onClose, compact = false }: PremiseHistoryProps) {
   const [data, setData] = useState<PremiseResult | null>(null);
   const [trespassOrders, setTrespassOrders] = useState<TrespassOrderHit[]>([]);
+  const [occupants, setOccupants] = useState<Occupant[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tonePlayedRef = useRef<string>('');  // track which address we've played tone for
@@ -73,6 +90,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
     if (!address || address.length < 3) {
       setData(null);
       setTrespassOrders([]);
+      setOccupants([]);
       return;
     }
 
@@ -80,18 +98,22 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       setLoading(true);
       setError(null);
       try {
-        // Fetch premise history and trespass orders in parallel
-        const [premiseResult, trespassResult] = await Promise.all([
+        // Fetch premise history, trespass orders, and on-file occupants in parallel.
+        const [premiseResult, trespassResult, occupantResult] = await Promise.all([
           apiFetch<PremiseResult>(
             `/dispatch/premise-history?address=${encodeURIComponent(address)}`
           ),
           apiFetch<TrespassCheckResult>(
             `/trespass-orders/check?${propertyId ? `property_id=${propertyId}` : `address=${encodeURIComponent(address)}`}`
           ).catch(() => ({ orders: [], count: 0 }) as TrespassCheckResult),
+          apiFetch<OccupantResult>(
+            `/dispatch/address-occupants?address=${encodeURIComponent(address)}`
+          ).catch(() => ({ occupants: [], occupant_count: 0, has_flagged: false }) as OccupantResult),
         ]);
 
         setData(premiseResult);
         setTrespassOrders(trespassResult.orders || []);
+        setOccupants(occupantResult.occupants || []);
 
         // Play alert tone (only once per address)
         if (tonePlayedRef.current !== address) {
@@ -99,9 +121,10 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           if (trespassResult.count > 0) {
             // Active trespass orders are highest priority alert
             playTone('warning');
-          } else if (premiseResult.hasWarnings) {
+          } else if (premiseResult.hasWarnings || occupantResult.has_flagged) {
+            // A flagged occupant (active warrant / gang / caution) is a warning.
             playTone('warning');
-          } else if (premiseResult.total > 0) {
+          } else if (premiseResult.total > 0 || (occupantResult.occupant_count || 0) > 0) {
             playTone('caution');
           }
         }
@@ -136,16 +159,17 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       </div>
     );
   }
-  if ((!data || data.total === 0) && trespassOrders.length === 0) return null;
+  if ((!data || data.total === 0) && trespassOrders.length === 0 && occupants.length === 0) return null;
 
   const hasTrespassOrders = trespassOrders.length > 0;
+  const flaggedOccupants = occupants.filter((o) => o.caution);
 
   const priorityColor = (p: string) => {
     switch (p) {
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#666666';
+      default: return 'var(--rmpg-500)';
     }
   };
 
@@ -165,7 +189,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -197,7 +221,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           <Shield style={{ width: 11, height: 11 }} />
           <span>OFFICER SAFETY:</span>
           {data.warningTypes.map(w => (
-            <span key={w} className="premise-warning-tag">{w.replace(/_/g, ' ')}</span>
+            <span key={w} className="premise-warning-tag">{toDisplayLabel(w)}</span>
           ))}
         </div>
       )}
@@ -207,6 +231,52 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
         <div className="premise-hazard">
           <AlertTriangle style={{ width: 10, height: 10 }} />
           <span>{data.propertyHazard}</span>
+        </div>
+      )}
+
+      {/* Flagged-occupant officer-safety banner */}
+      {flaggedOccupants.length > 0 && (
+        <div
+          className="flex items-center gap-1.5 flex-wrap px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
+          style={{ background: 'rgba(220, 38, 38, 0.3)', borderBottom: '1px solid #991b1b', color: '#ff6b6b' }}
+        >
+          <Shield style={{ width: 12, height: 12, flexShrink: 0 }} />
+          <span>FLAGGED AT ADDRESS:</span>
+          {flaggedOccupants.map((o) => (
+            <span key={o.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
+              {o.name.toUpperCase()}
+              {o.active_warrants > 0 ? ` — ${o.active_warrants} WARRANT${o.active_warrants > 1 ? 'S' : ''}` : ''}
+              {o.gang ? ` — GANG: ${o.gang.toUpperCase()}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* On-file occupants (individual records cross-referenced by address) */}
+      {occupants.length > 0 && (
+        <div className="premise-call-list">
+          <div className="px-2 pt-1 text-[8px] font-bold uppercase tracking-wide text-rmpg-500">
+            On File At Address — {occupants.length} Individual{occupants.length !== 1 ? 's' : ''}
+          </div>
+          {occupants.slice(0, compact ? 4 : 15).map((o) => (
+            <div key={o.id} className="premise-call-item flex items-center gap-1.5" style={o.caution ? { borderLeft: '2px solid #ef4444' } : undefined}>
+              <span className="text-[10px] font-semibold" style={{ color: o.caution ? '#ff6b6b' : '#cccccc' }}>{o.name}</span>
+              {o.dob && <span className="text-[9px] text-rmpg-500">DOB {o.dob}</span>}
+              {o.active_warrants > 0 && (
+                <span className="text-[8px] font-black px-1 py-px" style={{ background: '#991b1b', color: '#fff' }}>
+                  {o.active_warrants} WARRANT{o.active_warrants > 1 ? 'S' : ''}
+                </span>
+              )}
+              {o.gang && (
+                <span className="text-[8px] font-bold px-1 py-px" style={{ background: 'rgba(234,88,12,0.3)', border: '1px solid #ea580c', color: '#fb923c' }}>
+                  {o.gang}
+                </span>
+              )}
+              {o.flags.filter((f) => /caution|armed|violent|danger|weapon/i.test(f)).slice(0, 3).map((f) => (
+                <span key={f} className="text-[8px] px-1 py-px uppercase" style={{ background: 'rgba(234,179,8,0.2)', border: '1px solid #a16207', color: '#eab308' }}>{f}</span>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -225,17 +295,17 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                   textAlign: 'center',
                 }}
               >
-                {call.priority}
+                {(call.priority || '').toUpperCase()}
               </span>
               <span className="text-[10px] font-mono text-rmpg-300">{call.call_number}</span>
-              <span className="text-[10px] font-semibold text-white">
+              <span className="text-[10px] font-semibold text-rmpg-100">
                 {formatIncidentType(call.incident_type)}
               </span>
             </div>
             <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
               <Clock style={{ width: 9, height: 9 }} />
               <span>{safeDateStr(call.created_at)}</span>
-              {call.disposition && <span>• {call.disposition.replace(/_/g, ' ')}</span>}
+              {call.disposition && <span>• {toDisplayLabel(call.disposition)}</span>}
               {call.weapons_involved && <span className="text-red-500 font-bold">WEAPONS</span>}
               {call.domestic_violence && <span className="text-orange-500 font-bold">DV</span>}
             </div>

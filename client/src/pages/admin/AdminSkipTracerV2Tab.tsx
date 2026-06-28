@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Key, ToggleLeft, ToggleRight, Save, DollarSign, BarChart3,
+  Search, Eye, EyeOff, Loader2, CheckCircle2, Key, ToggleLeft, ToggleRight, Save,
+  DollarSign, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -34,10 +37,16 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState<any>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchSources = useCallback(async () => {
     try {
       const data = await apiFetch<SourceInfo[]>('/skiptracer-v2/sources');
-      setSources(data);
+      // Guard: a stub/legacy shape ({} or {data:[]}) would make `sources.map`
+      // / `source.costPerLookup.toFixed` throw and white-screen the admin page.
+      setSources(asArray<SourceInfo>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
     } finally {
@@ -95,6 +104,21 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
     }
   };
 
+  const buildSourceMenu = (source: SourceInfo): ContextMenuItem[] => {
+    const isEnabled = edits[source.name]?.enabled ?? source.enabled;
+    return [
+      m.action(
+        isEnabled ? 'Disable source' : 'Enable source',
+        () => handleToggle(source.name, isEnabled),
+        { icon: isEnabled ? <ToggleLeft size={12} /> : <ToggleRight size={12} /> },
+      ),
+      m.separator(),
+      m.copy('Copy name', source.displayName),
+      m.copy('Copy source key', source.name),
+      m.copyId(source.name, 'Copy source key'),
+    ];
+  };
+
   const getCategoryColor = (cat: string) => {
     switch (cat) {
       case 'people': return '#aaaaaa';
@@ -115,8 +139,8 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-              <Search className="w-5 h-5 text-gray-400" />
+            <div className="p-2 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
+              <Search className="w-5 h-5 text-rmpg-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
@@ -180,6 +204,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
               <div
                 key={source.name}
                 className="bg-surface-sunken border border-rmpg-700 p-3 space-y-2"
+                onContextMenu={(e) => openMenu(e, buildSourceMenu(source))}
               >
                 {/* Source header row */}
                 <div className="flex items-center gap-3">
@@ -239,25 +264,25 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
                 {/* API Key input (always show for unconfigured sources) */}
                 {!source.configured && (
-                  <div className="flex items-center gap-2 mt-2">
+                  <form onSubmit={(e) => e.preventDefault()} autoComplete="off" className="flex items-center gap-2 mt-2">
                     <Key className="w-3 h-3 text-rmpg-500 shrink-0" />
                     <div className="relative flex-1">
-                      <input
+                      <input id="ff-adminskiptracerv2tab-0"
                         type={showKeys[source.name] ? 'text' : 'password'}
                         value={edit?.apiKey ?? ''}
                         onChange={(e) => handleApiKeyChange(source.name, e.target.value)}
                         placeholder="Enter API key"
-                        className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-gray-500 focus:outline-none"
+                        className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 pr-7 font-mono focus:border-rmpg-500 focus:outline-none"
                       />
                       <button type="button"
                         onClick={() => setShowKeys(prev => ({ ...prev, [source.name]: !prev[source.name] }))}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
                         aria-label="Toggle API key visibility"
                       >
                         {showKeys[source.name] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     </div>
-                  </div>
+                  </form>
                 )}
 
                 {/* Save button when edits exist */}
@@ -266,7 +291,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                     <button type="button"
                       onClick={() => handleSave(source.name)}
                       disabled={isSaving}
-                      className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                      className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-rmpg-100 hover:bg-brand-700 disabled:opacity-50"
                     >
                       {isSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                       Save

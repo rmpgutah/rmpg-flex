@@ -3,19 +3,10 @@
 // Firecrawl-powered competitor URL monitoring + change detection
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
-  Eye,
-  Plus,
-  Trash2,
-  RefreshCw,
-  Check,
-  AlertTriangle,
-  Globe,
-  Clock,
-  X,
-  ChevronDown,
-  ChevronUp,
+  Eye, Plus, Trash2, RefreshCw, Check, Globe, Clock, X, ChevronDown, ChevronUp,
   Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -216,7 +207,7 @@ export default function CompetitorMonitorPanel() {
   // ── Helpers ───────────────────────────────────────────────
   function relativeTime(dateStr: string | null): string {
     if (!dateStr) return 'never';
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const diff = Date.now() - parseTimestamp(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
@@ -290,21 +281,21 @@ export default function CompetitorMonitorPanel() {
             <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider">Add Monitored URL</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
+            <input id="ff-competitormonitorpanel-0"
               type="url"
               className="input-dark col-span-full"
               placeholder="https://competitor-website.com"
               value={addUrl}
               onChange={e => setAddUrl(e.target.value)}
             />
-            <input
+            <input id="ff-competitormonitorpanel-1"
               type="text"
               className="input-dark"
               placeholder="Label (optional)"
               value={addLabel}
               onChange={e => setAddLabel(e.target.value)}
             />
-            <select
+            <select id="ff-competitormonitorpanel-2"
               className="input-dark"
               value={addInterval}
               onChange={e => setAddInterval(e.target.value)}

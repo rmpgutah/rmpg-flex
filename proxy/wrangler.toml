@@ -1,0 +1,29 @@
+name = "rmpg-api-proxy"
+main = "index.ts"
+compatibility_date = "2026-05-01"
+
+# Catches every request to rmpgutah.us/api/* before it reaches Pages.
+# The Pages app at rmpgutah.us serves the SPA at the root and used to
+# proxy /api/* through a Functions middleware; that middleware is now
+# dead code (this Worker intercepts at the zone first). See LEGACY.md.
+[[routes]]
+pattern = "rmpgutah.us/api/*"
+zone_name = "rmpgutah.us"
+
+# Service bindings — these let this Worker fetch() another Worker
+# directly inside the Cloudflare edge (no HTTP round-trip out, no
+# additional CORS dance, sub-ms latency).
+[[services]]
+binding = "API"
+service = "rmpg-flex-api"
+
+[[services]]
+binding = "LEGACY"
+service = "rmpg-flex"
+
+# Workers Logs — required for the cutover inventory (Phase 0 of
+# docs/superpowers/plans/2026-06-12-worker-cutover.md). Captures the
+# [legacy-fallthrough] lines for the route-migration batches.
+[observability]
+enabled = true
+head_sampling_rate = 1

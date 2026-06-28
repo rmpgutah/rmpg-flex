@@ -45,6 +45,7 @@ const MODERATE_EVENTS = new Set([
   'bolo_alert',
   'warrant_hit',
   'backup_request',
+  'officer_on_foot_overdue',
   'pursuit_update',
   'all_units',
 ]);
