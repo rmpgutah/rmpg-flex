@@ -145,6 +145,40 @@ fleetio.get('/health', requireRole('admin'), async (c) => {
   }
 });
 
+/** List unresolved conflicts, optionally filtered by table / id. Auth: required
+ *  (not admin-only) so fleet V2 pages can show conflict badges for non-admin
+ *  users. Supports `?table=fleet_vehicles&ids=1,2,3` to filter multiple rows. */
+fleetio.get('/conflicts', async (c) => {
+  const db = getDb(c.env);
+  const table = c.req.query('table');
+  const id = c.req.query('id');
+  const ids = c.req.query('ids');
+
+  let sql = `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
+             FROM fleetio_conflicts WHERE resolved_at IS NULL`;
+  const bindings: unknown[] = [];
+
+  if (table) {
+    sql += ' AND rmpg_table = ?';
+    bindings.push(table);
+  }
+  if (id) {
+    sql += ' AND rmpg_id = ?';
+    bindings.push(parseInt(id, 10));
+  } else if (ids) {
+    const parsed = ids.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    if (parsed.length > 0) {
+      sql += ` AND rmpg_id IN (${parsed.map(() => '?').join(',')})`;
+      bindings.push(...parsed);
+    }
+  }
+
+  sql += ' ORDER BY id DESC LIMIT 50';
+
+  const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
+  return c.json({ conflicts: rows, count: rows.length });
+});
+
 /** Resolve a single conflict by id with a chosen resolution. */
 fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) => {
   const id = parseInt(c.req.param('id') ?? '0', 10);

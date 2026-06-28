@@ -4,6 +4,7 @@ import {
   Coffee, Printer, ChevronDown, Radio,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import type {
   Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment,
   BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping,
@@ -272,6 +273,12 @@ export default function PersonnelDetailPanel({
   onClockIn, onClockOut, onStartBreak, onEndBreak, onDutyToggle, onEditTimeEntry, onDeleteTimeEntry,
   onClose,
 }: Props) {
+  const { user: currentUser } = useAuth();
+  // Terminate/archive are destructive HR actions — restrict to roles that own
+  // personnel management. Dispatchers, officers, and client_viewers see the
+  // panel but cannot remove or archive anyone.
+  const canManageHR = (['admin', 'manager', 'supervisor', 'human_resources'] as string[])
+    .includes(currentUser?.role ?? '');
   const officerCreds = credentials.filter(c => c.officer_id === officer.id);
   const officerSchedules = schedules.filter(s => s.officer_id === officer.id);
   const officerTime = timeEntries.filter(t => t.officer_id === officer.id);
@@ -346,17 +353,17 @@ export default function PersonnelDetailPanel({
               deployments={deployments.filter(d => d.officer_id === officer.id)}
               timeEntries={officerTime}
             />
-            {!isArchived && officer.termination_date && (
+            {canManageHR && !isArchived && officer.termination_date && (
               <button type="button" onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive">
                 <Archive className="w-3 h-3" />
               </button>
             )}
-            {!isArchived && (
+            {canManageHR && !isArchived && (
               <button type="button" onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate">
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
-            {isArchived && (
+            {canManageHR && isArchived && (
               <button type="button" onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Restore">
                 <RotateCcw className="w-3 h-3" />
               </button>
