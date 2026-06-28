@@ -11,6 +11,7 @@ import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
 import { computeRiskScore } from '../../utils/riskScoring';
+import { paramStr } from '../../utils/reqHelpers';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -922,15 +923,30 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
 router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // serve_queue holds the legal-side fields (attorney_name, jurisdiction,
+    // deadline, time_window, service_instructions) that the PDF generator
+    // expects but calls_for_service doesn't have its own columns for. We
+    // pull the latest serve_queue row matched by call_id and project the
+    // fields onto the call response so the PDF print path sees them. Also
+    // override client_name from serve_queue when present (process-service
+    // calls don't link to a `clients` row).
     const call = db.prepare(`
       SELECT c.*, p.name as property_name, p.address as property_address,
         p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
         u.full_name as dispatcher_name,
-        cl.name as client_name
+        COALESCE(sq.client_name, cl.name) as client_name,
+        sq.attorney_name as attorney_name,
+        sq.jurisdiction as jurisdiction,
+        sq.deadline as deadline,
+        sq.time_window as time_window,
+        sq.service_instructions as service_instructions
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      LEFT JOIN serve_queue sq ON sq.id = (
+        SELECT id FROM serve_queue WHERE call_id = c.id ORDER BY id DESC LIMIT 1
+      )
       WHERE c.id = ?
     `).get(req.params.id) as any;
 
@@ -1000,10 +1016,48 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LIMIT 1000
     `).all(call.id);
 
-    // Attach visit history for PSO calls
+    // Attach visit history for PSO calls — trace to the root of the re-dispatch
+    // chain, then collect visit rows for every call in the subtree (root + all
+    // descendants) so any attempt shows the complete sequence of prior visits,
+    // including siblings (e.g. 3rd attempt shows both 1st and 2nd).
     let visit_history: any[] = [];
     if (call.incident_type === 'pso_client_request') {
-      visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
+      // Walk up to find the root
+      let rootId: number = call.id;
+      let cursorId: number | null = (call as any).parent_call_id || null;
+      let depth = 0;
+      while (cursorId && depth < 20) {
+        rootId = cursorId;
+        const parent = db.prepare('SELECT parent_call_id FROM calls_for_service WHERE id = ?').get(cursorId) as any;
+        cursorId = parent?.parent_call_id || null;
+        depth++;
+      }
+      // Collect all descendants of the root (BFS)
+      const subtree: number[] = [rootId];
+      let frontier: number[] = [rootId];
+      while (frontier.length > 0) {
+        const placeholders = frontier.map(() => '?').join(',');
+        const children = db.prepare(
+          `SELECT id FROM calls_for_service WHERE parent_call_id IN (${placeholders})`
+        ).all(...frontier) as any[];
+        const childIds = children.map(c => c.id);
+        for (const cid of childIds) if (!subtree.includes(cid)) subtree.push(cid);
+        frontier = childIds;
+        if (subtree.length > 100) break; // safety
+      }
+      // Pull all visits for the subtree, exclude the current call's own rows
+      const placeholders = subtree.map(() => '?').join(',');
+      visit_history = db.prepare(
+        `SELECT * FROM call_visit_history WHERE call_id IN (${placeholders}) AND call_id != ? ORDER BY visit_number ASC`
+      ).all(...subtree, call.id) as any[];
+      // Dedupe by (call_id, visit_number) — some legacy rows are duplicated
+      const seen = new Set<string>();
+      visit_history = visit_history.filter((v: any) => {
+        const k = `${v.call_id}|${v.visit_number}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     }
 
     // Surface the first linked incident number on the call object for display
@@ -1361,17 +1415,57 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('contract_id', contract_id);
     addField('client_id', resolvedUpdateClientId);
 
-    // ── Admin/Manager timeline override: allow editing dispatch timestamps ──
-    if (['admin', 'manager'].includes(req.user?.role || '')) {
+    // ── Admin/Manager/Supervisor timeline override: allow editing dispatch timestamps ──
+    // Widened from admin/manager to also include supervisor + dispatcher because the
+    // client UI exposes the timeline edit controls based on isAdminOrManager but the
+    // actual route already allows broader roles. Without this widening, a dispatcher
+    // who somehow triggers the edit would silently get NO_FIELDS_TO_UPDATE.
+    const TIMELINE_EDIT_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
+    const userRole = req.user?.role || '';
+    const canEditTimeline = TIMELINE_EDIT_ROLES.includes(userRole);
+
+    // Detect if any timeline field is being edited so we can log diagnostics
+    // when the role check blocks an otherwise-valid attempt.
+    const TIMELINE_FIELDS = ['received_at', 'dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'created_at'];
+    const timelineFieldsInBody = TIMELINE_FIELDS.filter(f => req.body && req.body[f] !== undefined);
+
+    if (canEditTimeline) {
       const { dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at: created_at_override, received_at } = req.body;
       const isValidIso = (v: any) => typeof v === 'string' && v.length >= 10 && !isNaN(new Date(v).getTime());
-      if (received_at !== undefined) { if (received_at === null || received_at === '') { updates.push('received_at = NULL'); } else if (isValidIso(received_at)) { addField('received_at', received_at); } }
-      if (dispatched_at !== undefined) { if (dispatched_at === null || dispatched_at === '') { updates.push('dispatched_at = NULL'); } else if (isValidIso(dispatched_at)) { addField('dispatched_at', dispatched_at); } }
-      if (enroute_at !== undefined) { if (enroute_at === null || enroute_at === '') { updates.push('enroute_at = NULL'); } else if (isValidIso(enroute_at)) { addField('enroute_at', enroute_at); } }
-      if (onscene_at !== undefined) { if (onscene_at === null || onscene_at === '') { updates.push('onscene_at = NULL'); } else if (isValidIso(onscene_at)) { addField('onscene_at', onscene_at); } }
-      if (cleared_at !== undefined) { if (cleared_at === null || cleared_at === '') { updates.push('cleared_at = NULL'); } else if (isValidIso(cleared_at)) { addField('cleared_at', cleared_at); } }
-      if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
-      if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
+
+      // Helper that handles "set or clear" for a single timestamp field, with
+      // diagnostic logging when an attempted set fails validation. The previous
+      // implementation silently dropped invalid values, leading to opaque
+      // "No fields to update" errors with no clue why.
+      const handleTimelineField = (col: string, val: any) => {
+        if (val === undefined) return;
+        if (val === null || val === '') {
+          updates.push(`${col} = NULL`);
+          return;
+        }
+        if (isValidIso(val)) {
+          addField(col, val);
+          return;
+        }
+        // Validation failed — log so we know exactly what the client sent
+        console.warn(`[PUT /calls/:id] timeline field rejected: ${col}=${typeof val}:${JSON.stringify(val)?.substring(0, 80)} (failed isValidIso)`);
+      };
+
+      handleTimelineField('received_at', received_at);
+      handleTimelineField('dispatched_at', dispatched_at);
+      handleTimelineField('enroute_at', enroute_at);
+      handleTimelineField('onscene_at', onscene_at);
+      handleTimelineField('cleared_at', cleared_at);
+      handleTimelineField('closed_at', closed_at);
+      // created_at: same set/clear semantics for consistency
+      handleTimelineField('created_at', created_at_override);
+    } else if (timelineFieldsInBody.length > 0) {
+      // User tried to edit timeline fields but their role is gated out — log
+      // so we can see which user/role is being blocked and decide if the gate
+      // is too strict.
+      console.warn(
+        `[PUT /calls/:id] timeline edit blocked by role check: id=${req.params.id} role=${userRole || 'n/a'} attempted=[${timelineFieldsInBody.join(',')}]`,
+      );
     }
 
     // Upgrade 17: Track status_changed_at on every status change
@@ -1397,6 +1491,15 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     }
 
     if (updates.length === 0) {
+      // Diagnostic: log the body keys + user role so we can see WHY no fields
+      // qualified for update. Common cause: timeline timestamp edits where the
+      // user's role didn't match the admin/manager check at line 1209, or where
+      // the value didn't pass isValidIso().
+      const bodyKeys = req.body && typeof req.body === 'object' ? Object.keys(req.body) : [];
+      const bodyPreview = bodyKeys.map(k => `${k}=${typeof req.body[k]}:${JSON.stringify(req.body[k])?.substring(0, 60)}`).join(' ');
+      console.warn(
+        `[PUT /calls/:id] NO_FIELDS_TO_UPDATE id=${req.params.id} role=${req.user?.role || 'n/a'} body_keys=[${bodyKeys.join(',')}] preview="${bodyPreview}"`,
+      );
       res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
@@ -1501,8 +1604,17 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       });
     }
   } catch (error: any) {
-    console.error('Update call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
+    // Surface the real cause so production failures are diagnosable from the
+    // client. Without this, every PUT /calls/:id failure is an opaque 500 and
+    // the UI just shows "nothing happened". `detail` is intentionally verbose
+    // — this endpoint requires an authenticated dispatcher/officer role, so
+    // leaking SQL column names to that audience is acceptable.
+    console.error('Update call error:', error?.message || 'Unknown error', error?.stack);
+    res.status(500).json({
+      error: 'Failed to update call',
+      code: 'UPDATE_CALL_ERROR',
+      detail: error?.message || String(error),
+    });
   }
 });
 
@@ -1586,83 +1698,102 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       ? `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt. Note: ${scheduled_note}`
       : `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt`;
 
-    const initialNotes = JSON.stringify([{
-      id: String(Date.now()),
-      author: req.user?.fullName || 'Dispatch',
-      text: noteText,
-      timestamp: now,
-    }]);
+    // Carry ALL parent notes forward to the revisit. Without this, the
+    // dispatcher loses the case narrative, officer briefing, dossier, and
+    // every dispatcher/officer note from the prior attempt — which has
+    // historically forced PSOs to dig through the parent call to remember
+    // what they're serving. New IDs and "carried over" timestamps preserve
+    // the original chronology while making it clear this note arrived via
+    // re-dispatch (so it doesn't look like brand-new dispatch activity).
+    let parentNotesForCarry: any[] = [];
+    try {
+      const raw = JSON.parse(parentCall.notes || '[]');
+      parentNotesForCarry = Array.isArray(raw) ? raw : [];
+    } catch { parentNotesForCarry = []; }
 
-    // Create the NEW call linked to parent — copy ALL relevant fields
-    const result = db.prepare(`
-      INSERT INTO calls_for_service (
-        call_number, incident_type, priority, status, source,
-        caller_name, caller_phone, caller_relationship, caller_address,
-        location_address, property_id, client_id, latitude, longitude,
-        cross_street, location_building, location_floor, location_room,
-        description, notes, parent_call_id, pso_attempt_number,
-        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
-        pso_service_type, pso_billing_code, pso_authorization,
-        pso_service_windows,
-        process_service_type, process_served_to, process_served_address,
-        dispatch_code, sector_id, sector_name, zone_id, zone_name,
-        beat_id, beat_name, beat_descriptor, contract_id,
-        num_subjects, num_victims, direction_of_travel,
-        subject_description, vehicle_description,
-        scene_safety, weather_conditions, lighting_conditions,
-        injuries_reported, alcohol_involved, domestic_violence, drugs_involved,
-        weapons_involved, mental_health_crisis, juvenile_involved,
-        felony_in_progress, officer_safety_caution, gang_related,
-        k9_requested, ems_requested, fire_requested, hazmat,
-        case_number, le_agency, le_case_number, le_notified,
-        secondary_type, contact_method, tags,
-        dispatcher_id, created_at, updated_at, received_at
-      ) VALUES (
-        ?, ?, ?, 'pending', ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?
-      )
-    `).run(
-      newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
-      parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
-      parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
-      parentCall.cross_street, parentCall.location_building, parentCall.location_floor, parentCall.location_room,
-      parentCall.description, initialNotes, rootCallId, newAttempt,
-      parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
-      parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
-      parentCall.pso_service_windows,
-      parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
-      parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
-      parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
-      parentCall.subject_description, parentCall.vehicle_description,
-      parentCall.scene_safety, parentCall.weather_conditions, parentCall.lighting_conditions,
-      parentCall.injuries_reported, parentCall.alcohol_involved, parentCall.domestic_violence, parentCall.drugs_involved,
-      parentCall.weapons_involved, parentCall.mental_health_crisis, parentCall.juvenile_involved,
-      parentCall.felony_in_progress, parentCall.officer_safety_caution, parentCall.gang_related,
-      parentCall.k9_requested, parentCall.ems_requested, parentCall.fire_requested, parentCall.hazmat,
-      parentCall.case_number, parentCall.le_agency, parentCall.le_case_number, parentCall.le_notified,
-      parentCall.secondary_type, parentCall.contact_method, parentCall.tags,
-      req.user!.userId, now, now, now
-    );
+    const tsBase = Date.now();
+    const carriedNotes = parentNotesForCarry.map((n, idx) => ({
+      id: String(tsBase + idx),
+      author: n.author || 'System',
+      text: n.text || '',
+      timestamp: n.timestamp || now,
+      // Marker fields the client UI can read to render a "carried from prior visit" badge
+      // without changing the visible note text.
+      carried_from_call_number: parentCall.call_number,
+      carried_from_call_id: parentCall.id,
+      original_timestamp: n.timestamp || null,
+    }));
+
+    const allNotes = [
+      ...carriedNotes,
+      {
+        id: String(tsBase + carriedNotes.length),
+        author: req.user?.fullName || 'Dispatch',
+        text: noteText,
+        timestamp: now,
+      },
+    ];
+
+    const initialNotes = JSON.stringify(allNotes);
+
+    // ──────────────────────────────────────────────────────────────
+    // Create the NEW call by schema-driven copy of the parent row.
+    //
+    // Why this isn't a hand-rolled column list anymore: every time a
+    // new column got added to calls_for_service via addCol(), the
+    // hand-rolled INSERT would silently DROP that user-entered value
+    // on every re-dispatch. Now we read the live schema with PRAGMA
+    // table_info and copy every column except `id`, then override
+    // ONLY the per-visit fields (call_number, status reset, attempt
+    // counter, parent_call_id, fresh notes, cleared timestamps,
+    // cleared mileage/vehicle/officer assignments). Anything new
+    // added to the table in the future automatically follows the
+    // re-dispatch chain without touching this code.
+    // ──────────────────────────────────────────────────────────────
+    const cols = (db.prepare("PRAGMA table_info('calls_for_service')").all() as any[])
+      .map(c => String(c.name))
+      .filter(c => c !== 'id');
+    // Per-visit overrides — these reset on every re-dispatch even if
+    // the parent had values for them. Anything NOT in this map is
+    // copied verbatim from the parent row.
+    const overrides: Record<string, any> = {
+      call_number: newCallNumber,
+      status: 'pending',
+      pso_attempt_number: newAttempt,
+      parent_call_id: rootCallId,
+      notes: initialNotes,
+      // Fresh dispatch lifecycle — these get re-stamped as the new visit progresses
+      assigned_unit_ids: null,
+      dispatched_at: null,
+      enroute_at: null,
+      onscene_at: null,
+      cleared_at: null,
+      closed_at: null,
+      archived_at: null,
+      // Per-visit operational fields that should NOT inherit prior outcome
+      disposition: null,
+      action_taken: null,
+      responding_officer: null,
+      responding_vehicle_id: null,
+      starting_mileage: null,
+      ending_mileage: null,
+      // 72-hour PSO timer is reset — it counts from the next clear, not the prior one
+      pso_72hr_deadline: null,
+      pso_72hr_notified: null,
+      // Audit / sticky fields
+      dispatcher_id: req.user!.userId,
+      created_at: now,
+      updated_at: now,
+      received_at: now,
+      pinned: 0,
+      // Source — keep parent value, but ensure not null
+      source: parentCall.source || 'dispatch',
+    };
+
+    const placeholders = cols.map(() => '?').join(', ');
+    const colList = cols.map(c => `"${c}"`).join(', ');
+    const values = cols.map(c => (c in overrides ? overrides[c] : parentCall[c] ?? null));
+    const result = db.prepare(`INSERT INTO calls_for_service (${colList}) VALUES (${placeholders})`).run(...values);
 
     const newCallId = result.lastInsertRowid;
 
@@ -1683,6 +1814,16 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         try { insertVehicle.run(newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip duplicates */ }
       }
     } catch (e) { console.error('[Calls] Copy linked vehicles for redispatch:', e instanceof Error ? e.message : e); }
+
+    // Copy linked businesses from parent call — previously dropped on redispatch
+    // because no copy logic existed for the call_businesses junction.
+    try {
+      const parentBusinesses = db.prepare('SELECT business_id, role, notes FROM call_businesses WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertBusiness = db.prepare('INSERT INTO call_businesses (call_id, business_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const b of parentBusinesses) {
+        try { insertBusiness.run(newCallId, b.business_id, b.role || 'involved', b.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked businesses for redispatch:', e instanceof Error ? e.message : e); }
 
     // Mark parent call with a back-link note
     let parentNotes: any[] = [];
@@ -2386,6 +2527,29 @@ router.get('/calls/:id/risk-score', validateParamIdMiddleware, requireRole('admi
   } catch (error: any) {
     console.error('[Calls] Risk score error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to compute risk score', code: 'RISK_SCORE_ERROR' });
+  }
+});
+
+// GET /api/dispatch/queue - Alias for /calls/active for the map page
+router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name,
+        cl.name as client_name
+      FROM calls_for_service c
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.status IN ('dispatched', 'enroute', 'onscene', 'pending', 'open')
+      ORDER BY
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+        c.created_at DESC
+      LIMIT 200
+    `).all();
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get active calls', code: 'ACTIVE_CALLS_ERROR' });
   }
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, Pin, X, UserMinus } from 'lucide-react';
+import { AlertTriangle, Pin } from 'lucide-react';
 import {
   type ScheduleSlot,
 } from '../../utils/schedulerView';
@@ -18,8 +18,6 @@ interface Props {
   todayYmd: string;
   /** Deep-link highlight: auto-scroll to this slot and ring it on first render. */
   highlightSlotId?: number;
-  /** Deep-link officer: highlight the officer lane header row. */
-  highlightOfficerId?: number;
   onSlotClick?: (slot: ScheduleSlot) => void;
   onSlotDrop?: (slot: ScheduleSlot, target: { date: string; officer_id: number | null }) => void;
   onQueueDrop?: (queueId: number, target: { date: string; officer_id: number | null }) => void;
@@ -45,9 +43,7 @@ function formatHeader(ymd: string): string {
 
 export default function OfficerLaneTimeline({
   anchorYmd, mode, slots, officers, todayYmd,
-  highlightSlotId, highlightOfficerId,
-  onSlotClick, onSlotDrop, onQueueDrop,
-  onSlotDismiss, onSlotUnassign,
+  highlightSlotId, onSlotClick, onSlotDrop, onQueueDrop,
 }: Props) {
   const days = useMemo(() => extendRange(anchorYmd, mode), [anchorYmd, mode]);
   const grouped = useMemo(() => groupByOfficerLane(slots), [slots]);
@@ -157,7 +153,7 @@ export default function OfficerLaneTimeline({
                         draggable
                         onDragStart={handleDragStart(slot)}
                         onClick={() => onSlotClick?.(slot)}
-                        className={`${TIER_CLASSES[tier]} group relative rounded-[2px] px-1 py-0.5 mb-0.5 text-[10px] cursor-grab active:cursor-grabbing${isHighlighted ? ' ring-1 ring-brand-400' : ''}`}
+                        className={`${TIER_CLASSES[tier]} relative rounded-[2px] px-1 py-0.5 mb-0.5 text-[10px] cursor-grab active:cursor-grabbing${isHighlighted ? ' ring-1 ring-brand-400' : ''}`}
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="truncate font-semibold">{(slot.recipient_name ?? '—').split(/\s+/).pop()?.toUpperCase()}</span>

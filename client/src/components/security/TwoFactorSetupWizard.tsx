@@ -137,7 +137,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
                 Google Authenticator
               </li>
               <li className="flex items-center gap-2">
-                <span className="led-dot led-blue" style={{ width: 4, height: 4 }} />
+                <span className="led-dot led-gray" style={{ width: 4, height: 4 }} />
                 Microsoft Authenticator
               </li>
               <li className="flex items-center gap-2">
