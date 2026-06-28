@@ -18,7 +18,7 @@ export default function PrintButton({ label = 'Print', className = '' }: PrintBu
     <button
       type="button"
       className={`toolbar-btn ${className}`}
-      onClick={() => printWithLightMaps()}
+      onClick={() => window.print()}
       title="Print current view (Ctrl+P)"
     >
       <Printer style={{ width: 12, height: 12 }} />
