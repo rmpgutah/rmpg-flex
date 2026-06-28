@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -8,13 +8,12 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, FileText, Search } from 'lucide-react';
+import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, FileText } from 'lucide-react';
 
 export default function TrainingManagementPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Role gate: admin / manager / human_resources only
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'human_resources';
@@ -30,7 +29,6 @@ export default function TrainingManagementPage() {
   const [courseToDelete, setCourseToDelete] = useState<Record<string, any> | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
   const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
@@ -47,37 +45,17 @@ export default function TrainingManagementPage() {
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
 
-  const BLANK_FORM = { course_name: '', course_code: '', category: 'other', duration_hours: '', instructor_id: '', location: '', is_mandatory: 0 };
-
-  // Deep-link: ?training_id= / ?course_id= — open edit form for that course once loaded
-  //            ?officer_id= — open new course form pre-filled with that officer's instructor ID
-  const deepLinkHandled = useRef(false);
+  // Deep-link: ?course_id= — open edit form for that course once loaded
   useEffect(() => {
-    if (loading || deepLinkHandled.current) return;
-    const courseId = searchParams.get('training_id') ?? searchParams.get('course_id');
-    const officerId = searchParams.get('officer_id');
-    if (!courseId && !officerId) return;
-    deepLinkHandled.current = true;
-    const next = new URLSearchParams(searchParams);
-    next.delete('training_id');
-    next.delete('course_id');
-    next.delete('officer_id');
-    setSearchParams(next, { replace: true });
-    if (courseId) {
-      const found = courses.find((c) => String(c.id) === courseId);
-      if (found) {
-        openEdit(found);
-        addToast(`Course "${found.course_name}" loaded`, 'success');
-      } else {
-        addToast(`Training course #${courseId} not found`, 'error');
-      }
-    } else if (officerId && canWrite) {
-      setEditingRecord(null);
-      setFormData({ ...BLANK_FORM, instructor_id: officerId });
-      setShowForm(true);
-    }
+    const courseId = searchParams.get('course_id');
+    if (!courseId || courses.length === 0) return;
+    const found = courses.find((c) => String(c.id) === courseId);
+    if (found) openEdit(found);
+    setSearchParams({}, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, courses, searchParams]);
+  }, [courses, searchParams]);
+
+  const BLANK_FORM = { course_name: '', course_code: '', category: 'other', duration_hours: '', instructor_id: '', location: '', is_mandatory: 0 };
 
   const openNew = () => {
     setEditingRecord(null);
@@ -135,7 +113,6 @@ export default function TrainingManagementPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Escape') {
-        e.stopPropagation();
         if (courseToDelete) { setCourseToDelete(null); return; }
         if (showForm) { closeForm(); return; }
         return;
@@ -146,18 +123,6 @@ export default function TrainingManagementPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [courseToDelete, showForm, canWrite]);
-
-  // Filtered list
-  const q = search.trim().toLowerCase();
-  const filtered = q
-    ? courses.filter(
-        (c) =>
-          c.course_name?.toLowerCase().includes(q) ||
-          c.course_code?.toLowerCase().includes(q) ||
-          c.category?.toLowerCase().includes(q) ||
-          c.instructor_name?.toLowerCase().includes(q),
-      )
-    : courses;
 
   const columns = [
     { key: 'course_name', label: 'Course' },
@@ -194,18 +159,6 @@ export default function TrainingManagementPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="TRAINING MANAGEMENT" icon={GraduationCap}>
-        <div className="relative">
-          <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
-          <input
-            type="search"
-            placeholder="Filter courses…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-dark pl-6 pr-2 text-[11px]"
-            style={{ height: 28, width: 160 }}
-            aria-label="Filter training courses"
-          />
-        </div>
         <button type="button"
           onClick={() => navigate('/training-docs')}
           className="toolbar-btn flex items-center gap-1.5"
@@ -238,30 +191,20 @@ export default function TrainingManagementPage() {
         <StatsCard icon={Clock} label="Expiring" value={stats.expiring_certs} />
       </div>
 
-      {courses.length === 0 ? (
-        <div className="py-10 text-center text-rmpg-500 text-[12px]">
-          No training courses found.{canWrite && ' Use "New Course" to add one.'}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-10 text-center text-rmpg-500 text-[12px]">
-          No courses match <span className="text-rmpg-300">"{search}"</span>.
-        </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={filtered}
-          emptyMessage="No training courses found"
-          onRowClick={(row) => openEdit(row)}
-          rowContextMenu={(row) => [
-            m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
-            m.separator(),
-            m.copy('Copy course', row.course_name),
-            m.copyId(row.id),
-            m.separator(),
-            m.action('Delete', () => setCourseToDelete(row), { danger: true, icon: <Trash2 size={12} /> }),
-          ]}
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={courses}
+        emptyMessage="No training courses found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.separator(),
+          m.copy('Copy course', row.course_name),
+          m.copyId(row.id),
+          m.separator(),
+          m.action('Delete', () => setCourseToDelete(row), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {/* New / Edit Course modal */}
       {showForm && (

@@ -20,9 +20,6 @@ type Tab = 'search' | 'review' | 'watchlist' | 'sources';
 
 export function ScreeningWorkspace() {
   const { user } = useAuth();
-  const { addToast } = useToast();
-  // create/delete gated to admin|manager; review (confirm/dismiss) also requires supervisor
-  const canCreate = ['admin', 'manager'].includes(user?.role ?? '');
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const canReview = canManage;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,30 +47,19 @@ export function ScreeningWorkspace() {
 
   useEffect(() => { apiFetch<{ data: SourceInfo[] }>('/screening/sources').then((r) => setSources(r.data)).catch(() => {}); }, []);
 
-  // ── ?screening_id= / ?screen_id= / ?subject_id= / ?person_id= deep-link ─
-  // On mount: screening_id/screen_id switches to review tab and toasts;
-  // subject_id/person_id pre-fills surname field.
-  // Strip params immediately after reading (replace: true). useRef guard
-  // prevents re-runs on subsequent renders.
+  // ── ?screen_id= / ?person_id= deep-link ─────────────────────────────────
+  // On mount: screen_id switches to the review tab; person_id pre-fills the
+  // surname field. Strip the param immediately after reading (replace: true).
   const deepLinkApplied = useRef(false);
   useEffect(() => {
     if (deepLinkApplied.current) return;
-    const screeningId = searchParams.get('screening_id') ?? searchParams.get('screen_id');
-    const subjectId = searchParams.get('subject_id') ?? searchParams.get('person_id');
-    if (!screeningId && !subjectId) return;
+    const screenId = searchParams.get('screen_id');
+    const personId = searchParams.get('person_id');
+    if (!screenId && !personId) return;
     deepLinkApplied.current = true;
     const next = new URLSearchParams(searchParams);
-    if (screeningId) {
-      next.delete('screening_id');
-      next.delete('screen_id');
-      setTab('review');
-      addToast(`Viewing screening hit #${screeningId}`, 'info');
-    }
-    if (subjectId) {
-      next.delete('subject_id');
-      next.delete('person_id');
-      setName(subjectId);
-    }
+    if (screenId) { next.delete('screen_id'); setTab('review'); }
+    if (personId) { next.delete('person_id'); setName(personId); }
     setSearchParams(next, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -124,8 +110,8 @@ export function ScreeningWorkspace() {
     }
   };
 
-  // ── N shortcut: focus surname input on search tab (canCreate role gate) ──
-  // ── Esc cascade: close confirm dialog first, then nothing more ────────────
+  // ── N shortcut: focus surname input on search tab ─────────────────────
+  // ── Esc cascade: close confirm dialog first, then nothing more ────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -137,7 +123,7 @@ export function ScreeningWorkspace() {
         return;
       }
 
-      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput && canCreate) {
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         setTab('search');
         // Give React a tick to render the search tab before focusing
@@ -146,7 +132,7 @@ export function ScreeningWorkspace() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [pendingReview, canCreate]);
+  }, [pendingReview]);
 
   return (
     <div className="space-y-4">
@@ -202,12 +188,6 @@ export function ScreeningWorkspace() {
             <div className="text-rmpg-400 text-[11px] py-4 text-center">Searching…</div>
           ) : !searched ? (
             <div className="text-rmpg-500 text-[11px] py-4 text-center">Enter a name and press SEARCH or Enter to query the registries.</div>
-          ) : results.length === 0 ? (
-            <div className="text-rmpg-400 text-[11px] py-4 text-center">
-              {(coverage && !coverage.available) || coverages.length
-                ? <span className="text-brand-300">No records loaded for {coverages.length ? 'one or more registries' : 'this source'} — result is inconclusive, not a clearance.</span>
-                : 'No matches found.'}
-            </div>
           ) : (
             <div className="overflow-x-auto"><table className="w-full text-[11px]">
               <thead><tr className="text-[9px] text-rmpg-400 font-semibold"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
@@ -219,6 +199,13 @@ export function ScreeningWorkspace() {
                     <td>{r.summary}</td><td>{r.country ?? '—'}</td><td>{r.dob ?? '—'}</td>
                   </tr>
                 ))}
+                {!results.length && (
+                  <tr><td colSpan={5} className="py-2">
+                    {(coverage && !coverage.available) || coverages.length
+                      ? <span className="text-brand-300">No records loaded for {coverages.length ? 'one or more registries' : 'this source'} — result is inconclusive, not a clearance.</span>
+                      : <span className="text-rmpg-400">No matches found.</span>}
+                  </td></tr>
+                )}
               </tbody>
             </table></div>
           )}
@@ -287,7 +274,6 @@ function WatchlistTab() {
   useEffect(load, [load]);
 
   if (loading) return <div className="text-rmpg-400 text-[11px] py-4 text-center">Loading watchlist…</div>;
-  if (!rows.length) return <div className="text-rmpg-500 text-[11px] py-4 text-center">No dedicated watch entries (intel-watchlist persons are also screened).</div>;
 
   return (
     <div className="overflow-x-auto"><table className="w-full text-[11px]">
@@ -299,6 +285,7 @@ function WatchlistTab() {
             <td>{String(r.source_scope ?? 'all')}</td><td>{String(r.reason ?? '—')}</td>
           </tr>
         ))}
+        {!rows.length && <tr><td colSpan={3} className="text-rmpg-500 py-2">No dedicated watch entries (intel-watchlist persons are also screened).</td></tr>}
       </tbody>
     </table></div>
   );

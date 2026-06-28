@@ -275,7 +275,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
           message: 'Authentication timeout',
         }));
         ws.close(4001, 'Authentication timeout');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // cleanup. Deleting early causes the close handler to skip counter decrements.
       }
     }, AUTH_TIMEOUT_MS);
 
@@ -291,7 +292,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       if (rate.count > WS_RATE_LIMIT_MAX) {
         safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages' }));
         ws.close(4008, 'Rate limit exceeded');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // userConnectionCounts decrement and full cleanup. Deleting early causes
+        // the close handler to skip the decrement, permanently drifting the counter.
         clientMessageRates.delete(clientId);
         return;
       }
@@ -306,7 +309,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       if (ipRate.count > WS_IP_RATE_LIMIT_MAX) {
         safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages from this IP' }));
         ws.close(4008, 'IP rate limit exceeded');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // userConnectionCounts decrement and full cleanup.
         return;
       }
 
@@ -405,7 +409,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   });
 
   // ── Server-side keepalive — detect dead connections ──────────
-  const PING_INTERVAL_MS = 30_000;
+  // Tightened from 30s → 5s to match the client. Background-tab
+  // throttling can stretch the client's 5s heartbeat to a minute or
+  // more while hidden, so the server's faster cadence guarantees we
+  // notice dead clients within ~10s even when they're silent.
+  // Bandwidth cost is negligible (RFC 6455 ping frames are ~14 bytes).
+  const PING_INTERVAL_MS = 5_000;
   const pingInterval = setInterval(() => {
     wss!.clients.forEach((ws) => {
       if ((ws as any).__isAlive === false) {
