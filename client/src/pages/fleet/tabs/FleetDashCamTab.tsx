@@ -3,8 +3,8 @@
 // Shows dash cameras installed on the selected vehicle + videos
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Camera, Video, Loader2, Play, Shield, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Camera, Video, Loader2, Play, FileText } from 'lucide-react';
 import type { DashCamera, DashCamVideo } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import VideoPlayer from '../../../components/VideoPlayer';
@@ -90,7 +90,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   <span className="text-xs font-bold text-rmpg-100 font-mono">{cam.camera_id}</span>
                   <span className={`inline-flex items-center gap-1 text-[8px] font-bold uppercase ${STATUS_LED[cam.status] ? '' : ''}`}>
                     <span className={STATUS_LED[cam.status] || 'led-dot led-off'} />
-                    {cam.status}
+                    {(cam.status || '').replace(/_/g, ' ')}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 mt-0.5">
@@ -133,7 +133,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   </div>
                 </div>
                 <span className={`text-[8px] px-1.5 py-0.5 font-bold uppercase flex-shrink-0 ${
-                  vid.classification === 'evidence' ? 'bg-blue-900/40 text-blue-400' :
+                  vid.classification === 'evidence' ? 'bg-surface-sunken/40 text-rmpg-400' :
                   vid.classification === 'flagged' ? 'bg-amber-900/40 text-amber-400' :
                   vid.classification === 'restricted' ? 'bg-red-900/40 text-red-400' :
                   'bg-rmpg-700 text-rmpg-400'

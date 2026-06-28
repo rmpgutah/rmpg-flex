@@ -1,379 +1,164 @@
+// System-wide quick search (Ctrl/Cmd+K). Powered by the unified Knowledge
+// Base endpoint — one request fans out across every record type and returns
+// results keyed on the VISIBLE identifier (call/case/citation/warrant number,
+// name, plate, badge, call sign, statute cite), never the backend row id.
+// Selecting a result navigates to that record's section.
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search,
-  User,
-  Car,
-  FileText,
-  Phone,
-  AlertTriangle,
-  X,
-  ArrowRight,
-  Clock,
-  Loader2,
-  Command,
-  Shield,
-  Building2,
-  Users,
+  Search, User, Car, FileText, Phone, AlertTriangle, X, ArrowRight, Clock,
+  Loader2, Command, Shield, Building2, Users, Radio, Package, Scale, Receipt,
+  Fingerprint, BookOpen, type LucideIcon,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
+import { knowledgeBaseSearch, kbTypeLabel, KB_TYPE_META, type KbResult } from '../utils/knowledgeBase';
+import { useAuth } from '../context/AuthContext';
 
-type EntityType = 'person' | 'vehicle' | 'incident' | 'call' | 'bolo' | 'warrant' | 'property' | 'personnel';
-
-interface SearchResult {
-  id: string;
-  type: EntityType;
-  primaryText: string;
-  secondaryText: string;
-}
-
-interface RecentSearch {
-  id: string;
-  type: EntityType;
-  primaryText: string;
-  secondaryText: string;
-  timestamp: number;
-}
-
-const ENTITY_CONFIG = {
-  person: {
-    icon: User,
-    label: 'Persons',
-    route: '/records',
-    color: 'text-brand-400',
-  },
-  vehicle: {
-    icon: Car,
-    label: 'Vehicles',
-    route: '/records',
-    color: 'text-purple-400',
-  },
-  incident: {
-    icon: FileText,
-    label: 'Incidents',
-    route: '/incidents',
-    color: 'text-orange-400',
-  },
-  call: {
-    icon: Phone,
-    label: 'Calls',
-    route: '/dispatch',
-    color: 'text-green-400',
-  },
-  bolo: {
-    icon: AlertTriangle,
-    label: 'BOLOs',
-    route: '/communications',
-    color: 'text-red-400',
-  },
-  warrant: {
-    icon: Shield,
-    label: 'Warrants',
-    route: '/warrants',
-    color: 'text-amber-400',
-  },
-  property: {
-    icon: Building2,
-    label: 'Properties',
-    route: '/records',
-    color: 'text-gray-400',
-  },
-  personnel: {
-    icon: Users,
-    label: 'Personnel',
-    route: '/personnel',
-    color: 'text-cyan-400',
-  },
+const TYPE_ICON: Record<string, LucideIcon> = {
+  call: Phone, person: User, vehicle: Car, warrant: Shield, citation: Receipt,
+  incident: FileText, personnel: Users, unit: Radio, evidence: Package,
+  bolo: AlertTriangle, property: Building2, arrest: Fingerprint, statute: Scale,
 };
+const iconFor = (type: string): LucideIcon => TYPE_ICON[type] || BookOpen;
 
-const RECENT_SEARCHES_KEY = 'rmpg-recent-searches';
-const MAX_RECENT_SEARCHES = 5;
+interface RecentSearch extends KbResult { timestamp: number; }
+
+// Storage key is scoped per user.id so a shared MDT doesn't leak one
+// operator's Cmd+K queries (names, plates, badges) to the next person who
+// opens the dialog. When no user is known (mid-login first render) we skip
+// reads and writes entirely rather than fall back to a shared key.
+const LEGACY_RECENT_KEY = 'rmpg-recent-searches-v2';
+const recentKeyFor = (userId: string | number | undefined): string | null =>
+  userId ? `rmpg_globalsearch_recent_${userId}` : null;
+const MAX_RECENT = 6;
 
 export const GlobalSearch: React.FC = () => {
+  const { user } = useAuth();
+  const recentKey = recentKeyFor(user?.id);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const [results, setResults] = useState<KbResult[]>([]);
+  const [recent, setRecent] = useState<RecentSearch[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const navigate = useNavigate();
 
-  // Load recent searches from localStorage
+  // Re-loads when the signed-in user changes (login, fast user-switch on a
+  // shared MDT). One-time read-through migration copies the legacy unscoped
+  // key into this user's slot, then deletes it so the next operator never
+  // sees a previous shift's queries.
   useEffect(() => {
+    if (!recentKey) { setRecent([]); return; }
     try {
-      const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
-      if (stored) {
-        setRecentSearches(JSON.parse(stored));
+      const scoped = localStorage.getItem(recentKey);
+      if (scoped) { setRecent(JSON.parse(scoped)); return; }
+      const legacy = localStorage.getItem(LEGACY_RECENT_KEY);
+      if (legacy) {
+        localStorage.setItem(recentKey, legacy);
+        localStorage.removeItem(LEGACY_RECENT_KEY);
+        setRecent(JSON.parse(legacy));
+        return;
       }
-    } catch (error) {
-      console.error('Failed to load recent searches:', error);
-    }
-  }, []);
+      setRecent([]);
+    } catch { /* ignore */ }
+  }, [recentKey]);
 
-  // Keyboard shortcut to open search
+  // Ctrl/Cmd+K opens search.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsOpen(true);
-      }
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setIsOpen(true); }
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Focus input when opened
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isOpen]);
+  useEffect(() => { if (isOpen) inputRef.current?.focus(); }, [isOpen]);
 
-  // Reset state when closing
   const handleClose = useCallback(() => {
-    setIsOpen(false);
-    setQuery('');
-    setResults([]);
-    setSelectedIndex(0);
+    setIsOpen(false); setQuery(''); setResults([]); setSelectedIndex(0);
   }, []);
 
-  // Debounced search
+  // Debounced unified search.
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setIsLoading(false);
-      return;
-    }
-
+    if (!query.trim()) { setResults([]); setIsLoading(false); return; }
     setIsLoading(true);
-
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
     let cancelled = false;
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const searchPromises = [
-          apiFetch<any>(`/records/persons?search=${encodeURIComponent(query)}`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'person' as EntityType,
-                primaryText: `${item.first_name || ''} ${item.last_name || ''}`.trim(),
-                secondaryText: item.dob || 'No DOB',
-              }))
-            )
-            .catch(() => []),
-          apiFetch<any>(`/records/vehicles?search=${encodeURIComponent(query)}`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'vehicle' as EntityType,
-                primaryText: item.plate_number || 'No Plate',
-                secondaryText: `${item.make || ''} ${item.model || ''}`.trim(),
-              }))
-            )
-            .catch(() => []),
-          apiFetch<any>(`/incidents?search=${encodeURIComponent(query)}`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'incident' as EntityType,
-                primaryText: item.incident_number || `Incident #${item.id}`,
-                secondaryText: item.incident_type || 'Unknown Type',
-              }))
-            )
-            .catch(() => []),
-          apiFetch<any>(`/dispatch/calls?search=${encodeURIComponent(query)}`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'call' as EntityType,
-                primaryText: item.call_number || `Call #${item.id}`,
-                secondaryText: item.location_address || item.address || 'No Address',
-              }))
-            )
-            .catch(() => []),
-          apiFetch<any>(`/comms/bolos?search=${encodeURIComponent(query)}`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'bolo' as EntityType,
-                primaryText: item.subject || 'BOLO',
-                secondaryText: item.description || 'No Description',
-              }))
-            )
-            .catch(() => []),
-          // Warrants search
-          apiFetch<any>(`/warrants?subject_name=${encodeURIComponent(query)}&per_page=10`)
-            .then((resp) =>
-              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).map((item: any) => ({
-                id: item.id,
-                type: 'warrant' as EntityType,
-                primaryText: item.warrant_number || `Warrant #${item.id}`,
-                secondaryText: `${item.subject_name || 'Unknown Subject'} — ${item.charge || item.warrant_type || ''}`,
-              }))
-            )
-            .catch(() => []),
-          // Properties search
-          apiFetch<any[]>(`/records/properties?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (data || []).slice(0, 10).map((item: any) => ({
-                id: item.id,
-                type: 'property' as EntityType,
-                primaryText: item.name || item.property_name || 'Unknown Property',
-                secondaryText: item.address || 'No Address',
-              }))
-            )
-            .catch(() => []),
-          // Personnel search
-          apiFetch<any[]>('/personnel')
-            .then((data) => {
-              const q = query.toLowerCase();
-              return (data || [])
-                .filter((u: any) => {
-                  const name = (u.full_name || `${u.first_name || ''} ${u.last_name || ''}`).toLowerCase();
-                  const badge = (u.badge_number || '').toLowerCase();
-                  return name.includes(q) || badge.includes(q);
-                })
-                .slice(0, 10)
-                .map((item: any) => ({
-                  id: item.id,
-                  type: 'personnel' as EntityType,
-                  primaryText: item.full_name || `${item.first_name} ${item.last_name}`,
-                  secondaryText: `${item.badge_number ? `Badge: ${item.badge_number}` : ''} ${item.rank || item.role || ''}`.trim(),
-                }));
-            })
-            .catch(() => []),
-        ];
-
-        const allResults = await Promise.all(searchPromises);
-        if (cancelled) return;
-        const flatResults = allResults.flat();
-        setResults(flatResults);
-        setSelectedIndex(0);
-      } catch (error) {
-        if (cancelled) return;
-        console.error('Search failed:', error);
-        setResults([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
+    const t = setTimeout(async () => {
+      const r = await knowledgeBaseSearch(query, 40);
+      if (cancelled) return;
+      setResults(r);
+      setSelectedIndex(0);
+      setIsLoading(false);
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [query]);
 
-  // Save to recent searches
-  const saveToRecent = useCallback((result: SearchResult) => {
-    const recent: RecentSearch = {
-      ...result,
-      timestamp: Date.now(),
-    };
-
-    setRecentSearches((prev) => {
-      const filtered = prev.filter((item) => item.id !== result.id || item.type !== result.type);
-      const updated = [recent, ...filtered].slice(0, MAX_RECENT_SEARCHES);
-      try {
-        localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.error('Failed to save recent search:', error);
+  const saveRecent = useCallback((result: KbResult) => {
+    setRecent((prev) => {
+      const filtered = prev.filter((r) => !(r.recordId === result.recordId && r.type === result.type));
+      const updated = [{ ...result, timestamp: Date.now() }, ...filtered].slice(0, MAX_RECENT);
+      if (recentKey) {
+        try { localStorage.setItem(recentKey, JSON.stringify(updated)); } catch { /* ignore */ }
       }
       return updated;
     });
-  }, []);
+  }, [recentKey]);
 
-  // Handle result selection
-  const handleSelect = useCallback(
-    (result: SearchResult) => {
-      saveToRecent(result);
-      const config = ENTITY_CONFIG[result.type];
-      navigate(config.route);
-      handleClose();
-    },
-    [navigate, handleClose, saveToRecent]
-  );
+  const handleSelect = useCallback((result: KbResult) => {
+    saveRecent(result);
+    // Pass the record id as a deep-link hint; sections that support it focus
+    // the record, others simply open the section.
+    navigate(`${result.route}?kb=${result.type}:${result.recordId}`);
+    handleClose();
+  }, [navigate, handleClose, saveRecent]);
 
-  // Keyboard navigation
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const displayedResults = query.trim() ? results : recentSearches;
+  const displayed: KbResult[] = query.trim() ? results : recent;
 
-      if (e.key === 'Escape') {
-        handleClose();
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex((prev) => Math.min(prev + 1, displayedResults.length - 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter' && displayedResults.length > 0) {
-        e.preventDefault();
-        handleSelect(displayedResults[selectedIndex]);
-      }
-    },
-    [query, results, recentSearches, selectedIndex, handleClose, handleSelect]
-  );
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') handleClose();
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, displayed.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter' && displayed.length > 0) { e.preventDefault(); handleSelect(displayed[selectedIndex]); }
+  }, [displayed, selectedIndex, handleClose, handleSelect]);
 
-  // Group results by type
-  const groupedResults = results.reduce((acc, result) => {
-    if (!acc[result.type]) {
-      acc[result.type] = [];
-    }
-    acc[result.type].push(result);
-    return acc;
-  }, {} as Record<EntityType, SearchResult[]>);
+  // Group results by type, preserving rank order.
+  const groups: Array<[string, KbResult[]]> = [];
+  for (const r of results) {
+    const g = groups.find(([t]) => t === r.type);
+    if (g) g[1].push(r); else groups.push([r.type, [r]]);
+  }
+  // Flat index for keyboard highlight across groups.
+  let flatIdx = -1;
 
   if (!isOpen) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[20vh] bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[18vh] bg-black/70 backdrop-blur-sm"
       onClick={handleClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Global search"
+      role="dialog" aria-modal="true" aria-label="Knowledge Base search"
       style={{ touchAction: 'manipulation' }}
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
-        style={{ borderTop: '2px solid #888888' }}
+        className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[64vh] flex flex-col animate-scale-in"
+        style={{ borderTop: '2px solid #d4a017' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Search Input */}
+        {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-rmpg-600">
-          {isLoading ? (
-            <Loader2 className="w-5 h-5 text-rmpg-300 animate-spin" />
-          ) : (
-            <Search className="w-5 h-5 text-rmpg-300" />
-          )}
+          {isLoading ? <Loader2 className="w-5 h-5 text-rmpg-300 animate-spin" /> : <Search className="w-5 h-5 text-rmpg-300" />}
           <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search persons, vehicles, incidents, warrants, personnel..."
-            aria-label="Search all records"
-            autoComplete="off"
-            className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 outline-none"
+            id="ff-globalsearch-0" ref={inputRef} type="text" value={query}
+            onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
+            placeholder="Search by call #, name, plate, warrant #, badge, statute…"
+            aria-label="Search all records" autoComplete="off"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
-            <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600">
-              <Command className="w-3 h-3 inline" />
-              K
-            </kbd>
-            <button type="button" onClick={handleClose} className="p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-rmpg-200 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close" title="Close search">
+            <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600"><Command className="w-3 h-3 inline" />K</kbd>
+            <button type="button" onClick={handleClose} className="p-2 sm:p-0 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-rmpg-200" style={{ touchAction: 'manipulation' }} aria-label="Close" title="Close search">
               <X className="w-5 h-5 sm:w-4 sm:h-4" />
             </button>
           </div>
@@ -381,88 +166,80 @@ export const GlobalSearch: React.FC = () => {
 
         {/* Results */}
         <div className="overflow-y-auto flex-1">
-          {!query.trim() && recentSearches.length > 0 && (
+          {!query.trim() && recent.length > 0 && (
             <div className="p-2">
-              <div className="flex items-center gap-2 px-3 py-2 text-xs text-rmpg-400 font-medium">
-                <Clock className="w-3 h-3" />
-                RECENT
-              </div>
-              {recentSearches.map((result, index) => (
-                <ResultItem
-                  key={`${result.type}-${result.id}`}
-                  result={result}
-                  isSelected={index === selectedIndex}
-                  onClick={() => handleSelect(result)}
-                />
-              ))}
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-rmpg-400 font-medium"><Clock className="w-3 h-3" /> RECENT</div>
+              {recent.map((r, i) => <ResultItem key={`r-${r.type}-${r.recordId}`} result={r} isSelected={i === selectedIndex} onClick={() => handleSelect(r)} />)}
             </div>
           )}
-
-          {query.trim() && results.length === 0 && !isLoading && (
+          {!query.trim() && recent.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-center px-6">
+              <BookOpen className="w-10 h-10 mb-3 opacity-40" />
+              <p className="text-sm">Search the entire system by what you see —</p>
+              <p className="text-xs text-rmpg-600 mt-1">call numbers, names, plates, warrant &amp; citation numbers, badges, unit call signs, statute cites.</p>
+            </div>
+          )}
+          {query.trim() && !isLoading && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-rmpg-400">
-              <Search className="w-12 h-12 mb-3 opacity-50" />
-              <p className="text-sm">No results found</p>
+              <Search className="w-12 h-12 mb-3 opacity-50" /><p className="text-sm">No results found</p>
             </div>
           )}
-
           {query.trim() && results.length > 0 && (
             <div className="p-2">
-              {Object.entries(groupedResults).map(([type, typeResults]) => {
-                const config = ENTITY_CONFIG[type as EntityType];
-                const startIndex = results.findIndex((r) => r.type === type);
-
+              {groups.map(([type, list]) => {
+                const Icon = iconFor(type);
                 return (
                   <div key={type} className="mb-4 last:mb-0">
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rmpg-400 font-medium">
-                      <config.icon className="w-3 h-3" />
-                      {config.label.toUpperCase()}
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || 'var(--rmpg-400)' }}>
+                      <Icon className="w-3 h-3" /> {kbTypeLabel(type).toUpperCase()}
                     </div>
-                    {typeResults.map((result, index) => (
-                      <ResultItem
-                        key={`${result.type}-${result.id}`}
-                        result={result}
-                        isSelected={startIndex + index === selectedIndex}
-                        onClick={() => handleSelect(result)}
-                      />
-                    ))}
+                    {list.map((r) => { flatIdx += 1; const idx = flatIdx; return (
+                      <ResultItem key={`${r.type}-${r.recordId}`} result={r} isSelected={idx === selectedIndex} onClick={() => handleSelect(r)} />
+                    ); })}
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-600 text-[10px] text-rmpg-600">
+          <span>↑↓ navigate • Enter open • Esc close</span>
+          <span className="flex items-center gap-3">
+            {query.trim() && (
+              <button
+                type="button"
+                onClick={() => { navigate(`/intel?q=${encodeURIComponent(query)}`); handleClose(); }}
+                className="text-[#d4a017] hover:underline"
+              >
+                Open in Intel Search →
+              </button>
+            )}
+            {query.trim() && <span>{results.length} result{results.length === 1 ? '' : 's'}</span>}
+          </span>
+        </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 };
 
-interface ResultItemProps {
-  result: SearchResult;
-  isSelected: boolean;
-  onClick: () => void;
-}
-
-const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) => {
-  const config = ENTITY_CONFIG[result.type];
-  const Icon = config.icon;
-
+const ResultItem: React.FC<{ result: KbResult; isSelected: boolean; onClick: () => void }> = ({ result, isSelected, onClick }) => {
+  const Icon = iconFor(result.type);
+  const color = KB_TYPE_META[result.type]?.color || 'var(--rmpg-400)';
+  const sub = [result.title, result.subtitle].filter(Boolean).join(' · ');
   return (
     <button type="button"
-      className={`
-        w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
-        ${isSelected ? 'bg-brand-900/25 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800 border-l-2 border-l-transparent'}
-      `}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${isSelected ? 'bg-brand-900/25 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800 border-l-2 border-l-transparent'}`}
       onClick={onClick}
     >
-      <Icon className={`w-4 h-4 ${config.color} flex-shrink-0`} />
+      <Icon className="w-4 h-4 flex-shrink-0" style={{ color }} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-white truncate">{result.primaryText}</p>
-        <p className="text-xs text-rmpg-300 truncate">{result.secondaryText}</p>
+        {/* The VISIBLE identifier is the headline. */}
+        <p className="text-sm text-rmpg-100 truncate font-medium">{result.label}</p>
+        {sub && <p className="text-xs text-rmpg-300 truncate">{sub}</p>}
       </div>
-      <span className="px-2 py-0.5 bg-rmpg-700 text-rmpg-200 text-xs border border-rmpg-600 flex-shrink-0">
-        {config.label}
-      </span>
+      <span className="px-2 py-0.5 bg-rmpg-700 text-rmpg-200 text-xs border border-rmpg-600 flex-shrink-0">{kbTypeLabel(result.type)}</span>
       <ArrowRight className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
     </button>
   );

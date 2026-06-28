@@ -1,0 +1,14 @@
+-- 0067_forensic_activity_log_exhibit_id.sql
+-- forensics.ts logActivity() INSERTs into forensic_activity_log with an
+-- exhibit_id column (to link an activity entry to a specific exhibit), and the
+-- exhibit chain-of-custody reads depend on it — GET .../chain-of-custody joins
+-- `LEFT JOIN forensic_exhibits fe ON fa.exhibit_id = fe.id` and filters
+-- `WHERE fal.exhibit_id = ?` (src/routes/forensics.ts:569,741). But the live
+-- table never had the column, so EVERY activity-log write failed silently
+-- (the insert is best-effort/try-catch) and the chain-of-custody reads 500'd
+-- on the missing column. Add it; nullable so case-level (non-exhibit) entries
+-- still write.
+-- forensic_activity_log is 8 cols (far under the 100-col D1 cap) — additive ALTER is safe.
+-- D1 has no IF NOT EXISTS on ADD COLUMN; re-apply failures are expected/ignored.
+-- Applied directly to live D1 (785de7ae) on 2026-06-02.
+ALTER TABLE forensic_activity_log ADD COLUMN exhibit_id INTEGER;
