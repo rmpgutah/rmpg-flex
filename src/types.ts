@@ -67,21 +67,6 @@ export type Bindings = {
   // adapter trained on training/data (see training/README.md). Unset → stock
   // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
   SERVE_INTAKE_LORA?: string;
-  // Roboflow API key for the "ALPR Vehicle Details Capture" serverless
-  // workflow (src/routes/alpr.ts → src/utils/roboflowAlpr.ts). Set via
-  // `wrangler secret put ROBOFLOW_API_KEY`; unset → /api/alpr returns 503.
-  // Never hard-coded; read only from c.env.
-  ROBOFLOW_API_KEY?: string;
-  // Optional override of the Roboflow serverless base origin
-  // (default https://serverless.roboflow.com). For self-hosted inference.
-  ROBOFLOW_API_URL?: string;
-  // Optional override of the lean plate-only fast-scan workflow slug
-  // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
-  ROBOFLOW_FAST_WORKFLOW_ID?: string;
-  // AES-GCM-256 key (base64, 32 bytes) encrypting the ClearPath password at
-  // rest in system_config. Set via `wrangler secret put CPG_ENC_KEY`; unset →
-  // ClearPath credential save/use returns a clear 503. See src/utils/cpgCrypto.ts.
-  CPG_ENC_KEY?: string;
 };
 
 export type Variables = {

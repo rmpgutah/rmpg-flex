@@ -58,11 +58,6 @@ import { openAffairsComplaintPdf } from '../utils/affairsComplaintPdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
 import { useAuth } from '../context/AuthContext';
 
-// Only admin / manager / supervisor may create, edit, or delete IA complaints.
-// Officers and dispatchers can VIEW the list (auth is still required at the
-// route level), but mutation is restricted to management roles.
-const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
-
 interface Complaint {
   id: number;
   complaint_number: string;
@@ -110,7 +105,6 @@ const CLOSED_STATUSES = new Set([
 export default function AffairsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const canManage = MANAGE_ROLES.has((user as any)?.role ?? '');
 
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -384,12 +378,10 @@ export default function AffairsPage() {
     { key: 'status', label: 'Status', render: (r: Complaint) => r.status?.replace(/_/g, ' ') },
     { key: 'created_at', label: 'Filed' },
     { key: 'actions', label: '', width: '100px', render: (row: Complaint) => (
-      canManage ? (
-        <div className="flex gap-2">
-          <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label={`Edit complaint ${row.complaint_number}`}><Pencil size={12} /></button>
-          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }} className="text-red-500 hover:text-red-300" aria-label={`Delete complaint ${row.complaint_number}`}><Trash2 size={12} /></button>
-        </div>
-      ) : null
+      <div className="flex gap-2">
+        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label={`Edit complaint ${row.complaint_number}`}><Pencil size={12} /></button>
+        <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }} className="text-red-500 hover:text-red-300" aria-label={`Delete complaint ${row.complaint_number}`}><Trash2 size={12} /></button>
+      </div>
     )},
   ];
 
@@ -416,7 +408,7 @@ export default function AffairsPage() {
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if ((e.key === 'n' || e.key === 'N') && canManage) {
+      if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         openNew();
       }
@@ -424,18 +416,16 @@ export default function AffairsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deleteTarget, formOpen, error, selectedId, hasFiltersActive, canManage]);
+  }, [deleteTarget, formOpen, error, selectedId, hasFiltersActive]);
 
   if (loading) return <div className="p-6 text-rmpg-400">Loading internal affairs records...</div>;
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERNAL AFFAIRS" icon={ShieldAlert}>
-        {canManage && (
-          <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
-            <Plus size={13} /> New Complaint <span className="ml-1 text-[9px] text-rmpg-500">(N)</span>
-          </button>
-        )}
+        <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
+          <Plus size={13} /> New Complaint <span className="ml-1 text-[9px] text-rmpg-500">(N)</span>
+        </button>
       </PanelTitleBar>
 
       {/* Privacy / confidentiality advisory — IA records are GRAMA-
@@ -535,15 +525,10 @@ export default function AffairsPage() {
         enableContextMenu
         rowContextMenu={(row: Complaint): ContextMenuItem[] => [
           m.action('Open detail', () => setSelectedId(row.id), { icon: <Eye size={12} /> }),
-          ...(canManage ? [
-            m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
-            m.separator(),
-            m.copyId(row.id),
-            m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
-          ] : [
-            m.separator(),
-            m.copyId(row.id),
-          ]),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
         ]}
       />
 
@@ -563,7 +548,6 @@ export default function AffairsPage() {
           onDelete={() => setDeleteTarget(selected)}
           onExportPdf={handleExportPdf}
           pdfBusy={pdfBusy}
-          canManage={canManage}
           onRefreshInvestigations={async () => {
             try {
               const r = await apiFetch<{ data: Investigation[] }>(`/affairs/complaints/${selected.id}/investigations`);
@@ -600,7 +584,7 @@ export default function AffairsPage() {
 // ── Detail panel (inline, not extracted — only used here) ──────
 function ComplaintDetail({
   complaint, investigations, investigationsLoading, onClose, onEdit, onDelete,
-  onExportPdf, pdfBusy, onRefreshInvestigations, canManage,
+  onExportPdf, pdfBusy, onRefreshInvestigations,
 }: {
   complaint: Complaint;
   investigations: Investigation[];
@@ -611,7 +595,6 @@ function ComplaintDetail({
   onExportPdf: () => void;
   pdfBusy: boolean;
   onRefreshInvestigations: () => void;
-  canManage: boolean;
 }) {
   const isClosed = complaint.status && CLOSED_STATUSES.has(complaint.status);
   return (
@@ -649,28 +632,24 @@ function ComplaintDetail({
             <FileDown size={12} />
             {pdfBusy ? 'Generating…' : 'Court PDF'}
           </button>
-          {canManage && (
-            <button
-              type="button"
-              onClick={onEdit}
-              aria-label="Edit complaint"
-              className="toolbar-btn flex items-center gap-1.5"
-              style={{ height: 26, padding: '0 8px' }}
-            >
-              <Pencil size={12} /> Edit
-            </button>
-          )}
-          {canManage && (
-            <button
-              type="button"
-              onClick={onDelete}
-              aria-label="Delete complaint"
-              className="toolbar-btn flex items-center gap-1.5 text-red-400 hover:text-red-300"
-              style={{ height: 26, padding: '0 8px' }}
-            >
-              <Trash2 size={12} /> Delete
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Edit complaint"
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 26, padding: '0 8px' }}
+          >
+            <Pencil size={12} /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete complaint"
+            className="toolbar-btn flex items-center gap-1.5 text-red-400 hover:text-red-300"
+            style={{ height: 26, padding: '0 8px' }}
+          >
+            <Trash2 size={12} /> Delete
+          </button>
           <button
             type="button"
             onClick={onClose}
