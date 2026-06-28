@@ -1600,7 +1600,7 @@ export default function WarrantsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, archiveConfirmOpen, activeTab, isAdminOrManager]);
+  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab, isAdminOrManager]);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
