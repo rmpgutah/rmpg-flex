@@ -79,3 +79,7 @@ client/.guide-shots/
 # Audit workflow tracker artifacts (local only)
 .audit-*.json
 .audit-*.md
+.live_schema.json
+
+# Superpowers brainstorm visual-companion scaffolding (local only)
+.superpowers/

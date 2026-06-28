@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE TABLE IF NOT EXISTS evidence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   evidence_number TEXT,
-  incident_id INTEGER NOT NULL,
+  incident_id INTEGER,  -- nullable: standalone evidence (found property) has no linked incident (migration 0124)
   description TEXT,
   evidence_type TEXT,
   storage_location TEXT,

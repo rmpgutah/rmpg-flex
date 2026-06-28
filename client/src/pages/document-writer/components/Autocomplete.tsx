@@ -25,8 +25,10 @@ const MIN_PREFIX = 3;
 const MAX_RESULTS = 6;
 
 function decode(s: string): string {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”');
+  // Decode &amp; LAST: doing it first lets "&amp;lt;" collapse into "<" (double-unescaping).
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&rsquo;/g, '’').replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”')
+    .replace(/&amp;/g, '&');
 }
 
 export default function Autocomplete({ editor, enabled }: { editor: Editor; enabled: boolean }) {
@@ -106,7 +108,7 @@ export default function Autocomplete({ editor, enabled }: { editor: Editor; enab
 
   return (
     <div
-      className="absolute z-40 w-72 max-w-[80vw] bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 overflow-hidden"
+      className="absolute z-40 w-72 max-w-[80vw] bg-surface-base border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/60 overflow-hidden"
       style={{ left: Math.max(0, pos.left), top: pos.top }}
     >
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 px-2 pt-1.5 pb-0.5">Phrase suggestions · Tab to accept</div>
@@ -114,7 +116,7 @@ export default function Autocomplete({ editor, enabled }: { editor: Editor; enab
         <button key={s.label + i} type="button"
           onMouseDown={(e) => { e.preventDefault(); accept(s); }}
           onMouseEnter={() => setActive(i)}
-          className={`block w-full text-left px-2 py-1 ${i === active ? 'bg-[#d4a017]/15' : 'hover:bg-[#141414]'}`}>
+          className={`block w-full text-left px-2 py-1 ${i === active ? 'bg-[#d4a017]/15' : 'hover:bg-surface-base'}`}>
           <div className={`text-[10px] font-medium ${i === active ? 'text-[#d4a017]' : 'text-rmpg-200'}`}>{decode(s.label)}</div>
           <div className="text-[9px] text-rmpg-500 line-clamp-1">{decode(s.text)}</div>
         </button>

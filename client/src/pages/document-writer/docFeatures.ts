@@ -10,7 +10,8 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import type { DocSettings, PageSize } from './types';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 // ── Auto-numbered captions (Figure 1, Table 2, Exhibit A…) ──────────────────
 
@@ -86,6 +87,125 @@ export function applyPagePreset(settings: DocSettings, preset: PagePreset): DocS
 /** True if the given preset matches the current page geometry. */
 export function isActivePreset(settings: DocSettings, preset: PagePreset): boolean {
   return settings.page.size === preset.size && settings.page.orientation === preset.orientation;
+}
+
+// ── Margin presets ───────────────────────────────────────────────────────────
+// Margins are stored in CSS px at 96dpi (1in = 96px), matching PageSetup.margins
+// and the print @page rule. Values below are inches × 96. "Custom" carries no
+// margins object — selecting it leaves the current numbers untouched so the
+// per-side inputs act as the manual editor.
+
+export interface MarginPreset {
+  id: 'narrow' | 'standard' | 'legal' | 'formal' | 'custom';
+  label: string;
+  /** Margins in px @96dpi; omitted for "custom" (keep current values). */
+  margins?: { top: number; right: number; bottom: number; left: number };
+}
+
+const IN = 96; // px per inch at 96dpi
+
+export const MARGIN_PRESETS: MarginPreset[] = [
+  { id: 'narrow', label: 'Narrow', margins: { top: 0.5 * IN, right: 0.5 * IN, bottom: 0.5 * IN, left: 0.5 * IN } },
+  { id: 'standard', label: 'Standard', margins: { top: 1 * IN, right: 1 * IN, bottom: 1 * IN, left: 1 * IN } },
+  // Legal filings/pleadings: 1in top/bottom/right, wider 1.5in binding edge.
+  { id: 'legal', label: 'Legal', margins: { top: 1 * IN, right: 1 * IN, bottom: 1 * IN, left: 1.5 * IN } },
+  // Formal letterhead: deeper 1.5in top to clear the masthead, 1.25in sides.
+  { id: 'formal', label: 'Formal', margins: { top: 1.5 * IN, right: 1.25 * IN, bottom: 1 * IN, left: 1.25 * IN } },
+  { id: 'custom', label: 'Custom' },
+];
+
+/** Apply a margin preset (no-op for "custom"). Returns next settings. */
+export function applyMarginPreset(settings: DocSettings, preset: MarginPreset): DocSettings {
+  if (!preset.margins) return settings;
+  return { ...settings, page: { ...settings.page, margins: { ...preset.margins } } };
+}
+
+/** Id of the preset matching the current margins, or 'custom' if none match. */
+export function activeMarginPresetId(settings: DocSettings): MarginPreset['id'] {
+  const m = settings.page.margins;
+  const hit = MARGIN_PRESETS.find(
+    (p) => p.margins &&
+      p.margins.top === m.top && p.margins.right === m.right &&
+      p.margins.bottom === m.bottom && p.margins.left === m.left,
+  );
+  return hit ? hit.id : 'custom';
+}
+
+// ── Document format presets (LE/court named bundles) ───────────────────────
+// Each preset bundles page geometry + margins + document flags into a single
+// named archetype. Applying a preset overwrites only the fields it specifies.
+
+export interface DocumentFormatPreset {
+  id: string;
+  label: string;
+  description: string;
+  page: { size: PageSize; orientation: 'portrait' | 'landscape' };
+  margins: { top: number; right: number; bottom: number; left: number };
+  letterhead?: boolean;
+  lineNumbers?: boolean;
+  footer?: { enabled: boolean; text: string; showDate: boolean; showAuthor: boolean };
+}
+
+export const DOCUMENT_FORMAT_PRESETS: DocumentFormatPreset[] = [
+  {
+    id: 'le-field-report',
+    label: 'LE Field Report',
+    description: 'Standard narrative report — letter, 0.75in margins, no letterhead, line numbers for review',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 72, right: 72, bottom: 72, left: 72 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'court-filing',
+    label: 'Court Filing',
+    description: 'Legal-size paper, 1.5in left binding margin, double-spaced — standard pleading format',
+    page: { size: 'legal', orientation: 'portrait' },
+    margins: { top: 96, right: 96, bottom: 96, left: 144 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'warrant-affidavit',
+    label: 'Warrant / Affidavit',
+    description: 'Letter paper, formal 1.5in top margin for judicial signature block, line numbers',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 144, right: 96, bottom: 96, left: 96 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'evidence-report',
+    label: 'Evidence Report',
+    description: 'Letter, standard 1in margins, agency letterhead, officer/date footer',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 96, right: 96, bottom: 96, left: 96 },
+    letterhead: true,
+    lineNumbers: false,
+    footer: { enabled: true, text: 'EVIDENCE REPORT — RMPG', showDate: true, showAuthor: true },
+  },
+  {
+    id: 'official-memo',
+    label: 'Official Memo / Letter',
+    description: 'Letter, formal 1.5in top for letterhead masthead, 1.25in sides, agency header',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 144, right: 120, bottom: 96, left: 120 },
+    letterhead: true,
+    lineNumbers: false,
+  },
+];
+
+/** Deep-merge a document format preset into the current DocSettings. Only the
+ *  fields declared in the preset are overwritten; everything else stays intact. */
+export function applyDocumentFormatPreset(settings: DocSettings, preset: DocumentFormatPreset): DocSettings {
+  const next = { ...settings, page: { ...settings.page } };
+  next.page.size = preset.page.size;
+  next.page.orientation = preset.page.orientation;
+  next.page.margins = { ...preset.margins };
+  if (preset.letterhead !== undefined) next.letterhead = preset.letterhead;
+  if (preset.lineNumbers !== undefined) next.lineNumbers = preset.lineNumbers;
+  if (preset.footer !== undefined) next.footer = { ...preset.footer };
+  return next;
 }
 
 // ── Export selection only ───────────────────────────────────────────────────

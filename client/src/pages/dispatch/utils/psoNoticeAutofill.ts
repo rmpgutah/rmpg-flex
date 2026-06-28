@@ -15,6 +15,7 @@
 
 import type { CallForService } from '../../../types';
 import { applyCallPdfAutofill } from './callPdfAutofill';
+import { importWithRetry } from '../../../utils/importWithRetry';
 import type {
   NoticeOfCommunicationData,
   NoticeOfCommunicationAttempt,
@@ -79,11 +80,19 @@ function deriveServiceType(
   return undefined;
 }
 
-/** Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into date + time. */
+/**
+ * Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into recipient-
+ * readable date + time. Date renders as MM/DD/YYYY (US legal-document
+ * convention); time stays HH:MM 24-hour (police-form convention). The
+ * raw ISO date was leaking through to the PDF as "2026-06-20" which
+ * looked wrong against the long-format notice date ("June 21, 2026").
+ */
 function splitStamp(ts?: string): { date: string; time: string } {
   if (!ts) return { date: '', time: '' };
   const norm = ts.replace('T', ' ');
-  const date = norm.slice(0, 10);
+  const iso = norm.slice(0, 10);                       // "YYYY-MM-DD"
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = m ? `${m[2]}/${m[3]}/${m[1]}` : iso;    // "MM/DD/YYYY"
   const time = norm.slice(11, 16);
   return { date, time };
 }
@@ -96,7 +105,7 @@ function splitStamp(ts?: string): { date: string; time: string } {
  */
 export async function fetchServeJobForCall(callId: string | number): Promise<ServeJobInfo | null> {
   try {
-    const { apiFetch } = await import('../../../hooks/useApi');
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
     const rows = await apiFetch<any[]>('/process-server?limit=500');
     const list = Array.isArray(rows) ? rows : [];
     const row = list.find((r) => r && r.call_id != null && String(r.call_id) === String(callId));
@@ -141,9 +150,20 @@ export function buildNoticeOfCommunicationFromCall(
   // only call-level fallback (usually null in practice).
   const respondentName = serveJob?.respondentName || filled.process_served_to || undefined;
 
-  // The failed call IS the unsuccessful attempt. Represent it as one row.
-  const stamp = splitStamp(filled.cleared_at || filled.closed_at || filled.created_at);
-  const attempt: NoticeOfCommunicationAttempt = {
+  // The failed call IS the unsuccessful attempt. The TIME OF ARRIVAL on
+  // the notice should reflect when the officer actually arrived on scene
+  // (onscene_at), not when the dispatcher cleared the call (cleared_at).
+  // Falls back through the lifecycle stamps so a call closed without an
+  // onscene transition still gets a meaningful timestamp.
+  const filledAny = filled as Record<string, any>;
+  const stamp = splitStamp(
+    filledAny.onscene_at
+    || filledAny.enroute_at
+    || filled.cleared_at
+    || filled.closed_at
+    || filled.created_at,
+  );
+  const currentAttempt: NoticeOfCommunicationAttempt = {
     number: filled.pso_attempt_number || 1,
     date: stamp.date,
     time: stamp.time,
@@ -151,16 +171,59 @@ export function buildNoticeOfCommunicationFromCall(
     notes: filled.action_taken || lastNoteText(filled.notes) || '',
   };
 
-  const noticeDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
+  // Surface the full PSO chain on every notice — every prior visit becomes
+  // its own attempt row so a respondent's second / third / fourth notice
+  // reads as a coherent record of all attempts, not just the latest.
+  // visit_history comes from GET /api/dispatch/calls/:id (server-side
+  // reconstruction via calls_for_service_ext.parent_call_id); the opener
+  // backfills it via fetchVisitHistoryForCall when it's missing from the
+  // CallForService payload (list views don't include it).
+  const historyRows = Array.isArray(call.visit_history) ? call.visit_history : [];
+  const priorAttempts: NoticeOfCommunicationAttempt[] = historyRows.map((v) => {
+    const visitTs = v.onscene_at || v.enroute_at || v.cleared_at || v.closed_at || v.created_at;
+    const visitStamp = splitStamp(visitTs);
+    return {
+      number: v.visit_number || 0,
+      date: visitStamp.date,
+      time: visitStamp.time,
+      result: v.disposition || 'no_contact',
+      notes: v.note || '',
+    };
   });
+
+  // Combine + dedup by visit_number (the server query excludes the current
+  // call via `c.id < ?`, but a future change could include it — guard
+  // anyway so the same attempt never lists twice).
+  const merged = [...priorAttempts, currentAttempt];
+  const seen = new Set<number>();
+  const attempts = merged
+    .filter((a) => {
+      if (seen.has(a.number)) return false;
+      seen.add(a.number);
+      return true;
+    })
+    .sort((a, b) => a.number - b.number);
+
+  // Notice Date renders in the same MM/DD/YYYY format as the attempt
+  // dates below — having one slot read "June 21, 2026" and the table
+  // read "06/20/2026" made the document look like two different forms.
+  // toLocaleDateString('en-US') defaults to M/D/YYYY; manual zero-pad
+  // keeps the field grid columns aligned.
+  const now = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const noticeDate = `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()}`;
 
   return {
     noticeDate,
     callNumber: filled.call_number || '',
     respondentName,
-    courtCaseNumber: serveJob?.courtCaseNumber || undefined,
-    courtName: serveJob?.courtName || undefined,
+    // Prefer the linked serve job's case/court (the serve queue is the
+    // authoritative system of record for legal-matter detail), but FALL
+    // BACK to the call's own case_number / court_name (now an ext column
+    // per mig 0145) so dispatch operators can capture the court even
+    // before a serve_queue row exists.
+    courtCaseNumber: serveJob?.courtCaseNumber || filled.case_number || undefined,
+    courtName: serveJob?.courtName || (filledAny.court_name as string | undefined) || undefined,
     clientName,
     clientContact,
     clientAddress,
@@ -171,7 +234,7 @@ export function buildNoticeOfCommunicationFromCall(
     serviceAddress: filled.location || filled.process_served_address || 'Address on file',
     authorization: filled.pso_authorization || undefined,
     billingCode: filled.pso_billing_code || undefined,
-    attempts: [attempt],
+    attempts,
     redispatchCallNumber: ctx.redispatchCallNumber,
     nextWindow: ctx.nextWindow,
     officerName: ctx.officerName,
@@ -195,10 +258,36 @@ export function buildNoticeOfCommunicationFromCall(
  * Throws on failure so callers can toast.
  */
 export async function openNoticeOfCommunication(call: CallForService, ctx: PsoNoticeContext): Promise<void> {
+  // Backfill visit_history if missing. The dispatch list views ship calls
+  // without it (only the detail endpoint reconstructs the chain), and
+  // every notice past the first MUST surface the full sequence of attempts
+  // so the recipient sees a coherent record.
+  const enrichedCall = (Array.isArray(call.visit_history) && call.visit_history.length > 0)
+    ? call
+    : { ...call, visit_history: await fetchVisitHistoryForCall(call.id) };
   const serveJob = await fetchServeJobForCall(call.id);
-  const data = buildNoticeOfCommunicationFromCall(call, ctx, serveJob);
-  const { generateNoticeOfCommunication } = await import('../../../utils/psoNoticePdfGenerator');
+  const data = buildNoticeOfCommunicationFromCall(enrichedCall, ctx, serveJob);
+  const { generateNoticeOfCommunication } = await importWithRetry(() => import('../../../utils/psoNoticePdfGenerator'));
   const doc = await generateNoticeOfCommunication(data);
-  const { openPdfDocument } = await import('../../../utils/openPdfDocument');
+  const { openPdfDocument } = await importWithRetry(() => import('../../../utils/openPdfDocument'));
   openPdfDocument(doc, `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf`);
+}
+
+/**
+ * Pulls the full PSO chain for a CFS via the dispatch detail endpoint. The
+ * server's GET /api/dispatch/calls/:id reconstructs visit_history from
+ * calls_for_service + calls_for_service_ext.parent_call_id (excluding the
+ * current call via `c.id < ?`). Returns empty on any failure so the caller
+ * just renders the current attempt — never throw a notice generation away
+ * because of a chain-lookup blip.
+ */
+export async function fetchVisitHistoryForCall(callId: string | number): Promise<any[]> {
+  try {
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
+    const detail = await apiFetch<any>(`/dispatch/calls/${encodeURIComponent(String(callId))}`);
+    const hist = detail && Array.isArray(detail.visit_history) ? detail.visit_history : [];
+    return hist;
+  } catch {
+    return [];
+  }
 }

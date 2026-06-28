@@ -2,8 +2,10 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, ensureTimeEntryColumns } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
+import { nowDualStamp } from '../utils/denverTime';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 // Side-effect import: registers upload + stream handlers on
 // bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
@@ -53,7 +55,7 @@ const MANAGER_EDITABLE: readonly string[] = [
   'full_name', 'first_name', 'middle_name', 'last_name',
   'email', 'phone',
   'badge_number', 'rank', 'department', 'assigned_unit_id', 'employee_id',
-  'address', 'city', 'state', 'zip',
+  'address', 'address_2', 'city', 'state', 'zip',
   'date_of_birth',
   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
   'hire_date', 'termination_date', 'shift_preference',
@@ -69,7 +71,7 @@ const MANAGER_EDITABLE: readonly string[] = [
 // dl_*, certifications, medical) and anything identity-shaping (names, DOB).
 const SELF_EDITABLE: readonly string[] = [
   'phone', 'email',
-  'address', 'city', 'state', 'zip',
+  'address', 'address_2', 'city', 'state', 'zip',
   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
   'voice_persona', 'voice_rate', 'voice_pitch', 'voice_terseness', 'voice_brain_enabled',
   'theme_preference', 'font_size_preference', 'notification_prefs', 'email_signature',
@@ -90,7 +92,7 @@ personnel.get('/', async (c) => {
     const { status, role } = c.req.query();
     let sql = `SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
-                      u.address, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
+                      u.address, u.address_2, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
                       u.emergency_contact_relationship, u.created_at, u.updated_at,
@@ -257,7 +259,7 @@ personnel.post('/equipment/:id/checkin', async (c) => {
     try {
       const user = c.get('user') as Record<string, unknown> | undefined;
       await execute(db,
-        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, performed_by, notes, created_at) VALUES (?, ?, 'checkin', ?, ?, datetime('now'))`,
+        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, action, performed_by, notes, created_at) VALUES (?, ?, datetime('now'), 'checkin', ?, ?, datetime('now'))`,
         id, item.officer_id, user?.id ?? null, body.notes ?? null);
     } catch { /* log table may not exist */ }
     const updated = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
@@ -354,8 +356,8 @@ personnel.post('/equipment/:id/checkin', async (c) => {
     if (!eq) return c.json({ error: 'Equipment not found' }, 404);
     await execute(
       db,
-      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, return_date, action, equipment_name, checked_by)
-       VALUES (?, ?, datetime('now','localtime'), 'checkin', ?, ?)`,
+      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, return_date, action, equipment_name, checked_by)
+       VALUES (?, ?, datetime('now','localtime'), datetime('now','localtime'), 'checkin', ?, ?)`,
       id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
     await execute(db, "UPDATE officer_equipment SET status = 'returned', returned_date = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?", id);
     return c.json({ success: true });
@@ -732,6 +734,7 @@ personnel.get('/time', async (c) => {
 personnel.post('/time/clock-in', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -741,10 +744,10 @@ personnel.post('/time/clock-in', async (c) => {
       `SELECT id FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
     if (existing) return c.json({ error: 'Already clocked in', entry_id: existing.id }, 409);
 
-    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const stamp = nowDualStamp();
     const result = await execute(db,
-      `INSERT INTO time_entries (officer_id, clock_in, status, created_at) VALUES (?, ?, 'active', datetime('now','localtime'))`,
-      officerId, stamp);
+      `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now','localtime'))`,
+      officerId, stamp.utc, stamp.local);
     const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(entry, 201);
   } catch (err) {
@@ -757,6 +760,7 @@ personnel.post('/time/clock-in', async (c) => {
 personnel.post('/time/clock-out', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -766,14 +770,14 @@ personnel.post('/time/clock-out', async (c) => {
       `SELECT id, clock_in, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
     if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
 
-    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const stamp = nowDualStamp();
     const a = new Date(entry.clock_in).getTime();
-    const b = new Date(stamp).getTime();
+    const b = new Date(stamp.utc).getTime();
     const hrs = Number.isFinite(a) && Number.isFinite(b) && b > a
       ? Math.round(((b - a) / 3_600_000 - (entry.break_minutes || 0) / 60) * 100) / 100
       : 0;
 
-    await execute(db, `UPDATE time_entries SET clock_out = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp, hrs, entry.id);
+    await execute(db, `UPDATE time_entries SET clock_out = ?, clock_out_local = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp.utc, stamp.local, hrs, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {
@@ -786,6 +790,7 @@ personnel.post('/time/clock-out', async (c) => {
 personnel.post('/time/start-break', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -796,7 +801,8 @@ personnel.post('/time/start-break', async (c) => {
     if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
     if (entry.status === 'on_break') return c.json({ error: 'Already on break' }, 409);
 
-    await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = datetime('now','localtime') WHERE id = ?`, entry.id);
+    const stamp = nowDualStamp();
+    await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = ?, break_start_local = ? WHERE id = ?`, stamp.utc, stamp.local, entry.id);
     const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
     return c.json(updated);
   } catch (err) {
@@ -809,6 +815,7 @@ personnel.post('/time/start-break', async (c) => {
 personnel.post('/time/end-break', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -1067,13 +1074,7 @@ personnel.delete('/time/:id', async (c) => {
 
     try {
       if (actor?.id != null) {
-        await execute(
-          db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, 'TIME_ENTRY_DELETE', 'time_entry', ?, ?, datetime('now'))`,
-          actor.id, id,
-          `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`,
-        );
+        await recordAudit(c, { action: 'TIME_ENTRY_DELETE', entityType: 'time_entry', entityId: id, details: `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`, actorId: actor.id });
       }
     } catch (auditErr) {
       console.warn('audit_log insert failed for time-entry delete:', auditErr);
@@ -2271,8 +2272,8 @@ personnel.get('/:id/dispatch-stats', async (c) => {
     const [callStats, unitInfo, recentCalls, tripStats] = await Promise.all([
       queryFirst<Record<string, unknown>>(db, `
         SELECT COUNT(*) as total_calls,
-          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1_calls,
-          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2_calls,
+          SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1_calls,
+          SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2_calls,
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_calls,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_calls,
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
@@ -2374,6 +2375,147 @@ personnel.get('/:id/fleet-summary', async (c) => {
   } catch (err) {
     console.error('GET /personnel/:id/fleet-summary error:', err);
     return c.json({ error: 'Failed to fetch fleet summary' }, 500);
+  }
+});
+
+// ── Training Materials Library ───────────────────────────────
+// GET /api/personnel/training-materials — company-uploaded reference
+// docs tagged as training materials. Reads from company_documents where
+// category = 'training_manual'. Returns { data: [] } on any error so
+// TrainingMaterialsPanel degrades gracefully.
+personnel.get('/training-materials', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, title, description, category, content_type, external_url,
+             file_id, file_name, mime_type, file_size, is_required_reading,
+             published, created_at
+        FROM company_documents
+       WHERE published = 1
+         AND category IN ('training_manual', 'reference', 'sop', 'procedure')
+       ORDER BY is_required_reading DESC, created_at DESC
+       LIMIT 100
+    `);
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('GET /personnel/training-materials error:', err);
+    return c.json({ data: [] }, 200);
+  }
+});
+
+// ── Training Alerts ──────────────────────────────────────────
+// GET /api/personnel/training-alerts — summary of mandatory training gaps.
+// Used by MandatoryTrainingAlerts panel. Computes expired / expiring_soon /
+// never_completed buckets across all active officers × mandatory requirements.
+// Returns { total_alerts, expired, expiring_soon, never_completed, alerts[] }.
+personnel.get('/training-alerts', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      officer_name: string;
+      course_name: string;
+      alert_type: string;
+      days_overdue: number;
+    }>(db, `
+      SELECT
+        u.full_name AS officer_name,
+        req.course_name,
+        CASE
+          WHEN rec.id IS NULL THEN 'never_completed'
+          WHEN rec.expiry_date IS NOT NULL AND date(rec.expiry_date) < date('now') THEN 'expired'
+          WHEN rec.expiry_date IS NOT NULL
+               AND date(rec.expiry_date) BETWEEN date('now') AND date('now', '+30 days') THEN 'expiring_soon'
+          ELSE NULL
+        END AS alert_type,
+        CASE
+          WHEN rec.expiry_date IS NOT NULL
+          THEN CAST(julianday('now') - julianday(rec.expiry_date) AS INTEGER)
+          ELSE 0
+        END AS days_overdue
+      FROM users u
+      CROSS JOIN training_requirements req
+      LEFT JOIN training_records rec
+        ON rec.officer_id = u.id
+       AND rec.course_name = req.course_name
+       AND rec.status = 'completed'
+      WHERE u.status = 'active'
+        AND COALESCE(req.is_mandatory, 0) = 1
+        AND COALESCE(req.is_active, 1) = 1
+        AND json_array_length(COALESCE(req.required_for_roles, '[]')) > 0
+        AND (
+          json_array_length(COALESCE(req.required_for_roles, '[]')) = 0
+          OR instr(COALESCE(req.required_for_roles, ''), u.role) > 0
+        )
+      HAVING alert_type IS NOT NULL
+      ORDER BY
+        CASE alert_type WHEN 'expired' THEN 0 WHEN 'expiring_soon' THEN 1 ELSE 2 END,
+        days_overdue DESC,
+        u.full_name
+    `);
+
+    const expired = rows.filter(r => r.alert_type === 'expired').length;
+    const expiring_soon = rows.filter(r => r.alert_type === 'expiring_soon').length;
+    const never_completed = rows.filter(r => r.alert_type === 'never_completed').length;
+
+    return c.json({
+      total_alerts: rows.length,
+      expired,
+      expiring_soon,
+      never_completed,
+      alerts: rows,
+    });
+  } catch (err) {
+    console.error('GET /personnel/training-alerts error:', err);
+    return c.json({ total_alerts: 0, expired: 0, expiring_soon: 0, never_completed: 0, alerts: [] }, 200);
+  }
+});
+
+// ── Bulk Training Assignment ─────────────────────────────────
+// POST /api/personnel/training-bulk-assign — create one training record per
+// officer in officer_ids[]. Idempotent on (officer_id, course_name, status):
+// skips if a matching completed record already exists for the officer.
+// Body: { officer_ids, course_name, category, provider?, hours?, status? }
+personnel.post('/training-bulk-assign', async (c) => {
+  const user = c.get('user');
+  if (!user || !['admin', 'manager', 'supervisor'].includes(user.role)) {
+    return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
+  }
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    if (!Array.isArray(b.officer_ids) || b.officer_ids.length === 0)
+      return c.json({ error: 'officer_ids array required' }, 400);
+    if (typeof b.course_name !== 'string' || !b.course_name.trim())
+      return c.json({ error: 'course_name required' }, 400);
+
+    const courseName = String(b.course_name).trim();
+    const category = String(b.category || 'other');
+    const provider = b.provider ? String(b.provider) : null;
+    const hours = Number(b.hours) || 0;
+    const status = String(b.status || 'scheduled');
+
+    let created = 0;
+    let skipped = 0;
+    for (const rawId of b.officer_ids) {
+      const officerId = Number(rawId);
+      if (!Number.isFinite(officerId)) continue;
+      // Skip if a completed record already exists
+      const existing = await queryFirst<{ id: number }>(db,
+        `SELECT id FROM training_records WHERE officer_id = ? AND course_name = ? AND status = 'completed'`,
+        officerId, courseName,
+      );
+      if (existing) { skipped++; continue; }
+      await execute(db,
+        `INSERT INTO training_records (officer_id, course_name, category, provider, hours, status)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        officerId, courseName, category, provider, hours, status,
+      );
+      created++;
+    }
+    return c.json({ success: true, created, skipped });
+  } catch (err) {
+    console.error('POST /personnel/training-bulk-assign error:', err);
+    return c.json({ error: 'Failed to bulk assign training' }, 500);
   }
 });
 

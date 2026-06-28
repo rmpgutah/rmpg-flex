@@ -29,7 +29,7 @@ export function haversineM(lat1: number, lng1: number, lat2: number, lng2: numbe
   return 2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-function bearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function bearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const y = Math.sin(toRad(lng2 - lng1)) * Math.cos(toRad(lat2));
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
     Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2 - lng1));

@@ -13,16 +13,23 @@
 // section. Any section or whole chapter can be printed to a formatted PDF.
 // ============================================================
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Scale, Search, ChevronRight, ChevronDown, ExternalLink, Loader2, BookOpen,
   Gavel, Car, ShieldCheck, FileText, X, ArrowLeft, Layers, Printer, Sparkles,
-  Pill, ShieldAlert, Users, Leaf, Wine, Shield, Banknote, type LucideIcon,
+  Pill, ShieldAlert, Users, Leaf, Wine, Shield, Banknote, History, type LucideIcon,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLookup';
 import { parseOutline } from '../utils/statuteOutline';
 import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
+
+// Roles allowed to add/edit/delete statutes.
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface TocRow {
   category: string;
@@ -44,33 +51,33 @@ interface CatMeta { label: string; short: string; blurb: string; icon: LucideIco
 // actually present in the data (derived from the TOC), so adding a scraped
 // title automatically surfaces here without further UI work.
 const CATEGORY_META: Record<string, CatMeta> = {
-  criminal:      { label: 'Criminal Code',          short: 'Criminal',   blurb: 'Title 76 — offenses against persons, property, government & public order',          icon: Gavel,       accent: '#ef4444' },
-  fraud:         { label: 'Fraud',                  short: 'Fraud',      blurb: 'Title 25 — Statute of Frauds, fraudulent transfers & related fraud law',           icon: Banknote,    accent: '#db2777' },
-  procedure:     { label: 'Criminal Procedure',     short: 'Procedure',  blurb: 'Title 77 — arrest, search & seizure, warrants, evidence & trial process',          icon: Scale,       accent: '#d4a017' },
-  vehicle:       { label: 'Motor Vehicle & Traffic',short: 'Vehicle',    blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing',                icon: Car,         accent: '#fb923c' },
-  controlled:    { label: 'Controlled Substances',  short: 'Drugs',      blurb: 'Title 58 ch 37 — schedules, possession, distribution & paraphernalia',             icon: Pill,        accent: '#f59e0b' },
-  public_safety: { label: 'Public Safety',          short: 'Pub Safety', blurb: 'Title 53 — peace officer standards (POST), highway patrol & emergency management',  icon: ShieldAlert, accent: '#22c55e' },
-  juvenile:      { label: 'Juvenile Justice',       short: 'Juvenile',   blurb: 'Title 80 — juvenile court, delinquency, custody & child welfare',                   icon: Users,       accent: '#a3e635' },
-  wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
-  alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
-  protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
-  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: '#9ca3af' },
+  criminal:      { label: 'Criminal Code',          short: 'Criminal',   blurb: 'Title 76 — offenses against persons, property, government & public order',          icon: Gavel,       accent: 'var(--sev-critical)' },
+  fraud:         { label: 'Fraud',                  short: 'Fraud',      blurb: 'Title 25 — Statute of Frauds, fraudulent transfers & related fraud law',           icon: Banknote,    accent: 'var(--sev-special)' },
+  procedure:     { label: 'Criminal Procedure',     short: 'Procedure',  blurb: 'Title 77 — arrest, search & seizure, warrants, evidence & trial process',          icon: Scale,       accent: 'var(--brand-gold)' },
+  vehicle:       { label: 'Motor Vehicle & Traffic',short: 'Vehicle',    blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing',                icon: Car,         accent: 'var(--sev-high)' },
+  controlled:    { label: 'Controlled Substances',  short: 'Drugs',      blurb: 'Title 58 ch 37 — schedules, possession, distribution & paraphernalia',             icon: Pill,        accent: 'var(--sev-warn)' },
+  public_safety: { label: 'Public Safety',          short: 'Pub Safety', blurb: 'Title 53 — peace officer standards (POST), highway patrol & emergency management',  icon: ShieldAlert, accent: 'var(--sev-ok)' },
+  juvenile:      { label: 'Juvenile Justice',       short: 'Juvenile',   blurb: 'Title 80 — juvenile court, delinquency, custody & child welfare',                   icon: Users,       accent: 'var(--sev-ok-soft)' },
+  wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: 'var(--sev-ok)' },
+  alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: 'var(--sev-warn)' },
+  protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: 'var(--sev-critical)' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
-  return CATEGORY_META[cat] || { label: cat.replace(/_/g, ' '), short: cat, blurb: '', icon: Layers, accent: '#888888' };
+  return CATEGORY_META[cat] || { label: cat.replace(/_/g, ' '), short: cat, blurb: '', icon: Layers, accent: 'var(--spm-text-muted)' };
 }
 
 // Offense-level filter chips, ordered most→least severe, color-coded.
 const LEVELS: { key: string; short: string; dot: string }[] = [
-  { key: 'capital_felony', short: 'Capital', dot: '#dc2626' },
-  { key: 'first_degree_felony', short: '1° Felony', dot: '#ef4444' },
-  { key: 'second_degree_felony', short: '2° Felony', dot: '#f87171' },
-  { key: 'third_degree_felony', short: '3° Felony', dot: '#fb923c' },
-  { key: 'class_a_misdemeanor', short: 'Class A', dot: '#fbbf24' },
-  { key: 'class_b_misdemeanor', short: 'Class B', dot: '#facc15' },
-  { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
-  { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
+  { key: 'capital_felony', short: 'Capital', dot: 'var(--sev-critical)' },
+  { key: 'first_degree_felony', short: '1° Felony', dot: 'var(--sev-critical)' },
+  { key: 'second_degree_felony', short: '2° Felony', dot: 'var(--sev-critical-soft)' },
+  { key: 'third_degree_felony', short: '3° Felony', dot: 'var(--sev-high)' },
+  { key: 'class_a_misdemeanor', short: 'Class A', dot: 'var(--sev-warn-soft)' },
+  { key: 'class_b_misdemeanor', short: 'Class B', dot: 'var(--sev-caution)' },
+  { key: 'class_c_misdemeanor', short: 'Class C', dot: 'var(--sev-caution)' },
+  { key: 'infraction', short: 'Infraction', dot: 'var(--rmpg-400)' },
 ];
 
 function StatuteBody({ text }: { text: string }) {
@@ -101,7 +108,7 @@ function PlainLanguagePanel({ s }: { s: StatuteResult }) {
   if (!s.plain_summary) return null;
   const els = Array.isArray(s.plain_elements) ? s.plain_elements : [];
   return (
-    <div className="bg-surface-sunken border border-rmpg-800" style={{ borderRadius: 2, borderLeft: '2px solid #d4a017' }}>
+    <div className="bg-surface-sunken border border-rmpg-800" style={{ borderRadius: 2, borderLeft: '2px solid var(--brand-gold)' }}>
       <div className="flex items-center gap-1.5 px-3 pt-2">
         <Sparkles className="w-3 h-3 text-brand-gold-500" />
         <span className="text-[9px] font-bold uppercase tracking-wider text-brand-gold-500">Plain Language</span>
@@ -124,7 +131,49 @@ function PlainLanguagePanel({ s }: { s: StatuteResult }) {
   );
 }
 
+// ── Recent statutes (user-scoped) ──
+// Keys: `rmpg_lawbook_recent_<user.id>`. Capped at 8 most-recent.
+// Operators frequently re-read the same handful of statutes (DUI, assault,
+// trespass) — surfacing them on the landing card cuts the scroll/search cycle.
+interface RecentStatute { id: number; citation: string; short_title: string; title: number; chapter_code: string }
+const RECENT_MAX = 8;
+function recentKey(userId: string | undefined): string {
+  return userId ? `rmpg_lawbook_recent_${userId}` : 'rmpg_lawbook_recent_anon';
+}
+function getRecentStatutes(userId: string | undefined): RecentStatute[] {
+  try {
+    const raw = localStorage.getItem(recentKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as RecentStatute[]).slice(0, RECENT_MAX) : [];
+  } catch { return []; }
+}
+function pushRecentStatute(userId: string | undefined, s: StatuteResult): RecentStatute[] {
+  if (!s.citation || s.id == null) return getRecentStatutes(userId);
+  // Section reader needs chapter context; derive from the citation when the row
+  // doesn't carry chapter_code directly (search hits include it via shape()).
+  const titleNum = parseInt(String(s.citation).split('-')[0] || '', 10);
+  const chap = (s.chapter_code || String(s.citation).split('-')[1] || '').trim();
+  if (!Number.isFinite(titleNum) || !chap) return getRecentStatutes(userId);
+  const entry: RecentStatute = {
+    id: s.id, citation: s.citation, short_title: s.short_title || s.citation,
+    title: titleNum, chapter_code: chap,
+  };
+  try {
+    const list = getRecentStatutes(userId).filter((r) => r.citation !== entry.citation);
+    list.unshift(entry);
+    const next = list.slice(0, RECENT_MAX);
+    localStorage.setItem(recentKey(userId), JSON.stringify(next));
+    return next;
+  } catch { return getRecentStatutes(userId); }
+}
+
 export default function LawBookPage() {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
   const [toc, setToc] = useState<TocRow[]>([]);
   const [tocLoading, setTocLoading] = useState(true);
   const [category, setCategory] = useState<CategoryKey>('all');
@@ -140,6 +189,16 @@ export default function LawBookPage() {
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ConfirmDialog: gate clearing recent statute history.
+  const [clearRecentConfirm, setClearRecentConfirm] = useState(false);
+
+  // Recent statutes — hydrated on mount + bumped every time an operator opens
+  // a section in the reader. Per-user so a shared workstation doesn't bleed
+  // one officer's reading history into another's landing card.
+  const [recent, setRecent] = useState<RecentStatute[]>(() => getRecentStatutes(user?.id));
+  useEffect(() => { setRecent(getRecentStatutes(user?.id)); }, [user?.id]);
 
   // Full TOC fetched once; stats + category filtering derived client-side.
   useEffect(() => {
@@ -196,15 +255,96 @@ export default function LawBookPage() {
     return () => { if (debounce.current) clearTimeout(debounce.current); };
   }, [query, category, level]);
 
-  const loadChapter = useCallback((title: number, code: string, name: string) => {
+  const loadChapter = useCallback(async (
+    title: number, code: string, name: string, opts?: { openCitation?: string },
+  ): Promise<StatuteResult[]> => {
     setChapter({ title, code, name });
-    setQuery(''); setResults(null); setLevel(null); setOpenSection(null);
+    setQuery(''); setResults(null); setLevel(null);
+    setOpenSection(opts?.openCitation ?? null);
     setSectionsLoading(true);
-    apiFetch<{ data: StatuteResult[] }>(`/statutes/chapter?title=${title}&chapter=${encodeURIComponent(code)}`)
-      .then((r) => setSections(r.data || []))
-      .catch(() => setSections([]))
-      .finally(() => setSectionsLoading(false));
+    try {
+      const r = await apiFetch<{ data: StatuteResult[] }>(`/statutes/chapter?title=${title}&chapter=${encodeURIComponent(code)}`);
+      const data = r.data || [];
+      setSections(data);
+      return data;
+    } catch {
+      setSections([]);
+      return [];
+    } finally {
+      setSectionsLoading(false);
+    }
   }, []);
+
+  // ── URL deep-link: /law-book?statute_id=<id> | /law-book?citation=76-5-102 | /law-book?section=76-5-102 ──
+  // Strategy:
+  //   1. Direct-fetch the statute via /statutes/section/:citation (works
+  //      regardless of which chapter is loaded).
+  //   2. Load the containing chapter so the operator sees its siblings.
+  //   3. Auto-open the target section.
+  //   4. Strip the param from the URL so a hard refresh doesn't re-trigger.
+  // `section=` is accepted as an alias for `citation=` so cross-page links can
+  // use the more intuitive name. `statute_id=` falls back to a search when no
+  // direct /section/:id route exists.
+  const pendingDeepLinkRef = useRef<{ statuteId: string | null; citation: string | null }>({
+    statuteId: searchParams.get('statute_id'),
+    // accept both ?citation= and ?section= as entry points
+    citation: searchParams.get('citation') ?? searchParams.get('section'),
+  });
+  useEffect(() => {
+    const { statuteId, citation } = pendingDeepLinkRef.current;
+    if (!statuteId && !citation) return;
+    pendingDeepLinkRef.current = { statuteId: null, citation: null };
+    let cancelled = false;
+    (async () => {
+      try {
+        let target: StatuteResult | null = null;
+        if (citation) {
+          const r = await apiFetch<{ data: StatuteResult }>(`/statutes/section/${encodeURIComponent(citation)}`);
+          target = r?.data ?? null;
+        } else if (statuteId) {
+          // No /section/:id route — pivot via search with the id as q (the
+          // server matches numeric tokens against citation too).
+          const r = await apiFetch<{ data: StatuteResult[] }>(`/statutes/search?id=${encodeURIComponent(statuteId)}&limit=1`);
+          const hits = r?.data || [];
+          target = hits[0] || null;
+        }
+        if (cancelled) return;
+        if (!target) {
+          addToast(`Statute ${citation ?? statuteId ?? ''} not found`, 'error');
+          return;
+        }
+        const citationStr = target.citation;
+        const titleNum = parseInt(String(citationStr).split('-')[0] || '', 10);
+        const chapCode = (target.chapter_code || String(citationStr).split('-')[1] || '').trim();
+        const chapName = target.subcategory || `Title ${titleNum}`;
+        if (Number.isFinite(titleNum) && chapCode) {
+          await loadChapter(titleNum, chapCode, chapName, { openCitation: citationStr });
+          if (!cancelled) setRecent(pushRecentStatute(user?.id, target));
+        }
+      } catch {
+        // Quiet fail — operator can still browse normally.
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('statute_id');
+          next.delete('citation');
+          next.delete('section');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Bump recent list every time the operator opens a section in the reader.
+  // The open-toggle below calls this through openSectionTracked() so we
+  // record the full StatuteResult (not just a citation) for the landing card.
+  const openSectionTracked = useCallback((s: StatuteResult) => {
+    const next = openSection === s.citation ? null : s.citation;
+    setOpenSection(next);
+    if (next) setRecent(pushRecentStatute(user?.id, s));
+  }, [openSection, user?.id]);
 
   const showingSearch = results !== null;
   const shown = showingSearch ? results! : sections;
@@ -212,13 +352,70 @@ export default function LawBookPage() {
 
   const resetToBrowse = () => { setChapter(null); setResults(null); setQuery(''); setLevel(null); setOpenSection(null); };
 
+  // ── Keyboard shortcuts ──
+  // N or / focuses the search input (gated to any authenticated user).
+  // Esc smart-cascade — close smallest-open-first with stopPropagation per branch:
+  //   1. clearRecentConfirm dialog   → close it
+  //   2. open section in reader      → close it (keep chapter / search visible)
+  //   3. active search               → clear it
+  //   4. open chapter (no search)    → return to browse landing
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
+      if (e.key === 'Escape') {
+        if (clearRecentConfirm) {
+          e.stopPropagation();
+          setClearRecentConfirm(false);
+          return;
+        }
+        if (openSection) {
+          e.stopPropagation();
+          setOpenSection(null);
+          return;
+        }
+        if (results !== null || query) {
+          e.stopPropagation();
+          e.preventDefault();
+          setResults(null); setQuery(''); setLevel(null);
+          return;
+        }
+        if (chapter) {
+          e.stopPropagation();
+          resetToBrowse();
+          return;
+        }
+        return;
+      }
+
+      if (inField) return;
+
+      // / legacy shortcut — focus search input.
+      if (e.key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      // N — focus the search input (any authenticated user).
+      if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && user) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [clearRecentConfirm, openSection, results, query, chapter, user]);
+
   // Print whatever the reader is currently showing (a chapter, or search results).
   const handlePrint = () => {
     if (!visibleSections.length) return;
     if (showingSearch) {
       generateStatutePdf({
         docTitle: 'Search Results',
-        subtitle: query.trim() ? `“${query.trim()}”${level ? ` · ${level.replace(/_/g, ' ')}` : ''}` : 'Filtered results',
+        subtitle: query.trim() ? `"${query.trim()}"${level ? ` · ${level.replace(/_/g, ' ')}` : ''}` : 'Filtered results',
         sections: visibleSections,
         fileName: 'RMPG-LawBook-Search',
       });
@@ -232,18 +429,33 @@ export default function LawBookPage() {
     <div className="p-4 space-y-3">
       <PanelTitleBar title="UTAH LAW BOOK" icon={Scale} />
 
+      {/* ── ConfirmDialog: clear recent statutes history ── */}
+      <ConfirmDialog
+        isOpen={clearRecentConfirm}
+        onClose={() => setClearRecentConfirm(false)}
+        onConfirm={() => {
+          try { localStorage.removeItem(recentKey(user?.id)); } catch { /* ignore */ }
+          setRecent([]);
+          setClearRecentConfirm(false);
+        }}
+        title="Clear Recent Statutes"
+        message="Remove your recent statute history? This only affects your account on this device."
+        confirmLabel="Clear History"
+        confirmVariant="warning"
+      />
+
       {/* ── Stats ribbon ── */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {[
-          { label: 'Sections', value: stats.total, accent: '#d4a017' },
-          { label: 'Areas of Law', value: stats.areas, accent: '#ef4444' },
-          { label: 'Chapters', value: stats.chapters, accent: '#fb923c' },
-          { label: 'Plain-Language', value: stats.summaries, accent: '#22c55e' },
-          { label: 'Admin Rules', value: stats.rules, accent: '#888888' },
-          { label: 'Classified Offenses', value: stats.offenses, accent: '#fbbf24' },
+          { label: 'Sections', value: stats.total, accent: 'var(--brand-gold)' },
+          { label: 'Areas of Law', value: stats.areas, accent: 'var(--sev-critical)' },
+          { label: 'Chapters', value: stats.chapters, accent: 'var(--sev-high)' },
+          { label: 'Plain-Language', value: stats.summaries, accent: 'var(--sev-ok)' },
+          { label: 'Admin Rules', value: stats.rules, accent: 'var(--spm-text-muted)' },
+          { label: 'Classified Offenses', value: stats.offenses, accent: 'var(--sev-warn-soft)' },
         ].map((t) => (
           <div key={t.label} className="border border-rmpg-800 bg-surface-raised px-3 py-2" style={{ borderRadius: 2, borderTop: `2px solid ${t.accent}` }}>
-            <div className="text-[18px] font-black tabular-nums leading-none text-white">{tocLoading ? '—' : t.value.toLocaleString()}</div>
+            <div className="text-[18px] font-black tabular-nums leading-none text-rmpg-100">{tocLoading ? '—' : t.value.toLocaleString()}</div>
             <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mt-1">{t.label}</div>
           </div>
         ))}
@@ -254,7 +466,7 @@ export default function LawBookPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => { setCategory('all'); resetToBrowse(); }}
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-            style={{ background: category === 'all' ? '#d4a017' : '#141414', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : '#222222', borderRadius: 2 }}>
+            style={{ background: category === 'all' ? 'var(--brand-gold)' : 'var(--surface-base)', color: category === 'all' ? 'var(--surface-base)' : 'var(--spm-text-muted)', borderColor: category === 'all' ? 'var(--brand-gold)' : 'var(--border-subtle)', borderRadius: 2 }}>
             All Law
           </button>
           {categoriesPresent.map((c) => {
@@ -264,19 +476,24 @@ export default function LawBookPage() {
               <button key={c} type="button"
                 onClick={() => { setCategory(c); resetToBrowse(); }}
                 className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-                style={{ background: active ? meta.accent : '#141414', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : '#222222', borderRadius: 2 }}>
+                style={{ background: active ? meta.accent : 'var(--surface-base)', color: active ? 'var(--surface-base)' : 'var(--spm-text-muted)', borderColor: active ? meta.accent : 'var(--border-subtle)', borderRadius: 2 }}>
                 {meta.short}
               </button>
             );
           })}
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"…'
-              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
+            <input
+              ref={searchInputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"… (press N or / to focus)'
+              className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder:text-rmpg-500"
+              style={{ borderRadius: 2 }}
+            />
             {(query || level) && (
               <button type="button" onClick={resetToBrowse} aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100">
                 {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-gold-500" /> : <X className="w-3.5 h-3.5" />}
               </button>
             )}
@@ -290,9 +507,9 @@ export default function LawBookPage() {
               onClick={() => setLevel(level === l.key ? null : l.key)}
               className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold border"
               style={{
-                background: level === l.key ? '#1a1a1a' : '#0a0a0a',
-                borderColor: level === l.key ? l.dot : '#222222',
-                color: level === l.key ? '#fff' : '#888888', borderRadius: 2,
+                background: level === l.key ? 'var(--surface-raised)' : 'var(--surface-sunken)',
+                borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
+                color: level === l.key ? 'var(--rmpg-100)' : 'var(--spm-text-muted)', borderRadius: 2,
               }}>
               <span className="w-2 h-2 rounded-full" style={{ background: l.dot }} />
               {l.short}
@@ -309,9 +526,16 @@ export default function LawBookPage() {
             <BookOpen className="w-3 h-3" /> Table of Contents
           </div>
           {tocLoading ? (
-            <div className="p-4 text-center"><Loader2 className="w-4 h-4 text-brand-gold-500 animate-spin inline" /></div>
+            /* Loading state — spinner while TOC fetches */
+            <div className="p-6 text-center"><Loader2 className="w-4 h-4 text-brand-gold-500 animate-spin inline" /></div>
           ) : Object.keys(grouped).length === 0 ? (
-            <div className="p-4 text-[10px] text-rmpg-500 text-center uppercase tracking-wider">No chapters</div>
+            /* No-data state — TOC loaded but no chapters match active filter */
+            <div className="p-6 text-center space-y-1">
+              <BookOpen className="w-5 h-5 text-rmpg-600 mx-auto" />
+              <div className="text-[10px] text-rmpg-500 uppercase tracking-wider">
+                {category !== 'all' ? `No chapters in ${getCatMeta(category).label}` : 'No chapters available'}
+              </div>
+            </div>
           ) : (
             categoriesPresent.filter((c) => grouped[c]).map((cat) => {
               const rows = grouped[cat];
@@ -332,7 +556,7 @@ export default function LawBookPage() {
                     <button key={`${r.title}-${r.chapter_code}`} type="button"
                       onClick={() => loadChapter(r.title, r.chapter_code, r.subcategory)}
                       className="w-full text-left px-3 py-1.5 hover:bg-surface-base flex items-baseline gap-2 border-b border-rmpg-900"
-                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: '#1a1a1a', boxShadow: 'inset 2px 0 0 #d4a017' } : undefined}>
+                      style={chapter?.title === r.title && chapter?.code === r.chapter_code ? { background: 'var(--surface-raised)', boxShadow: 'inset 2px 0 0 var(--brand-gold)' } : undefined}>
                       <span className="text-[10px] font-mono text-rmpg-500 shrink-0">{r.title}-{r.chapter_code}</span>
                       <span className="text-[11px] text-rmpg-200 leading-tight">{r.subcategory}</span>
                       <span className="ml-auto text-[9px] font-mono text-rmpg-600 shrink-0">{r.section_count}</span>
@@ -366,45 +590,105 @@ export default function LawBookPage() {
             )}
           </div>
 
-          {/* Landing overview */}
+          {/* Landing overview — shown when not searching and no chapter is open */}
           {!showingSearch && !chapter ? (
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {categoriesPresent.map((c) => {
-                const meta = getCatMeta(c); const Icon = meta.icon;
-                const count = toc.filter((r) => r.category === c).reduce((a, r) => a + r.section_count, 0);
-                return (
-                  <button key={c} type="button" onClick={() => { setCategory(c); setOpenGroups((g) => ({ ...g, [c]: true })); }}
-                    className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
-                    style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
-                    <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
-                    <div className="text-[12px] font-bold text-white">{meta.label}</div>
-                    <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
-                    <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
-                  </button>
-                );
-              })}
-              <div className="sm:col-span-2 xl:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
-                <FileText className="w-3 h-3 inline mr-1 -mt-0.5" />
-                Verbatim text scraped from le.utah.gov &amp; adminrules.utah.gov; each section links back to the official source and carries a plain-language summary. Use the severity chips to list all offenses of a class, open a chapter to read it in full, or print any section or chapter to PDF.
-              </div>
+            <div className="p-4 space-y-3">
+              {/* Recent statutes (per-user). Hidden until the operator has
+                  actually opened something so the empty zero-state of a
+                  fresh device doesn't read as broken. */}
+              {recent.length > 0 && (
+                <div className="border border-rmpg-800 bg-surface-base" style={{ borderRadius: 2 }}>
+                  <div className="px-3 py-1.5 border-b border-rmpg-900 flex items-center gap-1.5">
+                    <History className="w-3 h-3 text-brand-gold-500" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Recent Statutes</span>
+                    <span className="text-[9px] font-mono text-rmpg-600 ml-1">{recent.length}</span>
+                    {canManage && (
+                      <button type="button" onClick={() => setClearRecentConfirm(true)}
+                        className="ml-auto text-[9px] uppercase tracking-wider text-rmpg-500 hover:text-rmpg-200"
+                        aria-label="Clear recent statutes">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="p-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-1.5">
+                    {recent.map((r) => (
+                      <button key={r.citation} type="button"
+                        onClick={() => loadChapter(r.title, r.chapter_code, r.short_title, { openCitation: r.citation })}
+                        className="text-left border border-rmpg-800 bg-surface-sunken hover:bg-surface-raised px-2 py-1.5 transition-colors"
+                        style={{ borderRadius: 2 }}>
+                        <div className="font-mono text-[10px] text-brand-gold-500">{r.citation}</div>
+                        <div className="text-[10.5px] text-rmpg-200 leading-snug truncate">{r.short_title}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {tocLoading ? (
+                /* Loading skeleton for category grid — distinct from no-data */
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="border border-rmpg-800 bg-surface-base p-3 animate-pulse" style={{ borderRadius: 2 }}>
+                      <div className="w-5 h-5 bg-rmpg-800 mb-2" style={{ borderRadius: 2 }} />
+                      <div className="h-3 bg-rmpg-800 w-3/4 mb-1" style={{ borderRadius: 2 }} />
+                      <div className="h-2 bg-rmpg-900 w-full" style={{ borderRadius: 2 }} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {categoriesPresent.map((c) => {
+                  const meta = getCatMeta(c); const Icon = meta.icon;
+                  const count = toc.filter((r) => r.category === c).reduce((a, r) => a + r.section_count, 0);
+                  return (
+                    <button key={c} type="button" onClick={() => { setCategory(c); setOpenGroups((g) => ({ ...g, [c]: true })); }}
+                      className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
+                      style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
+                      <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
+                      <div className="text-[12px] font-bold text-rmpg-100">{meta.label}</div>
+                      <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
+                      <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
+                    </button>
+                  );
+                })}
+                <div className="sm:col-span-2 xl:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
+                  <FileText className="w-3 h-3 inline mr-1 -mt-0.5" />
+                  Verbatim text scraped from le.utah.gov &amp; adminrules.utah.gov; each section links back to the official source and carries a plain-language summary. Use the severity chips to list all offenses of a class, open a chapter to read it in full, or print any section or chapter to PDF.
+                </div>
+                </div>
+              )}
             </div>
           ) : sectionsLoading ? (
+            /* Loading: chapter requested, waiting for sections */
             <div className="p-6 text-center"><Loader2 className="w-5 h-5 text-brand-gold-500 animate-spin inline" /></div>
           ) : visibleSections.length === 0 ? (
-            <div className="p-6 text-[10px] text-rmpg-500 text-center uppercase tracking-wider">
-              {showingSearch ? 'No statutes match' : level ? 'No sections at this severity in this chapter' : 'This chapter has no sections'}
+            /* Empty states: loading spinner / no-results / empty-chapter all distinct */
+            <div className="p-6 text-center space-y-1">
+              <Scale className="w-5 h-5 text-rmpg-700 mx-auto" />
+              <div className="text-[10px] text-rmpg-500 uppercase tracking-wider">
+                {showingSearch
+                  ? searching
+                    ? null  /* spinner shown in search field while debounce runs */
+                    : (query.trim() && level
+                        ? `No statutes match "${query.trim()}" at this severity`
+                        : query.trim()
+                          ? `No statutes match "${query.trim()}"`
+                          : 'No statutes at this severity')
+                  : level
+                    ? 'No sections at this severity in this chapter'
+                    : 'This chapter has no sections'}
+              </div>
             </div>
           ) : (
             <div className="divide-y divide-rmpg-900">
               {visibleSections.map((s) => {
                 const open = openSection === s.citation;
                 return (
-                  <div key={s.id ?? s.citation} style={open ? { background: '#0d0d0d' } : undefined}>
-                    <button type="button" onClick={() => setOpenSection(open ? null : s.citation)}
+                  <div key={s.id ?? s.citation} style={open ? { background: 'var(--surface-overlay)' } : undefined}>
+                    <button type="button" onClick={() => openSectionTracked(s)}
                       className="w-full text-left px-3 py-2 hover:bg-surface-base flex items-start gap-2">
                       {open ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" />}
                       <span className="font-mono text-[11px] text-brand-gold-500 shrink-0 w-24">{s.citation}</span>
-                      <span className="text-[12px] text-white leading-tight flex-1">{s.short_title}</span>
+                      <span className="text-[12px] text-rmpg-100 leading-tight flex-1">{s.short_title}</span>
                       {s.plain_summary && <Sparkles className="w-3 h-3 text-brand-gold-500/70 shrink-0 mt-0.5" aria-label="Has plain-language summary" />}
                       {s.code_type === 'rule' && (
                         <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border border-rmpg-600 text-rmpg-400 shrink-0" style={{ borderRadius: 2 }}>Rule</span>

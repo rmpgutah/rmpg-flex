@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
 } from '../../../types';
@@ -26,6 +27,7 @@ interface Args {
 
 export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

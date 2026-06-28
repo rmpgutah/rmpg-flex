@@ -27,7 +27,20 @@ function loadState(): NavTripDetectionState | null {
 }
 
 function saveState(state: NavTripDetectionState) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* quota */ }
+  try {
+    // Do NOT persist raw GPS coordinates to localStorage (sensitive location data
+    // at rest — CWE-312). The anchor/buffer/window positions are transient working
+    // memory for the detector and re-seed from the next live fix on reload (see the
+    // `!loginPosition` re-anchor branch in the detection effect); only the
+    // non-location bookkeeping (trip ids, timestamps, flags) needs to survive.
+    const persisted: NavTripDetectionState = {
+      ...state,
+      loginPosition: null,
+      bufferPosition: null,
+      windowStartPosition: null,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(persisted));
+  } catch { /* quota */ }
 }
 
 function clearState() {
@@ -489,6 +502,24 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
     }, 30_000);
     return () => clearInterval(check);
   }, [activeTripId, isTracking, endCurrentTrip]);
+
+  // ── Keep the machine awake while a trip is active (Electron) ──
+  // On the Toughbook, ask the main process to hold a powerSaveBlocker for the
+  // duration of an active trip so the OS doesn't suspend the app mid-patrol —
+  // otherwise the route-update + auto-end intervals stop firing when the
+  // officer isn't looking at the screen. The display may still sleep; only
+  // system suspension is prevented. Released the moment the trip ends (or the
+  // detector unmounts). No-op on the web/mobile build (no window.electron).
+  useEffect(() => {
+    const electron = (window as any).electron;
+    if (!electron?.isElectron || typeof electron.keepAwake !== 'function') return;
+    if (activeTripId) {
+      electron.keepAwake().catch(() => { /* power blocker is best-effort */ });
+      return () => { electron.allowSleep?.().catch(() => {}); };
+    }
+    // No active trip — make sure any prior blocker is released.
+    electron.allowSleep?.().catch(() => {});
+  }, [activeTripId]);
 
   // ── Update lastMovementAt when position changes significantly ──
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);

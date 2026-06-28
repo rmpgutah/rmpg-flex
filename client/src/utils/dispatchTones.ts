@@ -7,6 +7,7 @@
 // ============================================================
 
 import { emitSettingsChange } from './settingsBus';
+import { startSoundAsset } from './soundAssets';
 
 // A `SoundId` names one entry in the Motorola sound LIBRARY (an actual sound).
 // `ToneType` is the same union, kept as the public name callers pass — but a
@@ -474,6 +475,12 @@ export function resetToneMap(): void {
 /** Render one library sound by id. Bypasses the slot map (used for preview). */
 export function playSound(sound: SoundId): { stop: () => void } | null {
   if (!isSoundEnabled()) return null;
+
+  // Sampled console audio (actual WAV asset in /sounds/, rendered by
+  // scripts/generate-ui-sounds.js) — the oscillator synth below is the
+  // fallback for first-play-before-decode / missing asset / no WebAudio.
+  const sampled = startSoundAsset(sound, PROFILES[sound].gain);
+  if (sampled) return sampled;
 
   try {
     const ctx = getAudioContext();

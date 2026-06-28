@@ -11,6 +11,7 @@ import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sendToUser } from './ws';
 import { emitAlert } from '../utils/alertHub';
+import { recordAudit } from '../utils/auditLog';
 
 // Helper: get the WelfareWatchDO stub for a given officer
 function getDO(env: Bindings, userId: number) {
@@ -27,10 +28,7 @@ welfare.post('/ack', requireRole(...ALL_ROLES), async (c) => {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'welfare_ack', 'user', ?, ?, ?)`,
-        userId, userId, 'Code 4 ack received', c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, { action: 'welfare_ack', entityType: 'user', entityId: userId, details: 'Code 4 ack received', actorId: userId });
     } catch { /* non-fatal */ }
     // Tell the DO to clear the watch
     try { await getDO(c.env, userId).fetch('https://do/ack', { method: 'POST' }); } catch { /* non-fatal */ }
@@ -103,12 +101,7 @@ welfare.post('/help', requireRole(...ALL_ROLES), async (c) => {
     };
 
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'welfare_help_requested', 'user', ?, ?, ?)`,
-        userId, userId,
-        `Officer requested help from MDT welfare modal${callContext ? ' on call ' + callContext.call_number : ''}`,
-        c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, { action: 'welfare_help_requested', entityType: 'user', entityId: userId, details: `Officer requested help from MDT welfare modal${callContext ? ' on call ' + callContext.call_number : ''}`, actorId: userId });
     } catch { /* non-fatal */ }
 
     // Tell the DO this officer escalated to emergency
@@ -130,10 +123,7 @@ welfare.post('/snooze', requireRole(...ALL_ROLES), async (c) => {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'welfare_snooze', 'user', ?, ?, ?)`,
-        userId, userId, 'Welfare prompt snoozed (5 min)', c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, { action: 'welfare_snooze', entityType: 'user', entityId: userId, details: 'Welfare prompt snoozed (5 min)', actorId: userId });
     } catch { /* non-fatal */ }
     return c.json({ success: true, message: 'Welfare timer reset.' });
   } catch (err) {
@@ -202,12 +192,7 @@ welfare.post('/escalate', requireRole(...ALL_ROLES), async (c) => {
     };
 
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'welfare_auto_escalation', 'user', ?, ?, ?)`,
-        userId, userId,
-        `Welfare auto-escalation (missed check-ins)${callContext ? ' on call ' + callContext.call_number : ''}`,
-        c.req.header('cf-connecting-ip') || 'unknown');
+      await recordAudit(c, { action: 'welfare_auto_escalation', entityType: 'user', entityId: userId, details: `Welfare auto-escalation (missed check-ins)${callContext ? ' on call ' + callContext.call_number : ''}`, actorId: userId });
     } catch { /* non-fatal */ }
 
     // Tell the DO this officer escalated to emergency, then broadcast.

@@ -1,9 +1,11 @@
 // ============================================================
 // RMPG Flex — UI Click Sounds (Spillman Flex console feedback)
-// A very short, dry "key tick" on every interactive click —
+// A very short, soft "key tick" on every interactive click —
 // the tactile keypad feedback of a Motorola/Spillman dispatch
-// console. One shared lazy AudioContext (clicks are frequent;
-// creating a context per click would exhaust the browser pool).
+// console. SAMPLE-ONLY: plays the curated click.wav asset via
+// soundAssets.ts; if the asset isn't decoded yet the click is
+// simply silent (no oscillator fallback — the synth tick was
+// harsher than the tuned sample and is intentionally gone).
 //
 // Gates:
 //  - per-unit silent/vibrate audio mode (audioMode.ts)
@@ -11,11 +13,11 @@
 //  - 35ms throttle so double-fired synthetic events tick once
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
+import { playSoundAsset, startSoundAsset } from './soundAssets';
 
 const TOGGLE_KEY = 'rmpg_ui_click_sounds';
 const THROTTLE_MS = 35;
 
-let ctx: AudioContext | null = null;
 let lastTick = 0;
 let installed = false;
 
@@ -27,15 +29,7 @@ export function setClickSoundsEnabled(on: boolean): void {
   try { localStorage.setItem(TOGGLE_KEY, on ? 'on' : 'off'); } catch { /* ignore */ }
 }
 
-function getCtx(): AudioContext | null {
-  if (ctx && ctx.state !== 'closed') return ctx;
-  const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-  if (!Ctx) return null;
-  ctx = new Ctx();
-  return ctx;
-}
-
-/** The tick itself: a 30ms filtered square blip — dry keypad click. */
+/** The tick itself — the sampled console click, or silence if not ready. */
 export function playUiClick(): void {
   try {
     if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
@@ -43,43 +37,45 @@ export function playUiClick(): void {
     if (now - lastTick < THROTTLE_MS) return;
     lastTick = now;
 
-    const ac = getCtx();
-    if (!ac) return;
-    if (ac.state === 'suspended') void ac.resume();
-
-    const t0 = ac.currentTime;
-    const osc = ac.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(2100, t0);
-    // Tiny downward pitch flick reads as a mechanical key, not a beep
-    osc.frequency.exponentialRampToValueAtTime(1400, t0 + 0.025);
-
-    const env = ac.createGain();
-    env.gain.setValueAtTime(0.0001, t0);
-    env.gain.exponentialRampToValueAtTime(0.07, t0 + 0.004);
-    env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.03);
-
-    const filter = ac.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 1800;
-    filter.Q.value = 1.2;
-
-    osc.connect(env);
-    env.connect(filter);
-    filter.connect(ac.destination);
-    osc.start(t0);
-    osc.stop(t0 + 0.05);
+    // Sample-only: a miss (still decoding / fetch failed) stays silent
+    // by design — never substitute a synthesized tick.
+    playSoundAsset('click');
   } catch {
     // Click audio must never interfere with the click itself
   }
 }
 
-/** True when the click landed on something that behaves like a control. */
-function isInteractive(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return !!target.closest(
-    'button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], a, select, summary, input[type="checkbox"], input[type="radio"], input[type="submit"]'
-  );
+// ── Close / dismiss tone ────────────────────────────────────
+// Spillman console idiom: closing a window/form "de-keys" — the short
+// low roger beep (key_out.wav, the same sampled Motorola de-key used by
+// the radio). Distinct from the generic key tick so an operator hears
+// "something closed" without looking. Same gates + throttle as the tick.
+const CLOSE_GAIN = 0.16;
+
+export function playUiClose(): void {
+  try {
+    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
+    const now = Date.now();
+    if (now - lastTick < THROTTLE_MS) return;
+    lastTick = now;
+    // Sample-only, same policy as the tick: silent on a decode miss.
+    startSoundAsset('key_out', CLOSE_GAIN);
+  } catch {
+    // Audio must never interfere with the close itself
+  }
+}
+
+/** True when the control is a close/dismiss affordance (modal X, Cancel,
+ * dismiss chip). IconButton enforces aria-label, so X buttons carry
+ * "Close …"/"Dismiss …" labels app-wide. */
+function isCloseControl(el: Element): boolean {
+  const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`;
+  if (/\b(close|dismiss)\b/i.test(label)) return true;
+  // Text buttons: exact CANCEL / CLOSE / DISMISS captions only — never
+  // substring-match free text ("Close call review" would be fine, but
+  // "Disclose" must not beep).
+  const text = (el.textContent || '').trim();
+  return /^(cancel|close|dismiss|×|✕)$/i.test(text);
 }
 
 /**
@@ -95,7 +91,26 @@ export function initUiClickSounds(): void {
     (e) => {
       // Primary button / touch only — no ticks on right-click menus
       if (e.button !== 0) return;
-      if (isInteractive(e.target)) playUiClick();
+      if (!(e.target instanceof Element)) return;
+      const control = e.target.closest(
+        'button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], a, select, summary, input[type="checkbox"], input[type="radio"], input[type="submit"]'
+      );
+      if (!control) return;
+      // Close/dismiss affordances de-key; everything else key-ticks.
+      if (isCloseControl(control)) playUiClose();
+      else playUiClick();
+    },
+    { capture: true, passive: true }
+  );
+
+  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
+  // only when something dismissable is actually open (a dialog or a
+  // full-screen overlay), so bare Escape presses in a grid stay silent.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape' || e.repeat) return;
+      if (document.querySelector('[role="dialog"], [data-modal], .modal-overlay')) playUiClose();
     },
     { capture: true, passive: true }
   );

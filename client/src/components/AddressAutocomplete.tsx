@@ -4,7 +4,7 @@
 // Drop-in replacement for <input> with address suggestions.
 // ============================================================
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useId, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 
@@ -510,6 +510,18 @@ export default function AddressAutocomplete({
     );
   }
 
+  // ARIA combobox wiring — audit caught (2026-06-21) that the input
+  // had no role=combobox / aria-expanded / aria-activedescendant so
+  // screen readers heard "edit" with no announcement that suggestions
+  // appeared, and voice-control / Switch Control users couldn't
+  // enumerate options. Every call-intake form depends on this widget,
+  // so this fix is load-bearing for assistive-tech access to the CAD.
+  const aidPrefix = useId();
+  const listboxId = `${aidPrefix}-listbox`;
+  const optionId = (i: number) => `${aidPrefix}-opt-${i}`;
+  const activeId = selectedIdx >= 0 && selectedIdx < suggestions.length ? optionId(selectedIdx) : undefined;
+  const dropdownOpen = showDropdown && (suggestions.length > 0 || value.length >= 3);
+
   return (
     <div className="relative">
       <input
@@ -525,6 +537,12 @@ export default function AddressAutocomplete({
         required={required}
         autoFocus={autoFocus}
         autoComplete="off"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={dropdownOpen}
+        aria-controls={listboxId}
+        aria-activedescendant={activeId}
+        aria-haspopup="listbox"
       />
       {/* MapPin indicator with brand color when loaded */}
       {tokenReady && (
@@ -535,12 +553,22 @@ export default function AddressAutocomplete({
         />
       )}
 
-      {/* Custom dropdown */}
+      {/* Custom dropdown — role=listbox + role=option for screen readers
+          and voice-control assistive tech. */}
       {showDropdown && suggestions.length > 0 && (
-        <div ref={dropdownRef} className="rmpg-geocoder-dropdown">
+        <div
+          ref={dropdownRef}
+          className="rmpg-geocoder-dropdown"
+          role="listbox"
+          id={listboxId}
+          aria-label="Address suggestions"
+        >
           {suggestions.map((s, idx) => (
             <div
               key={s.id}
+              id={optionId(idx)}
+              role="option"
+              aria-selected={idx === selectedIdx}
               className={`rmpg-geocoder-item${idx === selectedIdx ? ' rmpg-geocoder-item-selected' : ''}`}
               onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
               onMouseEnter={() => setSelectedIdx(idx)}
@@ -552,8 +580,8 @@ export default function AddressAutocomplete({
       )}
 
       {showDropdown && suggestions.length === 0 && value.length >= 3 && (
-        <div ref={dropdownRef} className="rmpg-geocoder-dropdown">
-          <div className="rmpg-geocoder-no-results">No addresses found</div>
+        <div ref={dropdownRef} className="rmpg-geocoder-dropdown" role="listbox" id={listboxId} aria-label="Address suggestions">
+          <div className="rmpg-geocoder-no-results" role="status" aria-live="polite">No addresses found</div>
         </div>
       )}
     </div>

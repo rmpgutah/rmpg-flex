@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Env } from '../types';
 import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,6 +7,7 @@ import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
+import { recordAudit } from '../utils/auditLog';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -20,7 +22,7 @@ import {
   generateBackupCodes, hashBackupCode,
 } from '../utils/totp';
 
-const auth = new Hono<{ Bindings: { DB: D1Database; KV: KVNamespace; JWT_SECRET: string }; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
+const auth = new Hono<Env>();
 
 // ── Session + token contract (MUST match the legacy `rmpg-flex` Worker) ──────
 // login/refresh fall through the proxy to legacy in normal operation; this
@@ -112,6 +114,34 @@ function userPayload(user: any) {
   };
 }
 
+// Best-effort audit of every login outcome into `login_attempts` (the table the
+// Security Dashboard reads — /security/recent-threats, /blocked-ips,
+// /login-history, /event-timeline). MUST never throw: a logging failure cannot
+// be allowed to block or break a login, mirroring the login_count counter
+// pattern. `created_at` is omitted so the column default (Denver-local time,
+// consistent with historical rows) fires. `username` is the value as submitted
+// so it joins to users.username exactly the way the dashboard queries expect;
+// failed attempts for unknown usernames are kept on purpose as probe intel.
+async function recordLoginAttempt(
+  db: any,
+  username: unknown,
+  ip: string,
+  success: boolean,
+  failureReason: string | null,
+): Promise<void> {
+  try {
+    await execute(
+      db,
+      `INSERT INTO login_attempts (username, ip_address, success, failure_reason)
+       VALUES (?, ?, ?, ?)`,
+      String(username ?? '').slice(0, 255),
+      ip || null,
+      success ? 1 : 0,
+      success ? null : failureReason,
+    );
+  } catch { /* non-critical — never fail a login on an audit-write error */ }
+}
+
 auth.post('/login', async (c) => {
   try {
     const { username, password, deviceFingerprint } = await c.req.json();
@@ -130,6 +160,7 @@ auth.post('/login', async (c) => {
       rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
     ]);
     if (!ipOk || !userOk) {
+      await recordLoginAttempt(getDb(c.env), username, ip, false, 'rate_limited');
       return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
 
@@ -141,13 +172,16 @@ auth.post('/login', async (c) => {
     );
 
     if (!user) {
+      await recordLoginAttempt(db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
     if (user.status !== 'active') {
+      await recordLoginAttempt(db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
     if (!compareSync(password, user.password_hash)) {
+      await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
@@ -197,6 +231,8 @@ auth.post('/login', async (c) => {
         user.id,
       );
     } catch { /* non-critical */ }
+
+    await recordLoginAttempt(db, user.username, ip, true, null);
 
     return c.json({
       token: accessToken,
@@ -258,6 +294,8 @@ async function issueLoginTokens(c: any, db: any, user: any) {
       user.id,
     );
   } catch { /* non-fatal */ }
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+  await recordLoginAttempt(db, user.username, ip, true, null);
   return c.json({
     token: accessToken,
     refreshToken,
@@ -1088,10 +1126,7 @@ async function verifyTotpSetup(c: any) {
             totp_backup_codes = ? WHERE id = ?`,
     enc, JSON.stringify(hashes), userId);
   try {
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', datetime('now'))`,
-      userId, userId);
+    await recordAudit(c, { action: 'totp_enabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication enabled', actorId: userId });
   } catch { /* non-fatal */ }
   return c.json({ success: true, backupCodes: codes });
 }
@@ -1117,10 +1152,7 @@ auth.post('/totp/disable', authMiddleware, async (c) => {
               totp_pending_secret = NULL, totp_backup_codes = NULL WHERE id = ?`,
       userId);
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', datetime('now'))`,
-        userId, userId);
+      await recordAudit(c, { action: 'totp_disabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication disabled', actorId: userId });
     } catch { /* non-fatal */ }
     return c.json({ success: true });
   } catch (err) {

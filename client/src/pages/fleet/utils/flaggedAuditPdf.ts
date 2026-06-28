@@ -18,6 +18,7 @@
 import jsPDF from 'jspdf';
 import type { FleetFuelLog } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 interface Args {
   logs: FleetFuelLog[];         // caller pre-filters to flagged rows
@@ -34,6 +35,7 @@ const FLAG_LEGEND: Record<string, string> = {
 
 export function generateFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

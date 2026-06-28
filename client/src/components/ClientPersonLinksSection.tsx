@@ -38,14 +38,14 @@ interface ClientPersonLink {
 // ── Relationship display config ─────────────────────
 
 const RELATIONSHIP_OPTIONS = [
-  { value: 'employee', label: 'Employee', color: 'bg-gray-900/40 text-gray-300 border-gray-700/40' },
+  { value: 'employee', label: 'Employee', color: 'bg-surface-sunken/40 text-rmpg-300 border-border-default/40' },
   { value: 'contact', label: 'Contact', color: 'bg-teal-900/40 text-teal-300 border-teal-700/40' },
-  { value: 'tenant', label: 'Tenant', color: 'bg-[#1f1f1f] text-gray-300 border-[#2e2e2e]' },
+  { value: 'tenant', label: 'Tenant', color: 'bg-surface-raised text-rmpg-300 border-rmpg-700' },
   { value: 'owner', label: 'Owner', color: 'bg-green-900/40 text-green-300 border-green-700/40' },
   { value: 'manager', label: 'Manager', color: 'bg-purple-900/40 text-purple-300 border-purple-700/40' },
   { value: 'subject', label: 'Subject', color: 'bg-amber-900/40 text-amber-300 border-amber-700/40' },
   { value: 'trespass_warning', label: 'Trespass Warning', color: 'bg-red-900/40 text-red-300 border-red-700/40' },
-  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-[#141414] text-gray-300 border-[#2e2e2e]' },
+  { value: 'frequent_visitor', label: 'Frequent Visitor', color: 'bg-surface-base text-rmpg-300 border-rmpg-700' },
   { value: 'banned', label: 'Banned', color: 'bg-red-900/60 text-red-300 border-red-600/60' },
   { value: 'other', label: 'Other', color: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40' },
 ];
@@ -104,7 +104,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
         >
           {showAddForm ? <X className="w-2.5 h-2.5" /> : <Plus className="w-2.5 h-2.5" />}
           {showAddForm ? 'Cancel' : 'Link Client'}
@@ -131,7 +131,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
                 <Building2 className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
                     {link.is_primary === 1 && (
                       <Star className="w-3 h-3 text-amber-400 flex-shrink-0" />
                     )}
@@ -149,7 +149,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -211,7 +211,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
         >
           {showAddForm ? <X className="w-2.5 h-2.5" /> : <Plus className="w-2.5 h-2.5" />}
           {showAddForm ? 'Cancel' : 'Link Person'}
@@ -238,7 +238,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
                 <User className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">
                       {link.last_name}, {link.first_name}
                     </span>
                     {link.is_primary === 1 && (
@@ -261,7 +261,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -415,7 +415,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
+              <label htmlFor="ff-clientpersonlinkssection-1" className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
               <select id="ff-clientpersonlinkssection-1" className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>
                 {RELATIONSHIP_OPTIONS.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -423,7 +423,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
+              <label htmlFor="ff-clientpersonlinkssection-2" className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
               <input id="ff-clientpersonlinkssection-2"
                 type="text"
                 className="input-dark mt-0.5 text-xs"
@@ -434,7 +434,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             </div>
           </div>
           <div>
-            <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
+            <label htmlFor="ff-clientpersonlinkssection-3" className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
             <input id="ff-clientpersonlinkssection-3"
               type="text"
               className="input-dark mt-0.5 text-xs"
@@ -457,7 +457,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 hover:text-white transition-colors"
+                className="px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 hover:text-rmpg-100 transition-colors"
               >
                 Cancel
               </button>
@@ -465,7 +465,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-3 py-1 text-[9px] font-bold uppercase bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-50 transition-colors"
+                className="px-3 py-1 text-[9px] font-bold uppercase bg-brand-600 text-rmpg-100 hover:bg-brand-500 disabled:opacity-50 transition-colors"
               >
                 {submitting ? 'Linking...' : 'Link'}
               </button>

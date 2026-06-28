@@ -1,3 +1,8 @@
+// ⚠️ SUPERSEDED / NOT WIRED: the live email pipeline is runEmailPoll() in
+// routes/email.ts (per-user owner_user_id cache). This module's upsertSQL is
+// incompatible with the live email_messages schema (UNIQUE(owner_user_id,
+// graph_id), owner_user_id NOT NULL) and nothing calls syncEmail(). Do not
+// wire it back without fixing both.
 // Microsoft Graph → D1 incremental sync for the inbox.
 //
 // Strategy: Graph's /me/mailFolders/inbox/messages/delta endpoint
@@ -12,6 +17,7 @@
 //   - Graph 410 Gone on deltaLink → drop the saved link and re-sync.
 //   - Per-message write failures → caught, counted, sync continues.
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, queryFirst, execute } from './db';
 import { graphFetch, GraphNotConfiguredError } from './msGraph';
@@ -152,7 +158,7 @@ async function upsertMessage(env: Bindings, m: GraphDeltaMessage): Promise<void>
       m.id, subject, fromAddr || '', fromName || '', bodyPreview || '', bodyHtml || '',
     );
   } catch (e) {
-    console.error('[Email sync] FTS5 upsert failed (table may not exist yet):', e);
+    log.error('FTS5 upsert failed (table may not exist yet)', {}, e);
   }
 }
 

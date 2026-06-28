@@ -11,6 +11,7 @@ import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
 import { localToday, parseTimestamp } from './dateUtils';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
@@ -139,6 +140,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   const logoB64 = await loadLogoDarkBase64();
 
   const doc = new jsPDF('landscape', 'mm', 'letter');
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
