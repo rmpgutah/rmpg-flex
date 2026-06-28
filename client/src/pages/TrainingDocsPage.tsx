@@ -81,6 +81,7 @@ export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -386,7 +387,7 @@ export default function TrainingDocsPage() {
                     <span className={`inline-block px-1.5 py-0.5 text-[8px] font-bold uppercase border flex-shrink-0 ${
                       CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.general
                     }`}>
-                      {doc.category?.replace(/_/g, ' ')}
+                      {doc.category?.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </div>
 
