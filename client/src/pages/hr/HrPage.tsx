@@ -131,47 +131,32 @@ export default function HRPage() {
       {/* Title bar */}
       <PanelTitleBar icon={UserCog} title="HR Console" />
 
-      {/* Tab bar — grouped Spillman module strip */}
-      <SpillmanModuleGroup
-        groups={[
-          {
-            label: 'Operations',
-            tone: 'steel',
-            tabs: [
-              { id: 'dashboard',  label: 'Dashboard' },
-              { id: 'attendance', label: 'Attendance' },
-            ],
-          },
-          {
-            label: 'Personnel',
-            tone: 'gold',
-            tabs: [
-              { id: 'leave',     label: 'Leave / PTO' },
-              { id: 'reviews',   label: 'Reviews' },
-              { id: 'documents', label: 'Documents' },
-            ],
-          },
-          {
-            label: 'Compliance',
-            tone: 'red',
-            tabs: [
-              { id: 'disciplinary', label: 'Disciplinary' },
-              { id: 'grievances',   label: 'Grievances' },
-              { id: 'pips',         label: 'PIPs' },
-            ],
-          },
-          {
-            label: 'Finance',
-            tone: 'neutral',
-            tabs: [
-              { id: 'payroll',  label: 'Payroll' },
-              { id: 'benefits', label: 'Benefits' },
-            ],
-          },
-        ] as ModuleGroupSpec[]}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as HRTab)}
-      />
+      {/* Tab bar */}
+      <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken px-2 overflow-x-auto scrollbar-dark print:hidden" role="tablist" aria-label="HR Console tabs" style={{ scrollbarWidth: 'none' }}>
+        {HR_TABS
+          // Hide manager-only tabs from officer-tier users.
+          .filter(tab => isManager || !MANAGER_ONLY_TABS.includes(tab.key as typeof MANAGER_ONLY_TABS[number]))
+          .map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button type="button"
+                key={tab.key}
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                aria-controls={`hr-tabpanel-${tab.key}`}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-200 border-b-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
+                  activeTab === tab.key
+                    ? 'text-rmpg-100 border-brand-500'
+                    : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-500/50'
+                }`}
+              >
+                <Icon size={14} aria-hidden="true" />
+                {tab.label}
+              </button>
+            );
+          })}
+      </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`hr-tabpanel-${activeTab}`} aria-label={`${activeTab} tab content`}>
