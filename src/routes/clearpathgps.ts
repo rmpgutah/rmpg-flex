@@ -560,6 +560,9 @@ const setMediaSettings = async (c: Context<Env>) => {
 cpg.put('/media-settings', adminOnly, setMediaSettings);
 cpg.post('/media-settings', adminOnly, setMediaSettings);
 
+// Fire-and-forget: video downloads can take 90 s+ per clip, well over the
+// client's 60 s fetch timeout. Register the sync via waitUntil so the Worker
+// stays alive without blocking the HTTP response, then return immediately.
 cpg.post('/media-sync-now', adminOnly, async (c) => {
   const { syncClearpathMedia } = await import('../utils/clearpathSync');
   c.executionCtx.waitUntil(
