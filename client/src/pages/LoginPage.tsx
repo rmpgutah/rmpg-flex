@@ -24,6 +24,16 @@ const BUILD_TIME: string =
 
 type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 
+// ── Performance detection ─────────────────────────
+/** True when the device is likely too slow for heavy login visuals (WebGL globe, stacked CSS animations). */
+function isLowPerfDevice(): boolean {
+  // Honour OS / browser reduced-motion preference
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
+  // Very low core-count (≤2) usually means a truly low-power device / Toughbook
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2) return true;
+  return false;
+}
+
 // ── Device detection helpers ──────────────────────
 function getDeviceInfo() {
   const ua = navigator.userAgent;
@@ -224,12 +234,15 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Clock
+  // Performance tier (computed once)
+  const lowPerf = useMemo(() => isLowPerfDevice(), []);
+
+  // Clock — update every 60s on low-perf, every 1s otherwise
   const [clock, setClock] = useState(getCurrentTime());
   useEffect(() => {
-    const iv = setInterval(() => setClock(getCurrentTime()), 1000);
+    const iv = setInterval(() => setClock(getCurrentTime()), lowPerf ? 60_000 : 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [lowPerf]);
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);

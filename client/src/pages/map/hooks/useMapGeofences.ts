@@ -45,13 +45,9 @@ function playGeofenceBeep(isEnter: boolean): void {
   try {
     const audible = localStorage.getItem('rmpg-audible-alerts');
     if (audible === 'false' || audible === '0') return;
-
-    if (!audioCtxCache) {
-      audioCtxCache = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
+    if (!audioCtxCache) audioCtxCache = new (window.AudioContext || (window as any).webkitAudioContext)();
     const ctx = audioCtxCache;
     if (ctx.state === 'suspended') ctx.resume();
-
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -60,10 +56,8 @@ function playGeofenceBeep(isEnter: boolean): void {
     osc.type = 'sine';
     osc.frequency.value = isEnter ? 880 : 440;
     gain.gain.value = 0.15;
-
     const now = ctx.currentTime;
     osc.start(now);
-
     if (isEnter) {
       gain.gain.setValueAtTime(0.15, now);
       gain.gain.setValueAtTime(0, now + 0.08);
@@ -75,9 +69,7 @@ function playGeofenceBeep(isEnter: boolean): void {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
       osc.stop(now + 0.27);
     }
-  } catch {
-    // Audio not available — silent fail
-  }
+  } catch { /* ignore */ }
 }
 
 function parsePolygonCoords(coordStr: string): { lat: number; lng: number }[] {
@@ -87,7 +79,7 @@ function parsePolygonCoords(coordStr: string): { lat: number; lng: number }[] {
       return parsed
         .filter((p: any) => p.lat != null && p.lng != null)
         .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
-        .filter((p: { lat: number; lng: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
     }
   } catch {
     try {
@@ -95,19 +87,14 @@ function parsePolygonCoords(coordStr: string): { lat: number; lng: number }[] {
         const [lat, lng] = pair.split(',').map(Number);
         return { lat, lng };
       }).filter((p) => !isNaN(p.lat) && !isNaN(p.lng));
-    } catch {
-      // Give up
-    }
+    } catch { /* give up */ }
   }
   return [];
 }
 
 function computeCentroid(path: { lat: number; lng: number }[]): { lat: number; lng: number } {
   if (path.length === 0) return { lat: 0, lng: 0 };
-  const sum = path.reduce(
-    (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
-    { lat: 0, lng: 0 },
-  );
+  const sum = path.reduce((acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }), { lat: 0, lng: 0 });
   return { lat: sum.lat / path.length, lng: sum.lng / path.length };
 }
 
@@ -132,29 +119,12 @@ export function useMapGeofences(
   const drawSourceId = 'geofence-draw';
 
   useEffect(() => {
-    if (!enabled) {
-      setGeofences([]);
-      return;
-    }
-
+    if (!enabled) { setGeofences([]); return; }
     let cancelled = false;
     setLoading(true);
-
     apiFetch<Geofence[]>('/map/geofences')
-      .then((data) => {
-        if (!cancelled) {
-          setGeofences(data || []);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('[useMapGeofences] Geofences fetch failed:', err);
-          setGeofences([]);
-          setLoading(false);
-        }
-      });
-
+      .then((data) => { if (!cancelled) { setGeofences(data || []); setLoading(false); } })
+      .catch((err) => { if (!cancelled) { console.warn('[useMapGeofences] Geofences fetch failed:', err); setGeofences([]); setLoading(false); } });
     return () => { cancelled = true; };
   }, [enabled]);
 
@@ -178,16 +148,13 @@ export function useMapGeofences(
     };
 
     const alertCounts = new Map<number, number>();
-    alerts.forEach((a) => {
-      alertCounts.set(a.geofenceId, (alertCounts.get(a.geofenceId) || 0) + 1);
-    });
+    alerts.forEach((a) => { alertCounts.set(a.geofenceId, (alertCounts.get(a.geofenceId) || 0) + 1); });
 
     const polyFeatures: any[] = [];
     const labelFeatures: any[] = [];
 
     geofences.forEach((fence) => {
       if (!fence.is_active || !fence.polygon_coords) return;
-
       const path = parsePolygonCoords(fence.polygon_coords);
       if (path.length < 3) return;
 
@@ -384,7 +351,6 @@ export function useMapGeofences(
         options?.onAlert?.(alert);
       }
     });
-
     return unsub;
   }, [subscribe, options?.onAlert]);
 
@@ -397,13 +363,11 @@ export function useMapGeofences(
     };
   }, [map]);
 
-  return {
-    geofences,
-    loading,
-    drawingMode,
-    setDrawingMode,
-    drawnVertices,
-    clearDrawing,
-    alerts,
-  };
+  return { geofences, loading, drawingMode, setDrawingMode, drawnVertices, clearDrawing, alerts };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    switch (c) { case '&': return '&amp;'; case '<': return '&lt;'; case '>': return '&gt;'; case '"': return '&quot;'; case "'": return '&#39;'; default: return c; }
+  });
 }

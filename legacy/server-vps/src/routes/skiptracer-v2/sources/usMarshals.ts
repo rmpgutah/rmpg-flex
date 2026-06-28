@@ -5,7 +5,7 @@
 // Free public API returning fugitive records.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const API_URL = 'https://www.usmarshals.gov/doj/api/fugitives';
@@ -13,7 +13,7 @@ const API_URL = 'https://www.usmarshals.gov/doj/api/fugitives';
 export default class UsMarshalsSource extends BaseDataSource {
   readonly name = 'us_marshals';
   readonly displayName = 'US Marshals Most Wanted';
-  readonly category: SourceCategory = 'registry';
+  readonly category: SkipTracerSourceCategory = 'registry';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

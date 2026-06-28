@@ -202,8 +202,7 @@ ct.get('/statistics', async (c) => {
         avg_fine: null as number | null,
       },
       byOutcome,
-      // event_type key matches what CourtTrackerPage reads: r.event_type / r.count
-      byType: byType.map((t) => ({ event_type: t.event_type, count: t.n })),
+      byType: byType.map((t) => ({ type: t.event_type, count: t.n })),
     },
   });
 });

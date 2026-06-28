@@ -5,7 +5,7 @@
 // Legacy config key: skiptracer_api_key (from v1 integration).
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 import crypto from 'crypto';
@@ -39,7 +39,7 @@ const RAPIDAPI_BASE = `https://${RAPIDAPI_HOST}`;
 export default class RapidApiSource extends BaseDataSource {
   readonly name = 'rapidapi';
   readonly displayName = 'RapidAPI Skip Trace';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0.01;
 
   protected maxRequestsPerMinute = 20;

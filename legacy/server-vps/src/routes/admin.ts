@@ -12,7 +12,6 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { config } from '../config';
-import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
@@ -856,7 +855,7 @@ router.get('/account-stats', (req: Request, res: Response) => {
 router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(paramStr(req.params.id), 10);
+    const targetId = parseInt(req.params.id as string, 10);
     if (isNaN(targetId)) {
       res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' });
       return;
@@ -891,7 +890,7 @@ router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: 
 router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(paramStr(req.params.id), 10);
+    const targetId = parseInt(req.params.id as string, 10);
     if (isNaN(targetId)) {
       res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' });
       return;
@@ -1080,8 +1079,8 @@ router.get('/audit/export', (req: Request, res: Response) => {
 router.get('/config-history', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '100000' } = req.query;
-    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
+    const { limit = '50' } = req.query;
+    const limitNum = Math.min(500, parseInt(limit as string, 10) || 50);
 
     const rows = db.prepare(`
       SELECT cch.*, u.full_name as changed_by_name
@@ -1177,8 +1176,8 @@ router.get('/backup-status', (req: Request, res: Response) => {
 router.get('/error-logs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { limit = '100000' } = req.query;
-    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
+    const { limit = '50' } = req.query;
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
 
     // Use activity_log entries that contain 'error' in action/details
     const rows = db.prepare(`
@@ -1451,7 +1450,7 @@ router.get('/system-health', (req: Request, res: Response) => {
 router.get('/user-activity/:userId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(paramStr(req.params.userId), 10);
+    const userId = parseInt(req.params.userId as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' }); return; }
 
     const user = db.prepare(`
@@ -1827,7 +1826,7 @@ router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Reques
 // POST /api/admin/users/:userId/reset-2fa
 router.post('/users/:userId/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(paramStr(req.params.userId), 10);
+  const userId = parseInt(req.params.userId as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   db.prepare(`UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL, totp_pending_secret = NULL, totp_setup_required = 1, webauthn_enabled = 0 WHERE id = ?`).run(userId);
   db.prepare(`DELETE FROM webauthn_credentials WHERE user_id = ?`).run(userId);
@@ -1837,7 +1836,7 @@ router.post('/users/:userId/reset-2fa', requireRole('admin'), (req: Request, res
 // POST /api/admin/users/:userId/force-password-change
 router.post('/users/:userId/force-password-change', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(paramStr(req.params.userId), 10);
+  const userId = parseInt(req.params.userId as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   db.prepare('UPDATE users SET force_password_change = 1 WHERE id = ?').run(userId);
   res.json({ message: 'Password change required on next login' });
@@ -1846,7 +1845,7 @@ router.post('/users/:userId/force-password-change', requireRole('admin', 'manage
 // POST /api/admin/users/:userId/revoke-sessions
 router.post('/users/:userId/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(paramStr(req.params.userId), 10);
+  const userId = parseInt(req.params.userId as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   const result = db.prepare('UPDATE sessions SET is_active = 0, revoked_at = datetime(\'now\') WHERE user_id = ? AND is_active = 1').run(userId);
   res.json({ message: 'Sessions revoked', count: result.changes });
@@ -1855,7 +1854,7 @@ router.post('/users/:userId/revoke-sessions', requireRole('admin'), (req: Reques
 // PUT /api/admin/users/:userId/role
 router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Response) => {
   const db = getDb();
-  const userId = parseInt(paramStr(req.params.userId), 10);
+  const userId = parseInt(req.params.userId as string, 10);
   if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
   const { role } = req.body;
   const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
@@ -1869,7 +1868,7 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
 // ═════════════════════════════════════════════════════════════
 
 const ALLOWED_THIRD_PARTY_KEYS = [
-  // RapidAPI
+  'google_maps_platform_api_key',
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
@@ -1943,8 +1942,8 @@ router.get('/third-party-keys', requireRole('admin'), (_req: Request, res: Respo
 
 // GET /api/admin/third-party-keys/:key — check single key
 router.get('/third-party-keys/:key', requireRole('admin'), (req: Request, res: Response) => {
-  const key = paramStr(req.params.key);
-  if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) {
+  const { key } = req.params;
+  if (!ALLOWED_THIRD_PARTY_KEYS.includes(key as string)) {
     res.status(400).json({ error: 'Unknown key' }); return;
   }
   try {
@@ -2024,7 +2023,7 @@ router.delete('/third-party-keys', requireRole('admin'), (req: Request, res: Res
 router.post('/impersonate/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(paramStr(req.params.userId), 10);
+    const targetId = parseInt(req.params.userId as string, 10);
     if (isNaN(targetId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
 
     const target = db.prepare('SELECT id, username, full_name, role, badge_number, call_sign, email, status FROM users WHERE id = ?').get(targetId) as any;
@@ -2768,7 +2767,7 @@ router.get('/export/full', requireRole('admin'), (req: Request, res: Response) =
 router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
+    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 500);
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     // u.call_sign removed 2026-05-05 — see /api/admin/users/presence note above.
@@ -2979,7 +2978,7 @@ router.post('/records/clone', requireRole('admin'), (req: Request, res: Response
 router.get('/schema/:table', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const table = paramStr(req.params.table);
+    const table = req.params.table as string;
     const columns = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '')}")`).all() as any[];
     if (!columns.length) { res.status(404).json({ error: 'Table not found' }); return; }
 
@@ -3273,12 +3272,15 @@ router.post('/records/set-sequence', requireRole('admin'), (req: Request, res: R
 router.post('/records/copy-field', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { table, source_field, target_field, where_clause } = req.body;
+    const { table, source_field, target_field, where_id } = req.body;
     if (!table || !source_field || !target_field) { res.status(400).json({ error: 'table, source_field, target_field required' }); return; }
-    const sql = where_clause
-      ? `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ? WHERE ${where_clause}`
+    // Use parameterized WHERE id = ? instead of raw where_clause to prevent SQL injection
+    const sql = where_id
+      ? `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ? WHERE id = ?`
       : `UPDATE "${table}" SET "${target_field}" = "${source_field}", updated_at = ?`;
-    const result = db.prepare(sql).run(new Date().toISOString());
+    const params: any[] = [new Date().toISOString()];
+    if (where_id) params.push(where_id);
+    const result = db.prepare(sql).run(...params);
     auditLog(req, 'ADMIN_OVERRIDE', table, 0, `Copied ${table}.${source_field} → ${target_field} on ${result.changes} rows`);
     res.json({ success: true, updated: result.changes });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -3397,7 +3399,7 @@ router.post('/users/toggle-status', requireRole('admin'), (req: Request, res: Re
 router.get('/users/login-history/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(paramStr(req.params.userId), 10);
+    const userId = parseInt(req.params.userId as string, 10);
     const rows = db.prepare(`SELECT * FROM activity_log WHERE user_id = ? AND (action LIKE '%login%' OR action LIKE '%LOGIN%' OR action LIKE '%auth%') ORDER BY created_at DESC LIMIT 100`).all(userId);
     res.json({ user_id: userId, logins: rows });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -3619,8 +3621,8 @@ router.post('/audit/purge-before', requireRole('admin'), (req: Request, res: Res
 router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '200'), 10)) || 100000));
-    const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(paramStr(req.params.userId), 10), limit);
+    const limit = Math.min(parseInt(String(req.query.limit || '200'), 10), 1000);
+    const rows = db.prepare('SELECT * FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').all(parseInt(req.params.userId as string, 10), limit);
     res.json({ entries: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -3629,7 +3631,7 @@ router.get('/audit/user/:userId', requireRole('admin'), (req: Request, res: Resp
 router.get('/audit/entity/:type/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const rows = db.prepare('SELECT al.*, u.username, u.full_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 200').all(paramStr(req.params.type), parseInt(paramStr(req.params.id), 10));
+    const rows = db.prepare('SELECT al.*, u.username, u.full_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 200').all(req.params.type, parseInt(req.params.id as string, 10));
     res.json({ trail: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -3839,6 +3841,134 @@ router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Res
     auditLog(req, 'ADMIN_OVERRIDE', table, Number(result.lastInsertRowid), `Raw insert into ${table}`);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// GPS Health — per-unit authoritative-source freshness snapshot
+// ═══════════════════════════════════════════════════════════════════════
+// Powers the Admin → GPS Health dashboard. One row per unit with the
+// data dispatchers need to triage: current source, authoritative
+// source heartbeat, age, classification (healthy / warn / critical /
+// silent / browser-fallback). Requires admin or supervisor.
+
+router.get('/gps-health', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT
+        u.id, u.call_sign, u.status, u.gps_source, u.gps_updated_at,
+        u.last_authoritative_gps_at, u.last_authoritative_gps_source,
+        u.latitude, u.longitude,
+        usr.full_name AS officer_name,
+        usr.badge_number,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')
+             AND b.gps_source IN ('owntracks','traccar','clearpathgps')) AS authoritative_points_24h,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')) AS total_points_24h
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      ORDER BY u.call_sign
+    `).all() as any[];
+
+    const now = Date.now();
+    const enriched = rows.map(r => {
+      const authMs = r.last_authoritative_gps_at ? new Date(r.last_authoritative_gps_at).getTime() : NaN;
+      const liveMs = r.gps_updated_at ? new Date(r.gps_updated_at).getTime() : NaN;
+      const authAgeSec = !isNaN(authMs) ? Math.floor((now - authMs) / 1000) : null;
+      const liveAgeSec = !isNaN(liveMs) ? Math.floor((now - liveMs) / 1000) : null;
+
+      // Classification — feeds the row's color/badge in the UI:
+      //   silent       : never reported authoritative (or > 24h)
+      //   critical     : authoritative gap >= 15 min
+      //   warning      : authoritative gap 5-15 min
+      //   fallback     : authoritative healthy but live source is browser
+      //   healthy      : authoritative <5 min and matches live source
+      //   off_duty     : status is OFD/off_duty/out_of_service
+      let classification: 'healthy' | 'warning' | 'critical' | 'silent' | 'fallback' | 'off_duty' = 'silent';
+      const offDutyStatuses = new Set(['off_duty', 'OFD', 'out_of_service', 'retired']);
+      if (offDutyStatuses.has(r.status)) classification = 'off_duty';
+      else if (authAgeSec === null || authAgeSec > 86400) classification = 'silent';
+      else if (authAgeSec >= 900) classification = 'critical';
+      else if (authAgeSec >= 300) classification = 'warning';
+      else if (r.gps_source && r.gps_source !== r.last_authoritative_gps_source) classification = 'fallback';
+      else classification = 'healthy';
+
+      return { ...r, auth_age_seconds: authAgeSec, live_age_seconds: liveAgeSec, classification };
+    });
+
+    res.json({ units: enriched, generated_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to query GPS health' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// OwnTracks pending-device management
+// ═══════════════════════════════════════════════════════════════════════
+// When an OwnTracks client authenticates with a valid webhook token but
+// its tracker_id has no mapping, the webhook handler upserts a row into
+// owntracks_pending_devices and returns 202. These endpoints let admins
+// see the queue and claim in one click, no SQL required.
+
+router.get('/owntracks-pending', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, tracker_id, last_lat, last_lng, first_seen_at, last_seen_at, seen_count
+      FROM owntracks_pending_devices
+      ORDER BY last_seen_at DESC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to list pending devices' });
+  }
+});
+
+router.post('/owntracks-pending/:id/claim', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const unitId = parseInt(String(req.body?.unit_id ?? ''), 10);
+    const deviceName = typeof req.body?.device_name === 'string' ? req.body.device_name.slice(0, 200) : null;
+    if (isNaN(unitId)) { res.status(400).json({ error: 'unit_id required' }); return; }
+
+    const pending = db.prepare('SELECT tracker_id FROM owntracks_pending_devices WHERE id = ?').get(id) as any;
+    if (!pending) { res.status(404).json({ error: 'pending device not found' }); return; }
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+    if (!unit) { res.status(404).json({ error: 'unit not found' }); return; }
+
+    // Transaction keeps the queue consistent if either write fails.
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO owntracks_device_map (tracker_id, unit_id, device_name)
+        VALUES (?, ?, ?)
+        ON CONFLICT(tracker_id) DO UPDATE SET unit_id=excluded.unit_id, device_name=excluded.device_name
+      `).run(pending.tracker_id, unitId, deviceName);
+      db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    })();
+
+    // 'unit_assigned' is the closest existing audit action — a tracker becoming bound to a unit.
+    auditLog(req, 'unit_assigned', 'owntracks_device_map', unitId, `claim tracker=${pending.tracker_id} → ${unit.call_sign}`);
+    res.json({ ok: true, tracker_id: pending.tracker_id, unit_id: unitId, call_sign: unit.call_sign });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to claim device' });
+  }
+});
+
+router.delete('/owntracks-pending/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const info = db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    res.json({ ok: true, deleted: Number(info?.changes ?? 0) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to delete' });
+  }
 });
 
 export default router;
