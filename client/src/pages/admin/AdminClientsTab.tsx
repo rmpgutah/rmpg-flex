@@ -504,7 +504,7 @@ export default function AdminClientsTab({
                   </div>
                 </div>
 
-                {/* Linked Persons */}
+                {/* Linked Individuals */}
                 {selectedClient && (
                   <ClientPersonLinks
                     clientId={String(selectedClient.id)}

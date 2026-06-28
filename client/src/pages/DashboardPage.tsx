@@ -9,7 +9,7 @@ import {
 import { useGeolocation } from './mobile/hooks/useGeolocation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  AreaChart, Area, PieChart, Pie,
+  AreaChart, Area, PieChart, Pie, Legend,
 } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import { humanizePriority } from '../utils/statusLabels';
@@ -130,6 +130,57 @@ interface BoloApiEntry {
   created_at: string;
   updated_at?: string;
 }
+
+interface WeeklyTrendData {
+  dailyTrend: { date: string; count: number }[];
+  today: number;
+  yesterday: number;
+  lastWeekSameDay: number;
+}
+
+interface CallsByTypeEntry {
+  type: string;
+  count: number;
+}
+
+interface UnitStatusEntry {
+  id: number;
+  call_sign: string;
+  status: string;
+  current_call_id: number | null;
+  officer_name: string | null;
+  badge_number: string | null;
+  call_number: string | null;
+  call_type: string | null;
+  call_location: string | null;
+}
+
+interface UnitStatusData {
+  statusCounts: { status: string; count: number }[];
+  activeUnits: UnitStatusEntry[];
+}
+
+// ─── Status & Chart Helpers ──────────────────────────────
+
+const UNIT_STATUS_COLORS: Record<string, string> = {
+  available: '#22c55e', dispatched: '#f59e0b', enroute: '#3b82f6',
+  onscene: '#ef4444', busy: '#a855f7', break: '#888888', off_duty: '#444444',
+};
+
+const UNIT_STATUS_LABELS: Record<string, string> = {
+  available: 'Available', dispatched: 'Dispatched', enroute: 'En Route',
+  onscene: 'On Scene', busy: 'Busy', break: 'Break', off_duty: 'Off Duty',
+};
+
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: '#0a0a0a',
+  border: '1px solid #3a3a3a',
+  borderRadius: '2px',
+  color: '#cccccc',
+  fontSize: '11px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+  padding: '8px 12px',
+};
 
 // ─── Mapper Functions ────────────────────────────────────
 
@@ -657,19 +708,35 @@ export default function DashboardPage() {
     if (cz?.by_zone) setCallsByZone(cz.by_zone);
   }, []);
 
+  // Fetch enhanced dashboard data (weekly trend, calls by type, unit status)
+  const fetchEnhancedData = useCallback(async () => {
+    const safe = async <T,>(url: string): Promise<T | null> => {
+      try { return await apiFetch<T>(url); } catch { return null; }
+    };
+    const [wt, cbt, us] = await Promise.all([
+      safe<WeeklyTrendData>('/reports/dashboard-weekly-trend'),
+      safe<CallsByTypeEntry[]>('/reports/dashboard-calls-by-type'),
+      safe<UnitStatusData>('/reports/dashboard-unit-status'),
+    ]);
+    if (wt) setWeeklyTrend(wt);
+    if (cbt) setCallsByType(Array.isArray(cbt) ? cbt : []);
+    if (us) setUnitStatus(us);
+  }, []);
+
   useEffect(() => {
     fetchDashboardData();
     fetchCredentials();
     fetchOfficerActivity();
     fetchWidgets();
+    fetchEnhancedData();
 
     // Refresh every 60 seconds (LiveSync handles real-time updates)
-    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); }, 60_000);
+    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); fetchEnhancedData(); }, 60_000);
     return () => clearInterval(interval);
-  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets]);
+  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets, fetchEnhancedData]);
 
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
-  const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
+  const silentRefreshDashboard = useCallback(() => { fetchDashboardData({ silent: true }); fetchEnhancedData(); }, [fetchDashboardData, fetchEnhancedData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
 
   const runToolbarAction = useCallback((id: ToolbarActionId) => {
@@ -789,6 +856,31 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  // ─── Weekly trend chart data ───────────────────────────
+  const trendChartData = (weeklyTrend?.dailyTrend ?? []).map((d) => {
+    const dt = new Date(d.date + 'T12:00:00');
+    return {
+      date: d.date,
+      label: dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      shortLabel: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: d.count,
+    };
+  });
+
+  // ─── Volume comparison helpers ─────────────────────────
+  const todayCount = weeklyTrend?.today ?? stats.calls_today;
+  const yesterdayCount = weeklyTrend?.yesterday ?? 0;
+  const lastWeekCount = weeklyTrend?.lastWeekSameDay ?? 0;
+  const vsYesterday = yesterdayCount > 0 ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100) : 0;
+  const vsLastWeek = lastWeekCount > 0 ? Math.round(((todayCount - lastWeekCount) / lastWeekCount) * 100) : 0;
+
+  // ─── Incident clearance donut data ─────────────────────
+  const incidentPieData = clearanceRate ? [
+    { name: 'Cleared', value: clearanceRate.cleared || 0, fill: '#22c55e' },
+    { name: 'Active', value: clearanceRate.active || 0, fill: '#f59e0b' },
+    { name: 'Pending', value: clearanceRate.pending || 0, fill: '#888888' },
+  ].filter(d => d.value > 0) : [];
 
   return (
     <div className="dashboard-page p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
@@ -968,7 +1060,40 @@ export default function DashboardPage() {
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
-        ))}
+        </div>
+
+        {/* Call Volume Comparison */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Call volume comparison">
+          <PanelTitleBar title="CALL VOLUME COMPARISON" icon={TrendingUp} />
+          <div className="p-3 space-y-3">
+            <div className="text-center">
+              <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums">{todayCount}</div>
+              <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Calls Today</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span className={`text-sm font-bold font-mono tabular-nums ${vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                    {vsYesterday > 0 ? '+' : ''}{vsYesterday}%
+                  </span>
+                </div>
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Yesterday</div>
+                <div className="text-[10px] text-rmpg-400 font-mono tabular-nums mt-0.5">{yesterdayCount} calls</div>
+              </div>
+              <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                    {vsLastWeek > 0 ? '+' : ''}{vsLastWeek}%
+                  </span>
+                </div>
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Last Week</div>
+                <div className="text-[10px] text-rmpg-400 font-mono tabular-nums mt-0.5">{lastWeekCount} calls</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       </div>
       </SpmGroup>
@@ -1401,7 +1526,7 @@ export default function DashboardPage() {
       <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
-          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
+          <PanelTitleBar title="CALL VOLUME — 7-DAY TREND" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
@@ -1454,11 +1579,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Priority Distribution Pie + Quick Actions */}
+        {/* Priority Distribution + Incident Clearance */}
         <div className="panel-beveled bg-surface-base flex flex-col shadow-md shadow-black/10">
-          <PanelTitleBar title="PRIORITY DISTRIBUTION" icon={Shield} />
-          <div className="p-3 flex-1">
-            {/* Pie Chart */}
+          <PanelTitleBar title="PRIORITY & CLEARANCE" icon={Shield} />
+          <div className="p-3 flex-1 space-y-3">
             {(() => {
               const totalCalls = stats.calls_by_priority.P1 + stats.calls_by_priority.P2 + stats.calls_by_priority.P3 + stats.calls_by_priority.P4;
               const pieData = [
@@ -1469,21 +1593,10 @@ export default function DashboardPage() {
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
-                <ResponsiveContainer width="100%" height={140}>
+                <ResponsiveContainer width="100%" height={120}>
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={48} paddingAngle={2} dataKey="value" stroke="none">
+                      {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
                     </Pie>
                     <Tooltip
                       contentStyle={{
@@ -1500,8 +1613,8 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
-                  <Shield className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status">
+                  <Shield className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
                   <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
                 </div>
               );
@@ -1767,7 +1880,34 @@ export default function DashboardPage() {
             </div>
             <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color }}>{value}</div>
           </div>
-        ))}
+        </div>
+
+        {/* Calls by Type */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10">
+          <PanelTitleBar title="CALLS BY TYPE — TODAY" icon={Target} />
+          <div className="p-3">
+            {callsByType.length > 0 ? (
+              <ResponsiveContainer width="100%" height={isMobile ? 140 : 180}>
+                <BarChart data={callsByType.slice(0, 8)} layout="vertical" margin={{ left: 5, right: 15, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="type" width={100} tick={{ fill: '#aaaaaa', fontSize: 9 }} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
+                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
+                    {callsByType.slice(0, 8).map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? '#b8860b' : '#888888'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                <Target className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       )}
 
@@ -1802,9 +1942,7 @@ export default function DashboardPage() {
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">
-                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
-              </span>
+              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">{stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}</span>
             </div>
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
@@ -1874,15 +2012,8 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
         </div>
 
-        {/* Feature 41: Evidence Pending Count */}
-        <div
-          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
-          onClick={() => navigate('/evidence')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/evidence'); }}
-          tabIndex={0}
-          role="button"
-          aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
-        >
+        {/* Evidence Pending */}
+        <div className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`} onClick={() => navigate('/evidence')} tabIndex={0} role="button" aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}>
           <div className="flex items-center gap-1.5 mb-1">
             <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
@@ -1893,15 +2024,8 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
         </div>
 
-        {/* Feature 43: Overdue Reports Alert */}
-        <div
-          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
-          onClick={() => navigate('/incidents')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/incidents'); }}
-          tabIndex={0}
-          role="button"
-          aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
-        >
+        {/* Overdue Reports */}
+        <div className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`} onClick={() => navigate('/incidents')} tabIndex={0} role="button" aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}>
           <div className="flex items-center gap-1.5 mb-1">
             <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
@@ -1911,20 +2035,41 @@ export default function DashboardPage() {
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
         </div>
+
+        {/* Active Warrants mini */}
+        <div className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')} tabIndex={0} role="button" aria-label={`Active warrants: ${activeWarrants}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Gavel className="w-3 h-3 text-amber-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Warrants</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-amber-400 tabular-nums">{activeWarrants}</div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Active</div>
+        </div>
       </div>
       )}
 
       {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
       {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
-        {/* Feature 33: Shift Performance Comparison */}
         {shiftComparison?.shifts && (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
-            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <PanelTitleBar title="SHIFT PERFORMANCE — 30 DAYS" icon={Activity} />
             <div className="p-3">
-              <div className="grid grid-cols-3 gap-2">
+              <ResponsiveContainer width="100%" height={isMobile ? 160 : 200}>
+                <BarChart data={shiftComparison.shifts.map((s: any) => ({ shift: s.shift, calls: s.calls, incidents: s.incidents }))} margin={{ left: 5, right: 10, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" vertical={false} />
+                  <XAxis dataKey="shift" tick={{ fill: '#888888', fontSize: 10 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} />
+                  <YAxis tick={{ fill: '#666666', fontSize: 9 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} allowDecimals={false} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                  <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
+                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Active shift highlight */}
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-[#2b2b2b]">
                 {shiftComparison.shifts.map((s: any) => {
-                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  const isActive = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
                   return (
                     <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isCurrentShift ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
                       <div className="flex items-center gap-1.5 mb-2">
@@ -1948,6 +2093,7 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       </div>
+                      <div className="text-[9px] text-rmpg-400 font-mono tabular-nums">Avg: {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}</div>
                     </div>
                   );
                 })}

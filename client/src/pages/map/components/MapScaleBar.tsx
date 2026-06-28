@@ -59,6 +59,8 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
   const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
 
+  const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
+
   useEffect(() => {
     if (!mapInstance) return;
 

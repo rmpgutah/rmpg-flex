@@ -299,7 +299,7 @@ export default function CodeEnforcementPage() {
   const handleViolationStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/violations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Violation → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Violation → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchViolations({ silent: true }); fetchStats();
       if (selectedViolation?.id === id) {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
@@ -329,7 +329,7 @@ export default function CodeEnforcementPage() {
   const handleTowStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/tows/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Tow → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Tow → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchTows({ silent: true }); fetchStats();
       if (selectedTow?.id === id) {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
@@ -545,7 +545,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select id="ff-codeenforcementpage-1" value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           ) : (
@@ -556,7 +556,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select id="ff-codeenforcementpage-3" value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           )}

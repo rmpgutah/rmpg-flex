@@ -16,6 +16,17 @@ function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
 }
 
+/** Degree tick marks at 30° intervals for the outer ring */
+const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const CENTER = 28;
+const OUTER_R = 26;
+const TICK_INNER_R = 23;
+const TICK_MAJOR_INNER_R = 21.5;
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
 export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [heading, setHeading] = useState(0);
   const [tilt, setTilt] = useState(0);
