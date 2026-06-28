@@ -26,14 +26,6 @@ import { isFlagSet } from '../../utils/sentinel';
 
 const links = new Hono<Env>();
 
-// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
-// naive truthiness check (flag?.gang_affiliation) fires a bogus officer-safety
-// alert on a subject with no flags. This guard treats those sentinels as absent.
-const FLAG_ABSENT = new Set(['', 'none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--']);
-function isFlagSet(v: unknown): boolean {
-  return v != null && !FLAG_ABSENT.has(String(v).trim().toLowerCase());
-}
-
 // ── Shared: officers assigned to the call, for targeted MDT push ──
 async function getOfficerUserIdsForCall(
   db: ReturnType<typeof getDb>,

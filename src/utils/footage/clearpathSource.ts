@@ -1,5 +1,5 @@
 // src/utils/footage/clearpathSource.ts
-import { getApiConfig, listMedia, listAllMedia, getCameraIdForAsset, API_BASE, type CpgClient } from '../clearpathGps';
+import { getApiConfig, listMediaForAsset, listAllMediaForAsset, getCameraIdForAsset, API_BASE, type CpgClient } from '../clearpathGps';
 import { classifyDrivingEvent } from '../drivingEvents';
 import type { FootageSource, FootageRequestHandle, FootageChunkStatus, AvailableRequestClip } from './types';
 
@@ -143,19 +143,19 @@ export class ClearPathSource implements FootageSource {
     const SLOP_MS = 120_000; // 2min — covers ClearPath on-demand indexing lag
     const searchFrom = handle.fromTs - SLOP_MS;
     const searchTo = handle.toTs + SLOP_MS;
-    const page = await listMedia(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
+    const page = await listMediaForAsset(this.env, this.client, assetId, searchFrom, searchTo, 0, 50);
     return pickBestClip(page, handle.fromTs, handle.toTs, handle.channel, SLOP_MS, handle.claimedUrls);
   }
 
   async listRequestWindow(assetId: number, fromTs: number, toTs: number): Promise<AvailableRequestClip[]> {
     const SLOP_MS = 120_000; // mirror pollChunk
-    const events = await listAllMedia(this.env, this.client, assetId, fromTs - SLOP_MS, toTs + SLOP_MS).catch(() => []);
+    const events = await listAllMediaForAsset(this.env, this.client, assetId, fromTs - SLOP_MS, toTs + SLOP_MS).catch(() => []);
     const chunkSec = MAX_CHUNK_SECONDS; // typical chunk size for the trigger heuristic
     const out: AvailableRequestClip[] = [];
     for (const ev of events) {
       for (const mo of ev.mediaObject) {
         if (mo.type !== 'VIDEO') continue;
-        if (isTriggerClip(mo.eventType, mo.durationSec, chunkSec)) continue;
+        if (isTriggerClip(mo.eventType, mo.durationSec as number | null | undefined, chunkSec)) continue;
         const status = String(mo.status ?? '').toUpperCase();
         if (status !== 'AVAILABLE' && status !== 'READY') continue;
         if (!mo.accessUrl) continue;

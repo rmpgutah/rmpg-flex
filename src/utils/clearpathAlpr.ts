@@ -26,6 +26,36 @@ interface MappingRef { id: number; cpg_device_id: string; cpg_display_name: stri
 
 // ── Pure helpers (exported for tests) ────────────────────────
 
+import { trustScore } from './plateTrust';
+
+/**
+ * Derive trust for a single dashcam ALPR read. The vision model (Llama 3.2 11B)
+ * emits "confidence": 1.0 constantly, so we never trust the self-reported value.
+ * Instead, we derive trust via plateTrust.trustScore and hard-cap single reads
+ * below the 0.85 accept gate — a lone dashcam read can never auto-accept.
+ */
+export function captureTrust(
+  plate: string | null,
+  modelConfidence: number | null,
+): {
+  plateConfidence: number | null;
+  accepted: boolean;
+  reviewStatus: 'needs_review' | 'no_plate';
+  modelConfidence: number | null;
+} {
+  if (!plate) {
+    return { plateConfidence: null, accepted: false, reviewStatus: 'no_plate', modelConfidence };
+  }
+  const ts = trustScore({ reads: [plate] });
+  const derived = Math.min(ts.trustScore, ALPR_ACCEPT_CONFIDENCE - 0.01);
+  return {
+    plateConfidence: derived,
+    accepted: false, // single read never auto-accepts
+    reviewStatus: 'needs_review',
+    modelConfidence,
+  };
+}
+
 const isHttps = (u: unknown): u is string => typeof u === 'string' && /^https:\/\//i.test(u);
 const isOutside = (mo: CpgMediaObject) => {
   const c = (mo.channel || 'outside').toLowerCase();

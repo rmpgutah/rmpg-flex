@@ -53,6 +53,9 @@ export type Bindings = {
   // by POST /api/flexcam/render/:id for format='mp4'. Free-plan
   // compatible (new_sqlite_classes; see wrangler.toml).
   FLEXCAM_REMUX: DurableObjectNamespace;
+  // DispatchHub DO — single global instance used by broadcast.ts for
+  // dispatch-update fan-out. Aliased from ALERT_HUB at DO level.
+  HUB: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
@@ -67,6 +70,19 @@ export type Bindings = {
   // adapter trained on training/data (see training/README.md). Unset → stock
   // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
   SERVE_INTAKE_LORA?: string;
+  // Optional integration secrets (set via `wrangler secret put <NAME>`)
+  FIRECRAWL_API_KEY?: string;
+  FIRECRAWL_API_URL?: string;
+  ALPR_EDGE_SECRET?: string;
+  CPG_ENC_KEY?: string;
+  ROBOFLOW_API_KEY?: string;
+  ROBOFLOW_API_URL?: string;
+  IPED_API_KEY?: string;
+  // Analytics pipeline (optional — provisioned separately)
+  ANALYTICS?: AnalyticsPipeline;
+  EVENTS?: AnalyticsPipeline;
+  R2_ANALYTICS_WAREHOUSE?: string;
+  R2_SQL_TOKEN?: string;
 };
 
 export type Variables = {

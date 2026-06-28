@@ -134,9 +134,13 @@ import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
+import scheduling from './routes/scheduling';
 import serve from './routes/serve';
+import serveDashboard from './routes/serveDashboard';
+import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
+import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
@@ -418,6 +422,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/ref-data', router: refData, auth: 'required',
     note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
+  { prefix: '/api/scheduling', router: scheduling, auth: 'required',
+    note: 'Scheduling engine: coverage gaps, shift swaps, overtime, auto-schedule, handoff briefings' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/nsopw', router: nsopw, auth: 'required',
@@ -432,6 +438,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // the queue + stats + route + attempt endpoints.
   { prefix: '/api/process-server', router: serve, auth: 'required',
     note: 'Alias of /api/serve for the ServePage URL contract (legacy /api/process-server/* proxy) — same router instance' },
+  { prefix: '/api/serve-dashboard', router: serveDashboard, auth: 'required',
+    note: 'Admin/manager/supervisor analytics & bulk-ops for the process-service queue' },
+  { prefix: '/api/serve-queue', router: serveQueueEnhanced, auth: 'required',
+    note: 'Enhanced serve queue: advanced filtering, route optimization, duplicate detection, batch ops, intake scan' },
   { prefix: '/api/special-ops', router: specialOps, auth: 'required',
     note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',

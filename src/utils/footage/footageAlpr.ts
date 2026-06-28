@@ -122,7 +122,7 @@ export function cloudflarePlateToVehicle(r: CloudflarePlateResult): AlprVehicle 
   return {
     plate: r.plate, state: r.state, make: r.make, model: r.model, color: r.color, year: r.year,
     vehicleType: r.bodyStyle, plateType: r.plateType, confidence: r.confidence,
-    condition: r.condition, damageObserved: r.damageSummary ? true : null, damageSummary: r.damageSummary,
+    condition: r.condition ?? null, damageObserved: r.damageSummary ? true : null, damageSummary: r.damageSummary ?? null,
     damageAreas: [], aftermarket: null,
     confidences: r.confidence != null ? { plate: r.confidence } : {},
   };

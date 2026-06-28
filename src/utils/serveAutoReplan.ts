@@ -54,7 +54,8 @@ export async function autoReplanAfterAttempt(
       deadline: string | null;
       max_attempts: number;
       attempt_count: number;
-    }>(db, 'SELECT deadline, max_attempts, attempt_count FROM serve_queue WHERE id = ?', queueId);
+      business_id: number | null;
+    }>(db, 'SELECT deadline, max_attempts, attempt_count, business_id FROM serve_queue WHERE id = ?', queueId);
     if (!job) return false;
 
     // Don't schedule beyond the remaining attempt budget.
@@ -64,7 +65,7 @@ export async function autoReplanAfterAttempt(
     // deadline + Denver timezone so DST is handled correctly.
     const coolingStartIso = new Date(Date.parse(nowIso) + COOLING_HOURS * 3_600_000).toISOString();
     const plan = planAttemptWindows(coolingStartIso, job.deadline, 'America/Denver', {
-      isBusiness: false,
+      isBusiness: !!job.business_id,
       locationNote: null,
     });
     if (!plan.length) return false;

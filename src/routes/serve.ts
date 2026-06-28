@@ -622,7 +622,6 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const result = psCode
     ? codeToLegacyResult(psCode)
     : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
-  const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
   // never applied to 785de7ae). It's redundant with `result` + the
@@ -633,14 +632,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   const hasDispositionCol = psCode
     ? await columnExists(db, 'serve_attempts', 'disposition_code')
     : false;
+  // Atomic attempt_number: subquery computes MAX+1 inside the INSERT so two
+  // concurrent requests can't mint the same number.  (Audit AI-4.)
+  const ATTEMPT_NUM_SUBQUERY = '(SELECT COALESCE(MAX(a.attempt_number),0)+1 FROM serve_attempts a WHERE a.serve_queue_id = ?)';
   const ins = hasDispositionCol
     ? await execute(
         db,
         `INSERT INTO serve_attempts (
            serve_queue_id, attempt_number, officer_id, result, disposition_code,
            latitude, longitude, notes, attempt_type, photo_ids, signature_data
-         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?)`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+         ) VALUES (?,${ATTEMPT_NUM_SUBQUERY},?,?,?,?, ?,?,?,?, ?)`,
+        id, id, body.officer_id ?? user?.id ?? null, result, psCode,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
@@ -650,12 +652,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
         `INSERT INTO serve_attempts (
            serve_queue_id, attempt_number, officer_id, result,
            latitude, longitude, notes, attempt_type, photo_ids, signature_data
-         ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+         ) VALUES (?,${ATTEMPT_NUM_SUBQUERY},?,?, ?,?,?,?, ?,?)`,
+        id, id, body.officer_id ?? user?.id ?? null, result,
         body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
         body.attempt_type ?? null,
         JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
       );
+  // Read back the actual attempt_number the DB assigned (matches the subquery).
+  const insertedAttempt = await queryFirst<{ attempt_number: number }>(
+    db, 'SELECT attempt_number FROM serve_attempts WHERE id = ?', ins.meta.last_row_id,
+  );
+  const nextNum = insertedAttempt?.attempt_number ?? (queue.attempt_count ?? 0) + 1;
 
   // Queue status: structured code wins (codeToQueueStatus knows whether a
   // posting counts as completion, whether a sub-service flips the queue,
@@ -726,18 +733,21 @@ sv.post('/:id/substitute-service', async (c) => {
     db, 'SELECT attempt_count, max_attempts FROM serve_queue WHERE id = ?', id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
-  const nextNum = (queue.attempt_count ?? 0) + 1;
-  // No `status` column on live serve_attempts (see logAttempt note above).
+  // Atomic attempt_number (same subquery pattern as logAttempt).
   const ins = await execute(
     db,
     `INSERT INTO serve_attempts (
        serve_queue_id, attempt_number, officer_id, result,
        latitude, longitude, notes, attempt_type, photo_ids, signature_data
-     ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null,
+     ) VALUES (?,(SELECT COALESCE(MAX(a.attempt_number),0)+1 FROM serve_attempts a WHERE a.serve_queue_id = ?),?, 'sub_served', ?,?,?, ?, ?,?)`,
+    id, id, body.officer_id ?? user?.id ?? null,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
   );
+  const insertedAttempt = await queryFirst<{ attempt_number: number }>(
+    db, 'SELECT attempt_number FROM serve_attempts WHERE id = ?', ins.meta.last_row_id,
+  );
+  const nextNum = insertedAttempt?.attempt_number ?? (queue.attempt_count ?? 0) + 1;
   await execute(
     db,
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id = ?`,

@@ -93,137 +93,25 @@ interface UserRow {
   status: string;
 }
 
-async function verifyAndLookup(token: string, env: Bindings): Promise<UserRow | null> {
+/**
+ * Pure JWT verify + DB user lookup. Returns the active user row or null.
+ * Separated from upgrade logic so it's reusable for both URL-token and
+ * message-based auth paths.
+ */
+async function verifyToken(token: string, env: Bindings): Promise<UserRow | null> {
   try {
-    const url = new URL(request.url);
-    if (url.pathname !== '/api/ws') {
-      return new Response('Not Found', { status: 404 });
-    }
+    const secret = new TextEncoder().encode(env.JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
+    const jwtPayload = payload as unknown as { user_id?: number; userId?: number; username: string; role: string };
+    const claimedUserId = jwtPayload.user_id ?? jwtPayload.userId;
+    if (claimedUserId == null) return null;
 
-    const secKey = request.headers.get('Sec-WebSocket-Key');
-    if (!secKey) {
-      return new Response('Expected WebSocket', { status: 426 });
-    }
-
-    const WSPair = (globalThis as any).WebSocketPair;
-    if (typeof WSPair !== 'function') {
-      return new Response('WebSocketPair not available', { status: 500 });
-    }
-
-    let pair: any;
-    try {
-      pair = new WSPair();
-    } catch (err) {
-      return new Response('WebSocketPair create failed: ' + (err instanceof Error ? err.message : String(err)), { status: 500 });
-    }
-
-    const vals = Object.values(pair);
-    if (vals.length !== 2) {
-      return new Response('WebSocketPair invalid: ' + vals.length + ' values', { status: 500 });
-    }
-    const [client, server] = vals as [any, any];
-
-    let clientInfo: WsClient | null = null;
-
-    const safeSend = (data: string) => {
-      try {
-        if ((server as any).readyState === 1) {
-          (server as any).send(data);
-        }
-      } catch {}
-    };
-
-    const closeWithError = (code: number, message: string) => {
-      try {
-        (server as any).close(code, message);
-      } catch {}
-    };
-
-    const cleanup = () => {
-      // cleared via addEventListener close/error
-    };
-
-    server.accept();
-
-    server.addEventListener('message', async (event: any) => {
-      try {
-        const msg = JSON.parse(typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data));
-
-        if (msg.type === 'authenticate' && !clientInfo?.authenticated) {
-          try {
-            const secret = new TextEncoder().encode(env.JWT_SECRET);
-            const { payload } = await jwtVerify(msg.token, secret);
-            // Accept both `user_id` (rewrite-issued) and `userId` (legacy-issued).
-            // See [[feedback-jwt-claim-naming-mismatch]] memory + commit ce153cd5.
-            const jwtPayload = payload as unknown as { user_id?: number; userId?: number; username: string; role: string };
-            const claimedUserId = jwtPayload.user_id ?? jwtPayload.userId;
-            if (claimedUserId == null) {
-              safeSend(JSON.stringify({ type: 'error', code: 'AUTH_FAILED', message: 'Token missing user id claim' }));
-              closeWithError(4002, 'Authentication failed');
-              return;
-            }
-
-            const db = getDb(env);
-            const user = await queryFirst<{
-              id: number; username: string; role: string; full_name: string; status: string;
-            }>(db, 'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?', claimedUserId, 'active');
-
-            if (!user) {
-              safeSend(JSON.stringify({ type: 'error', code: 'AUTH_FAILED', message: 'User not found or inactive' }));
-              closeWithError(4002, 'Authentication failed');
-              return;
-            }
-
-            clientInfo = {
-              userId: user.id,
-              username: user.username,
-              role: user.role,
-              fullName: user.full_name,
-              authenticated: true,
-              joinedAt: Date.now(),
-            };
-
-            safeSend(JSON.stringify({ type: 'authenticated', userId: user.id, role: user.role }));
-
-            // Register this WS in the per-isolate map so sendToUser
-            // can target the officer for welfare/premise pushes.
-            registerClient(user.id, server);
-
-            await env.KV.put(`ws:user:${user.id}`, JSON.stringify({
-              online: true, username: user.username, role: user.role, lastSeen: Date.now(),
-            }), { expirationTtl: 300 });
-
-            return;
-          } catch (err) {
-            safeSend(JSON.stringify({ type: 'error', code: 'AUTH_FAILED', message: 'Invalid token' }));
-            closeWithError(4002, 'Authentication failed');
-            return;
-          }
-        }
-
-        if (!clientInfo?.authenticated) {
-          safeSend(JSON.stringify({ type: 'error', code: 'NOT_AUTHENTICATED', message: 'Send authenticate first' }));
-          return;
-        }
-      } catch {}
-    });
-
-    server.addEventListener('close', () => {
-      cleanup();
-      if (clientInfo?.userId) {
-        unregisterClient(clientInfo.userId, server);
-        env.KV.delete(`ws:user:${clientInfo.userId}`).catch(() => {});
-      }
-    });
-
-    server.addEventListener('error', () => {
-      cleanup();
-      if (clientInfo?.userId) unregisterClient(clientInfo.userId, server);
-    });
-
-    return new Response(null, { status: 101, webSocket: client });
-  } catch (err) {
-    return new Response('Internal error: ' + (err instanceof Error ? err.message : String(err)), { status: 500 });
+    const db = getDb(env);
+    return await queryFirst<{
+      id: number; username: string; role: string; full_name: string; status: string;
+    }>(db, 'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?', claimedUserId, 'active');
+  } catch {
+    return null;
   }
 }
 
@@ -268,7 +156,7 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
   // ── Fast path: URL token (legacy or testing) ──
   const urlToken = url.searchParams.get('token');
   if (urlToken) {
-    const user = await verifyAndLookup(urlToken, env);
+    const user = await verifyToken(urlToken, env);
     if (!user) return new Response('Unauthorized', { status: 401 });
     return forwardToHub(request, env, user);
   }
@@ -302,7 +190,7 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     }
     if (msg.type !== 'authenticate' || typeof msg.token !== 'string') return;
 
-    const user = await verifyAndLookup(msg.token, env);
+    const user = await verifyToken(msg.token, env);
     if (!user) {
       try { edgeSide.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' })); } catch {}
       try { edgeSide.close(4002, 'Auth failed'); } catch {}

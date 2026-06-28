@@ -14,7 +14,7 @@ import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
-import { getApiConfig, listMedia, type CpgMediaObject } from '../utils/clearpathGps';
+import { getApiConfig, listMediaForAsset, type CpgMediaObject } from '../utils/clearpathGps';
 import { recordAudit } from '../utils/auditLog';
 
 const drivingEvents = new Hono<Env>();
@@ -345,7 +345,7 @@ async function resolveEventMedia(env: Env['Bindings'], db: D1Database, eventId: 
   const client = await getApiConfig(db, env).catch(() => null);
   if (!client) return null;
 
-  const resp = await listMedia(env, client, assetId, eventTsMs - 120_000, eventTsMs + 120_000, 0, 50);
+  const resp = await listMediaForAsset(env, client, assetId, eventTsMs - 120_000, eventTsMs + 120_000, 0, 50);
   const item = resp.items.find((i) => i.eventTimestamp === eventTsMs) || resp.items[0];
   if (!item) return null;
   const vid = (item.mediaObject || []).find((m) => m.type === 'VIDEO' && isOutsideObj(m) && !!m.accessUrl);

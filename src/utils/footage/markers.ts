@@ -8,7 +8,7 @@
 // track comes from the gps[] arrays on the window's media objects.
 import type { Bindings } from '../../types';
 import { getDb, query, queryFirst, execute } from '../db';
-import { getApiConfig, listMedia } from '../clearpathGps';
+import { getApiConfig, listMediaForAsset } from '../clearpathGps';
 import { classifyDrivingEvent } from '../drivingEvents';
 import { detectTurns, type GpsPoint } from './turns';
 import { markerOffsetMs, type OffsetChunk } from './markerOffset';
@@ -49,7 +49,7 @@ export async function buildFootageMarkers(env: Bindings, requestId: number): Pro
   const hardTurnTimes: number[] = [];
 
   if (client) {
-    const page = await listMedia(env, client, req.asset_id, req.from_ts, req.to_ts, 0, 50).catch(() => null);
+    const page = await listMediaForAsset(env, client, req.asset_id, req.from_ts, req.to_ts, 0, 50).catch(() => null);
     for (const ev of page?.items ?? []) {
       for (const mo of ev.mediaObject) {
         for (const g of mo.gps ?? []) {

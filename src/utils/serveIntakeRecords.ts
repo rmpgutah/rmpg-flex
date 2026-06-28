@@ -259,6 +259,26 @@ export async function findOrCreateProperty(db: D1Database, p: PropertyInput): Pr
 export async function nextCallNumber(db: D1Database): Promise<string> {
   const year = new Date().getFullYear().toString().slice(-2);
   const prefix = `CFS${year}-`;
+  // Belt-and-suspenders: scan forward past any numbers that were minted
+  // by a racing writer between our MAX read and the eventual INSERT.
+  // The caller's withUniqueRetry provides the outer safety net; this
+  // loop avoids the retry cost when we can detect the collision early.
+  for (let skip = 0; skip < 10; skip++) {
+    const max = await queryFirst<{ max: string | null }>(
+      db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+      `${prefix}%`,
+    );
+    const n = max?.max
+      ? parseInt(max.max.slice(prefix.length), 10) + 1 + skip
+      : 1 + skip;
+    const candidate = `${prefix}${String(n).padStart(5, '0')}`;
+    const exists = await queryFirst<{ n: number }>(
+      db, 'SELECT 1 FROM calls_for_service WHERE call_number = ? LIMIT 1',
+      candidate,
+    );
+    if (!exists) return candidate;
+  }
+  // Fallback: return the raw MAX+1 and let withUniqueRetry handle collision.
   const max = await queryFirst<{ max: string | null }>(
     db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
     `${prefix}%`,

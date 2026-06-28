@@ -17,7 +17,7 @@ import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from './db';
 import {
   getCredentials, isEnabled, getConfigValue, setConfigValue, CPG_KEYS,
-  listCameras, listAllMedia,
+  listDevices, listCameras, listAllMedia,
   CpgRateLimitError,
   type CpgCredentials, type CpgCamera, type CpgMediaEvent, type CpgMediaObject,
 } from './clearpathGps';
@@ -294,4 +294,34 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
   }
   const r = await syncClearpathMedia(env);
   if (r.synced || r.errors) console.log(`[cpg-media] synced=${r.synced} errors=${r.errors}`);
+}
+
+/**
+ * Return a Set of device IDs that are offline (no recent media events).
+ * Used by footage capture orchestrator to skip offline cameras.
+ */
+export async function getOfflineCameraDeviceIds(
+  db: DB,
+  deviceIds: string[],
+): Promise<Set<string>> {
+  const creds = await getCredentials(db, {} as any).catch(() => null);
+  if (!creds || !deviceIds.length) return new Set();
+  try {
+    const cameras = await listCameras(creds);
+    const devices = await listDevices(creds);
+    const deviceMap = new Map(devices.map((d: any) => [d.deviceId ?? d.uniqueId, d]));
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    const offline = new Set<string>();
+    for (const cam of cameras) {
+      const camDeviceId = (cam as any).providerId ?? String(cam.id);
+      if (!deviceIds.includes(camDeviceId)) continue;
+      const device = deviceMap.get(camDeviceId);
+      if (!device) { offline.add(camDeviceId); continue; }
+      const lastSeen = (device as any).last_seen ? Date.parse((device as any).last_seen) : 0;
+      if (lastSeen && lastSeen < cutoff) offline.add(camDeviceId);
+    }
+    return offline;
+  } catch {
+    return new Set();
+  }
 }

@@ -155,7 +155,7 @@ ocr.post('/scan-document', async (c) => {
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        pageCount, ocrUsed, ocrEngine,
+        pageCount: txt.page_count ?? null, ocrUsed: true, ocrEngine: 'workers-ai-text',
         model: r.model, extractionMs: r.ms, error: r.error,
       });
     }

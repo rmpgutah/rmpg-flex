@@ -27,6 +27,13 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
+import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
+import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
+import { recordAudit } from '../utils/auditLog';
+import { notConfigured } from '../utils/notConfigured';
+import { verifyEdgeSignature } from '../utils/edgeHmac';
+import { trustScore } from '../utils/plateTrust';
+import { emitAnalytics, alprReadEvent } from '../utils/analytics';
 import {
   ALPR_ACCEPT_CONFIDENCE,
   type AlprParameters,
@@ -359,6 +366,46 @@ async function finalizeCapture(
   return out;
 }
 
+/**
+ * Persist a manually confirmed/verified vehicle from an ALPR capture.
+ * Upserts the vehicle record, links to the call, logs a sighting, and
+ * runs watchlist screening. Returns screening hits.
+ */
+async function persistConfirmedVehicle(
+  db: ReturnType<typeof getDb>,
+  row: any,
+  v: AlprVehicle,
+  userId: number,
+  source: string,
+): Promise<Array<{ kind: string; severity: string; detail: string }>> {
+  const hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  try {
+    const screen = await screenVehicle(db, { plate: v.plate ?? '' });
+    hits.push(...screen.hits);
+    const recordId = (await upsertVehicleRecord(db, v, screen.vehicleId))?.id ?? screen.vehicleId ?? null;
+    const callId = row.call_id ?? null;
+    if (recordId && callId != null) {
+      try {
+        await execute(db,
+          `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+           VALUES (?, ?, 'observed', ?, ?, datetime('now'))`,
+          callId, recordId, source, userId);
+      } catch { /* best-effort */ }
+    }
+    if (v.plate) {
+      try {
+        await execute(db,
+          `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          v.plate, v.state, recordId, row.location_text ?? null, row.latitude ?? null, row.longitude ?? null, source, userId, v.confidence);
+      } catch { /* best-effort */ }
+    }
+  } catch (err: any) {
+    console.error('[alpr] persistConfirmedVehicle failed:', err?.message);
+  }
+  return hits;
+}
+
 // ── Health: is the integration configured? ───────────────────
 alpr.get('/health', operational, (c) => {
   return c.json({
@@ -464,9 +511,10 @@ alpr.post('/capture', operational, async (c) => {
   });
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
+  const fieldPhotoLinked = fieldPhotoId !== null;
   return c.json({
-    success: finalized,
-    status: fin.status,
+    success: fin.accepted,
+    status: fin.accepted ? 'accepted' : 'needs_review',
     image_stored: imageStored,
     field_photo_linked: fieldPhotoLinked,
     warnings: [

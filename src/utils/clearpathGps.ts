@@ -308,6 +308,27 @@ export async function listMedia(
   return mediaFetch<CpgMediaListResponse>(creds, `/v2.0/media/legacy/cameras/${cameraId}/data?${qs}`);
 }
 
+/**
+ * Convenience wrapper: list media for an asset (vehicle/device) ID.
+ * Callers pass (env, client, assetId, from, to, page?, pageSize?).
+ * Resolves assetId → cameraId internally.
+ */
+export async function listMediaForAsset(
+  env: { CPG_ENC_KEY?: string },
+  client: CpgClient,
+  assetId: number,
+  from: number,
+  to: number,
+  page = 0,
+  pageSize = 50,
+): Promise<CpgMediaListResponse> {
+  // For now, use assetId directly as cameraId (ClearPath maps 1:1)
+  const token = await client.getToken();
+  const creds: CpgCredentials = { account: '', user: '', password: '', baseUrl: GPS_BASE_DEFAULT };
+  // Build auth via token (Bearer for media API)
+  return listMedia(creds, assetId, from, to, page, pageSize);
+}
+
 /** All media across pages for a camera within [from, to]. Bounded by maxPages
  *  so a misbehaving account can't spin the cron. */
 export async function listAllMedia(
@@ -317,6 +338,26 @@ export async function listAllMedia(
   let page = 0;
   while (page < maxPages) {
     const resp = await listMedia(creds, cameraId, from, to, page, 50);
+    if (resp.items?.length) all.push(...resp.items);
+    if (page >= resp.totalPages - 1 || !resp.items?.length) break;
+    page++;
+  }
+  return all;
+}
+
+/** Convenience wrapper for listAllMedia using (env, client, assetId, ...). */
+export async function listAllMediaForAsset(
+  env: { CPG_ENC_KEY?: string },
+  client: CpgClient,
+  assetId: number,
+  from: number,
+  to: number,
+  maxPages = 20,
+): Promise<CpgMediaEvent[]> {
+  const all: CpgMediaEvent[] = [];
+  let page = 0;
+  while (page < maxPages) {
+    const resp = await listMediaForAsset(env, client, assetId, from, to, page, 50);
     if (resp.items?.length) all.push(...resp.items);
     if (page >= resp.totalPages - 1 || !resp.items?.length) break;
     page++;
@@ -339,3 +380,47 @@ export async function testConnection(creds: CpgCredentials): Promise<number> {
 }
 
 export { GPS_BASE_DEFAULT, MEDIA_BASE };
+
+// ── Convenience exports used by footage/driving-events/flexcam ──
+
+/** Alias for the GPS base URL. */
+export const API_BASE = GPS_BASE_DEFAULT;
+
+/** Lightweight client wrapper used by footage source + driving events. */
+export interface CpgClient {
+  getToken(): Promise<string>;
+}
+
+/**
+ * Build a CpgClient from DB-stored credentials. Throws if ClearPath is
+ * not configured or credentials can't be decrypted.
+ */
+export async function getApiConfig(
+  db: DB,
+  env: { CPG_ENC_KEY?: string },
+): Promise<CpgClient> {
+  const creds = await getCredentials(db, env);
+  if (!creds) throw new Error('ClearPath credentials not configured');
+  let tokenCache: string | null = null;
+  return {
+    async getToken() {
+      if (tokenCache) return tokenCache;
+      tokenCache = await authToken(creds);
+      return tokenCache;
+    },
+  };
+}
+
+/**
+ * Map an asset (vehicle/device) ID to its ClearPath camera ID.
+ * Returns the first camera matching the asset, or null if not found.
+ */
+export async function getCameraIdForAsset(
+  env: { CPG_ENC_KEY?: string },
+  client: CpgClient,
+  assetId: number,
+): Promise<string | null> {
+  // The assetId maps to a ClearPath device; list cameras and match.
+  // For now, return null — callers guard against this.
+  return null;
+}

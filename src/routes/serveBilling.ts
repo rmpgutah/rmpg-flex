@@ -277,6 +277,19 @@ psb.post('/serve-charges/:id/recompute', async (c) => {
 async function nextInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
   const yy = String(new Date().getFullYear()).slice(-2);
   const prefix = `INV-${yy}-`;
+  // Belt-and-suspenders: scan past numbers already minted by a racing writer.
+  for (let skip = 0; skip < 10; skip++) {
+    const last = await queryFirst<{ invoice_number: string }>(db, 'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1', `${prefix}%`);
+    let n = 1 + skip;
+    const m = last?.invoice_number?.match(/^INV-\d{2}-(\d+)$/);
+    if (m) n = parseInt(m[1], 10) + 1 + skip;
+    const candidate = `${prefix}${String(n).padStart(4, '0')}`;
+    const exists = await queryFirst<{ n: number }>(
+      db, 'SELECT 1 FROM invoices WHERE invoice_number = ? LIMIT 1', candidate,
+    );
+    if (!exists) return candidate;
+  }
+  // Fallback: raw MAX+1, caller must handle UNIQUE collision.
   const last = await queryFirst<{ invoice_number: string }>(db, 'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1', `${prefix}%`);
   let n = 1;
   const m = last?.invoice_number?.match(/^INV-\d{2}-(\d+)$/);
@@ -321,12 +334,25 @@ psb.post('/invoices/from-serve-charges', async (c) => {
   const invoices: Array<{ invoice_id: number; invoice_number: string; contract_id: number; client_id: number | null; charge_count: number; subtotal: number }> = [];
 
   for (const [contractId, group] of byContract) {
-    const invNumber = await nextInvoiceNumber(db);
-    const invIns = await execute(db,
-      `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, subtotal, tax_rate, tax_amount, total_amount)
-       VALUES (?, ?, ?, date('now'), 0, 0, 0, 0)`,
-      invNumber, group.client_id, contractId);
-    const invoiceId = Number(invIns.meta.last_row_id);
+    // Atomic invoice number: retry on UNIQUE collision (same pattern as call_number).
+    let invoiceId: number | null = null;
+    let invNumber = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      invNumber = await nextInvoiceNumber(db);
+      try {
+        const invIns = await execute(db,
+          `INSERT INTO invoices (invoice_number, client_id, contract_id, issue_date, subtotal, tax_rate, tax_amount, total_amount)
+           VALUES (?, ?, ?, date('now'), 0, 0, 0, 0)`,
+          invNumber, group.client_id, contractId);
+        invoiceId = Number(invIns.meta.last_row_id);
+        break;
+      } catch (err) {
+        const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+        if (attempt < 4 && (msg.includes('unique') || msg.includes('2067'))) continue;
+        throw err;
+      }
+    }
+    if (invoiceId == null) continue;
 
     let subtotal = 0;
     for (const chargeId of group.ids) {

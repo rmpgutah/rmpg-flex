@@ -17,6 +17,7 @@ import { codedLike, escapeLike } from '../../utils/searchText';
 import { planAction, isCfsVerb } from '../../utils/cfsActions';
 import { crossLinkPsoCloseToServe } from '../../utils/psoServeCrosslink';
 import { log } from '../../utils/logger';
+import { evaluateNotificationRules } from '../notificationEngine';
 
 const calls = new Hono<Env>();
 

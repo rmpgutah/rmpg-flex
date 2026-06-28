@@ -29,6 +29,8 @@ export interface CloudflarePlateResult {
   confidence: number | null;   // plate-field confidence (0..1), the acceptance signal
   model_id: string;            // which engine produced this
   ms: number;
+  condition?: string | null;
+  damageSummary?: string | null;
 }
 
 const str = (f?: { value: string }): string | null => {

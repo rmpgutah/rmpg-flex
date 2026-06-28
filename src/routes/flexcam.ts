@@ -6,7 +6,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { ensureFootageSchema, enqueueFootage } from '../utils/footage/captureOrchestrator';
 import { notConfigured } from '../utils/notConfigured';
 import { getClearPathSource } from '../utils/footage/clearpathSource';
-import { getApiConfig, listDevices, listMedia } from '../utils/clearpathGps';
+import { getApiConfig, getCredentials, listDevices, listMediaForAsset } from '../utils/clearpathGps';
 import { ensureMarkersSchema, buildFootageMarkers } from '../utils/footage/markers';
 import { buildManifest, concatToR2, buildPlayerManifest } from '../utils/footage/concat';
 import { requireRole } from '../middleware/auth';
@@ -412,7 +412,8 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
   // 1) Resolve a camera asset (explicit, else first media-enabled device).
   let assetId = Number(body.asset_id) || 0;
   try {
-    const devices = await listDevices(c.env, client);
+    const creds = await getCredentials(db, c.env);
+    const devices = creds ? await listDevices(creds) : [];
     step('devices', { count: devices.length, sample: devices.slice(0, 3).map((d) => ({ deviceId: d.deviceId, assetId: d.assetId, mediaEnabled: d.mediaEnabled, name: d.displayName })) });
     if (!assetId) { const m = devices.find((d) => d.mediaEnabled && d.assetId); assetId = m ? Number(m.assetId) : 0; }
   } catch (e) { step('devices_error', (e as Error).message); }
@@ -436,7 +437,7 @@ flexcam.post('/diagnose', requireRole('admin'), async (c): Promise<Response> => 
 
   // 4) What does media/data return for that window? (shapes only — strip URLs/base64)
   try {
-    const page = await listMedia(c.env, client, assetId, fromTs, toTs, 0, 25);
+    const page = await listMediaForAsset(c.env, client, assetId, fromTs, toTs, 0, 25);
     const objs = page.items.flatMap((ev) => ev.mediaObject.map((mo) => ({
       channel: mo.channel, type: mo.type, status: mo.status, eventType: mo.eventType,
       hasThumbnail: !!mo.thumbnailUrl, hasAccessUrl: !!mo.accessUrl,
