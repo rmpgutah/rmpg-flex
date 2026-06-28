@@ -17,7 +17,7 @@ export { openAndRenderPage } from './safeRender';
 
 import { nativeBackend } from './native';
 import { pdfjsBackend } from './backends/pdfjs';
-import { BackendUnsupportedError, RmpgPdfDocument } from './types';
+import { RmpgPdfDocument } from './types';
 import { recordOpen } from './diagnostics';
 
 export interface OpenOptions {

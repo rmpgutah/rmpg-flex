@@ -29,6 +29,8 @@ export interface CallSlots {
   apartment?: string;
   zone_code?: string;
   beat_code?: string;
+  /** Full chart dispatch code ("SL1-SLC/A") when available — preferred for narration. */
+  dispatch_code?: string;
   suspect_description?: string;
   vehicle_description?: string;
   assigned_units?: string[];
@@ -59,11 +61,14 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     return parts.filter(Boolean).join(', ');
   }
 
+  // dispatch_code is already in chart format ("SL1-SLC/A") when present;
+  // fall back to legacy "{zone}-{beat}" reading otherwise.
   if (mode === 'standard') {
     const parts: string[] = [];
     if (call.priority) parts.push(`P${call.priority} ${call.incident_type ?? ''}`.trim());
     if (call.location_address) parts.push(shortStreet(call.location_address));
-    if (call.zone_code && call.beat_code) parts.push(`${call.zone_code}-${call.beat_code}`);
+    if (call.dispatch_code) parts.push(call.dispatch_code);
+    else if (call.zone_code && call.beat_code) parts.push(`${call.zone_code}-${call.beat_code}`);
     else if (call.zone_code) parts.push(call.zone_code);
     if (call.assigned_units?.length) parts.push(call.assigned_units.join(', '));
     return parts.filter(Boolean).join(', ');
@@ -78,7 +83,9 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     if (call.apartment) loc += `, apartment ${call.apartment}`;
     parts.push(loc);
   }
-  if (call.zone_code) {
+  if (call.dispatch_code) {
+    parts.push(`dispatch code ${call.dispatch_code}`);
+  } else if (call.zone_code) {
     let geo = `zone ${call.zone_code}`;
     if (call.beat_code) geo += ` beat ${call.beat_code}`;
     parts.push(geo);

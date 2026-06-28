@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import RichTextArea from './RichTextArea';
 import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
@@ -208,7 +208,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         }}
         title="Quick Actions (long-press on mobile)"
       >
-        {isOpen ? <X className="w-5 h-5 text-white" /> : <Zap className="w-5 h-5 text-white" />}
+        {isOpen ? <X className="w-5 h-5 text-rmpg-100" /> : <Zap className="w-5 h-5 text-rmpg-100" />}
       </button>
 
       {/* Radial Menu */}

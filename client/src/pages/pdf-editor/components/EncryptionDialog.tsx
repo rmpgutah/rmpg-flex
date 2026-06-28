@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Check, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { X, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 // Configures encryption for the next save. Output of this dialog is consumed
 // by the save flow in PdfEditorPage — server-side qpdf does the work.
@@ -43,7 +43,7 @@ const DEFAULT_CONFIG: EncryptionConfig = {
 };
 
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1';
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]';
 
 export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
   const [cfg, setCfg] = useState<EncryptionConfig>(DEFAULT_CONFIG);
@@ -54,12 +54,12 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-4 max-w-[640px] w-full" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[640px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Lock className="w-4 h-4 text-[#d4a017]" /> Encrypt PDF
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <p className="text-[10px] text-rmpg-500 mb-3 max-w-prose">
@@ -69,32 +69,32 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <div>
-              <label className={labelCls}>User password (open password)</label>
+              <label htmlFor="ff-encryptiondialog-0" className={labelCls}>User password (open password)</label>
               <div className="relative">
-                <input type={showUser ? 'text' : 'password'} value={cfg.userPassword}
+                <input id="ff-encryptiondialog-0" type={showUser ? 'text' : 'password'} value={cfg.userPassword}
                   onChange={(e) => setCfg({ ...cfg, userPassword: e.target.value })}
                   placeholder="Empty = no prompt to open"
                   className={inputCls + ' pr-7'} />
-                <button type="button" onClick={() => setShowUser((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-white" aria-label="Toggle visibility">
+                <button type="button" onClick={() => setShowUser((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-rmpg-100" aria-label="Toggle visibility">
                   {showUser ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
             <div>
-              <label className={labelCls}>Owner password (controls removing restrictions)</label>
+              <label htmlFor="ff-encryptiondialog-1" className={labelCls}>Owner password (controls removing restrictions)</label>
               <div className="relative">
-                <input type={showOwner ? 'text' : 'password'} value={cfg.ownerPassword}
+                <input id="ff-encryptiondialog-1" type={showOwner ? 'text' : 'password'} value={cfg.ownerPassword}
                   onChange={(e) => setCfg({ ...cfg, ownerPassword: e.target.value })}
                   placeholder="Auto-generated random if blank"
                   className={inputCls + ' pr-7'} />
-                <button type="button" onClick={() => setShowOwner((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-white" aria-label="Toggle visibility">
+                <button type="button" onClick={() => setShowOwner((v) => !v)} className="absolute right-1.5 top-1.5 text-rmpg-400 hover:text-rmpg-100" aria-label="Toggle visibility">
                   {showOwner ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
             <div>
-              <label className={labelCls}>Encryption strength</label>
-              <select value={cfg.bitLength} onChange={(e) => setCfg({ ...cfg, bitLength: parseInt(e.target.value, 10) as 128 | 256 })} className={inputCls}>
+              <label htmlFor="ff-encryptiondialog-2" className={labelCls}>Encryption strength</label>
+              <select id="ff-encryptiondialog-2" value={cfg.bitLength} onChange={(e) => setCfg({ ...cfg, bitLength: parseInt(e.target.value, 10) as 128 | 256 })} className={inputCls}>
                 <option value={256}>256-bit AES (PDF 2.0 — strongest, recommended)</option>
                 <option value={128}>128-bit AES (PDF 1.7 — broader compatibility)</option>
               </select>
@@ -103,16 +103,16 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
 
           <div className="space-y-2">
             <div>
-              <label className={labelCls}>Printing</label>
-              <select value={cfg.permissions.print} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, print: e.target.value as any } })} className={inputCls}>
+              <label htmlFor="ff-encryptiondialog-3" className={labelCls}>Printing</label>
+              <select id="ff-encryptiondialog-3" value={cfg.permissions.print} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, print: e.target.value as any } })} className={inputCls}>
                 <option value="full">Allow high-resolution printing</option>
                 <option value="low">Allow low-resolution printing only</option>
                 <option value="none">Disallow printing</option>
               </select>
             </div>
             <div>
-              <label className={labelCls}>Modifications</label>
-              <select value={cfg.permissions.modify} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, modify: e.target.value as any } })} className={inputCls}>
+              <label htmlFor="ff-encryptiondialog-4" className={labelCls}>Modifications</label>
+              <select id="ff-encryptiondialog-4" value={cfg.permissions.modify} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, modify: e.target.value as any } })} className={inputCls}>
                 <option value="all">Allow all modifications</option>
                 <option value="annotate">Allow annotation only</option>
                 <option value="form">Allow form filling only</option>
@@ -122,15 +122,15 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             </div>
             <div className="space-y-1 pt-1">
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.extract} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, extract: e.target.checked } })} />
+                <input id="ff-encryptiondialog-5" type="checkbox" checked={cfg.permissions.extract} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, extract: e.target.checked } })} />
                 Allow text/image copy and extraction
               </label>
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.fillForms} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, fillForms: e.target.checked } })} />
+                <input id="ff-encryptiondialog-6" type="checkbox" checked={cfg.permissions.fillForms} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, fillForms: e.target.checked } })} />
                 Allow form field filling
               </label>
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.accessibility} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, accessibility: e.target.checked } })} />
+                <input id="ff-encryptiondialog-7" type="checkbox" checked={cfg.permissions.accessibility} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, accessibility: e.target.checked } })} />
                 Allow accessibility tools (screen readers)
               </label>
             </div>

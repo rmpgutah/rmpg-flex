@@ -9,7 +9,7 @@
 // they scan the list, press the key, move on.
 // ============================================================
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { MAP_SHORTCUT_BINDINGS } from '../../../hooks/useMapKeyboardShortcuts';
 
@@ -104,7 +104,7 @@ export default function KeyboardShortcutsHelp({ open, onClose }: Props) {
                 alignItems: 'center',
                 gap: 10,
                 fontSize: 11,
-                color: '#d1d5db',
+                color: 'var(--rmpg-300)',
               }}
             >
               <kbd
@@ -114,7 +114,7 @@ export default function KeyboardShortcutsHelp({ open, onClose }: Props) {
                   justifyContent: 'center',
                   minWidth: 24,
                   height: 22,
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
                   borderBottom: '2px solid #333',
                   borderRadius: 2,
@@ -131,7 +131,7 @@ export default function KeyboardShortcutsHelp({ open, onClose }: Props) {
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 12, borderTop: '1px solid #2b2b2b', paddingTop: 8, fontSize: 9, color: '#6b7280' }}>
+        <div style={{ marginTop: 12, borderTop: '1px solid #2b2b2b', paddingTop: 8, fontSize: 9, color: 'var(--rmpg-500)' }}>
           Shortcuts are ignored when a text field is focused or a modifier key (Cmd / Ctrl / Alt) is held.
         </div>
       </div>

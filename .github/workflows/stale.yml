@@ -13,7 +13,7 @@ permissions:
 jobs:
   stale:
     name: Close stale PRs and issues
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/stale@v10
         with:

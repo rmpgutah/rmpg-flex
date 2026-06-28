@@ -11,16 +11,21 @@ permissions:
 jobs:
   dependency-review:
     name: Check dependency changes
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Dependency Review
+        # Pinned to v4 intentionally: v5 may remove `deny-licenses` (deprecated
+        # upstream — see actions/dependency-review-action#938). The only
+        # current replacement is `allow-licenses`, which flips to an allowlist
+        # and is more restrictive than our actual policy intent (block GPL
+        # family only). Revisit when upstream ships a config-file denylist.
         uses: actions/dependency-review-action@v4
         with:
           # Block PRs that add dependencies with known critical/high vulns
           fail-on-severity: high
           # Block copyleft licenses that conflict with private software
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
-          comment-summary-in-pr: always
+          comment-summary-in-pr: on-failure

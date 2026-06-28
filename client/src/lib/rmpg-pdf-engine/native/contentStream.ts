@@ -15,7 +15,6 @@
 import { BackendUnsupportedError } from '../types';
 import { Lexer } from './lexer';
 import { decodeText } from './lexer';
-import { stdFontFamily } from './fonts';
 
 interface Mat { a: number; b: number; c: number; d: number; e: number; f: number; }
 const ID: Mat = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
