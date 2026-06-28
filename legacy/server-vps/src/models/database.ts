@@ -14,6 +14,7 @@ import { seedUtahStatutes } from '../seeds/utahStatutes';
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { seedNibrsCodes, seedRunCards } from '../seeds/nibrsCodes';
 import { ensureTraccarSchema } from './traccarSchema';
+import { ensureCourtSchema } from './courtSchema';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
@@ -89,6 +90,7 @@ export function initDatabase(): any {
   seedData();
   seedUtahStatutes(db);
   ensureTraccarSchema(db);
+  ensureCourtSchema(db);
 
   console.log('Database initialized successfully at', DB_PATH);
   return db;

@@ -1247,6 +1247,14 @@ export default function AdminPage() {
             LoadingSpinner={LoadingSpinner}
           />
         )}
+
+        {activeTab === 'court_lookups' && (
+          <AdminCourtLookupsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
       </div>
       </div>
 
