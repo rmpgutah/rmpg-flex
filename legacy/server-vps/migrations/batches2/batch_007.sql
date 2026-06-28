@@ -1,0 +1,26 @@
+ALTER TABLE clients ADD COLUMN website TEXT;
+ALTER TABLE clients ADD COLUMN tax_id TEXT;
+ALTER TABLE clients ADD COLUMN payment_method TEXT;
+ALTER TABLE clients ADD COLUMN billing_cycle TEXT;
+ALTER TABLE clients ADD COLUMN billing_day INTEGER;
+ALTER TABLE clients ADD COLUMN discount_percent REAL;
+ALTER TABLE clients ADD COLUMN late_fee_percent REAL;
+ALTER TABLE clients ADD COLUMN total_invoiced REAL;
+ALTER TABLE clients ADD COLUMN total_paid REAL;
+ALTER TABLE clients ADD COLUMN outstanding_balance REAL;
+ALTER TABLE clients ADD COLUMN incident_count INTEGER;
+ALTER TABLE clients ADD COLUMN last_incident_date TEXT;
+ALTER TABLE clients ADD COLUMN account_manager TEXT;
+ALTER TABLE clients ADD COLUMN priority_client INTEGER;
+ALTER TABLE clients ADD COLUMN client_since TEXT;
+ALTER TABLE clients ADD COLUMN rate_per_hour REAL;
+ALTER TABLE clients ADD COLUMN rate_per_incident REAL;
+ALTER TABLE clients ADD COLUMN rate_per_cfs REAL;
+ALTER TABLE clients ADD COLUMN email_verified INTEGER;
+ALTER TABLE clients ADD COLUMN verification_token TEXT;
+ALTER TABLE clients ADD COLUMN avatar TEXT;
+ALTER TABLE clients ADD COLUMN last_active_at TEXT;
+-- Missing columns for properties (20)
+ALTER TABLE properties ADD COLUMN city TEXT;
+ALTER TABLE properties ADD COLUMN state TEXT;
+ALTER TABLE properties ADD COLUMN zip TEXT;

@@ -1,7 +1,19 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapCompassRoseProps {
-  mapInstance: google.maps.Map | null;
+  mapInstance: mapboxgl.Map | null;
+}
+
+/** Degree tick marks at 30° intervals for the outer ring */
+const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const CENTER = 28;
+const OUTER_R = 26;
+const TICK_INNER_R = 23;
+const TICK_MAJOR_INNER_R = 21.5;
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
 }
 
 /** Degree tick marks at 30° intervals for the outer ring */
@@ -19,18 +31,12 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [heading, setHeading] = useState(0);
   const [tilt, setTilt] = useState(0);
   const [hovered, setHovered] = useState(false);
-  const listenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const tiltListenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const prefersReducedMotion = useMemo(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    [],
-  );
 
   useEffect(() => {
     if (!mapInstance) return;
 
-    const updateHeading = () => {
-      const h = mapInstance.getHeading?.() || 0;
+    const update = () => {
+      const h = (mapInstance as any).getBearing?.() || 0;
       setHeading(h);
     };
 
@@ -42,25 +48,15 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
     updateHeading();
     updateTilt();
 
-    // heading_changed fires when the user rotates the map (tilt mode or 45-degree imagery)
-    listenerRef.current = google.maps.event.addListener(mapInstance, 'heading_changed', updateHeading);
-    tiltListenerRef.current = google.maps.event.addListener(mapInstance, 'tilt_changed', updateTilt);
+    mapInstance.on('rotate', update);
 
     return () => {
-      if (listenerRef.current) {
-        google.maps.event.removeListener(listenerRef.current);
-        listenerRef.current = null;
-      }
-      if (tiltListenerRef.current) {
-        google.maps.event.removeListener(tiltListenerRef.current);
-        tiltListenerRef.current = null;
-      }
+      mapInstance.off('rotate', update);
     };
   }, [mapInstance]);
 
   if (!mapInstance) return null;
 
-  // SVG rotates opposite to map heading so north always points to geographic north
   const rotation = -heading;
   const bearingStr = String(Math.round(((heading % 360) + 360) % 360)).padStart(3, '0');
   const goldColor = hovered ? '#e8c44a' : '#d4a017';
@@ -88,8 +84,8 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         width: 56,
         height: 56,
         borderRadius: '50%',
-        background: 'radial-gradient(circle at 50% 50%, rgba(20,28,38,0.95) 60%, rgba(10,14,20,0.98))',
-        border: '1.5px solid #2b2b2b',
+        background: 'rgba(10, 10, 10, 0.88)',
+        border: '1px solid #2b2b2b',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -100,6 +96,9 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
           : '0 4px 16px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3)',
         transition: 'box-shadow 0.25s ease',
       }}
+      onClick={() => { mapInstance.resetNorth(); }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <svg
         role="img"
@@ -115,62 +114,22 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
           lineHeight: 1.1,
         }}
       >
-        {/* Outer degree ring tick marks */}
-        {ticks.map((tick) => {
-          const rad = (tick.angle - 90) * Math.PI / 180;
-          const outerR = 22;
-          const innerR = outerR - tick.length;
-          return (
-            <line
-              key={tick.angle}
-              x1={24 + outerR * Math.cos(rad)}
-              y1={24 + outerR * Math.sin(rad)}
-              x2={24 + innerR * Math.cos(rad)}
-              y2={24 + innerR * Math.sin(rad)}
-              stroke={tick.color}
-              strokeWidth={tick.width}
-              strokeLinecap="round"
-            />
-          );
-        })}
-
-        {/* Inner circle ring */}
-        <circle cx="24" cy="24" r="15" fill="none" stroke="#2a2a2a" strokeWidth="0.5" />
-
-        {/* Cross lines (E-W and N-S subtle lines) */}
-        <line x1="24" y1="10" x2="24" y2="38" stroke="#3b3b3b" strokeWidth="0.4" />
-        <line x1="10" y1="24" x2="38" y2="24" stroke="#3b3b3b" strokeWidth="0.4" />
-
-        {/* 45-degree tick marks (NE, SE, SW, NW) */}
-        <line x1="33.9" y1="14.1" x2="32.5" y2="15.5" stroke="#3b3b3b" strokeWidth="0.5" />
-        <line x1="33.9" y1="33.9" x2="32.5" y2="32.5" stroke="#3b3b3b" strokeWidth="0.5" />
-        <line x1="14.1" y1="33.9" x2="15.5" y2="32.5" stroke="#3b3b3b" strokeWidth="0.5" />
-        <line x1="14.1" y1="14.1" x2="15.5" y2="15.5" stroke="#3b3b3b" strokeWidth="0.5" />
-
-        {/* North arrow with gold gradient */}
-        <defs>
-          <linearGradient id="northGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={hovered ? '#f0d060' : '#e8c44a'} />
-            <stop offset="100%" stopColor={hovered ? '#d4a017' : '#b8860b'} />
-          </linearGradient>
-        </defs>
-        <polygon points="24,5 21,22 24,19 27,22" fill="url(#northGrad)" />
-        {/* South arrow (dim) */}
-        <polygon points="24,43 21,26 24,29 27,26" fill="#555555" />
-        {/* East arrow */}
-        <polygon points="43,24 26,21 29,24 26,27" fill="#555555" />
-        {/* West arrow */}
-        <polygon points="5,24 22,21 19,24 22,27" fill="#555555" />
-
-        {/* Cardinal letters */}
-        <text x="24" y="4" textAnchor="middle" fill={hovered ? '#f0d060' : '#d4a017'} fontSize="5" fontFamily="monospace" fontWeight="bold">N</text>
-        <text x="24" y="47.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">S</text>
-        <text x="46.5" y="25.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">E</text>
-        <text x="1.5" y="25.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">W</text>
-
-        {/* Center dot with glow */}
-        <circle cx="24" cy="24" r="2.5" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
-          {hovered && <animate attributeName="r" values="2.5;3;2.5" dur="1.5s" repeatCount="indefinite" />}
+        <line x1="20" y1="6" x2="20" y2="34" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="29.9" y1="10.1" x2="28.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="29.9" y1="29.9" x2="28.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="10.1" y1="29.9" x2="11.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="10.1" y1="10.1" x2="11.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#e8c44a' : '#d4a017'} opacity={1} />
+        <polygon points="20,36 17.5,22 20,24 22.5,22" fill="#666666" />
+        <polygon points="36,20 22,17.5 24,20 22,22.5" fill="#666666" />
+        <polygon points="4,20 18,17.5 16,20 18,22.5" fill="#666666" />
+        <text x="20" y="3.5" textAnchor="middle" fill={hovered ? '#e8c44a' : '#d4a017'} fontSize="5" fontFamily="monospace" fontWeight="bold">N</text>
+        <text x="20" y="39.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">S</text>
+        <text x="39" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">E</text>
+        <text x="1" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">W</text>
+        <circle cx="20" cy="20" r="2" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
+          {hovered && <animate attributeName="r" values="2;2.5;2" dur="1.5s" repeatCount="indefinite" />}
         </circle>
         {/* Outer glow ring on hover */}
         {hovered && (

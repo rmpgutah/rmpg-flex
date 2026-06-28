@@ -14,10 +14,11 @@
 // payload until the user resolves them.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, useId, useRef } from 'react';
-import { Upload, FileText, AlertCircle, Check, Loader2, Car } from 'lucide-react';
+import React, { useState, useId, useRef, useEffect } from 'react';
+import { Upload, X, FileText, AlertCircle, Check, Loader2, Car } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { apiFetch } from '../../../hooks/useApi';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 interface FleetVehicle {
   id: string | number;
@@ -60,15 +61,40 @@ interface Props {
   vehicles: FleetVehicle[];
 }
 
+interface ImportDraftState {
+  rows: PreviewRow[];
+}
+
+const EMPTY_IMPORT_DRAFT: ImportDraftState = { rows: [] };
+
 export default function FuelImportModal({ isOpen, onClose, onImported, vehicles }: Props) {
   const titleId = useId();
   const [phase, setPhase] = useState<'file' | 'preview' | 'committing' | 'done'>('file');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [rows, setRows] = useState<PreviewRow[]>([]);
   const [error, setError] = useState('');
   const [commitResult, setCommitResult] = useState<{ inserted: number; errors: any[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    form: draft,
+    setForm: setDraft,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ImportDraftState>({
+    storageKey: 'rmpg_fleet_fuel_import_form',
+    defaultValue: EMPTY_IMPORT_DRAFT,
+    isActive: isOpen && phase === 'preview',
+  });
+
+  const rows = draft.rows.length > 0 ? draft.rows : [];
+
+  // Snapshot rows after they're loaded from server
+  useEffect(() => {
+    if (phase === 'preview' && rows.length > 0) {
+      snapshot();
+    }
+  }, [phase]);
 
   if (!isOpen) return null;
 
@@ -76,7 +102,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
     setPhase('file');
     setFile(null);
     setPreview(null);
-    setRows([]);
+    setDraft(EMPTY_IMPORT_DRAFT);
     setError('');
     setCommitResult(null);
   };
@@ -102,7 +128,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setPreview(data);
-      setRows(data.rows);
+      setDraft({ rows: data.rows });
       setPhase('preview');
     } catch (err: any) {
       setError(err?.message || 'Failed to parse CSV');
@@ -110,7 +136,9 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
   };
 
   const updateRow = (index: number, patch: Partial<PreviewRow>) => {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDraft((prev: ImportDraftState) => ({
+      rows: prev.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
+    }));
   };
 
   const rowIsCommittable = (r: PreviewRow) =>
@@ -132,6 +160,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       });
       setCommitResult(result);
       setPhase('done');
+      clearDraft();
       if (result.inserted > 0) onImported();
     } catch (err: any) {
       setError(err?.message || 'Commit failed');
@@ -150,7 +179,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
           <button type="button" className="toolbar-btn text-[9px]" onClick={handleClose}>X</button>
         </PanelTitleBar>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {error && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20 mb-3">
               <div className="flex items-center gap-1.5 text-[10px] text-red-400"><AlertCircle className="w-3 h-3" />{error}</div>
@@ -174,7 +203,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                 <span className="text-[11px] text-rmpg-300">Click to select a .csv file</span>
                 <span className="text-[9px] text-rmpg-500">Max 10 MB</span>
               </button>
-              <input
+              <input id="ff-fuelimportmodal-0"
                 ref={fileInputRef}
                 type="file"
                 accept=".csv,text/csv"
@@ -193,7 +222,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2">
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
-                  <div className="text-sm font-bold font-mono text-gray-400">{preview.row_count}</div>
+                  <div className="text-sm font-bold font-mono text-rmpg-400">{preview.row_count}</div>
                   <div className="text-[8px] text-rmpg-500 uppercase">Rows Detected</div>
                 </div>
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
@@ -214,7 +243,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
               </div>
 
               <div className="panel-beveled bg-surface-sunken overflow-auto max-h-[40vh]">
-                <table className="w-full text-[10px] font-mono">
+                <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
                   <thead className="bg-surface-raised sticky top-0">
                     <tr className="text-left text-[9px] uppercase text-rmpg-500">
                       <th className="px-2 py-1">Row</th>
@@ -237,7 +266,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                             {r.matched && r.vehicle_display ? (
                               <span className="text-green-400 flex items-center gap-1"><Car className="w-2.5 h-2.5" />{r.vehicle_display}</span>
                             ) : (
-                              <select className="select-dark text-[10px] py-0.5"
+                              <select id="ff-fuelimportmodal-1" className="select-dark text-[10px] py-0.5"
                                 value={r.vehicle_id ?? ''}
                                 onChange={(e) => {
                                   const vid = e.target.value ? Number(e.target.value) : null;
@@ -270,7 +299,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             </div>
           )}
