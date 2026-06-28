@@ -37,8 +37,10 @@ final class BackgroundDuty: NSObject, ObservableObject, CLLocationManagerDelegat
                 manager.allowsBackgroundLocationUpdates = true
             }
             manager.startUpdatingLocation()
+            MotionActivityService.shared.start()
         } else {
             manager.stopUpdatingLocation()
+            MotionActivityService.shared.stop()
         }
     }
 
@@ -77,14 +79,16 @@ final class BackgroundDuty: NSObject, ObservableObject, CLLocationManagerDelegat
 
     private func pushGps(_ loc: CLLocation) async {
         guard let client = await authedClient() else { return }
-        _ = try? await client.requestJSON("POST", "api/dispatch/gps", body: [
+        var body: [String: Any] = [
             "latitude": loc.coordinate.latitude,
             "longitude": loc.coordinate.longitude,
             "speed": max(loc.speed, 0) * 2.23694,
             "heading": max(loc.course, 0),
             "accuracy": loc.horizontalAccuracy,
             "source": "ios-field-app-bg",
-        ])
+        ]
+        body.merge(MotionActivityService.shared.gpsFields) { a, _ in a }
+        _ = try? await client.requestJSON("POST", "api/dispatch/gps", body: body)
         await MainActor.run { lastGpsPush = Date() }
     }
 

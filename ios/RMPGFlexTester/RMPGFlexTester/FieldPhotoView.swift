@@ -51,31 +51,30 @@ struct FieldPhotoSheet: View {
                         .padding(8).background(Theme.raised)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     Toggle("Attach to my current call", isOn: $attachToCall)
-                        .font(.system(size: 12)).tint(Theme.gold)
+                        .font(Theme.Typography.caption).tint(Theme.gold)
                     Button(uploading ? "UPLOADING…" : "UPLOAD EVIDENCE PHOTO") {
                         Task { await upload(image) }
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(Theme.Typography.body).fontWeight(.bold)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(Theme.gold).foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     .disabled(uploading)
                     Button("Retake") { showCamera = true }
-                        .font(.system(size: 12)).foregroundStyle(Theme.neutral)
+                        .font(Theme.Typography.caption).foregroundStyle(Theme.neutral)
                 }
                 if let status {
-                    Text(status).font(.system(size: 11, design: .monospaced))
+                    Text(status).font(Theme.Typography.mono)
                         .foregroundStyle(status.hasPrefix("✓") ? Theme.gold : Theme.red)
                 }
                 Spacer()
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("FIELD PHOTO")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showCamera) {
-                CameraPicker { image = $0 }
-                    .ignoresSafeArea()
+            .fullScreenCover(isPresented: $showCamera) {
+                EvidenceCameraView { imgs in if let first = imgs.first { image = first } }
             }
         }
     }
@@ -93,7 +92,7 @@ struct FieldPhotoSheet: View {
            let t = try? await client.login(username: u, password: p) {
             KeychainStore.save(t, key: "rmpgJWT"); client.jwt = t
         }
-        guard let jwt = client.jwt else { status = "✗ Set RMPG credentials in Settings"; return }
+        guard client.jwt != nil else { status = "✗ Set RMPG credentials in Settings"; return }
 
         var fields: [String: String] = ["notes": notes]
         if let loc = LocationManager.shared.last {
@@ -106,30 +105,9 @@ struct FieldPhotoSheet: View {
             fields["call_id"] = "\(callId)"
         }
 
-        // Multipart body
-        let boundary = "rmpg-\(UUID().uuidString)"
-        var body = Data()
-        for (key, value) in fields where !value.isEmpty {
-            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"field.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(jpeg)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
-        var req = URLRequest(url: client.baseURL.appendingPathComponent("api/field-photos"))
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if (200..<300).contains(code) {
-                status = "✓ Photo uploaded\(fields["call_id"] != nil ? " + attached to call" : "") — visible on desktop"
-            } else {
-                status = "✗ HTTP \(code): \(String(data: data, encoding: .utf8)?.prefix(120) ?? "")"
-            }
+            _ = try await MultipartUpload.upload(client, path: "api/field-photos", fields: fields, jpeg: jpeg)
+            status = "✓ Photo uploaded\(fields["call_id"] != nil ? " + attached to call" : "") — visible on desktop"
         } catch {
             status = "✗ \(error.localizedDescription)"
         }
@@ -159,7 +137,7 @@ struct BoloComposer: View {
                     .lineLimit(3...6)
                 Button("ISSUE BOLO") { Task { await submit() } }
                     .fontWeight(.semibold).disabled(title.isEmpty)
-                if let status { Text(status).font(.system(size: 11, design: .monospaced)) }
+                if let status { Text(status).font(Theme.Typography.mono) }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.base)

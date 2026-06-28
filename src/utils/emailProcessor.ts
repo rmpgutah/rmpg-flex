@@ -7,6 +7,7 @@
 // Each owns its own try/catch so a failure here can't abort the trip
 // sweep or the warrant scan.
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute } from './db';
 import { graphFetch, GraphNotConfiguredError } from './msGraph';
@@ -222,7 +223,7 @@ async function applyActions(env: Bindings, msg: MessageRow, actions: Actions, ru
         body: JSON.stringify({ isRead: true }),
       });
       await execute(db, `UPDATE email_messages SET is_read = 1 WHERE graph_id = ?`, msg.graph_id);
-    } catch (e) { console.error('[Email rules] mark_read failed:', e); }
+    } catch (e) { log.error('mark_read failed', {}, e); }
   }
   if (actions.flag) {
     try {
@@ -231,7 +232,7 @@ async function applyActions(env: Bindings, msg: MessageRow, actions: Actions, ru
         body: JSON.stringify({ flag: { flagStatus: 'flagged' } }),
       });
       await execute(db, `UPDATE email_messages SET is_flagged = 1 WHERE graph_id = ?`, msg.graph_id);
-    } catch (e) { console.error('[Email rules] flag failed:', e); }
+    } catch (e) { log.error('flag failed', {}, e); }
   }
   if (actions.move_to_folder) {
     try {
@@ -240,7 +241,7 @@ async function applyActions(env: Bindings, msg: MessageRow, actions: Actions, ru
         body: JSON.stringify({ destinationId: actions.move_to_folder }),
       });
       await execute(db, `UPDATE email_messages SET folder_id = ? WHERE graph_id = ?`, actions.move_to_folder, msg.graph_id);
-    } catch (e) { console.error('[Email rules] move failed:', e); }
+    } catch (e) { log.error('move failed', {}, e); }
   }
   if (actions.categorize && typeof actions.categorize === 'string') {
     await execute(
@@ -272,7 +273,7 @@ async function applyActions(env: Bindings, msg: MessageRow, actions: Actions, ru
           actions.notify_user_id,
         );
       }
-    } catch (e) { console.error('[Email rules] notify failed:', e); }
+    } catch (e) { log.error('notify failed', {}, e); }
   }
 
   // Record the match for the audit trail.
@@ -329,7 +330,7 @@ export async function applyRulesToRecent(env: Bindings): Promise<RulesResult> {
           await applyActions(env, msg, actions, rule.id);
           result.matches++;
         } catch (e) {
-          console.error(`[Email rules] rule ${rule.id} actions failed:`, e);
+          log.error('rule actions failed', { ruleId: rule.id }, e);
         }
       }
     }

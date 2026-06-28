@@ -18,6 +18,7 @@ import type {
 } from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import ExportButton from '../../../components/ExportButton';
 import { safeDateStr, parseTimestamp } from '../../../utils/dateUtils';
 
@@ -48,7 +49,7 @@ function typeBadgeStyle(type: DisciplinaryType) {
     case 'termination':
       return 'bg-red-900/30 text-red-300 border-red-500/40';
     case 'counseling':
-      return 'bg-gray-900/20 text-gray-400 border-gray-600/30';
+      return 'bg-surface-sunken/20 text-rmpg-400 border-border-subtle/30';
     default:
       return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-700/30';
   }
@@ -61,7 +62,7 @@ function statusBadge(status: DisciplinaryStatus) {
     case 'closed':
       return { bg: 'bg-green-900/20 text-green-400 border-green-600/30', label: 'Closed' };
     case 'appealed':
-      return { bg: 'bg-gray-900/20 text-gray-400 border-gray-600/30', label: 'Appealed' };
+      return { bg: 'bg-surface-sunken/20 text-rmpg-400 border-border-subtle/30', label: 'Appealed' };
     default:
       return { bg: 'bg-rmpg-800 text-rmpg-400', label: status };
   }
@@ -108,6 +109,10 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DisciplinaryRecord | null>(null);
+
+  // Delete confirm dialog
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
 
   // Expanded descriptions
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -170,14 +175,22 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     setModalOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this disciplinary record? This cannot be undone.')) return;
+  const handleDelete = (id: number) => {
+    setConfirmDeleteId(id);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/disciplinary/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/disciplinary/${confirmDeleteId}`, { method: 'DELETE' });
       toast.addToast('Record deleted', 'success');
+      setConfirmDeleteId(null);
       fetchRecords();
     } catch {
       toast.addToast('Failed to delete record', 'error');
+    } finally {
+      setConfirmDeleteLoading(false);
     }
   };
 
@@ -254,7 +267,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
 
     return (
       <div className="p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
           <Shield size={14} className="text-brand-400" />
           My Disciplinary Records
         </h2>
@@ -322,7 +335,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     <div className="p-4 space-y-4">
       {/* Header + actions */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
           <Shield size={14} className="text-brand-400" />
           Disciplinary Records
         </h2>
@@ -333,8 +346,8 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               onClick={() => setViewMode('list')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'list'
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-surface-sunken text-rmpg-400 hover:text-white'
+                  ? 'bg-brand-600 text-rmpg-100'
+                  : 'bg-surface-sunken text-rmpg-400 hover:text-rmpg-100'
               }`}
             >
               <List size={12} /> List
@@ -343,8 +356,8 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               onClick={() => setViewMode('timeline')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'timeline'
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-surface-sunken text-rmpg-400 hover:text-white'
+                  ? 'bg-brand-600 text-rmpg-100'
+                  : 'bg-surface-sunken text-rmpg-400 hover:text-rmpg-100'
               }`}
             >
               <Clock size={12} /> Timeline
@@ -352,8 +365,9 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           </div>
           <ExportButton exportUrl="/api/hr/disciplinary/export/csv" exportFilename="disciplinary.csv" />
           <button type="button"
+            data-hr-new-btn
             onClick={handleCreate}
-            className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm flex items-center gap-1.5"
+            className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm flex items-center gap-1.5"
           >
             <Plus size={12} /> Add Record
           </button>
@@ -366,7 +380,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select id="ff-disciplinarytab-0"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
           >
             <option value="">All Officers</option>
             {officers.map(o => (
@@ -378,7 +392,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select id="ff-disciplinarytab-1"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
           >
             <option value="">All Types</option>
             {Object.entries(DISCIPLINARY_TYPE_LABELS).map(([v, l]) => (
@@ -390,7 +404,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select id="ff-disciplinarytab-2"
             value={filterSeverity}
             onChange={e => setFilterSeverity(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
           >
             <option value="">All Severities</option>
             <option value="minor">Minor</option>
@@ -401,7 +415,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select id="ff-disciplinarytab-3"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
           >
             <option value="">All Statuses</option>
             <option value="open">Open</option>
@@ -448,7 +462,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select id="ff-disciplinarytab-4"
             value={selectedOfficerId}
             onChange={e => setSelectedOfficerId(e.target.value)}
-            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 w-full sm:w-64"
           >
             <option value="">Select officer...</option>
             {officers.map(o => (
@@ -483,6 +497,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
         onSubmit={handleSubmit}
         editRecord={editRecord}
         officers={officers}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Record"
+        message="Delete this disciplinary record? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
       />
     </div>
   );
@@ -599,7 +625,7 @@ function RecordCard({
             {onEdit && (
               <button type="button"
                 onClick={onEdit}
-                className="p-1 text-rmpg-400 hover:text-white rounded-sm hover:bg-surface-raised"
+                className="p-1 text-rmpg-400 hover:text-rmpg-100 rounded-sm hover:bg-surface-raised"
                 title="Edit"
               >
                 <Pencil size={13} />
@@ -648,7 +674,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
                 ) : (
                   <Shield size={12} style={{ color }} />
                 )}
-                <span className="font-medium text-white">
+                <span className="font-medium text-rmpg-100">
                   {DISCIPLINARY_TYPE_LABELS[rec.type] ?? rec.type}
                 </span>
                 <span className="text-rmpg-500">

@@ -28,7 +28,7 @@
 // { type:'authenticate', token }. Only authenticated sockets receive alerts.
 
 import { jwtVerify } from 'jose';
-import { getDb, queryFirst } from '../utils/db';
+import { getDb, queryFirst, execute } from '../utils/db';
 
 interface AlertEnv {
   DB: D1Database;
@@ -47,10 +47,16 @@ interface ActivePanic {
   payload: unknown;   // the exact { type:'panic_alert', action, panic } frame
   acked: boolean;     // true once any dispatcher acknowledges — silences reminders
   firstAt: number;    // epoch ms of activation — bounds how long we nag
+  level?: number;     // escalation level (1 = initial; bumped while unacked)
 }
 
 const REMINDER_INTERVAL_MS = 15_000;   // re-broadcast unacked panics this often
 const REMINDER_MAX_MS = 5 * 60_000;    // stop nagging after 5 min (call card carries it)
+// Spillman parity: an UNACKNOWLEDGED emergency escalates. Level 1 at
+// activation, level 2 after 60s without dispatcher ack, level 3 after 180s.
+// Each bump persists to panic_alerts.escalation_level and broadcasts a
+// panic_escalated frame (consoles render the level; voice re-announces).
+const ESCALATION_STEPS_MS = [60_000, 180_000];
 const STORAGE_KEY = 'active_panics';
 
 export class AlertHubDO {
@@ -192,7 +198,7 @@ export class AlertHubDO {
     if (body.type !== 'panic_alert' || panicId == null) return;
 
     if (action === 'panic_activated') {
-      this.active.set(panicId, { panicId, payload: frame, acked: false, firstAt: Date.now() });
+      this.active.set(panicId, { panicId, payload: frame, acked: false, firstAt: Date.now(), level: 1 });
       await this.persist();
       await this.armReminder();
     } else if (action === 'panic_acknowledged') {
@@ -248,17 +254,47 @@ export class AlertHubDO {
   }
 
   // DO alarm — re-broadcast every unacked, not-yet-expired panic so the
-  // alarm persists agency-wide until a dispatcher acknowledges it.
+  // alarm persists agency-wide until a dispatcher acknowledges it, and
+  // escalate panics that nobody has acknowledged (Spillman: an unanswered
+  // emergency gets louder, not quieter).
   async alarm(): Promise<void> {
     // Drop any panic the DB has since closed before nagging the fleet again.
     await this.reconcileActive();
     let stillNagging = false;
+    let levelsChanged = false;
     for (const a of this.active.values()) {
       if (a.acked) continue;
-      if ((Date.now() - a.firstAt) >= REMINDER_MAX_MS) continue;
+      const elapsed = Date.now() - a.firstAt;
+      if (elapsed >= REMINDER_MAX_MS) continue;
+
+      // Escalation sweep — bump the level when an unacked panic crosses a
+      // threshold. Best-effort D1 write; the broadcast is what consoles react
+      // to, and reconcileActive keeps D1 the source of truth for liveness.
+      const targetLevel = 1 + ESCALATION_STEPS_MS.filter((ms) => elapsed >= ms).length;
+      if (targetLevel > (a.level ?? 1)) {
+        a.level = targetLevel;
+        levelsChanged = true;
+        try {
+          await execute(
+            getDb(this.env as any),
+            'UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime(\'now\') WHERE id = ? AND status = \'active\'',
+            targetLevel, a.panicId,
+          );
+        } catch (err) {
+          console.error('[AlertHubDO] escalation_level write failed (non-fatal)', err);
+        }
+        this.broadcast({
+          type: 'panic_alert',
+          action: 'panic_escalated',
+          panic_id: a.panicId,
+          panic: { id: a.panicId, panic_id: a.panicId, escalation_level: targetLevel },
+        });
+      }
+
       this.broadcast(a.payload);
       stillNagging = true;
     }
+    if (levelsChanged) await this.persist();
     if (stillNagging) await this.state.storage.setAlarm(Date.now() + REMINDER_INTERVAL_MS);
   }
 }

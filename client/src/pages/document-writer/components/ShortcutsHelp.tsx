@@ -59,7 +59,7 @@ function Key({ combo }: { combo: string }) {
     <span className="flex items-center gap-0.5">
       {combo.split(' + ').map((k, i, arr) => (
         <span key={k} className="flex items-center gap-0.5">
-          <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[#141414] border border-[#2e2e2e] text-rmpg-200 rounded-[2px] min-w-[18px] text-center">{k}</kbd>
+          <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-surface-base border border-rmpg-700 text-rmpg-200 rounded-[2px] min-w-[18px] text-center">{k}</kbd>
           {i < arr.length - 1 && <span className="text-rmpg-600 text-[9px]">+</span>}
         </span>
       ))}
@@ -75,10 +75,10 @@ export default function ShortcutsHelp({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[80vh] overflow-auto bg-[#0a0a0a] border border-[#222] rounded-[2px] shadow-2xl shadow-black/60"
+        className="w-full max-w-2xl max-h-[80vh] overflow-auto bg-surface-sunken border border-border-default rounded-[2px] shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1a1a1a] sticky top-0 bg-[#0a0a0a]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default sticky top-0 bg-surface-sunken">
           <span className="flex items-center gap-2 font-semibold text-rmpg-100 uppercase tracking-wider text-[11px]">
             <Keyboard className="w-3.5 h-3.5 text-[#d4a017]" /> Keyboard Shortcuts
           </span>
@@ -101,8 +101,8 @@ export default function ShortcutsHelp({ onClose }: Props) {
             </div>
           ))}
         </div>
-        <div className="px-4 py-2 border-t border-[#1a1a1a] text-[9px] text-rmpg-600">
-          On macOS, use ⌘ in place of Ctrl. Press <kbd className="px-1 py-0.5 bg-[#141414] border border-[#2e2e2e] rounded-[2px]">?</kbd> any time to reopen this sheet.
+        <div className="px-4 py-2 border-t border-border-default text-[9px] text-rmpg-600">
+          On macOS, use ⌘ in place of Ctrl. Press <kbd className="px-1 py-0.5 bg-surface-base border border-rmpg-700 rounded-[2px]">?</kbd> any time to reopen this sheet.
         </div>
       </div>
     </div>

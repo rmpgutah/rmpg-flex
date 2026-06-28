@@ -41,7 +41,7 @@ export function useMapTrackingLines({ map, mapLoaded, units, calls }: UseMapTrac
       if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
-      const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
+      const statusColor = UNIT_STATUS_COLORS[unit.status] || 'var(--rmpg-500)';
       const isDashed = unit.status === 'dispatched';
 
       features.push({

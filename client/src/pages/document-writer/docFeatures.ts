@@ -10,7 +10,8 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import type { DocSettings, PageSize } from './types';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 // ── Auto-numbered captions (Figure 1, Table 2, Exhibit A…) ──────────────────
 
@@ -128,6 +129,83 @@ export function activeMarginPresetId(settings: DocSettings): MarginPreset['id'] 
       p.margins.bottom === m.bottom && p.margins.left === m.left,
   );
   return hit ? hit.id : 'custom';
+}
+
+// ── Document format presets (LE/court named bundles) ───────────────────────
+// Each preset bundles page geometry + margins + document flags into a single
+// named archetype. Applying a preset overwrites only the fields it specifies.
+
+export interface DocumentFormatPreset {
+  id: string;
+  label: string;
+  description: string;
+  page: { size: PageSize; orientation: 'portrait' | 'landscape' };
+  margins: { top: number; right: number; bottom: number; left: number };
+  letterhead?: boolean;
+  lineNumbers?: boolean;
+  footer?: { enabled: boolean; text: string; showDate: boolean; showAuthor: boolean };
+}
+
+export const DOCUMENT_FORMAT_PRESETS: DocumentFormatPreset[] = [
+  {
+    id: 'le-field-report',
+    label: 'LE Field Report',
+    description: 'Standard narrative report — letter, 0.75in margins, no letterhead, line numbers for review',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 72, right: 72, bottom: 72, left: 72 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'court-filing',
+    label: 'Court Filing',
+    description: 'Legal-size paper, 1.5in left binding margin, double-spaced — standard pleading format',
+    page: { size: 'legal', orientation: 'portrait' },
+    margins: { top: 96, right: 96, bottom: 96, left: 144 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'warrant-affidavit',
+    label: 'Warrant / Affidavit',
+    description: 'Letter paper, formal 1.5in top margin for judicial signature block, line numbers',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 144, right: 96, bottom: 96, left: 96 },
+    letterhead: false,
+    lineNumbers: true,
+  },
+  {
+    id: 'evidence-report',
+    label: 'Evidence Report',
+    description: 'Letter, standard 1in margins, agency letterhead, officer/date footer',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 96, right: 96, bottom: 96, left: 96 },
+    letterhead: true,
+    lineNumbers: false,
+    footer: { enabled: true, text: 'EVIDENCE REPORT — RMPG', showDate: true, showAuthor: true },
+  },
+  {
+    id: 'official-memo',
+    label: 'Official Memo / Letter',
+    description: 'Letter, formal 1.5in top for letterhead masthead, 1.25in sides, agency header',
+    page: { size: 'letter', orientation: 'portrait' },
+    margins: { top: 144, right: 120, bottom: 96, left: 120 },
+    letterhead: true,
+    lineNumbers: false,
+  },
+];
+
+/** Deep-merge a document format preset into the current DocSettings. Only the
+ *  fields declared in the preset are overwritten; everything else stays intact. */
+export function applyDocumentFormatPreset(settings: DocSettings, preset: DocumentFormatPreset): DocSettings {
+  const next = { ...settings, page: { ...settings.page } };
+  next.page.size = preset.page.size;
+  next.page.orientation = preset.page.orientation;
+  next.page.margins = { ...preset.margins };
+  if (preset.letterhead !== undefined) next.letterhead = preset.letterhead;
+  if (preset.lineNumbers !== undefined) next.lineNumbers = preset.lineNumbers;
+  if (preset.footer !== undefined) next.footer = { ...preset.footer };
+  return next;
 }
 
 // ── Export selection only ───────────────────────────────────────────────────

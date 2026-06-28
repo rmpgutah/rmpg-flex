@@ -25,7 +25,7 @@ export default function MobileContextBar({
     <div
       style={{
         height: 28,
-        background: '#050505',
+        background: 'var(--surface-overlay)',
         borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'center',
@@ -50,7 +50,7 @@ export default function MobileContextBar({
             fontSize: 11,
             fontFamily: 'var(--font-mono, monospace)',
             fontWeight: 700,
-            color: '#999999',
+            color: 'var(--rmpg-400)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -66,7 +66,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: radioChannel ? '#22c55e' : '#666666',
+            color: radioChannel ? '#22c55e' : 'var(--rmpg-500)',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap',
           }}
@@ -100,7 +100,7 @@ export default function MobileContextBar({
           style={{
             fontSize: 10,
             fontFamily: 'var(--font-mono, monospace)',
-            color: gpsTracking ? '#22c55e' : '#666666',
+            color: gpsTracking ? '#22c55e' : 'var(--rmpg-500)',
           }}
         >
           {gpsTracking ? 'GPS' : ''}

@@ -1,12 +1,21 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
+import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
+import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
+import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDefendants';
+import type { FieldVerdict } from '../types/serveIntakeJudge';
+import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
+import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -129,8 +138,8 @@ const DOCUMENT_TYPES = [
   { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
   { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
   { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
-  { value: 'correspondence', label: 'Correspondence', color: 'bg-slate-900/40 text-slate-400 border-slate-700/40' },
-  { value: 'other', label: 'Other', color: 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40' },
+  { value: 'correspondence', label: 'Correspondence', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
 function confidenceColor(conf: number): string {
@@ -191,6 +200,20 @@ function fileMeta(f: UploadedFile): string {
 // the caller can flip the bar from determinate % to an indeterminate
 // "analyzing" state while the server runs OCR + extraction. Resolves with the
 // raw status/text the caller needs (mirrors what it used from the Response).
+// Read the bytes into an in-memory File so the eventual upload doesn't fail
+// with ERR_UPLOAD_FILE_CHANGED when something touches the disk file between
+// pick and submit. The intake flow holds files in state for seconds-to-
+// minutes while the operator reviews OCR — plenty of time for iCloud Drive
+// / OneDrive / Spotlight / anti-virus to bump lastModified on the original.
+// The snapshot is backed by an ArrayBuffer the browser owns, so a disk
+// change can no longer abort the multipart send. Preserves name/type/
+// lastModified so the rest of the page (status badges, dedupe heuristics,
+// scan-OCR docType inference) is unaffected.
+async function snapshotFile(f: File): Promise<File> {
+  const bytes = await f.arrayBuffer();
+  return new File([bytes], f.name, { type: f.type, lastModified: f.lastModified });
+}
+
 function xhrUpload(
   url: string,
   body: FormData,
@@ -208,7 +231,21 @@ function xhrUpload(
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
     xhr.upload.onload = () => onSent();
     xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    // XHR onerror doesn't surface the underlying browser code (ERR_UPLOAD_FILE_CHANGED,
+    // ERR_INTERNET_DISCONNECTED, ERR_HTTP2_PROTOCOL_ERROR, etc.) — the spec
+    // gives us nothing. We can at least disambiguate the offline case via
+    // navigator.onLine, and tell the operator what to check next; the
+    // ERR_UPLOAD_FILE_CHANGED race is now defended at the snapshotFile() seam
+    // in handleFiles, so a generic network failure here is most likely a real
+    // connectivity / firewall issue.
+    xhr.onerror = () => {
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      reject(new Error(
+        offline
+          ? 'Upload failed: device is offline. Reconnect and try again.'
+          : 'Upload failed: network error. Check your connection or VPN/firewall; if the file is in iCloud/OneDrive, copy it to a local folder first and retry.',
+      ));
+    };
     // Distinguish a user cancel from a real failure (the `aborted` flag) so
     // the caller resets quietly instead of flashing a scary red error.
     xhr.onabort = () => reject(Object.assign(new Error('Upload canceled'), { aborted: true }));
@@ -268,6 +305,49 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
+  // Pre-submission field overrides: operator edits BEFORE clicking Create.
+  // Keys match the server's field key names (e.g. `recipient_first_name`).
+  const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  // Active clients for the client selector dropdown.
+  const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  // Audit caught (2026-06-21): bare .catch(() => {}) left the clients
+  // dropdown empty when the load failed. Operator couldn't tell whether
+  // there were no clients or whether the load broke — they then created
+  // intakes with no client attached, breaking downstream billing
+  // auto-assign. Surface the failure and block submit.
+  const [clientLoadError, setClientLoadError] = useState<string | null>(null);
+  const [detectedDefendants, setDetectedDefendants] = useState<DetectedDefendant[]>([]);
+  const [selectedDefendants, setSelectedDefendants] = useState<string[]>([]);
+  const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
+  // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
+  const [confirmReset, setConfirmReset] = useState(false);
+  // ConfirmDialog for removing a single document from the pre-submit list.
+  const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  useEffect(() => {
+    setClientsLoading(true);
+    apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
+      .then((data) => { setClients(data); setClientLoadError(null); })
+      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
+      .finally(() => setClientsLoading(false));
+  }, []);
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  // Roles that may create new intake records.
+  const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-link: ?intake_id= jumps to the intake result indicated.
+  // ?case_id= navigates to the dispatch call for that case.
+  // Both captured at mount via ref so the values survive later setSearchParams strips.
+  const pendingIntakeIdRef = useRef<string | null>(searchParams.get('intake_id'));
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
+
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -289,7 +369,92 @@ export default function ServeIntakePage() {
       window.removeEventListener('drop', stop);
     };
   }, []);
-  const navigate = useNavigate();
+
+  // Deep-link: strip ?intake_id= / ?case_id= after mount (no-ops if absent).
+  // ?case_id= redirects to /dispatch immediately; ?intake_id= just toasts the id.
+  useEffect(() => {
+    const intakeId = pendingIntakeIdRef.current;
+    const caseId = pendingCaseIdRef.current;
+    pendingIntakeIdRef.current = null;
+    pendingCaseIdRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    if (caseId) {
+      next.delete('case_id');
+      setSearchParams(next, { replace: true });
+      navigate(`/dispatch?call_id=${caseId}`);
+      return;
+    }
+    if (intakeId) {
+      next.delete('intake_id');
+      setSearchParams(next, { replace: true });
+      addToast(`Viewing intake #${intakeId}`, 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Keyboard shortcuts:
+  //   N  — start a new intake (focus the file picker); gated by canManage
+  //   Esc — cascade: OCR preview → attempt modal → confirmReset → confirmRemoveFileIdx
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showAttemptModal) { e.stopPropagation(); setShowAttemptModal(false); return; }
+        if (confirmReset) { e.stopPropagation(); setConfirmReset(false); return; }
+        if (confirmRemoveFileIdx !== null) { e.stopPropagation(); setConfirmRemoveFileIdx(null); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        if (isTyping(e.target)) return;
+        if (!canManage) return;
+        e.preventDefault();
+        fileInputRef.current?.click();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showOcrPreview, showAttemptModal, confirmReset, confirmRemoveFileIdx, canManage]);
+
+  // Merge OCR field values from newly-loaded images into editOverrides.
+  // "Fill empty slots" strategy: only writes keys not already set by the
+  // operator (or a prior file), so manual edits and earlier-file values
+  // are never overwritten when a second document is added to the batch.
+  // Takes the highest-confidence value per field across all image files.
+  useEffect(() => {
+    const best: Record<string, { value: string; conf: number }> = {};
+    for (const f of files) {
+      if (!f.ocrResult?.fields) continue;
+      for (const [k, v] of Object.entries(f.ocrResult.fields as Record<string, { value: string; confidence: number }>)) {
+        if (v.value && v.confidence > (best[k]?.conf ?? 0)) {
+          best[k] = { value: v.value, conf: v.confidence };
+        }
+      }
+    }
+    if (Object.keys(best).length === 0) return;
+    setEditOverrides(prev => {
+      const next = { ...prev };
+      for (const [k, { value }] of Object.entries(best)) {
+        if (!next[k]) next[k] = value;
+      }
+      return next;
+    });
+    let bestDefendant = '';
+    let bestConf = 0;
+    for (const f of files) {
+      const v = f.ocrResult?.fields?.defendant;
+      if (v?.value && v.confidence > bestConf) { bestDefendant = v.value; bestConf = v.confidence; }
+    }
+    const detected = parseDefendants(bestDefendant);
+    setDetectedDefendants(detected);
+    setSelectedDefendants(prev => {
+      if (prev.length === 0 && detected.length > 0) return detected.map(d => d.name);
+      return prev.filter(n => detected.some(d => d.name === n));
+    });
+  }, [files]);
 
   const extractPdfText = useCallback(async (file: File): Promise<{ text: string; pages: number }> => {
     try {
@@ -355,10 +520,13 @@ export default function ServeIntakePage() {
     return out;
   }, []);
 
-  const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
+  const ocrScanImage = useCallback(async (file: File, docType: string = 'auto'): Promise<OcrScanResult | null> => {
     try {
       const formData = new FormData();
       formData.append('image', file);
+      // 'auto' → the server's Claude-vision engine classifies the image (ID card /
+      // license plate / serve document) AND extracts its fields in one call.
+      formData.append('docType', docType);
       const token = localStorage.getItem('rmpg_token');
       const resp = await fetch('/api/ocr/scan-document', {
         method: 'POST',
@@ -372,12 +540,53 @@ export default function ServeIntakePage() {
     return null;
   }, []);
 
+  // Server-side field extraction for born-digital PDFs. The client already
+  // extracted the text via pdfjs; we send that text alongside the file so the
+  // Worker skips the OCR container (not rolled out in prod) and runs the LLM
+  // extraction directly. When the scan resolves, the file entry is updated with
+  // the ocrResult so the useEffect below can merge fields into editOverrides.
+  // Fire-and-forget — errors are silent so they don't block the UI.
+  const scanPdfOcr = useCallback(async (file: File, text: string) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('client_text', text);
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/serve-intake/scan-document', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!resp.ok) return;
+      const scanResult: OcrScanResult = await resp.json();
+      if (scanResult?.fields) {
+        setFiles(prev => prev.map(f =>
+          f.file === file ? { ...f, ocrResult: scanResult } : f,
+        ));
+      }
+    } catch { /* best-effort pre-fill — silent on error */ }
+  }, []);
+
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
     const newFiles: UploadedFile[] = [];
-    for (const file of Array.from(fileList)) {
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf';
+    // Born-digital PDFs queued for server-side LLM field extraction after setFiles.
+    const pdfScans: Array<{ file: File; text: string }> = [];
+    for (const rawFile of Array.from(fileList)) {
+      const isImage = rawFile.type.startsWith('image/');
+      const isPdf = rawFile.type === 'application/pdf';
       if (!isImage && !isPdf) continue;
+
+      // Snapshot to in-memory bytes immediately so the eventual upload
+      // can't abort with ERR_UPLOAD_FILE_CHANGED if the disk file is
+      // touched while the operator reviews OCR. See snapshotFile() above.
+      let file: File;
+      try {
+        file = await snapshotFile(rawFile);
+      } catch {
+        // arrayBuffer() can throw if the underlying file vanished between
+        // pick and read (rare). Skip the file rather than wedge the batch.
+        continue;
+      }
 
       let text = '';
       let ocrResult: any = null;
@@ -405,22 +614,32 @@ export default function ServeIntakePage() {
         // so the server's Vision OCR can read them. The original PDF is still
         // uploaded too (audit trail + server fallback), but these images are
         // what actually carry the recipient/service data through extraction.
+        // We also run ocrScanImage on each page immediately so editOverrides
+        // gets pre-filled from the scanned content — same path as dropped images.
         if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
           const pages = await rasterizePdf(file);
           for (let p = 0; p < pages.length; p++) {
+            const pageOcr = await ocrScanImage(pages[p], type);
             newFiles.push({
               name: pages[p].name,
               type,
-              text: '',
-              status: 'extracted',     // server Vision will do the real extraction
+              text: pageOcr?.rawText || '',
+              status: 'extracted',
               file: pages[p],
               derivedFrom: file.name,
+              ocrResult: pageOcr ?? undefined,
             });
           }
           // A scanned PDF that rasterized OK isn't an error — its OCR rides on
           // the derived images. Mark it so the row shows "Scan OCR" + a green
           // check instead of a misleading ⚠️ "no text" warning.
           scanned = pages.length > 0;
+        } else {
+          // Born-digital PDF with a text layer: queue for server-side LLM
+          // field extraction so the review panel pre-fills with extracted values.
+          // Fired after setFiles so the file is already in state when the result
+          // arrives and updates it. Same flow as ocrScanImage for image files.
+          pdfScans.push({ file, text });
         }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
@@ -448,7 +667,11 @@ export default function ServeIntakePage() {
     setError(null);
     setResult(null);
     setOcrPreview(null);
-  }, [extractPdfText, ocrScanImage]);
+    // Fire server-side extraction for born-digital PDFs in parallel (best-effort).
+    // Results trickle back and update the file entries, which triggers the
+    // useEffect below to merge fields into editOverrides.
+    pdfScans.forEach(({ file, text }) => scanPdfOcr(file, text));
+  }, [extractPdfText, ocrScanImage, scanPdfOcr]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -481,10 +704,15 @@ export default function ServeIntakePage() {
 
   // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
   // (derivedFrom === the removed file's name) so they don't upload orphaned.
+  // Gated to canManage — non-managers cannot remove documents.
   const removeFile = (idx: number) => setFiles(prev => {
     const target = prev[idx];
     return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
   });
+  const requestRemoveFile = (idx: number) => {
+    if (!canManage) return;
+    setConfirmRemoveFileIdx(idx);
+  };
   const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
@@ -510,6 +738,10 @@ export default function ServeIntakePage() {
   // failure (e.g. all files exceed the per-file 25 MB cap).
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
+    if (detectedDefendants.length > 1 && selectedDefendants.length === 0) {
+      setError('Pick at least one defendant to serve.');
+      return;
+    }
     setProcessing(true);
     setError(null);
     setResult(null);
@@ -529,9 +761,24 @@ export default function ServeIntakePage() {
         // uses it for born-digital PDFs so it doesn't have to round-trip
         // through the OCR container (which isn't rolled out in prod).
         // Only empty/scanned PDFs fall through to the container path.
+        if (selectedDefendants.length > 0 || detectedDefendants.length > 1) {
+          formData.append('defendants_selected', JSON.stringify(selectedDefendants));
+        }
         formData.append('client_text', JSON.stringify(
           filesWithBlobs.map(f => ({ name: f.name, type: f.type, text: f.text || '' })),
         ));
+        // Send operator overrides from the pre-submission review panel.
+        // Server applies them at confidence 1.0 after its own extraction,
+        // so they win over any AI-extracted value.
+        const nonEmptyOverrides = Object.fromEntries(
+          Object.entries(editOverrides).filter(([, v]) => v.trim()),
+        );
+        if (Object.keys(nonEmptyOverrides).length > 0) {
+          formData.append('field_overrides', JSON.stringify(nonEmptyOverrides));
+        }
+        if (selectedClientId) {
+          formData.append('client_id', String(selectedClientId));
+        }
         // performance.now() (monotonic, immune to wall-clock jumps) anchors
         // the ETA. Speed is averaged over the whole transfer so far — see the
         // smoothing note where setUploadStat is called.
@@ -569,6 +816,9 @@ export default function ServeIntakePage() {
         const body = JSON.parse(resp.text) as IntakeResult & { warning?: string };
         if (body.success) {
           setResult(body);
+          if ((body as any).judge_verdicts) {
+            setJudgeVerdicts((body as any).judge_verdicts);
+          }
         } else {
           // Surface the server's specific reason (e.g. "Documents stored
           // but no recipient could be extracted (…)") rather than a
@@ -602,7 +852,7 @@ export default function ServeIntakePage() {
     setProcessing(false);
     setUploadPhase('idle');
     setUploadStat(null);
-  }, [files]);
+  }, [files, editOverrides, detectedDefendants, selectedDefendants]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —
   // once the server is analyzing it may already be committing records, so
@@ -634,6 +884,32 @@ export default function ServeIntakePage() {
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
 
+      {/* Tab strip */}
+      <div className="flex gap-0 border-b border-surface-border">
+        {(['intake', 'schedule'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex items-center gap-1.5 px-4 py-[6px] text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-brand-400 text-brand-300'
+                : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
+            }`}
+          >
+            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
+            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
+          </button>
+        ))}
+      </div>
+
+      {/* Schedule calendar view */}
+      {activeTab === 'schedule' && (
+        <ServeAttemptCalendar />
+      )}
+
+      {/* Intake upload flow — hidden when on schedule tab */}
+      {activeTab === 'intake' && <>
+
       <div
         ref={dropRef}
         onDrop={handleDrop}
@@ -645,14 +921,14 @@ export default function ServeIntakePage() {
         role="button"
         tabIndex={0}
         aria-label="Upload documents: drag and drop or press Enter to browse"
-        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#d4a017]/40 transition-all ${
+        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-400/40 transition-all ${
           dragActive
-            ? 'border-[#d4a017] bg-[#d4a017]/10 ring-2 ring-[#d4a017]/40'
+            ? 'border-brand-400 bg-brand-400/10 ring-2 ring-brand-400/40'
             : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-surface-raised/50 focus:border-rmpg-400'
         }`}
         style={dragActive ? undefined : { background: 'var(--surface-sunken)' }}
       >
-        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-[#d4a017]' : 'text-rmpg-500'}`} />
+        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
@@ -665,6 +941,15 @@ export default function ServeIntakePage() {
           onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
         />
       </div>
+
+      {/* Empty state — no files loaded, not processing, no completed result */}
+      {!processing && !result && files.length === 0 && (
+        <p className="text-center text-[10px] text-rmpg-600 py-2">
+          {canManage
+            ? 'Drop a job packet above or press N to browse — PDF, images, or a whole folder.'
+            : 'Contact a supervisor to process service intakes.'}
+        </p>
+      )}
 
       {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
@@ -685,7 +970,7 @@ export default function ServeIntakePage() {
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <span className="text-white font-medium truncate block">{f.name}</span>
+                <span className="text-rmpg-100 font-medium truncate block">{f.name}</span>
                 {fileMeta(f) && (
                   <span className={`text-[9px] font-mono truncate block ${(f.size || 0) > MAX_UPLOAD_BYTES ? 'text-red-400' : 'text-rmpg-600'}`}>{fileMeta(f)}</span>
                 )}
@@ -716,7 +1001,7 @@ export default function ServeIntakePage() {
                 aria-label={`Document type for ${f.name}`}
               >
                 {DOCUMENT_TYPES.map(dt => (
-                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-white text-[9px]">{dt.label}</option>
+                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-rmpg-100 text-[9px]">{dt.label}</option>
                 ))}
               </select>
               {f.ocrResult && (
@@ -738,20 +1023,175 @@ export default function ServeIntakePage() {
                   <Eye className="w-3 h-3" /> Review
                 </button>
               )}
-              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              {canManage && (
+                <IconButton onClick={() => requestRemoveFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pre-submission review panel — editable fields populated from
+          client-side OCR (image files) so the operator can correct/
+          supplement extracted values before records are created. */}
+      {files.some(f => !f.derivedFrom) && !result && (
+        <div className="panel-beveled bg-surface-raised">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
+            <Edit3 className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300">Review &amp; Edit Before Creating Records</span>
+            <span className="text-[9px] text-rmpg-500 ml-1">— Fields pre-filled from OCR. Edit any value before submitting.</span>
+          </div>
+          <div className="p-3">
+            <DefendantsPicker
+              detected={detectedDefendants}
+              selected={selectedDefendants}
+              onChange={setSelectedDefendants}
+            />
+            {/* Recipient identity */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              {[
+                { key: 'recipient_first_name', label: 'First Name' },
+                { key: 'recipient_last_name',  label: 'Last Name' },
+                { key: 'recipient_middle_name',label: 'Middle Name' },
+                { key: 'recipient_dob',         label: 'Date of Birth' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                </div>
+              ))}
+            </div>
+            {/* Address */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+              <div className="md:col-span-2">
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Street</label>
+                <input
+                  id="ff-intake-override-recipient_address"
+                  type="text"
+                  value={editOverrides['recipient_address'] ?? ''}
+                  onChange={e => setEditOverrides(prev => ({ ...prev, recipient_address: e.target.value }))}
+                  placeholder="—"
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                />
+                {judgeVerdicts['recipient_address'] && <JudgeFlagChip verdict={judgeVerdicts['recipient_address']} />}
+              </div>
+              {[
+                { key: 'recipient_city',  label: 'City' },
+                { key: 'recipient_state', label: 'State' },
+                { key: 'recipient_zip',   label: 'Zip' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label htmlFor="ff-intake-client" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                </div>
+              ))}
+            </div>
+            {/* Client selector — links the serve to an active RMPG client */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Client</p>
+            <div className="mb-3">
+              {clientLoadError ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/30 border border-red-700/50 rounded-sm text-[10px] text-red-300">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  {clientLoadError}
+                </div>
+              ) : (
+                <select
+                  id="ff-intake-client"
+                  value={selectedClientId ?? ''}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    setSelectedClientId(id);
+                    const name = clients.find(c => c.id === id)?.name ?? '';
+                    setEditOverrides(prev => ({ ...prev, client_name: name }));
+                  }}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
+                  {clients.map(cl => (
+                    <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {/* Case details */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+              {[
+                { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'court_name',        label: 'Court' },
+                { key: 'case_number',       label: 'Case #' },
+                { key: 'job_number',        label: 'Job #' },
+                { key: 'service_deadline',  label: 'Due Date' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Service */}
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { key: 'attorney_name',   label: 'Attorney' },
+                { key: 'attorney_phone',  label: 'Attorney Phone' },
+                { key: 'fee_amount',      label: 'Fee' },
+                { key: 'service_windows', label: 'Service Windows' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label htmlFor="ff-serveintakepage-2" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <input
+                    id={`ff-intake-override-${key}`}
+                    type="text"
+                    value={editOverrides[key] ?? ''}
+                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+              ))}
+            </div>
+            <ServeRecordMatchPanel
+              address={editOverrides['recipient_address'] || ''}
+              businessName={editOverrides['recipient_last_name'] || ''}
+            />
+          </div>
         </div>
       )}
 
       {/* OCR Preview Modal */}
       {showOcrPreview && ocrPreview && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowOcrPreview(false)}>
-          <div className="bg-surface-base border border-[#222] rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
+          <div className="bg-surface-base border border-border-default rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase">OCR Extraction Review</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
                 <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
                   Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
                 </span>
@@ -762,10 +1202,10 @@ export default function ServeIntakePage() {
             </div>
             <div className="p-4 space-y-2">
               <div className="text-[10px] text-rmpg-400 mb-2">
-                Document Type: <span className="text-white font-bold">{ocrPreview.documentType}</span>
-                {' | '} Extracted Fields: <span className="text-white font-bold">{previewFields.length}</span>
+                Document Type: <span className="text-rmpg-100 font-bold">{ocrPreview.documentType}</span>
+                {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
-              <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+              <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
                 <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
                   style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
               </div>
@@ -784,12 +1224,12 @@ export default function ServeIntakePage() {
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-white mt-0.5"
+                          className="w-full bg-surface-overlay border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-white truncate">{field.value}</span>
+                          <span className="text-xs text-rmpg-100 truncate">{field.value}</span>
                           <IconButton
                             onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
                             aria-label={`Edit ${key}`}
@@ -817,14 +1257,14 @@ export default function ServeIntakePage() {
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300 flex items-center gap-1.5">
               {uploadPhase === 'analyzing' ? (
-                <><Loader2 className="w-3 h-3 animate-spin text-[#d4a017]" /> Analyzing Documents</>
+                <><Loader2 className="w-3 h-3 animate-spin text-brand-400" /> Analyzing Documents</>
               ) : (
-                <><Upload className="w-3 h-3 text-[#d4a017]" /> Uploading Documents</>
+                <><Upload className="w-3 h-3 text-brand-400" /> Uploading Documents</>
               )}
             </span>
             <span className="flex items-center gap-2">
               {uploadPhase === 'uploading' && uploadStat && (
-                <span className="text-[10px] font-bold font-mono text-[#d4a017]">{uploadStat.pct.toFixed(0)}%</span>
+                <span className="text-[10px] font-bold font-mono text-brand-400">{uploadStat.pct.toFixed(0)}%</span>
               )}
               {uploadPhase === 'uploading' && (
                 <button
@@ -837,9 +1277,9 @@ export default function ServeIntakePage() {
               )}
             </span>
           </div>
-          <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+          <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
             <div
-              className={`h-full bg-[#d4a017] ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
+              className={`h-full bg-brand-400 ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
               style={{ width: uploadPhase === 'analyzing' ? '100%' : `${uploadStat?.pct ?? 0}%` }}
             />
           </div>
@@ -880,17 +1320,22 @@ export default function ServeIntakePage() {
 
       {/* Process Button */}
       {files.length > 0 && !result && (
-        <button
-          onClick={processIntake}
-          disabled={processing || files.every(f => f.status === 'error') || blockProcessing}
-          className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
-        >
-          {processing ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPhase === 'analyzing' ? 'Analyzing Documents…' : 'Uploading Documents…'}</>
-          ) : (
-            <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+        <>
+          <button
+            onClick={processIntake}
+            disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
+            className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
+          >
+            {processing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPhase === 'analyzing' ? 'Analyzing Documents…' : 'Uploading Documents…'}</>
+            ) : (
+              <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+            )}
+          </button>
+          {!canManage && (
+            <p className="text-[10px] text-rmpg-500 text-center">Contact a supervisor to process intakes.</p>
           )}
-        </button>
+        </>
       )}
 
       {error && (
@@ -922,7 +1367,7 @@ export default function ServeIntakePage() {
                   <User className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Person Created</span>
                 </div>
-                <p className="text-sm font-bold text-white">
+                <p className="text-sm font-bold text-rmpg-100">
                   {result.extracted?.name?.first} {result.extracted?.name?.middle} {result.extracted?.name?.last}
                 </p>
                 {result.extracted?.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
@@ -937,7 +1382,7 @@ export default function ServeIntakePage() {
                   <Building2 className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Document Link</span>
                 </div>
-                <p className="text-xs text-white">{result.extracted?.address || 'No address extracted'}</p>
+                <p className="text-xs text-rmpg-100">{result.extracted?.address || 'No address extracted'}</p>
                 {result.latitude && result.longitude && (
                   <p className="text-[9px] text-green-400 mt-1">
                     <MapPin className="w-3 h-3 inline" /> {result.latitude.toFixed(6)}, {result.longitude.toFixed(6)}
@@ -950,7 +1395,7 @@ export default function ServeIntakePage() {
                   <Phone className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
-                <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
+                <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
@@ -1007,7 +1452,7 @@ export default function ServeIntakePage() {
                 {result.attempt_plan.map((w) => (
                   <div key={w.attempt} className="flex items-center gap-2 text-[10px] py-[2px]">
                     <span className="text-rmpg-500 font-bold">#{w.attempt}</span>
-                    <span className="text-white font-mono">{w.weekday} {w.date}</span>
+                    <span className="text-rmpg-100 font-mono">{w.weekday} {w.date}</span>
                     <span className="text-brand-400 font-mono">{w.window}</span>
                     <span className="text-rmpg-500">{w.focus}</span>
                   </div>
@@ -1029,7 +1474,7 @@ export default function ServeIntakePage() {
               </button>
             )}
             <button
-              onClick={() => { setFiles([]); setResult(null); }}
+              onClick={() => setConfirmReset(true)}
               className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
@@ -1054,6 +1499,34 @@ export default function ServeIntakePage() {
           callNumber={result.call_number}
         />
       )}
+      <ConfirmDialog
+        isOpen={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); }}
+        title="Start New Intake?"
+        message="This will clear all loaded documents and results."
+        confirmLabel="Clear & Start New"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={confirmRemoveFileIdx !== null}
+        onClose={() => setConfirmRemoveFileIdx(null)}
+        onConfirm={() => {
+          if (confirmRemoveFileIdx !== null) {
+            removeFile(confirmRemoveFileIdx);
+            setConfirmRemoveFileIdx(null);
+          }
+        }}
+        title="Remove Document?"
+        message={
+          confirmRemoveFileIdx !== null && files[confirmRemoveFileIdx]
+            ? `Remove "${files[confirmRemoveFileIdx].name}" from this batch?`
+            : 'Remove this document from the intake batch?'
+        }
+        confirmLabel="Remove"
+        confirmVariant="danger"
+      />
+      </>}
     </div>
   );
 }
@@ -1066,7 +1539,7 @@ function rawTextPreview(text: string): React.ReactNode {
       <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300 uppercase tracking-wider">
         Raw OCR Text ({text.length} chars)
       </summary>
-      <pre className="mt-1 p-2 bg-[#050505] border border-[#1a1a1a] rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+      <pre className="mt-1 p-2 bg-surface-overlay border border-border-default rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
         {preview}
         {text.length > 1000 && <span className="text-red-400">\n...truncated ({text.length - 1000} more chars)</span>}
       </pre>

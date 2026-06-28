@@ -37,15 +37,18 @@ cat > "$APP/Info.plist" <<EOF
 <key>CFBundleIdentifier</key><string>$BID</string>
 <key>CFBundleName</key><string>RMPGFlexTester</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleShortVersionString</key><string>1.4</string>
 <key>CFBundleVersion</key><string>$(date +%s)</string>
 <key>UILaunchScreen</key><dict/>
 <key>UIDeviceFamily</key><array><integer>1</integer></array>
 <key>MinimumOSVersion</key><string>17.0</string>
 <key>NSCameraUsageDescription</key><string>Scan driver license barcodes to relay identity data to your MDT desktop session.</string>
+<key>NSFaceIDUsageDescription</key><string>Unlock RMPG Flex with Face ID.</string>
+<key>NSMicrophoneUsageDescription</key><string>Record interaction audio as evidence; recording continues while the phone is locked or backgrounded.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>RMPG Flex transcribes your dictation on-device to fill report and workflow narratives.</string>
 <key>NSLocationWhenInUseUsageDescription</key><string>Send your unit position to the dispatch map and attach coordinates to panic alerts.</string>
 <key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>While on shift, your unit position streams to the dispatch map even when the phone is pocketed, and you get alerts when dispatch assigns you a call.</string>
-<key>UIBackgroundModes</key><array><string>location</string></array>
+<key>UIBackgroundModes</key><array><string>location</string><string>audio</string></array>
 <key>CFBundleIcons</key><dict>
   <key>CFBundlePrimaryIcon</key><dict>
     <key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array>

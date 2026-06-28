@@ -80,7 +80,7 @@ export default function ProofreadPanel({
   };
 
   return (
-    <div className="w-64 sm:w-72 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-64 sm:w-72 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <SpellCheck2 className="w-3 h-3" /> Proofread
@@ -96,7 +96,7 @@ export default function ProofreadPanel({
       </div>
 
       {showDict && (
-        <div className="mb-2 border border-[#1a1a1a] rounded-[2px] p-1.5 bg-[#080808]">
+        <div className="mb-2 border border-border-default rounded-[2px] p-1.5 bg-surface-sunken">
           <div className="text-[9px] uppercase font-semibold text-rmpg-400 mb-1 flex items-center gap-1">
             <BookMarked className="w-3 h-3" /> Custom dictionary ({dictWords.length})
           </div>
@@ -105,7 +105,7 @@ export default function ProofreadPanel({
               value={newWord} onChange={(e) => setNewWord(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(); } }}
               placeholder="Add word(s)…" aria-label="Add word to dictionary"
-              className="flex-1 min-w-0 bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-0.5 focus:outline-none focus:border-[#d4a017]/50"
+              className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-0.5 focus:outline-none focus:border-[#d4a017]/50"
             />
             <button type="button" onClick={addTyped} aria-label="Add to dictionary"
               className="px-1.5 py-0.5 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-0.5">
@@ -117,7 +117,7 @@ export default function ProofreadPanel({
             : (
               <div className="flex flex-wrap gap-1">
                 {dictWords.map((w) => (
-                  <span key={w} className="inline-flex items-center gap-0.5 text-[10px] text-rmpg-200 bg-[#141414] border border-[#222] rounded-[2px] pl-1.5 pr-0.5 py-0.5">
+                  <span key={w} className="inline-flex items-center gap-0.5 text-[10px] text-rmpg-200 bg-surface-base border border-border-default rounded-[2px] pl-1.5 pr-0.5 py-0.5">
                     {w}
                     <button type="button" onClick={() => dropWord(w)} aria-label={`Remove ${w}`}
                       className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
@@ -142,7 +142,7 @@ export default function ProofreadPanel({
 
       <div className="space-y-1">
         {issues.map((iss, i) => (
-          <div key={`${iss.kind}-${iss.start}-${i}`} className="border border-[#1a1a1a] rounded-[2px] px-1.5 py-1">
+          <div key={`${iss.kind}-${iss.start}-${i}`} className="border border-border-default rounded-[2px] px-1.5 py-1">
             <div className="flex items-center justify-between gap-1">
               <span className={`text-[9px] uppercase font-semibold ${KIND_COLOR[iss.kind]}`}>{KIND_LABEL[iss.kind]}</span>
               <div className="flex items-center gap-1">

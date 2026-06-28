@@ -129,6 +129,30 @@ interface QueuedPoint {
   speed: number | null;
   timestamp: string; // ISO 8601
   source: PositionSource;
+  activity?: string | null;
+  activity_confidence?: string | null;
+}
+
+// ── CoreMotion activity bridge (native iOS only) ─────────────
+// The Capacitor MotionActivityBridge dispatches 'rmpg-motion-activity'
+// CustomEvents into the WebView. Web/desktop browsers never fire it,
+// so points stay activity-free there. Stamped at send time: a flush
+// window (~15-30 s) is within the server's debounce granularity.
+let latestMotionActivity: { activity: string; confidence: string; at: number } | null = null;
+const MOTION_ACTIVITY_FRESH_MS = 30_000;
+if (typeof window !== 'undefined') {
+  window.addEventListener('rmpg-motion-activity', ((e: CustomEvent) => {
+    const d = e.detail || {};
+    if (typeof d.activity === 'string' && typeof d.confidence === 'string') {
+      latestMotionActivity = { activity: d.activity, confidence: d.confidence, at: Date.now() };
+    }
+  }) as EventListener);
+}
+
+function stampActivity<T extends { activity?: string | null; activity_confidence?: string | null }>(points: T[]): T[] {
+  const m = latestMotionActivity;
+  if (!m || Date.now() - m.at > MOTION_ACTIVITY_FRESH_MS) return points;
+  return points.map((p) => ({ ...p, activity: m.activity, activity_confidence: m.confidence }));
 }
 
 // ─── Network Information API ────────────────────────────────
@@ -474,7 +498,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       try {
         const result = await apiFetch<{ error?: unknown; unit?: unknown } | null>('/dispatch/gps', {
           method: 'POST',
-          body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
+          body: JSON.stringify({ points: stampActivity(allPoints), device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
         });
         // A 200 that carries an error body (e.g. D1 momentarily locked) means
         // the points were NOT persisted. apiFetch already throws on non-2xx, so
@@ -547,7 +571,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
+        body: JSON.stringify({ points: stampActivity([point]), device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
       // Sent exactly once — drop this point from the batch queue so sendBatch
       // doesn't re-POST the same breadcrumb. Identity match by reference (the

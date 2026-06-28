@@ -13,7 +13,7 @@
 //  - 35ms throttle so double-fired synthetic events tick once
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
-import { playSoundAsset } from './soundAssets';
+import { playSoundAsset, startSoundAsset } from './soundAssets';
 
 const TOGGLE_KEY = 'rmpg_ui_click_sounds';
 const THROTTLE_MS = 35;
@@ -45,12 +45,37 @@ export function playUiClick(): void {
   }
 }
 
-/** True when the click landed on something that behaves like a control. */
-function isInteractive(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return !!target.closest(
-    'button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], a, select, summary, input[type="checkbox"], input[type="radio"], input[type="submit"]'
-  );
+// ── Close / dismiss tone ────────────────────────────────────
+// Spillman console idiom: closing a window/form "de-keys" — the short
+// low roger beep (key_out.wav, the same sampled Motorola de-key used by
+// the radio). Distinct from the generic key tick so an operator hears
+// "something closed" without looking. Same gates + throttle as the tick.
+const CLOSE_GAIN = 0.16;
+
+export function playUiClose(): void {
+  try {
+    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
+    const now = Date.now();
+    if (now - lastTick < THROTTLE_MS) return;
+    lastTick = now;
+    // Sample-only, same policy as the tick: silent on a decode miss.
+    startSoundAsset('key_out', CLOSE_GAIN);
+  } catch {
+    // Audio must never interfere with the close itself
+  }
+}
+
+/** True when the control is a close/dismiss affordance (modal X, Cancel,
+ * dismiss chip). IconButton enforces aria-label, so X buttons carry
+ * "Close …"/"Dismiss …" labels app-wide. */
+function isCloseControl(el: Element): boolean {
+  const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`;
+  if (/\b(close|dismiss)\b/i.test(label)) return true;
+  // Text buttons: exact CANCEL / CLOSE / DISMISS captions only — never
+  // substring-match free text ("Close call review" would be fine, but
+  // "Disclose" must not beep).
+  const text = (el.textContent || '').trim();
+  return /^(cancel|close|dismiss|×|✕)$/i.test(text);
 }
 
 /**
@@ -66,7 +91,26 @@ export function initUiClickSounds(): void {
     (e) => {
       // Primary button / touch only — no ticks on right-click menus
       if (e.button !== 0) return;
-      if (isInteractive(e.target)) playUiClick();
+      if (!(e.target instanceof Element)) return;
+      const control = e.target.closest(
+        'button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], a, select, summary, input[type="checkbox"], input[type="radio"], input[type="submit"]'
+      );
+      if (!control) return;
+      // Close/dismiss affordances de-key; everything else key-ticks.
+      if (isCloseControl(control)) playUiClose();
+      else playUiClick();
+    },
+    { capture: true, passive: true }
+  );
+
+  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
+  // only when something dismissable is actually open (a dialog or a
+  // full-screen overlay), so bare Escape presses in a grid stay silent.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape' || e.repeat) return;
+      if (document.querySelector('[role="dialog"], [data-modal], .modal-overlay')) playUiClose();
     },
     { capture: true, passive: true }
   );

@@ -118,7 +118,7 @@ export default function TimeEntryEditModal({
         <div className="panel-beveled p-3 flex items-center justify-between">
           <div>
             <p className="field-label">Officer</p>
-            <p className="text-sm text-white font-bold">{entry.officer_name || 'Unknown'}</p>
+            <p className="text-sm text-rmpg-100 font-bold">{entry.officer_name || 'Unknown'}</p>
           </div>
           <div className="text-right">
             <p className="field-label">Entry ID</p>
@@ -130,7 +130,7 @@ export default function TimeEntryEditModal({
       {/* Punch times */}
       <div className="panel-inset p-3 space-y-3">
         <div>
-          <label className="field-label">Clock In <span className="text-red-400">*</span></label>
+          <label htmlFor="ff-timeentryeditmodal-0" className="field-label">Clock In <span className="text-red-400">*</span></label>
           <input id="ff-timeentryeditmodal-0"
             type="datetime-local"
             required
@@ -140,7 +140,7 @@ export default function TimeEntryEditModal({
           />
         </div>
         <div>
-          <label className="field-label">Clock Out</label>
+          <label htmlFor="ff-timeentryeditmodal-1" className="field-label">Clock Out</label>
           <input id="ff-timeentryeditmodal-1"
             type="datetime-local"
             value={form.clockOut}
@@ -157,7 +157,7 @@ export default function TimeEntryEditModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="field-label">Starting Mileage</label>
+            <label htmlFor="ff-timeentryeditmodal-mi-start" className="field-label">Starting Mileage</label>
             <input id="ff-timeentryeditmodal-mi-start"
               type="number" step="0.1" min="0" max="999999"
               value={form.startMi}
@@ -167,7 +167,7 @@ export default function TimeEntryEditModal({
             />
           </div>
           <div>
-            <label className="field-label">Ending Mileage</label>
+            <label htmlFor="ff-timeentryeditmodal-mi-end" className="field-label">Ending Mileage</label>
             <input id="ff-timeentryeditmodal-mi-end"
               type="number" step="0.1" min="0" max="999999"
               value={form.endMi}
@@ -188,7 +188,7 @@ export default function TimeEntryEditModal({
       {/* Reason — required. Edits move total_hours → payroll, so every change is
           audited (who / old / new / reason) in time_entry_edits. */}
       <div className="panel-inset p-3">
-        <label className="field-label">Reason for change <span className="text-red-400">*</span></label>
+        <label htmlFor="ff-timeentryeditmodal-2" className="field-label">Reason for change <span className="text-red-400">*</span></label>
         <textarea id="ff-timeentryeditmodal-2"
           required
           rows={2}

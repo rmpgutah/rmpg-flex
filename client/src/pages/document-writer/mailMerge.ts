@@ -149,8 +149,10 @@ export function applyMerge(editor: Editor, values: Record<string, string>): Merg
       return whole; // leave the token for manual fill
     }
     filled++;
-    // Escape the replacement so a value containing < or & can't break the HTML.
-    return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Escape the replacement so a value containing <, &, or quotes can't break
+    // the HTML (merge tokens can appear inside attributes as well as text).
+    return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   });
   if (next !== html) editor.commands.setContent(next);
   return { filled, missing };

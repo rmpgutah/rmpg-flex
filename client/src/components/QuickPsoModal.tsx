@@ -126,7 +126,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"
-          style={{ background: 'linear-gradient(180deg, #292929 0%, #181818 100%)' }}
+          style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
         >
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-purple-300" />
@@ -136,7 +136,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
+            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-rmpg-100 transition-colors"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
@@ -147,7 +147,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Client / Requestor dropdown — auto-fills name, phone, address */}
           {clients.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
+              <label htmlFor="ff-quickpsomodal-0" className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
               <select id="ff-quickpsomodal-0"
                 className="select-dark w-full"
                 value={formData.client_id || ''}
@@ -202,7 +202,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Service Type */}
           <div>
-            <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Service Type</label>
+            <label htmlFor="ff-quickpsomodal-1" className="block text-xs font-semibold text-purple-300 uppercase mb-1">Service Type</label>
             <select id="ff-quickpsomodal-1"
               ref={firstInputRef}
               className="select-dark"
@@ -244,7 +244,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
             />
             </div>
             <div className="w-28">
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt / Unit</label>
+              <label htmlFor="ff-quickpsomodal-locunit" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt / Unit</label>
               <input id="ff-quickpsomodal-locunit" type="text" className="input-dark" value={locationUnit} onChange={(e) => setLocationUnit(e.target.value)} placeholder="Apt 4B" />
             </div>
           </div>
@@ -276,7 +276,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Requestor Name + Phone (side by side) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Name</label>
+              <label htmlFor="ff-quickpsomodal-2" className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Name</label>
               <input id="ff-quickpsomodal-2"
                 type="text"
                 className="input-dark"
@@ -287,7 +287,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Phone</label>
+              <label htmlFor="ff-quickpsomodal-3" className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Phone</label>
               <input id="ff-quickpsomodal-3"
                 type="text"
                 className="input-dark"
@@ -301,7 +301,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Contract ID */}
           <div>
-            <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Contract ID</label>
+            <label htmlFor="ff-quickpsomodal-4" className="block text-xs font-semibold text-purple-300 uppercase mb-1">Contract ID</label>
             <input id="ff-quickpsomodal-4"
               type="text"
               className="input-dark"
@@ -330,7 +330,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
+                  <label htmlFor="ff-quickpsomodal-5" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                   <select id="ff-quickpsomodal-5"
                     className="select-dark"
                     value={formData.process_service_type}
@@ -342,7 +342,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
+                  <label htmlFor="ff-quickpsomodal-6" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
                   <input id="ff-quickpsomodal-6"
                     type="text"
                     className="input-dark"
@@ -353,7 +353,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                <label htmlFor="ff-quickpsomodal-7" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
                 <input id="ff-quickpsomodal-7"
                   type="text"
                   className="input-dark w-full"
@@ -389,10 +389,10 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 disabled={isSubmitting || !formData.location}
                 className="toolbar-btn"
                 style={{
-                  background: isSubmitting ? '#4a4a4a' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
+                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
                   borderColor: '#7c3aed',
-                  borderBottomColor: '#212121',
-                  borderRightColor: '#212121',
+                  borderBottomColor: 'var(--surface-overlay)',
+                  borderRightColor: 'var(--surface-overlay)',
                   color: '#ffffff',
                   opacity: !formData.location ? 0.5 : 1,
                 }}

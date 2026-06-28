@@ -19,12 +19,12 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
   const sheets = Math.ceil(pageCount / up);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[360px] p-4 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] w-[360px] p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
             <Grid2x2 className="w-3.5 h-3.5" /> N-up export
           </div>
-          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-white p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="text-[10px] text-rmpg-500 mb-3">Combine multiple source pages onto each printed sheet. Annotations are baked in first.</div>
@@ -33,7 +33,7 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
         <div className="flex gap-1 mb-3">
           {([2, 4] as const).map(n => (
             <button key={n} type="button" onClick={() => setUp(n)}
-              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${up === n ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400 hover:text-white'}`}>
+              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${up === n ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
               {n}-up
             </button>
           ))}
@@ -43,7 +43,7 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
         <div className="flex gap-1 mb-3">
           {(['Letter', 'A4'] as const).map(s => (
             <button key={s} type="button" onClick={() => setSize(s)}
-              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${size === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400 hover:text-white'}`}>
+              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${size === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
               {s}
             </button>
           ))}

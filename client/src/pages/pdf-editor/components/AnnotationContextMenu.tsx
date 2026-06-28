@@ -49,12 +49,12 @@ export default function AnnotationContextMenu(p: Props) {
   const itemCls = 'w-full text-left px-2 py-1 text-[11px] hover:bg-rmpg-700/40 inline-flex items-center gap-1.5';
 
   return (
-    <div ref={ref} className="fixed z-50 bg-[#141414] border border-[#222] rounded-[2px] shadow-lg py-1 min-w-[180px]"
+    <div ref={ref} className="fixed z-50 bg-surface-base border border-border-default rounded-[2px] shadow-lg py-1 min-w-[180px]"
       style={{ left: p.x, top: p.y }}>
       <div className="px-2 py-0.5 text-[9px] uppercase tracking-wider text-rmpg-500">
         <MousePointer2 className="w-3 h-3 inline mr-1" /> {ann.type}
       </div>
-      <div className="border-t border-[#222] my-0.5" />
+      <div className="border-t border-border-default my-0.5" />
       <button type="button" onClick={() => { p.onDuplicate(); p.onClose(); }} className={itemCls}>
         <Copy className="w-3 h-3" /> Duplicate <span className="ml-auto text-[9px] text-rmpg-500">Ctrl+D</span>
       </button>
@@ -73,7 +73,7 @@ export default function AnnotationContextMenu(p: Props) {
           <RotateCw className="w-3 h-3" /> Rotate 90°
         </button>
       )}
-      <div className="border-t border-[#222] my-0.5" />
+      <div className="border-t border-border-default my-0.5" />
       <div className="px-2 py-0.5 text-[9px] uppercase tracking-wider text-rmpg-500 inline-flex items-center gap-1">
         <LayerIcon className="w-3 h-3" /> Assign layer
       </div>
@@ -86,7 +86,7 @@ export default function AnnotationContextMenu(p: Props) {
       <button type="button" onClick={() => { p.onAssignLayer(''); p.onClose(); }} className={`${itemCls} pl-6 text-rmpg-500`}>
         — none —
       </button>
-      <div className="border-t border-[#222] my-0.5" />
+      <div className="border-t border-border-default my-0.5" />
       <button type="button" onClick={() => { p.onDelete(); p.onClose(); }} className={`${itemCls} text-red-300 hover:bg-red-900/30`}>
         <Trash2 className="w-3 h-3" /> Delete <span className="ml-auto text-[9px] text-rmpg-500">Del</span>
       </button>

@@ -17,7 +17,7 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
   return (
     <div className="space-y-3">
       {value.map((v, i) => (
-        <div key={v.id} className="border border-[#222] p-3 bg-[#0a0a0a]">
+        <div key={v.id} className="border border-border-default p-3 bg-surface-sunken">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase font-bold text-[#d4a017]">Violation {i + 1}</span>
             <button
@@ -97,11 +97,11 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
       <button
         type="button"
         onClick={() => onChange([...value, newDraft()])}
-        className="w-full py-2 text-xs border border-dashed border-[#444] text-[#888] hover:text-[#d4a017] hover:border-[#d4a017]"
+        className="w-full py-2 text-xs border border-dashed border-rmpg-600 text-[#888] hover:text-[#d4a017] hover:border-[#d4a017]"
       >
         + Add Violation
       </button>
-      <div className="flex justify-between border-t border-[#222] pt-2">
+      <div className="flex justify-between border-t border-border-default pt-2">
         <span className="text-[10px] uppercase font-bold">Total Fine</span>
         <span className="text-xs font-bold text-[#d4a017]">${totalFineOf(value).toFixed(2)}</span>
       </div>

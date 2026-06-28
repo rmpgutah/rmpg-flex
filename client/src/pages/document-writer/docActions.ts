@@ -6,7 +6,8 @@
 import type { Editor } from '@tiptap/react';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 /** Collect headings (h1–h4) in document order for TOC / cross-reference pickers. */
 export function collectHeadings(editor: Editor): { level: number; text: string; pos: number }[] {

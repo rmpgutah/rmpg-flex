@@ -39,7 +39,7 @@ export default function SnapshotsPanel({
   };
 
   return (
-    <div className="w-48 sm:w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-48 sm:w-64 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <Camera className="w-3 h-3" /> Snapshots
@@ -53,7 +53,7 @@ export default function SnapshotsPanel({
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           placeholder="Snapshot name…"
-          className="flex-1 min-w-0 bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-1 focus:outline-none focus:border-[#d4a017]/50"
+          className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-1 focus:outline-none focus:border-[#d4a017]/50"
         />
         <IconButton aria-label="Save snapshot" onClick={handleSave}
           className="p-1 bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20">
@@ -65,7 +65,7 @@ export default function SnapshotsPanel({
 
       <div className="space-y-1">
         {snaps.map((s) => (
-          <div key={s.id} className="group border border-[#1a1a1a] rounded-[2px] px-1.5 py-1 hover:border-[#2e2e2e]">
+          <div key={s.id} className="group border border-border-default rounded-[2px] px-1.5 py-1 hover:border-rmpg-700">
             <div className="text-[11px] text-rmpg-200 truncate" title={s.name}>{s.name}</div>
             <div className="flex items-center justify-between mt-0.5">
               <span className="text-[9px] text-rmpg-600 tabular-nums">{new Date(s.createdAt).toLocaleString()}</span>
