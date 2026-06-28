@@ -1,0 +1,47 @@
+/* ============================================================
+   Self-hosted handwriting fonts for the signature pad (Type mode).
+   Served from /public/fonts (CSP: font-src 'self' — works offline on
+   field Toughbooks; no fonts.googleapis.com dependency). All OFL-licensed.
+   Canvas text only renders a webfont AFTER it is loaded, so SignaturePad
+   awaits document.fonts.load() for the active family before drawing.
+   ============================================================ */
+
+@font-face {
+  font-family: 'Great Vibes';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/GreatVibes.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/DancingScript.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Sacramento';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Sacramento.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Homemade Apple';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/HomemadeApple.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Caveat';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/Caveat.woff2') format('woff2');
+}

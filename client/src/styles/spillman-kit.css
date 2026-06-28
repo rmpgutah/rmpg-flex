@@ -1,0 +1,40 @@
+/* Spillman Flex chrome kit — GLOBAL (unscoped) styles for the shared
+   components in client/src/components/spillman/. Window/toolbar/group-box
+   use the themeable --spm-* tokens (day/night aware); the status grid is a
+   fixed dark console (Spillman CAD is dark-always). */
+
+/* ── Window shell ─────────────────────────────────────────────── */
+.spm-window { display: flex; flex-direction: column; border: 1px solid var(--spm-border); background: var(--spm-form); color: var(--spm-text); }
+.spm-window-titlebar { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 12px; background: linear-gradient(#c2c7cf, #aab1bb); color: #1c2530; }
+.spm-window-title { font-weight: 600; }
+.spm-window-screen { flex: 1; text-align: center; color: #2a3346; }
+.spm-window-controls { display: flex; gap: 4px; }
+.spm-window-controls button { width: 18px; height: 16px; line-height: 14px; font-size: 11px; border: 1px solid #8a909a; background: #d6dae0; color: #2a3346; border-radius: 2px; }
+.spm-window-controls .spm-window-close { background: #c0504d; border-color: #913b39; color: #fff; }
+.spm-window-body { flex: 1; min-height: 0; }
+.spm-window-status { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 8px; background: var(--spm-chrome); color: var(--spm-text-muted); border-top: 1px solid var(--spm-border); }
+
+/* ── Toolbar ──────────────────────────────────────────────────── */
+.spm-toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 3px 6px; background: var(--spm-toolbar); border-bottom: 1px solid var(--spm-border); }
+.spm-toolbar-leading { display: flex; align-items: center; margin-right: 6px; }
+.spm-toolbar .toolbar-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: 11px; border: 1px solid transparent; background: transparent; color: var(--spm-text); border-radius: 2px; }
+.spm-toolbar .toolbar-btn:hover:not(:disabled) { background: var(--spm-toolbar-hover); border-color: var(--spm-border); }
+.spm-toolbar .toolbar-btn:active:not(:disabled) { background: var(--spm-toolbar-active); }
+.spm-toolbar .toolbar-btn:disabled { opacity: .45; }
+.spm-toolbar .toolbar-btn-primary { background: var(--spm-toolbar-primary); border-color: var(--spm-border); font-weight: 600; }
+
+/* ── Group box ────────────────────────────────────────────────── */
+.spm-groupbox { border: 1px solid var(--spm-border); background: var(--spm-field); margin: 0 0 6px; padding: 0; }
+.spm-groupbox-head { font-size: 11px; font-weight: 600; padding: 2px 8px; color: var(--spm-accent); background: var(--spm-group-head); }
+.spm-groupbox-body { display: grid; gap: 4px 12px; padding: 6px 8px; }
+
+/* ── Status grid (fixed dark console) ─────────────────────────── */
+.spm-status-grid { display: flex; flex-direction: column; min-height: 0; background: #0a0a0a; border: 1px solid #2a2f37; }
+.spm-status-grid-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 6px; background: #b9c0cb; color: #1c2530; }
+.spm-status-grid-title { font-weight: 600; }
+.spm-status-grid-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; table-layout: fixed; }
+.spm-status-grid-table th { background: #1c1f24; color: #9aa3b0; font-weight: 600; padding: 2px 4px; text-align: left; cursor: default; user-select: none; }
+.spm-status-grid-table th[aria-sort] { cursor: pointer; }
+.spm-status-grid-table td { padding: 1px 4px; color: #cfd6e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spm-status-grid-table tr[aria-selected="true"] { outline: 1px solid #4f7fc0; outline-offset: -1px; }
+.spm-status-grid-table tbody tr:hover { background: #15191f; }
