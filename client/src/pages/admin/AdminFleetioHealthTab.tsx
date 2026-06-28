@@ -21,6 +21,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload } from 'lucide-react';
+import FleetioConflictBadge from '../../components/FleetioConflictBadge';
 
 interface HealthResponse {
   links_total: number;
@@ -291,9 +292,7 @@ export default function AdminFleetioHealthTab() {
                 <th className="py-1 pr-2">When</th>
                 <th className="py-1 px-2">Resource</th>
                 <th className="py-1 px-2">Row</th>
-                <th className="py-1 px-2">Field</th>
-                <th className="py-1 px-2">Local</th>
-                <th className="py-1 px-2">Remote</th>
+                <th className="py-1 px-2">Conflict</th>
                 <th className="py-1 pl-2 text-right">Resolve</th>
               </tr>
             </thead>
@@ -303,12 +302,16 @@ export default function AdminFleetioHealthTab() {
                   <td className="py-1 pr-2 font-mono text-rmpg-300">{relTime(c.created_at as string)}</td>
                   <td className="py-1 px-2 text-rmpg-100">{c.rmpg_table as string}</td>
                   <td className="py-1 px-2 text-rmpg-100">#{c.rmpg_id as number}</td>
-                  <td className="py-1 px-2 font-mono text-rmpg-100">{c.field as string}</td>
-                  <td className="py-1 px-2 text-rmpg-300 max-w-[160px] truncate" title={(c.local_value as string) ?? ''}>
-                    {(c.local_value as string) ?? '—'}
-                  </td>
-                  <td className="py-1 px-2 text-rmpg-300 max-w-[160px] truncate" title={(c.remote_value as string) ?? ''}>
-                    {(c.remote_value as string) ?? '—'}
+                  <td className="py-1 px-2">
+                    <FleetioConflictBadge
+                      conflict={{
+                        id: c.id as number,
+                        field: c.field as string,
+                        local_value: c.local_value as string | null,
+                        remote_value: c.remote_value as string | null,
+                      }}
+                      onResolved={fetchHealth}
+                    />
                   </td>
                   <td className="py-1 pl-2 text-right whitespace-nowrap">
                     <button

@@ -17,6 +17,7 @@
 //   - Graph 410 Gone on deltaLink → drop the saved link and re-sync.
 //   - Per-message write failures → caught, counted, sync continues.
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, queryFirst, execute } from './db';
 import { graphFetch, GraphNotConfiguredError } from './msGraph';
@@ -157,7 +158,7 @@ async function upsertMessage(env: Bindings, m: GraphDeltaMessage): Promise<void>
       m.id, subject, fromAddr || '', fromName || '', bodyPreview || '', bodyHtml || '',
     );
   } catch (e) {
-    console.error('[Email sync] FTS5 upsert failed (table may not exist yet):', e);
+    log.error('FTS5 upsert failed (table may not exist yet)', {}, e);
   }
 }
 

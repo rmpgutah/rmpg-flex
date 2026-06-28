@@ -13,6 +13,7 @@
 // a dashcam_events row. Phase C ALPRs the outside-channel clips off this loop.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from './db';
 import {
@@ -76,6 +77,66 @@ export function formatTs(epochMs: number): string {
 export function r2KeyFor(deviceId: string, timestampMs: number, channel: string): string {
   const safeDevice = deviceId.replace(/[^a-zA-Z0-9_-]/g, '');
   return `${R2_PREFIX}${safeDevice}/${timestampMs}_${channel}.mp4`;
+}
+
+/** Decide whether the camera is currently offline (sleeping with the vehicle).
+ *  ClearPath's on-demand pipeline accepts the POST instantly but the dashcam
+ *  can only upload the mp4 when the LTE modem is awake — which requires the
+ *  vehicle's ignition to be on. While the vehicle is parked, every requested
+ *  clip sits in "Waiting for Camera…" on ClearPath's side, our poll returns
+ *  zero candidates, and chunks burn through their poll-attempt budget and die
+ *  as 'missing'. The fix: when the camera is offline, the poller skips the
+ *  attempt-counter increment so requests survive the parking window and
+ *  fulfill the next time the vehicle drives.
+ *
+ *  Heuristic (pure, given a mapping row + current epoch ms):
+ *    • ignition_state='on'  → online (camera always uploads while driving).
+ *    • ignition_state='off' AND last_synced_at older than `staleMinutes`
+ *      → offline (GPS module also gone to sleep with the vehicle).
+ *    • Anything else (unknown ignition, recent GPS) → online by default so a
+ *      sensor blip can't suspend a healthy queue.
+ *  staleMinutes defaults to 15 — ClearPath GPS modules stay awake for a few
+ *  minutes after ignition off, so a fresher GPS sync means the camera might
+ *  still be reachable. */
+export function isCameraOfflineFromMapping(
+  m: { ignition_state: string | null; last_synced_at: string | null },
+  nowMs: number,
+  staleMinutes = 15,
+): boolean {
+  const ignition = (m.ignition_state || '').toLowerCase();
+  if (ignition === 'on') return false;
+  if (ignition !== 'off') return false; // unknown — don't suspend
+  if (!m.last_synced_at) return true;
+  const lastMs = Date.parse(
+    m.last_synced_at.includes('T') ? m.last_synced_at : m.last_synced_at.replace(' ', 'T') + 'Z',
+  );
+  if (!Number.isFinite(lastMs)) return true;
+  return nowMs - lastMs > staleMinutes * 60_000;
+}
+
+/** Bulk lookup: which of the given cpg_device_ids have an offline camera right
+ *  now? Returns a Set of device ids currently considered offline (matching
+ *  isCameraOfflineFromMapping). Unmapped devices are treated as ONLINE
+ *  (returning early-abandon behaviour) so an upstream bug can't suspend the
+ *  whole queue. Single round-trip per poll batch.  */
+export async function getOfflineCameraDeviceIds(
+  db: D1Database, deviceIds: string[], nowMs = Date.now(),
+): Promise<Set<string>> {
+  const offline = new Set<string>();
+  const ids = Array.from(new Set(deviceIds.filter(Boolean)));
+  if (!ids.length) return offline;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await query<{ cpg_device_id: string; ignition_state: string | null; last_synced_at: string | null }>(
+    db,
+    `SELECT cpg_device_id, ignition_state, last_synced_at
+       FROM cpg_device_mappings
+      WHERE is_active = 1 AND cpg_device_id IN (${placeholders})`,
+    ...ids,
+  ).catch(() => [] as Array<{ cpg_device_id: string; ignition_state: string | null; last_synced_at: string | null }>);
+  for (const r of rows) {
+    if (isCameraOfflineFromMapping(r, nowMs)) offline.add(r.cpg_device_id);
+  }
+  return offline;
 }
 
 // ── Schema reconcile (backstop if 0117 didn't reach live) ────
@@ -268,13 +329,13 @@ async function syncDevice(
           try {
             const { alprDashcamClip } = await import('./clearpathAlpr');
             await alprDashcamClip(env, db, { videoId: stored.videoId, r2Key: stored.r2Key, mapping: m, event });
-          } catch (err) { console.error('[cpg-alpr] clip failed:', (err as Error)?.message); }
+          } catch (err) { log.error('clip failed', {}, err); }
         }
       } catch (err) {
         if (err instanceof CpgRateLimitError) throw err;
         const msg = (err as Error)?.message || 'unknown';
         if (budget.errors.length < 3) budget.errors.push(`${m.cpg_device_id}@${event.eventTimestamp}/${channel}: ${msg}`);
-        console.error(`[cpg-media] download failed ${m.cpg_device_id}/${event.eventTimestamp}/${channel}:`, msg);
+        log.error('download failed', { device: m.cpg_device_id, eventTimestamp: event.eventTimestamp, channel, msg });
       }
     }
     if (budget.left <= 0) break;
@@ -311,7 +372,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 
   let cameras: CpgCamera[] | null = null;
   if (mappings.some((m) => !m.cpg_camera_id)) {
-    try { cameras = await listCameras(env, client); } catch (err) { console.warn('[cpg-media] camera list failed:', (err as Error)?.message); }
+    try { cameras = await listCameras(env, client); } catch (err) { log.warn('camera list failed', { err }); }
   }
 
   const budget = { left: MAX_CLIPS_PER_RUN, errors: [] as string[] };
@@ -328,7 +389,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
         break;
       }
       errors++;
-      console.error(`[cpg-media] device ${m.cpg_device_id} error:`, (err as Error)?.message);
+      log.error('device error', { device: m.cpg_device_id }, err);
     }
   }
   try { await setConfigValue(db, 'clearpathgps_last_media_sync', new Date().toISOString()); } catch { /* */ }
@@ -370,7 +431,7 @@ export async function syncClearpathMediaRange(
     if (budget.left <= 0) break;
     try {
       const cameraId = await resolveCameraId(db, m, cameras, env, client);
-      if (!cameraId) { console.warn(`[cpg-drive] no camera ID for ${m.cpg_device_id}`); continue; }
+      if (!cameraId) { log.warn('no camera ID', { device: m.cpg_device_id }); continue; }
       synced += await syncDevice(env, db, client, m, cameraId, budget, { fromMs: opts.fromMs, toMs: opts.toMs });
     } catch (err) {
       if (err instanceof CpgRateLimitError) {
@@ -378,7 +439,7 @@ export async function syncClearpathMediaRange(
         break;
       }
       errors++;
-      console.error(`[cpg-drive] device ${m.cpg_device_id} error:`, (err as Error)?.message);
+      log.error('device error', { device: m.cpg_device_id }, err);
     }
   }
   return { synced, errors };
@@ -427,7 +488,7 @@ export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: 
       if (exists) continue;
       scanned++;
       try { await alprDashcamClip(env, db, { mapping: m, event }); captured++; }
-      catch (err) { console.error('[cpg-alpr-scan] failed:', (err as Error)?.message); }
+      catch (err) { log.error('alpr scan failed', {}, err); }
     }
   }
   try { await setConfigValue(db, 'clearpathgps_last_alpr_scan', new Date().toISOString()); } catch { /* */ }
@@ -448,8 +509,8 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
   const lastScan = await getConfigValue(db, 'clearpathgps_last_alpr_scan');
   const scanDue = !lastScan || !Number.isFinite(Date.parse(lastScan)) || (Date.now() - Date.parse(lastScan) >= interval * 1000);
   if (scanDue) {
-    try { const s = await scanClearpathMediaAlpr(env); if (s.scanned || s.captured) console.log(`[cpg-alpr] scanned=${s.scanned} captured=${s.captured}`); }
-    catch (err) { console.error('[cpg-alpr] scan failed:', (err as Error)?.message); }
+    try { const s = await scanClearpathMediaAlpr(env); if (s.scanned || s.captured) log.info('alpr scan complete', { scanned: s.scanned, captured: s.captured }); }
+    catch (err) { log.error('alpr scan failed', {}, err); }
   }
 
   // 2) Full clip sync — runs on the same cadence as the ALPR scan.
@@ -457,6 +518,6 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
   const lastClip = await getConfigValue(db, 'clearpathgps_last_media_sync');
   const clipDue = !lastClip || !Number.isFinite(Date.parse(lastClip)) || (Date.now() - Date.parse(lastClip) >= interval * 1000);
   if (!clipDue) return;
-  try { const r = await syncClearpathMedia(env); if (r.synced || r.errors) console.log(`[cpg-media] synced=${r.synced} errors=${r.errors}`); }
-  catch (err) { console.error('[cpg-media] clip sync failed:', (err as Error)?.message); }
+  try { const r = await syncClearpathMedia(env); if (r.synced || r.errors) log.info('media sync complete', { synced: r.synced, errors: r.errors }); }
+  catch (err) { log.error('clip sync failed', {}, err); }
 }

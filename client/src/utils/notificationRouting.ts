@@ -41,7 +41,8 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
   // Notification-type literals emitted by the server but not previously routed
   intel_screen: '/intel',
   watchlist_hit: '/intel',
-  case_task_nudge: '/cases',
+  case_task_nudge: '/tasks',
+  task_nudge: '/tasks',
   serve_nudge: '/serve',
   email_rule: '/communications?tab=messages',
   intel_product: '/intel/reports',
@@ -54,9 +55,9 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - call           → /dispatch?call_id=
  *  - warrant        → /warrants?warrant_id=
  *  - case           → /cases?case_id=
- *  - case_task      → /cases?case_id= (best-effort: cases page reads
- *                     the parent case id; the task isn't deep-linkable
- *                     on its own yet)
+ *  - case_task      → /tasks?task_id= (tasks page deep-links the row
+ *                     directly; the prior /cases?task_id= was a no-op
+ *                     because Cases only reads ?case_id=)
  *  - person         → /records?tab=persons&person_id=
  *  - vehicle        → /records?tab=vehicles&vehicle_id=
  *  - bolo           → /communications?tab=bolos&bolo_id=
@@ -82,7 +83,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
   warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
   case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
-  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
   person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
   vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
   bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,
@@ -95,8 +95,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
-  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   // IA complaint / investigation — added v1070 alongside the IA page deep-link
   // contract. Both land on /affairs?complaint_id= because the investigation
   // is only viewable inside the parent complaint detail panel (the IA route
@@ -105,11 +103,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   // page can scroll/highlight the row inside the complaint detail.
   ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
   ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
-  court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,
-  // Web Research (Page 61 audit) — a saved-research notification deep-links
-  // into the Saved Results tab of /web-research with the row highlighted.
-  research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
-  web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
 };
 
 /**
