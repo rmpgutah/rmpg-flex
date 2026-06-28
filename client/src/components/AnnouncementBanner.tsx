@@ -21,8 +21,8 @@ const TYPE_STYLES: Record<string, { icon: React.ElementType; cls: string }> = {
   warning: { icon: AlertTriangle, cls: 'bg-amber-900/40 border-amber-700/50 text-amber-200' },
   maintenance: { icon: Wrench, cls: 'bg-amber-900/40 border-amber-700/50 text-amber-200' },
   policy: { icon: Info, cls: 'bg-[#1a1408] border-[#3a2e10] text-[#d4a017]' },
-  update: { icon: Info, cls: 'bg-[#101010] border-[#2e2e2e] text-rmpg-200' },
-  info: { icon: Megaphone, cls: 'bg-[#101010] border-[#2e2e2e] text-rmpg-200' },
+  update: { icon: Info, cls: 'bg-surface-overlay border-rmpg-700 text-rmpg-200' },
+  info: { icon: Megaphone, cls: 'bg-surface-overlay border-rmpg-700 text-rmpg-200' },
 };
 
 function loadDismissed(): number[] {

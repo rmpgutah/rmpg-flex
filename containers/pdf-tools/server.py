@@ -168,6 +168,19 @@ async def encrypt(
         out_path = os.path.join(workdir, "out.pdf")
         await save_upload(pdf, in_path)
 
+        # SECURITY (CWE-78): qpdf is invoked as an argv LIST with shell=False
+        # (the subprocess default). There is no shell, so user_password /
+        # owner_password cannot inject shell metacharacters — they are passed to
+        # execve as opaque argv elements. They are also positional operands
+        # consumed immediately after `--encrypt` (qpdf reads the next three
+        # tokens as user-pw, owner-pw, key-length), so a value beginning with
+        # `-` is taken as the password, never reinterpreted as a flag — there is
+        # no argument-injection vector either. _validate_password_arg() further
+        # bounds length and rejects control characters. The attacker-controlled
+        # file paths are fixed temp paths AND guarded by the `--` end-of-options
+        # separator. CodeQL's py/command-line-injection on this line is a false
+        # positive for that combination; do not "fix" it by reshaping the args
+        # in a way that breaks valid passwords.
         cmd = [
             "qpdf", "--encrypt",
             user_password, owner_password, str(key_length),
@@ -181,7 +194,7 @@ async def encrypt(
         ]
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=60)
+            subprocess.run(cmd, check=True, capture_output=True, timeout=60, shell=False)
         except subprocess.CalledProcessError as e:
             # qpdf exit code 3 = warnings, output may still be valid.
             # Anything else = real failure.

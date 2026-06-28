@@ -109,7 +109,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
       <div
-        className="bg-surface-base border border-rmpg-700 rounded-lg shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto"
+        className="bg-surface-base border border-rmpg-700 rounded-sm shadow-2xl w-[520px] max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -133,7 +133,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
 
           {/* Title */}
           <div>
-            <label className="field-label">Title *</label>
+            <label htmlFor="ff-bodycamvideoeditmodal-0" className="field-label">Title *</label>
             <input id="ff-bodycamvideoeditmodal-0"
               type="text"
               value={title}
@@ -147,7 +147,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           {/* Interaction Type + Case Number — side by side */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Interaction Type</label>
+              <label htmlFor="ff-bodycamvideoeditmodal-1" className="field-label">Interaction Type</label>
               <select id="ff-bodycamvideoeditmodal-1"
                 value={interactionType}
                 onChange={e => setInteractionType(e.target.value as BwcInteractionType | '')}
@@ -160,7 +160,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
               </select>
             </div>
             <div>
-              <label className="field-label">Case Number</label>
+              <label htmlFor="ff-bodycamvideoeditmodal-2" className="field-label">Case Number</label>
               <input id="ff-bodycamvideoeditmodal-2"
                 type="text"
                 value={caseNumber}
@@ -174,7 +174,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           {/* Classification + Retention — side by side */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Classification</label>
+              <label htmlFor="ff-bodycamvideoeditmodal-3" className="field-label">Classification</label>
               <select id="ff-bodycamvideoeditmodal-3"
                 value={classification}
                 onChange={e => setClassification(e.target.value as VideoClassification)}
@@ -186,7 +186,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
               </select>
             </div>
             <div>
-              <label className="field-label">Retention Status</label>
+              <label htmlFor="ff-bodycamvideoeditmodal-4" className="field-label">Retention Status</label>
               <select id="ff-bodycamvideoeditmodal-4"
                 value={retentionStatus}
                 onChange={e => setRetentionStatus(e.target.value)}
@@ -201,7 +201,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
 
           {/* Recorded At */}
           <div>
-            <label className="field-label">Recorded At</label>
+            <label htmlFor="ff-bodycamvideoeditmodal-5" className="field-label">Recorded At</label>
             <input id="ff-bodycamvideoeditmodal-5"
               type="datetime-local"
               value={recordedAt}

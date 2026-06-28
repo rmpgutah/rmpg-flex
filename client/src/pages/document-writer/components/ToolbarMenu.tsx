@@ -37,7 +37,7 @@ export default function ToolbarMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-[2px] transition-colors ${
-          open ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-[#1a1a1a]'
+          open ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
         }`}
       >
         {Icon && <Icon className="w-3.5 h-3.5" />}
@@ -46,8 +46,8 @@ export default function ToolbarMenu({
       </button>
       {open && (
         <div
-          className="absolute z-50 mt-1 bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5"
-          style={{ width }}
+          className="absolute left-0 z-50 mt-1 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5"
+          style={{ width, maxWidth: 'calc(100vw - 1rem)' }}
         >
           {typeof children === 'function' ? children(close) : children}
         </div>
@@ -73,7 +73,7 @@ export function MenuButton({ onClick, children, active }: { onClick: () => void;
       type="button"
       onClick={onClick}
       className={`w-full text-left px-2 py-1 text-[11px] rounded-[2px] transition-colors ${
-        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-200 hover:bg-[#1a1a1a]'
+        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-200 hover:bg-surface-raised'
       }`}
     >
       {children}

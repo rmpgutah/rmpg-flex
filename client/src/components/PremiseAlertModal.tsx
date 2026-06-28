@@ -85,7 +85,7 @@ export default function PremiseAlertModal() {
     >
       <div
         className="w-full max-w-2xl border-4 p-5 space-y-4"
-        style={{ background: '#0a0a0a', borderColor: s.border, borderRadius: 2, boxShadow: `0 0 40px ${s.border}` }}
+        style={{ background: 'var(--surface-overlay)', borderColor: s.border, borderRadius: 2, boxShadow: `0 0 40px ${s.border}` }}
       >
         <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: s.border }}>
           <div className="flex items-center gap-3">
@@ -144,7 +144,7 @@ export default function PremiseAlertModal() {
                       <span
                         key={f}
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5"
-                        style={{ background: '#1a1a1a', color: '#d4a017', borderRadius: 2 }}
+                        style={{ background: 'var(--surface-raised)', color: '#d4a017', borderRadius: 2 }}
                       >
                         {f}
                       </span>

@@ -63,3 +63,28 @@ export function sectionZoneBeatCombined(
   }
   return sectorId || '';
 }
+
+/**
+ * Canonical Z/S/B presentation for ALL location identification surfaces
+ * (gold badge, call cards, PDFs, MDT, incidents). Always yields the fullest
+ * "SEC/ZONE/BEAT" composite derivable from the record — codes usually embed
+ * their parents (zone "SL1-SSL", beat "SL1-SSL/A1"), but leaf-only values
+ * ("A1") are recovered from whichever sibling field carries the hierarchy.
+ * Fresh geography fields win over a stale stored dispatch_code, which is
+ * only a last-resort fallback.
+ */
+export function zsbComposite(opts: {
+  zoneId?: string | null;
+  beatId?: string | null;
+  dispatchCode?: string | null;
+  /** Resolved Spillman sector code (e.g. from getSectionCode) when the caller has one. */
+  sectionCode?: string | null;
+}): string {
+  const beatZonePart = (opts.beatId || '').includes('/') ? (opts.beatId || '').split('/')[0] : '';
+  const zoneCode = opts.zoneId || beatZonePart;
+  const sec = opts.sectionCode || sectionPrefix(zoneCode);
+  const zn = zoneLeaf(zoneCode);
+  const bt = beatLeaf(opts.beatId || '');
+  const composite = [sec, zn, bt].filter(Boolean).join('/');
+  return composite || opts.dispatchCode || '';
+}

@@ -132,6 +132,16 @@ export class VoiceHubDO {
       userId: 0, username: '', fullName: '', role: '', unitLabel: null, authenticated: false,
     });
 
+    // Sockets that never authenticate must not linger — without this, an
+    // attacker can hold unauthenticated connections open indefinitely.
+    setTimeout(() => {
+      const meta = this.conns.get(server);
+      if (meta && !meta.authenticated) {
+        try { (server as any).close(4001, 'Authentication timeout'); } catch { /* already closed */ }
+        this.onClose(server);
+      }
+    }, 10_000);
+
     server.addEventListener('message', (ev: MessageEvent) => {
       this.onMessage(server, ev).catch((err) => console.error('[VoiceHubDO] msg', err));
     });
@@ -263,7 +273,10 @@ export class VoiceHubDO {
       const finished = this.activeTx;
       this.activeTx = null;
       this.broadcast({ type: 'radio_transmit_end', user_id: finished.userId });
-      this.state.waitUntil(this.persist(finished, null).catch(() => {}));
+      this.state.waitUntil(
+        this.persist(finished, null)
+          .catch((err) => console.error('[VoiceHubDO] persist (drop)', err)),
+      );
     }
     if (meta?.authenticated) this.broadcast({ type: 'voice_presence', members: this.presenceCount() });
   }

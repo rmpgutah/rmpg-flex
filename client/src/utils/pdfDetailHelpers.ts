@@ -102,7 +102,7 @@ export function addQuickReferenceBanner(
   if (cfg.secondary) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
-    doc.setTextColor(200, 200, 200);
+    doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED); // light-medium grey sub-heading on the dark bar
     const secondaryX = textX + cw * 0.5;
     const maxSecondaryW = Math.max(20, pillLeftEdge - secondaryX - 2);
     const lines = doc.splitTextToSize(sanitizePdfText(cfg.secondary), maxSecondaryW) as string[];

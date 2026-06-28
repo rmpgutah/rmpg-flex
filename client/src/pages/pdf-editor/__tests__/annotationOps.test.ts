@@ -4,6 +4,7 @@ import {
   alignAnnotations,
   distributeAnnotations,
   matchSize,
+  applyAnnotationToAllPages,
 } from '../annotationOps';
 import type { Annotation } from '../types';
 
@@ -94,5 +95,32 @@ describe('matchSize', () => {
     const out = matchSize(anns, sel('a', 'b'), 'b', 'both');
     const a = out.find((x) => x.id === 'a')!;
     expect([a.w, a.h]).toEqual([30, 40]);
+  });
+});
+
+describe('applyAnnotationToAllPages', () => {
+  let seq = 0;
+  const genId = () => `clone-${seq++}`;
+  it('clones the source onto every other page, preserving geometry', () => {
+    seq = 0;
+    const anns = [rect('src', 5, 7, 12, 8, { page: 2 })];
+    const out = applyAnnotationToAllPages(anns, 'src', 3, genId);
+    // original + clones for pages 1 and 3 (not 2 — source already there).
+    expect(out).toHaveLength(3);
+    const pages = out.map((a) => a.page).sort();
+    expect(pages).toEqual([1, 2, 3]);
+    for (const a of out) {
+      expect([a.x, a.y, a.w, a.h]).toEqual([5, 7, 12, 8]);
+    }
+  });
+  it('is a no-op for a single-page document', () => {
+    seq = 0;
+    const anns = [rect('src', 0, 0, 10, 10, { page: 1 })];
+    expect(applyAnnotationToAllPages(anns, 'src', 1, genId)).toBe(anns);
+  });
+  it('returns the input unchanged when the source id is missing', () => {
+    seq = 0;
+    const anns = [rect('a', 0, 0)];
+    expect(applyAnnotationToAllPages(anns, 'nope', 5, genId)).toBe(anns);
   });
 });

@@ -260,28 +260,42 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             });
           }
         } else {
-          // Point layer — small gold dots + address labels at very high zoom.
+          // Point layer — address NUMBERS (not dots), colored by property type.
+          // Extract the leading house number from FullAdd ("3515 S 5600 W" →
+          // "3515") via index-of/slice; fall back to AddNum or the full string.
+          const houseNumberExpr = [
+            'case',
+            ['has', 'AddNum'], ['to-string', ['get', 'AddNum']],
+            ['>', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 0],
+            ['slice', ['coalesce', ['get', 'FullAdd'], ''], 0, ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']]],
+            ['coalesce', ['get', 'FullAdd'], ''],
+          ];
           if (!hasLayer(map, circleLayerId(cfg.id))) {
             map.addLayer({
               id: circleLayerId(cfg.id),
-              type: 'circle',
+              type: 'symbol',
               source,
               'source-layer': cfg.sourceLayer,
               // Always load regardless of zoom — gate at the archive's own min
               // (z10) so address points appear well before street level.
               minzoom: cfg.sourceMinzoom,
-              layout: { visibility: 'none' },
+              layout: {
+                visibility: 'none',
+                'text-field': houseNumberExpr as any,
+                'text-size': ['interpolate', ['linear'], ['zoom'], 10, 8, 14, 10, 18, 13] as any,
+                'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+                'text-allow-overlap': false,
+                'text-padding': 1,
+              },
               paint: {
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.6, 18, 5.5] as any,
                 // Full building/property-type color-coding generated from the
                 // shared PROPERTY_TYPES taxonomy (landTypes.ts): residential,
                 // commercial, industrial, agricultural, mixed, government,
                 // education, religious, medical, recreation, utility,
                 // transportation, vacant + Other. One source drives map+legend.
-                'circle-color': ptTypeColorExpression(cfg.color) as any,
-                'circle-opacity': 0.9,
-                'circle-stroke-color': '#0a0a0a',
-                'circle-stroke-width': 0.6,
+                'text-color': ptTypeColorExpression(cfg.color) as any,
+                'text-halo-color': '#0a0a0a',
+                'text-halo-width': 1.2,
               },
             });
           }
@@ -294,7 +308,14 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               minzoom: 16,
               layout: {
                 visibility: 'none',
-                'text-field': ['get', 'FullAdd'] as any,
+                // Street part only — the house number is already rendered by
+                // the point layer above; avoid printing it twice.
+                'text-field': [
+                  'case',
+                  ['>', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 0],
+                  ['slice', ['coalesce', ['get', 'FullAdd'], ''], ['+', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 1]],
+                  '',
+                ] as any,
                 'text-size': 9,
                 'text-offset': [0, 0.9],
                 'text-anchor': 'top',

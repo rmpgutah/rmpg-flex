@@ -31,7 +31,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
         return (
           <div
             key={`${alert.type}-${alert.entity_id || index}`}
-            className="w-full flex items-center gap-3 px-3 py-2"
+            className={`alert-banner-row ${isCritical ? 'alert-banner-critical' : 'alert-banner-warning'} w-full flex items-center gap-3 px-3 py-2`}
             style={{
               background: isCritical
                 ? 'rgba(220, 38, 38, 0.3)'
@@ -60,7 +60,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             {/* Alert content */}
             <div className="flex-1 min-w-0">
               <div
-                className="font-bold uppercase tracking-wider text-white"
+                className="font-bold uppercase tracking-wider text-rmpg-100"
                 style={{ fontSize: '10px', lineHeight: '14px' }}
               >
                 {alert.title}

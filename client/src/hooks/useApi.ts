@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
+import { chimeForApiSuccess } from '../utils/actionChimes';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -102,8 +103,8 @@ export function authedImageUrl(url: string | null | undefined): string {
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500;
 
-// ─── Retry config for 502/503 (server restart recovery) ────
-const RETRY_STATUS_CODES = [502, 503];
+// ─── Retry config for 500/502/503/504 (server restart recovery) ────
+const RETRY_STATUS_CODES = [500, 502, 503, 504];
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
@@ -238,6 +239,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
         }
 
         const data = await res.json();
+        chimeForApiSuccess(method, url);
         setState({ data, error: null, isLoading: false });
         return data;
       } catch (err) {
@@ -317,12 +319,23 @@ function maybeRedirectToCfWorker(url: string): string {
   return url;
 }
 
+// ─── TEMPORARY: direct-to-rewrite escape hatch ──────────────────────────
+// The rmpgutah.us strangler dispatcher (rmpg-api-proxy) currently mis-routes
+// some methods: POST /api/records/businesses 404s because the dispatcher sends
+// it to the legacy Worker (no handler) instead of the rewrite, while the
+// rewrite at api.rmpgutah.us serves it correctly (verified: proxy POST → 404,
+// direct POST → 400). `directWorker: true` bypasses the dispatcher for the
+// affected calls. Safe: the rewrite has permissive CORS for rmpgutah.us and
+// uses Bearer auth (no cookies), and a live probe confirmed connect-src allows
+// this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
+const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
+
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit & { timeoutMs?: number }
+  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }
 ): Promise<T> {
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
-  const url = maybeRedirectToCfWorker(relativeUrl);
+  const url = options?.directWorker ? `${CF_WORKER_DIRECT_BASE}${relativeUrl}` : maybeRedirectToCfWorker(relativeUrl);
   const method = options?.method || 'GET';
 
   // Network = activity. Signal the idle backstop (Layout.tsx Feature 24) on
@@ -357,6 +370,7 @@ export async function apiFetch<T>(
         const errData = await retryRes.json().catch(() => ({}));
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
+      chimeForApiSuccess(method, url);
       return retryRes.json();
     }
     // No new token — redirect already happened or network error
@@ -385,6 +399,7 @@ export async function apiFetch<T>(
     throw error;
   }
 
+  chimeForApiSuccess(method, url);
   return res.json();
 }
 
@@ -403,45 +418,126 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
       headers['Authorization'] = `Bearer ${newToken}`;
       res = await fetchWithRetry(url, { headers });
     }
-    if (!res.ok) throw new Error('Session expired. Please log in again.');
+    // Only "Session expired" when it's STILL 401 (refresh failed). A successful
+    // refresh that then hits a 403/500 should surface the real status below, not
+    // a misleading auth message.
+    if (res.status === 401) throw new Error('Session expired. Please log in again.');
   }
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.blob();
 }
 
-// Upload files via FormData (multipart)
+/**
+ * POST a multipart FormData payload with auth + transparent token refresh.
+ * Unlike apiFetch, this does NOT set Content-Type — the browser sets the
+ * `multipart/form-data; boundary=…` header itself (forcing application/json
+ * would break server-side multipart parsing). Use for image/file uploads to
+ * an arbitrary endpoint (e.g. /alpr/capture).
+ */
+export async function apiPostForm<T>(endpoint: string, formData: FormData): Promise<T> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+    }
+    if (res.status === 401) throw new Error('Session expired. Please log in again.');
+  }
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const err = new Error(errData.error || errData.message || `Upload failed with status ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  chimeForApiSuccess('POST', url);
+  return res.json();
+}
+
+// ─── Upload (multipart) with auto-retry for transient failures ────
+export interface UploadOptions {
+  /** Extra attempts after the first, on a *transient* failure (network/5xx). Default 0. */
+  retries?: number;
+  /** Base backoff in ms between attempts (doubled each retry). Default 1500. */
+  retryDelayMs?: number;
+  /** Per-attempt timeout. Defaults to DEFAULT_FETCH_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Fired before each retry sleep — e.g. to surface "Retrying… (1/3)". */
+  onRetry?: (attempt: number, max: number) => void;
+}
+
+/**
+ * Decide whether a failed upload attempt is worth retrying.
+ *
+ * Field reality drives this: officers upload from cellular dead zones, so a
+ * dropped-at-the-edge transport failure (the `net::ERR_FAILED` / "Failed to
+ * fetch" that silently lost an ID photo on 2026-06-13) and 5xx server blips
+ * SHOULD retry. A 4xx is deterministic — a too-large file or rejected MIME
+ * type fails identically on every attempt, so retrying only delays the real
+ * error the user needs to see.
+ *
+ * This is the upload retry POLICY seam — change the stance here (e.g. bail on
+ * 413 immediately, or back off harder on 429) without touching the loop below.
+ */
+function isRetryableUploadError(err: Error): boolean {
+  const status = (err as { status?: number }).status;
+  if (typeof status === 'number') return status >= 500; // 5xx transient, 4xx deterministic
+  return true; // no status ⇒ network/transport throw (TypeError, TimeoutError) ⇒ retry
+}
+
 export async function apiUploadFiles(
   files: File[],
   entityType?: string,
   entityId?: string | number,
+  opts?: UploadOptions,
 ): Promise<any[]> {
   const token = localStorage.getItem('rmpg_token');
-  const formData = new FormData();
-
-  for (const file of files) {
-    formData.append('files', file);
-  }
-  if (entityType) formData.append('entity_type', entityType);
-  if (entityId) formData.append('entity_id', String(entityId));
+  const maxRetries = Math.max(0, opts?.retries ?? 0);
+  const baseDelay = opts?.retryDelayMs ?? 1500;
 
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Rebuild the body each attempt so every retry is a clean, independent
+    // multipart request (a consumed/aborted body never leaks into the next try).
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file);
+    if (entityType) formData.append('entity_type', entityType);
+    if (entityId) formData.append('entity_id', String(entityId));
+
+    try {
+      const res = await fetchWithTimeout('/api/uploads', {
+        method: 'POST',
+        headers,
+        body: formData,
+        timeoutMs: opts?.timeoutMs,
+      });
+      if (res.ok) {
+        chimeForApiSuccess('POST', '/api/uploads');
+        return res.json();
+      }
+      const errData = await res.json().catch(() => ({}));
+      const err = new Error(
+        errData.error || errData.message || `Upload failed with status ${res.status}`,
+      ) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (!isRetryableUploadError(lastErr) || attempt >= maxRetries) break;
+      opts?.onRetry?.(attempt + 1, maxRetries);
+      await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+    }
   }
-
-  const res = await fetchWithRetry('/api/uploads', {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Upload failed with status ${res.status}`);
-  }
-
-  return res.json();
+  throw lastErr ?? new Error('Upload failed');
 }
 
 // Upload files with per-file progress tracking via XHR

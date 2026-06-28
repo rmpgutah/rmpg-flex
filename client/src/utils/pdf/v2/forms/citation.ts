@@ -308,6 +308,10 @@ export function citationCanonicalData(d: CitationData): Record<string, unknown> 
   const bag: Record<string, unknown> = {};
   for (const section of citationSchema.sections) {
     if (typeof section === 'function') continue;
+    // citationSchema is a flow-section form (kind: 'section'); fixed-layout
+    // sections live in the new citationUtahMaster schema. This narrow lets
+    // FieldSpec resolve cleanly to its `kind` union.
+    if (section.kind !== 'section') continue;
     for (const f of section.fields) {
       if ('path' in f && f.path) {
         // Use the raw accessor for narrative + labeled; signatures

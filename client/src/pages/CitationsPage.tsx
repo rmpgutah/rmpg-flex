@@ -7,8 +7,10 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   FileWarning,
   Plus,
@@ -32,6 +34,10 @@ import {
   Eye,
   Pencil,
   Copy,
+  Zap,
+  Lock,
+  Gavel,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -61,6 +67,7 @@ import { CitationPdfPreview } from '../components/CitationPdfPreview';
 import { formToData } from '../components/citationFormAdapter';
 import { usePersistedPreviewMode } from '../hooks/usePersistedPreviewMode';
 import { Combobox } from '../components/Combobox';
+import { composeAddressUnit } from '../utils/addressUnit';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -219,9 +226,9 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
 ];
 
 const STATUS_BADGE: Record<string, string> = {
-  issued: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  issued: 'bg-surface-sunken text-rmpg-300 border-border-default',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
-  payment_plan: 'bg-gray-900/50 text-gray-300 border-gray-700/50',
+  payment_plan: 'bg-surface-sunken text-rmpg-300 border-border-default',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -342,13 +349,20 @@ function formatCurrency(n: number | null | undefined): string {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// ── Role constants ─────────────────────────────────────────
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Component ──────────────────────────────────────────────
 
 export default function CitationsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // canManage: admin / manager / supervisor may create, edit, and void citations
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
@@ -372,6 +386,7 @@ export default function CitationsPage() {
   // Form state
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
   const [saving, setSaving] = useState(false);
+  const [personAddressUnit, setPersonAddressUnit] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
@@ -778,6 +793,7 @@ export default function CitationsPage() {
         .map(({ id: _id, ...rest }) => rest);
       const payload: any = {
         ...form,
+        person_address: composeAddressUnit(form.person_address, personAddressUnit),
         person_id: form.person_id ? parseInt(form.person_id, 10) : null,
         statute_id: form.statute_id ? parseInt(form.statute_id, 10) : null,
         fine_amount: form.fine_amount ? parseFloat(form.fine_amount) : null,
@@ -818,16 +834,29 @@ export default function CitationsPage() {
   };
 
   // ── Void ─────────────────────────────────────────────────
+  // Native window.confirm() removed — replaced with the in-app ConfirmDialog
+  // for a11y, keyboard polish, and visual consistency with every other
+  // destructive flow (Field Interviews #1597, Evidence #1603, Cases #1604).
+  const [voidTarget, setVoidTarget] = useState<Citation | null>(null);
+  const [voiding, setVoiding] = useState(false);
 
-  const handleVoid = async (c: Citation) => {
-    if (!confirm(`Void citation ${c.citation_number}? This cannot be undone.`)) return;
+  const handleVoid = (c: Citation) => {
+    setVoidTarget(c);
+  };
+
+  const confirmVoid = async () => {
+    if (!voidTarget) return;
+    setVoiding(true);
     try {
-      await apiFetch(`/citations/${c.id}`, { method: 'DELETE' });
+      await apiFetch(`/citations/${voidTarget.id}`, { method: 'DELETE' });
       fetchCitations({ silent: true });
       fetchStats();
-      if (selectedCitation?.id === c.id) setSelectedCitation(null);
+      if (selectedCitation?.id === voidTarget.id) setSelectedCitation(null);
+      setVoidTarget(null);
     } catch (err: any) {
       addToast(err.message || 'Failed to void citation', 'error');
+    } finally {
+      setVoiding(false);
     }
   };
 
@@ -850,15 +879,18 @@ export default function CitationsPage() {
 
   const buildCitationMenu = (c: Citation): ContextMenuItem[] => [
     m.action('Open citation', () => handleSelectCitation(c), { icon: <Eye size={12} /> }),
-    m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> }),
+    ...(canManage ? [m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> })] : []),
     m.separator(),
-    ...(c.status !== 'voided'
+    ...(canManage && c.status !== 'voided'
       ? [m.action('Void citation', () => handleVoid(c), { icon: <Ban size={12} />, danger: true })]
       : []),
     m.separator(),
     m.copy('Copy citation #', c.citation_number, <Copy size={12} />),
     m.copy('Copy violator', c.person_name),
     m.copyId(c.id),
+    ...(c.vehicle_plate
+      ? [m.go('View plate history', `/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate)}`, <ExternalLink size={12} />)]
+      : []),
     ...(c.latitude != null && c.longitude != null
       ? [m.go('Show on map', `/map?flyto=${c.latitude},${c.longitude}`, <MapPin size={12} />)]
       : []),
@@ -879,7 +911,7 @@ export default function CitationsPage() {
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-brand-900/30 text-brand-300 border-brand-700/50">
           <Hash size={10} /> {stats.total} Total
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-gray-900/30 text-gray-300 border-gray-700/50">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-surface-sunken text-rmpg-300 border-border-default">
           <FileWarning size={10} /> {stats.by_status?.issued || 0} Issued
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-green-900/30 text-green-300 border-green-700/50">
@@ -928,9 +960,11 @@ export default function CitationsPage() {
             />
           </div>
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
+            {canManage && (
             <button type="button" onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
+            )}
             <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
             <button type="button" onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
@@ -964,7 +998,7 @@ export default function CitationsPage() {
       </div>
 
       {/* List body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent" style={{ overscrollBehavior: 'contain' }}>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -975,11 +1009,29 @@ export default function CitationsPage() {
             <AlertTriangle size={14} /> {error}
           </div>
         ) : citations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-            <FileWarning size={28} className="mb-2 opacity-40" />
-            <p className="text-xs font-medium">No citations found</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">Adjust filters or create a new citation</p>
-          </div>
+          // Empty-state distinction: "search/filter returned zero" vs
+          // "nothing on file at all". Operators were confused on a clean
+          // install with no citations whether the page was broken or just
+          // empty.
+          (() => {
+            const isFiltered = !!(searchQuery.trim() || filterType || filterStatus);
+            return (
+              <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+                <FileWarning size={28} className="mb-2 opacity-40" />
+                {isFiltered ? (
+                  <>
+                    <p className="text-xs font-medium">No citations match your filters</p>
+                    <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting the search or status filter</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium">No citations on file</p>
+                    <p className="text-[10px] text-rmpg-600 mt-1">Press N or click New to create the first one</p>
+                  </>
+                )}
+              </div>
+            );
+          })()
         ) : (
           citations.map(c => (
             <button type="button"
@@ -992,7 +1044,7 @@ export default function CitationsPage() {
               style={isMobile ? { minHeight: 56 } : undefined}
             >
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[11px] font-mono font-bold text-white">{c.citation_number}</span>
+                <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
                   {c.status.replace(/_/g, ' ')}
                 </span>
@@ -1041,7 +1093,7 @@ export default function CitationsPage() {
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-rmpg-700">
           <Hash size={14} className="text-rmpg-400" />
-          <h2 className="text-sm font-mono font-bold text-white">{c.citation_number}</h2>
+          <h2 className="text-sm font-mono font-bold text-rmpg-100">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
             {c.status.replace(/_/g, ' ')}
           </span>
@@ -1084,10 +1136,12 @@ export default function CitationsPage() {
               entityId={c.id}
               iconOnly
             />
+            {canManage && (
             <button type="button" onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
               <FileText size={12} /> Edit
             </button>
-            {(c.status !== 'voided' || isAdmin) && (
+            )}
+            {canManage && (c.status !== 'voided' || isAdmin) && (
               <button type="button" onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
                 <Ban size={12} /> {c.status === 'voided' && isAdmin ? 'Un-Void' : 'Void'}
               </button>
@@ -1096,11 +1150,11 @@ export default function CitationsPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-              <Scale size={10} className="text-[#d4a017]" /> Violation
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+              <Scale size={10} className="text-[var(--brand-gold)]" /> Violation
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
               {c.statute_citation && (
@@ -1115,7 +1169,7 @@ export default function CitationsPage() {
                   <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm border ${
                     c.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                     c.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
-                    'bg-gray-900/50 text-gray-400 border-gray-700/50'
+                    'bg-surface-sunken text-rmpg-400 border-border-default'
                   }`}>{c.offense_level.replace(/_/g, ' ')}</span>
                 </div>
               )}
@@ -1128,8 +1182,8 @@ export default function CitationsPage() {
           {/* Payment Plan Tracking */}
           {c.fine_amount != null && c.fine_amount > 0 && paymentData && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                <DollarSign size={10} className="text-[#d4a017]" /> Payment Tracking
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <DollarSign size={10} className="text-[var(--brand-gold)]" /> Payment Tracking
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-4 text-xs">
@@ -1161,9 +1215,9 @@ export default function CitationsPage() {
                 ) : (
                   <div className="space-y-2 mt-2 p-2 border border-rmpg-700 bg-surface-sunken">
                     <div className="grid grid-cols-2 gap-2">
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
+                      <div><label htmlFor="ff-citationspage-3" className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
                         <input id="ff-citationspage-3" type="number" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                      <div><label htmlFor="ff-citationspage-4" className="text-[9px] text-rmpg-400 uppercase">Date *</label>
                         <input id="ff-citationspage-4" type="date" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_date} onChange={e => setPaymentForm(p => ({ ...p, payment_date: e.target.value }))} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1176,11 +1230,11 @@ export default function CitationsPage() {
                           getKey={(o) => o.value}
                           placeholder="Method"
                         /></div>
-                      <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
+                      <div><label htmlFor="ff-citationspage-6" className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
                         <input id="ff-citationspage-6" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
+                      <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1">
                         {paymentSubmitting ? 'Saving...' : 'Save Payment'}
                       </button>
                       <button type="button" onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
@@ -1199,9 +1253,9 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-gray-900/50 text-gray-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
+                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-surface-sunken text-rmpg-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
-                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-gray-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
+                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-rmpg-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
                   </div>
                   <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
                 </div>
@@ -1214,7 +1268,7 @@ export default function CitationsPage() {
 
           {/* Subject */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Subject
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1228,12 +1282,26 @@ export default function CitationsPage() {
           {/* Vehicle */}
           {(c.vehicle_description || c.vehicle_plate) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Car size={10} /> Vehicle
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.vehicle_description && <div><span className="text-rmpg-400">Description:</span> <span className="text-rmpg-200">{c.vehicle_description}</span></div>}
-                {c.vehicle_plate && <div><span className="text-rmpg-400">Plate:</span> <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span> <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span></div>}
+                {c.vehicle_plate && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-rmpg-400">Plate:</span>
+                    <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span>
+                    <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate!)}`)}
+                      className="inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors"
+                      title="View plate history in Plate Log"
+                    >
+                      <ExternalLink size={9} /> ALPR
+                    </button>
+                  </div>
+                )}
                 {(c as any).vehicle_vin && <div><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono">{(c as any).vehicle_vin}</span></div>}
                 {((c as any).vehicle_year || (c as any).vehicle_make) && (
                   <div>
@@ -1250,15 +1318,15 @@ export default function CitationsPage() {
           {/* Traffic / Speed Details */}
           {(c.type === 'traffic' || (c as any).speed_recorded || (c as any).bac_level || (c as any).dui_related) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                ⚡ Traffic Details
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Zap size={10} className="text-[var(--brand-gold)]" /> Traffic Details
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).speed_recorded && (
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-400">Speed:</span>
                     <span className="text-red-400 font-bold font-mono text-sm">{(c as any).speed_recorded} MPH</span>
-                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-white font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
+                    {(c as any).speed_limit && <span className="text-rmpg-400">in a <span className="text-rmpg-100 font-bold">{(c as any).speed_limit} MPH</span> zone</span>}
                     {(c as any).speed_recorded && (c as any).speed_limit && (
                       <span className="text-[9px] font-bold text-red-400">({(c as any).speed_recorded - (c as any).speed_limit} over)</span>
                     )}
@@ -1277,8 +1345,8 @@ export default function CitationsPage() {
                   {(c as any).construction_zone ? <span className="text-[8px] font-bold text-orange-400 bg-orange-900/30 px-1.5 py-0.5 border border-orange-700/30">CONSTRUCTION ZONE</span> : null}
                   {(c as any).accident_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">ACCIDENT RELATED</span> : null}
                   {(c as any).dui_related ? <span className="text-[8px] font-bold text-red-400 bg-red-900/30 px-1.5 py-0.5 border border-red-700/30">DUI RELATED</span> : null}
-                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-gray-400 bg-gray-900/30 px-1.5 py-0.5 border border-gray-700/30">WARNING ONLY</span> : null}
-                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-gray-400 bg-[#0c0c0c]/30 px-1.5 py-0.5 border border-gray-700/30">EQUIPMENT VIOLATION</span> : null}
+                  {(c as any).is_warning ? <span className="text-[8px] font-bold text-rmpg-400 bg-surface-sunken px-1.5 py-0.5 border border-border-subtle">WARNING ONLY</span> : null}
+                  {(c as any).is_equipment_violation ? <span className="text-[8px] font-bold text-rmpg-400 bg-surface-sunken/30 px-1.5 py-0.5 border border-border-subtle">EQUIPMENT VIOLATION</span> : null}
                 </div>
               </div>
             </section>
@@ -1287,8 +1355,8 @@ export default function CitationsPage() {
           {/* Bond / Bail */}
           {((c as any).bond_amount > 0 || (c as any).appearance_required) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                🔒 Bond / Bail
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Lock size={10} className="text-[var(--brand-gold)]" /> Bond / Bail
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).bond_amount > 0 && <div><span className="text-rmpg-400">Bond Amount:</span> <span className="text-green-400 font-bold font-mono">${Number((c as any).bond_amount).toLocaleString()}</span></div>}
@@ -1301,8 +1369,8 @@ export default function CitationsPage() {
           {/* Case Disposition */}
           {((c as any).plea || (c as any).verdict || (c as any).sentence) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
-                ⚖ Case Disposition
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
+                <Gavel size={10} className="text-[var(--brand-gold)]" /> Case Disposition
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {(c as any).plea && <div><span className="text-rmpg-400">Plea:</span> <span className="text-rmpg-200 capitalize">{(c as any).plea}</span></div>}
@@ -1315,7 +1383,7 @@ export default function CitationsPage() {
 
           {/* Location & Time */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <MapPin size={10} /> Location & Time
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1330,7 +1398,7 @@ export default function CitationsPage() {
 
           {/* Officer */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Issuing Officer
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1342,13 +1410,29 @@ export default function CitationsPage() {
           {/* Court */}
           {(c.court_date || c.court_name) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Scale size={10} /> Court Information
+                <button
+                  type="button"
+                  onClick={() => navigate('/court')}
+                  className="ml-auto inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors font-normal normal-case tracking-normal"
+                  title="Open Court Tracker"
+                >
+                  <ExternalLink size={9} /> Court Tracker
+                </button>
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.court_date && (() => {
                   const daysUntil = Math.ceil((parseTimestamp(c.court_date).getTime() - Date.now()) / 86400000);
-                  const cdColor = daysUntil < 0 ? '#ef4444' : daysUntil <= 7 ? '#f97316' : daysUntil <= 30 ? '#eab308' : '#22c55e';
+                  // Semantic severity tokens — re-themes between day/night
+                  // automatically (was raw #ef4444 / #f97316 / #eab308 / #22c55e).
+                  const cdColor = daysUntil < 0
+                    ? 'rgb(var(--sev-critical-rgb))'
+                    : daysUntil <= 7
+                      ? 'rgb(var(--sev-high-rgb))'
+                      : daysUntil <= 30
+                        ? 'rgb(var(--sev-caution-rgb))'
+                        : 'rgb(var(--sev-ok-rgb))';
                   const cdLabel = daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'TODAY' : `${daysUntil}d away`;
                   return (
                     <div className="flex items-center gap-2">
@@ -1362,7 +1446,11 @@ export default function CitationsPage() {
                 {(c as any).court_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{(c as any).court_time}</span></div>}
                 {(c as any).court_room && <div><span className="text-rmpg-400">Courtroom:</span> <span className="text-rmpg-200">{(c as any).court_room}</span></div>}
                 {c.court_address && <div><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200">{c.court_address}</span></div>}
-                {(c as any).appearance_required ? <span className="text-[9px] font-bold text-red-400 mt-1 inline-block">⚠ APPEARANCE REQUIRED</span> : null}
+                {(c as any).appearance_required ? (
+                  <span className="text-[9px] font-bold text-red-400 mt-1 inline-flex items-center gap-1">
+                    <AlertTriangle size={9} /> APPEARANCE REQUIRED
+                  </span>
+                ) : null}
               </div>
             </section>
           )}
@@ -1370,7 +1458,7 @@ export default function CitationsPage() {
           {/* Notes */}
           {c.notes && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
+              <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Notes</h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 text-xs text-rmpg-200 whitespace-pre-wrap">{c.notes}</div>
             </section>
           )}
@@ -1417,7 +1505,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}
@@ -1429,7 +1517,7 @@ export default function CitationsPage() {
           </div>
         )}
         {formWasRestored && (
-          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
             <div className="flex items-center gap-2">
               <Clock size={14} className="text-amber-400" />
               <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -1447,7 +1535,7 @@ export default function CitationsPage() {
 
         {/* Type selector */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Citation Type</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Citation Type</h3>
           <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
@@ -1470,7 +1558,7 @@ export default function CitationsPage() {
         {/* Status (edit only) */}
         {isEdit && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Status</h3>
             <Combobox<{ value: CitationStatus; label: string }>
               value={CITATION_STATUSES.find(s => s.value === form.status) ?? null}
               onChange={(opt) => updateField('status', opt?.value || 'issued')}
@@ -1484,7 +1572,7 @@ export default function CitationsPage() {
 
         {/* Violations — multi-violation authoring */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Violations
           </h3>
           <div className="space-y-3">
@@ -1548,12 +1636,12 @@ export default function CitationsPage() {
 
         {/* Subject */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Subject
           </h3>
           <div className="space-y-3">
             <div ref={personDropdownRef} className="relative">
-              <label className="field-label">Search Existing Person</label>
+              <label htmlFor="ff-citationspage-12" className="field-label">Search Existing Person</label>
               <div className="relative">
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input id="ff-citationspage-12"
@@ -1573,7 +1661,7 @@ export default function CitationsPage() {
                 )}
               </div>
               {showPersonDropdown && personResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
                   {personResults.map((p: any) => (
                     <button type="button"
                       key={p.id}
@@ -1597,7 +1685,7 @@ export default function CitationsPage() {
             )}
 
             <div>
-              <label className="field-label">Full Name *</label>
+              <label htmlFor="ff-citationspage-13" className="field-label">Full Name *</label>
               <input id="ff-citationspage-13"
                 type="text"
                 value={form.person_name}
@@ -1611,16 +1699,17 @@ export default function CitationsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">Date of Birth</label>
+                <label htmlFor="ff-citationspage-14" className="field-label">Date of Birth</label>
                 <input id="ff-citationspage-14" type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div>
-                <label className="field-label">Driver License #</label>
+                <label htmlFor="ff-citationspage-15" className="field-label">Driver License #</label>
                 <input id="ff-citationspage-15" type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
               </div>
             </div>
 
-             <div>
+             <div className="flex gap-2">
+               <div className="flex-1">
                <label className="field-label">Address</label>
                <AddressAutocomplete
                  value={form.person_address}
@@ -1634,6 +1723,11 @@ export default function CitationsPage() {
                    // Optionally auto-fill city/state/zip if we had separate fields
                  }}
                />
+               </div>
+               <div className="w-24">
+                 <label htmlFor="ff-citationspage-addrunit" className="field-label">Apt / Unit</label>
+                 <input id="ff-citationspage-addrunit" type="text" className="input-dark w-full py-2 text-xs min-h-[36px]" value={personAddressUnit} onChange={e => setPersonAddressUnit(e.target.value)} placeholder="4B" />
+               </div>
              </div>
           </div>
         </section>
@@ -1641,17 +1735,17 @@ export default function CitationsPage() {
         {/* Vehicle (traffic/parking only) */}
         {showVehicleSection && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
               <Car size={12} /> Vehicle Information
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="field-label">Vehicle Description</label>
+                <label htmlFor="ff-citationspage-16" className="field-label">Vehicle Description</label>
                 <input id="ff-citationspage-16" type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">License Plate</label>
+                  <label htmlFor="ff-citationspage-17" className="field-label">License Plate</label>
                   <input id="ff-citationspage-17" type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase min-h-[36px]" />
                 </div>
                 <div>
@@ -1672,13 +1766,13 @@ export default function CitationsPage() {
 
         {/* Location & Time */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">Violation Date *</label>
+                <label htmlFor="ff-citationspage-19" className="field-label">Violation Date *</label>
                 <input id="ff-citationspage-19"
                   type="date"
                   value={form.violation_date}
@@ -1688,7 +1782,7 @@ export default function CitationsPage() {
                 {formErrors.violation_date && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_date}</p>}
               </div>
               <div>
-                <label className="field-label">Violation Time</label>
+                <label htmlFor="ff-citationspage-20" className="field-label">Violation Time</label>
                 <input id="ff-citationspage-20" type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
             </div>
@@ -1723,24 +1817,24 @@ export default function CitationsPage() {
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select id="ff-citationspage-21" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <label htmlFor="ff-citationspage-21" className="block text-xs text-rmpg-400 mb-1">Section</label>
+                <select id="ff-citationspage-21" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select id="ff-citationspage-22" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <label htmlFor="ff-citationspage-22" className="block text-xs text-rmpg-400 mb-1">Zone</label>
+                <select id="ff-citationspage-22" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select id="ff-citationspage-23" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                <label htmlFor="ff-citationspage-23" className="block text-xs text-rmpg-400 mb-1">Beat</label>
+                <select id="ff-citationspage-23" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
@@ -1752,16 +1846,16 @@ export default function CitationsPage() {
 
         {/* Officer */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Officer Name</label>
+              <label htmlFor="ff-citationspage-24" className="field-label">Officer Name</label>
               <input id="ff-citationspage-24" type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
-              <label className="field-label">Badge #</label>
+              <label htmlFor="ff-citationspage-25" className="field-label">Badge #</label>
               <input id="ff-citationspage-25" type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
             </div>
           </div>
@@ -1769,16 +1863,16 @@ export default function CitationsPage() {
 
         {/* Court */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Court Information
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="field-label">Court Date</label>
+              <label htmlFor="ff-citationspage-26" className="field-label">Court Date</label>
               <input id="ff-citationspage-26" type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
-              <label className="field-label">Court Name</label>
+              <label htmlFor="ff-citationspage-27" className="field-label">Court Name</label>
               <input id="ff-citationspage-27" type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
              <div>
@@ -1800,7 +1894,7 @@ export default function CitationsPage() {
 
         {/* Notes */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">Notes</h3>
           <RichTextArea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}
@@ -1856,9 +1950,11 @@ export default function CitationsPage() {
         <p className="text-xs text-center text-rmpg-500 mb-6 max-w-xs">
           Select a citation from the list to view details, or create a new one.
         </p>
+        {canManage && (
         <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary print:hidden">
           <Plus size={14} /> New Citation
         </button>
+        )}
       </div>
     );
   };
@@ -1873,6 +1969,112 @@ export default function CitationsPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Citations \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 /citations?citation_id=<id> deep-link auto-select \u2500\u2500
+  // Same contract every audited page (1-13) now honors. Once the list
+  // hydrates, find by id and set as selectedCitation; if it's not in
+  // the current page (filtered out, on another page), fall through to
+  // a direct fetch by id. Strip the query so refresh doesn't re-select.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCitationIdRef = useRef<string | null>(searchParams.get('citation_id'));
+  useEffect(() => {
+    const target = pendingCitationIdRef.current;
+    if (!target || loading) return;
+    const stripQuery = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('citation_id');
+      setSearchParams(next, { replace: true });
+    };
+    const hit = citations.find((c) => String(c.id) === String(target));
+    if (hit) {
+      pendingCitationIdRef.current = null;
+      setSelectedCitation(hit);
+      stripQuery();
+      return;
+    }
+    // Wait until the list has at least attempted to hydrate before we
+    // fall through to the direct-fetch path.
+    if (citations.length === 0) return;
+    // Direct fetch by id \u2014 works when the citation is filtered out
+    // by the current type/status/search but the deep-link still resolves.
+    pendingCitationIdRef.current = null;
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: Citation }>(`/citations/${target}`);
+        if (res?.data) {
+          setSelectedCitation(res.data);
+        } else {
+          addToast(`Citation ${target} not found`, 'warning');
+        }
+      } catch {
+        addToast(`Citation ${target} not found`, 'warning');
+      } finally {
+        stripQuery();
+      }
+    })();
+  }, [citations, loading, searchParams, setSearchParams, addToast]);
+
+  // ── ?plate=<plate> deep-link — pre-fill the search box with a plate ──
+  // Incoming from PlateLogPage context-menu "View citations for this plate".
+  // Strips the param after applying so refresh doesn't re-run it.
+  useEffect(() => {
+    const plate = searchParams.get('plate');
+    if (!plate) return;
+    setSearchQuery(plate.toUpperCase());
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('plate');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── ?officer_id=<id> deep-link — pre-fill search with officer's badge ──
+  // Incoming from PersonnelPage officer card "View this officer's citations".
+  useEffect(() => {
+    const officerId = searchParams.get('officer_id');
+    if (!officerId) return;
+    setSearchQuery(officerId);
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keyboard shortcuts: Esc smart-cascade (smallest modal first), and `N`
+  // opens a new citation from anywhere on the page (mirrors Field Interviews
+  // / Dispatch for operator muscle memory). Suppressed while typing into an
+  // input/textarea/contenteditable so "N" doesn't fire mid-form-fill.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Smallest modal first. ConfirmDialog handles its own Esc via its
+        // overlay, but we also close the inline payment form and the
+        // person-search dropdown before falling through to the form panel.
+        if (voidTarget) { e.stopPropagation(); setVoidTarget(null); return; }
+        if (showPaymentForm) { e.stopPropagation(); setShowPaymentForm(false); return; }
+        if (showPersonDropdown) { e.stopPropagation(); setShowPersonDropdown(false); return; }
+        if (mode !== 'list') { e.stopPropagation(); handleCancelForm(); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        // Don't fire while a destructive confirm is open, and gate on canManage
+        if (voidTarget || mode !== 'list' || !canManage) return;
+        e.preventDefault();
+        handleNewCitation();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voidTarget, showPaymentForm, showPersonDropdown, mode]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1919,11 +2121,39 @@ export default function CitationsPage() {
       </div>
 
       {/* Mobile FAB for new citation */}
-      {isMobile && !selectedCitation && mode === 'list' && (
+      {isMobile && !selectedCitation && mode === 'list' && canManage && (
         <button type="button" onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
           <Plus size={24} />
         </button>
       )}
+
+      {/* Void-citation confirmation — replaces the native window.confirm()
+          for a11y + keyboard polish + visual consistency with every other
+          destructive flow in the app. */}
+      <ConfirmDialog
+        isOpen={voidTarget !== null}
+        onClose={() => { if (!voiding) setVoidTarget(null); }}
+        onConfirm={confirmVoid}
+        title="Void citation"
+        message="Voiding a citation marks it inactive in the case record. This cannot be undone from the UI."
+        details={voidTarget && (
+          <div className="space-y-1">
+            <div><span className="text-rmpg-500">Citation:</span> <span className="font-mono text-rmpg-200">{voidTarget.citation_number}</span></div>
+            {voidTarget.person_name && (
+              <div><span className="text-rmpg-500">Violator:</span> <span className="text-rmpg-200">{voidTarget.person_name}</span></div>
+            )}
+            {voidTarget.violation_date && (
+              <div><span className="text-rmpg-500">Issued:</span> <span className="text-rmpg-200">{formatDate(voidTarget.violation_date)}</span></div>
+            )}
+            {voidTarget.statute_citation && (
+              <div><span className="text-rmpg-500">Statute:</span> <span className="font-mono text-rmpg-200">{voidTarget.statute_citation}</span></div>
+            )}
+          </div>
+        )}
+        confirmLabel={voiding ? 'Voiding…' : 'Void citation'}
+        confirmVariant="danger"
+        isLoading={voiding}
+      />
     </div>
   );
 }

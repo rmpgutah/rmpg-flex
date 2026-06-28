@@ -6,6 +6,8 @@
 // dataset without a dedicated server-side export endpoint.
 // ============================================================
 
+import { toDisplayLabel } from './formatters';
+
 export interface CsvColumn {
   key: string;
   label: string;
@@ -77,7 +79,7 @@ export function exportToCsvAuto(
   const allKeys = Object.keys(rows[0]).filter((k) => !excludeKeys.includes(k));
   const columns: CsvColumn[] = allKeys.map((key) => ({
     key,
-    label: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    label: toDisplayLabel(key),
   }));
   exportToCsv(filename, rows, columns);
 }

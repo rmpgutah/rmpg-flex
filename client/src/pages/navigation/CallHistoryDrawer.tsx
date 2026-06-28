@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
+import { formatEnumValue } from '../../utils/formatters';
 interface RawCall {
   id: number;
   call_number: string;
@@ -141,6 +142,8 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
   const [calls, setCalls] = useState<RawCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Agency-wide view when no unit is assigned — rows then tag their own unit.
+  const allUnits = unitId == null && !unitCallSign;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,7 +154,10 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
       const startIso = start.toISOString().slice(0, 19).replace('T', ' ');
       const res = await apiFetch<{ data?: RawCall[] } | RawCall[]>(`/dispatch/calls?startDate=${encodeURIComponent(startIso)}&limit=500`);
       const rows = Array.isArray(res) ? res : res?.data ?? [];
-      setCalls(rows.filter((c) => callBelongsToUnit(c, unitId, unitCallSign)));
+      // No unit identity (off-duty / unassigned) → show the agency-wide run log
+      // so CALL HISTORY is always viewable; otherwise filter to this unit.
+      const allUnits = unitId == null && !unitCallSign;
+      setCalls(allUnits ? rows : rows.filter((c) => callBelongsToUnit(c, unitId, unitCallSign)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load history');
       setCalls([]);
@@ -181,18 +187,20 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
   return (
     <div
       className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl flex flex-col"
-      style={{ top: 44, bottom: 8, left: 8, width: 372, borderRadius: 2 }}
+      style={{ top: 44, bottom: 8, left: 8, width: 372, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
     >
       {/* header */}
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">
         <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
         <History className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Call History</span>
-        {unitCallSign && <span className="text-[9px] font-mono font-bold text-brand-300">UNIT {unitCallSign}</span>}
-        <button onClick={load} className="text-rmpg-500 hover:text-white" aria-label="Refresh call history" title="Refresh">
+        <span className="text-[9px] font-mono font-bold text-brand-300">
+          {unitCallSign ? `UNIT ${unitCallSign}` : unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}
+        </span>
+        <button onClick={load} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Refresh call history" title="Refresh">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
-        <button onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close call history"><X className="w-4 h-4" /></button>
+        <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close call history"><X className="w-4 h-4" /></button>
       </div>
 
       {/* window selector + summary */}
@@ -205,7 +213,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border"
               style={{
                 borderRadius: 2,
-                color: winKey === w.key ? '#0a0a0a' : '#a0a0a0',
+                color: winKey === w.key ? '#0a0a0a' : 'var(--rmpg-400)',
                 background: winKey === w.key ? '#d4a017' : 'transparent',
                 borderColor: winKey === w.key ? '#d4a017' : '#2e2e2e',
               }}
@@ -232,7 +240,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
       </div>
 
       {/* list */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
         {loading && calls.length === 0 && (
           <div className="flex items-center justify-center gap-2 text-[11px] text-rmpg-500 py-6">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading runs…
@@ -241,7 +249,9 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
         {error && <div className="text-[10px] text-red-400 px-2 py-2">{error}</div>}
         {!loading && !error && sorted.length === 0 && (
           <div className="text-[11px] text-rmpg-600 px-2 py-6 text-center">
-            No runs for {unitCallSign ? `unit ${unitCallSign}` : 'this unit'} in this window.
+            {unitId == null && !unitCallSign
+              ? 'No runs in this window.'
+              : `No runs for ${unitCallSign ? `unit ${unitCallSign}` : 'this unit'} in this window.`}
           </div>
         )}
 
@@ -263,8 +273,13 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#888' }} />
                 <span className="text-[11px] font-mono font-bold text-rmpg-100 shrink-0">{c.call_number}</span>
-                <span className="text-[10px] text-rmpg-300 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
-                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{c.status}</span>
+                {allUnits && meaningful(c.unit_call_signs) && (
+                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
+                    {c.unit_call_signs}
+                  </span>
+                )}
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
+                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{formatEnumValue(c.status)}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
 
@@ -273,10 +288,10 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {stages.map((s, i) => (
                   <div key={s.k} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center flex-1 min-w-0">
-                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : '#444' }}>{s.k}</span>
-                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? '#bdbdbd' : '#3a3a3a' }}>{s.t || '··'}</span>
+                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : 'var(--rmpg-700)' }}>{s.k}</span>
+                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--rmpg-300)' : 'var(--rmpg-700)' }}>{s.t || '··'}</span>
                     </div>
-                    {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : '#222' }} />}
+                    {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : 'var(--border-subtle)' }} />}
                   </div>
                 ))}
               </div>
@@ -295,11 +310,11 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               {(meaningful(c.location_address) || (c.latitude != null && c.longitude != null)) && (
                 <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-rmpg-800/60">
                   <MapPin className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
-                  <span className="text-[9px] text-rmpg-400 truncate flex-1" title={c.location_address || ''}>{meaningful(c.location_address) ? c.location_address : 'Mapped location'}</span>
+                  <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={c.location_address || ''}>{meaningful(c.location_address) ? c.location_address : 'Mapped location'}</span>
                   {c.latitude != null && c.longitude != null && (
                     <button
                       onClick={() => onRouteToCall(c.latitude!, c.longitude!, `${c.call_number} · ${c.incident_type?.replace(/_/g, ' ')}`)}
-                      className="flex items-center gap-0.5 text-[8px] font-bold uppercase px-1 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white shrink-0"
+                      className="flex items-center gap-0.5 text-[8px] font-bold uppercase px-1 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100 shrink-0"
                       style={{ borderRadius: 2 }}
                       title="Route to this call"
                     >

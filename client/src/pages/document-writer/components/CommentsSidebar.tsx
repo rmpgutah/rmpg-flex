@@ -68,14 +68,14 @@ export default function CommentsSidebar({
   const resolved = comments.filter((c) => c.resolved);
 
   return (
-    <div className="w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto space-y-2">
+    <div className="w-48 sm:w-64 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide">Comments ({active.length})</span>
         <button type="button" onClick={onClose} className="text-[10px] text-rmpg-500 hover:text-rmpg-200">✕</button>
       </div>
       {comments.length === 0 && <div className="text-[10px] text-rmpg-600 italic">Select text and add a comment.</div>}
       {[...active, ...resolved].map((c) => (
-        <div key={c.id} className={`border rounded-[2px] p-1.5 text-[11px] ${c.resolved ? 'border-[#1a1a1a] opacity-50' : 'border-[#2e2e2e]'}`}>
+        <div key={c.id} className={`border rounded-[2px] p-1.5 text-[11px] ${c.resolved ? 'border-border-default opacity-50' : 'border-rmpg-700'}`}>
           <div className="flex items-center justify-between mb-0.5">
             <button type="button" onClick={() => jumpTo(c.id)} className="text-[#d4a017] font-medium hover:underline">{c.author}</button>
             <div className="flex items-center gap-1">
@@ -86,7 +86,7 @@ export default function CommentsSidebar({
           <div className="text-[9px] text-rmpg-600 mb-1">{c.createdAt}</div>
           <div className="text-rmpg-200">{c.text}</div>
           {c.replies.map((r, i) => (
-            <div key={i} className="mt-1 pl-2 border-l border-[#222]">
+            <div key={i} className="mt-1 pl-2 border-l border-border-default">
               <div className="text-[#d4a017]/80 text-[10px]">{r.author}</div>
               <div className="text-rmpg-300">{r.text}</div>
             </div>
@@ -95,7 +95,7 @@ export default function CommentsSidebar({
             <div className="mt-1 flex gap-1">
               <input autoFocus value={replyText} onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') addReply(c.id); }}
-                placeholder="Reply…" className="flex-1 bg-[#141414] border border-[#222] text-[10px] text-rmpg-100 rounded-[2px] px-1.5 py-0.5 focus:outline-none" />
+                placeholder="Reply…" className="flex-1 bg-surface-base border border-border-default text-[10px] text-rmpg-100 rounded-[2px] px-1.5 py-0.5 focus:outline-none" />
               <button type="button" onClick={() => addReply(c.id)} className="text-[10px] text-[#d4a017] px-1">Send</button>
             </div>
           ) : (

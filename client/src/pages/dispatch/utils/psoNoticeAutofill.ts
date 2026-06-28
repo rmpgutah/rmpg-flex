@@ -3,13 +3,19 @@
 //
 // Maps a failed PSO Client Request CFS (the call being re-dispatched
 // after an unsuccessful attempt) into the NoticeOfCommunicationData
-// the PDF generator needs. Pure — no fetches, no React state.
+// the PDF generator needs. The notice is RESPONDENT-facing (handed to
+// or posted for the person being served), so the mapper also surfaces
+// the respondent name / court case / document type. Those live on the
+// linked serve_queue job, not the call — buildNoticeOfCommunicationFromCall
+// stays pure (no fetches) and accepts them as an optional third arg;
+// openNoticeOfCommunication does the best-effort lookup.
 // Reuses applyCallPdfAutofill so the requestor/client fallbacks are
 // identical to the printed Call Record.
 // ============================================================
 
 import type { CallForService } from '../../../types';
 import { applyCallPdfAutofill } from './callPdfAutofill';
+import { importWithRetry } from '../../../utils/importWithRetry';
 import type {
   NoticeOfCommunicationData,
   NoticeOfCommunicationAttempt,
@@ -19,34 +25,27 @@ export interface PsoNoticeContext {
   officerName: string;
   officerBadge?: string;
   officerPhone?: string;
-  /** Agency dispatch number the client should call to coordinate. */
+  /** Agency dispatch number the respondent should call to coordinate receipt. */
   dispatchPhone?: string;
   signature?: string;
-  /** Call number created by the re-dispatch, if already known. */
+  /** Call number created by the re-dispatch, if already known (internal — not printed). */
   redispatchCallNumber?: string;
   /** Scheduled next attempt window from the re-dispatch. */
   nextWindow?: string;
 }
 
+/** Respondent / legal-matter fields pulled from the linked serve_queue job. */
+export interface ServeJobInfo {
+  respondentName?: string;
+  /** Raw document_type from the queue (e.g. "summons", "subpoena"). */
+  documentType?: string;
+  courtCaseNumber?: string;
+  courtName?: string;
+}
+
 /** Whether a call is a PSO client request eligible for this notice. */
 export function isPsoClientRequest(call: Pick<CallForService, 'incident_type'>): boolean {
   return call.incident_type === 'pso_client_request';
-}
-
-/** Format an arbitrary pso_service_windows value into a short human string. */
-function formatWindow(w: unknown): string | undefined {
-  if (!w) return undefined;
-  if (typeof w === 'string') return w.trim() || undefined;
-  if (Array.isArray(w)) {
-    const parts = w.map((x) => (typeof x === 'string' ? x : (x?.label ?? x?.window ?? ''))).filter(Boolean);
-    return parts.length ? parts.join(', ') : undefined;
-  }
-  if (typeof w === 'object') {
-    const o = w as Record<string, unknown>;
-    const label = (o.label ?? o.window ?? o.preferred) as string | undefined;
-    return label && String(label).trim() ? String(label) : undefined;
-  }
-  return undefined;
 }
 
 /** Last human-entered note text on the call (CallNote[] → string). */
@@ -56,34 +55,115 @@ function lastNoteText(notes: CallForService['notes']): string {
   return (last && typeof last.text === 'string') ? last.text : '';
 }
 
-/** Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into date + time. */
+/**
+ * Derive the documents label shown to the respondent. Prefer the serve job's
+ * document_type ("summons" → "Summons Service"); the pso_service_type column
+ * is unused in practice (always null), so fall back to the contracting
+ * client's industry (e.g. "Process Service") and then the disposition shape.
+ */
+function deriveServiceType(
+  docType?: string,
+  industry?: unknown,
+  disposition?: string,
+): string | undefined {
+  const dt = (docType || '').trim();
+  if (dt) {
+    const base = dt.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+    return /serv/i.test(base) ? base : `${base} Service`;
+  }
+  const ind = typeof industry === 'string' ? industry.trim() : '';
+  if (ind && !['', 'other', 'n/a', 'none'].includes(ind.toLowerCase())) return ind;
+  const disp = (disposition || '').trim().toLowerCase();
+  // "PS Served" / "PS Non-Service" / "PS No Access" … and anything mentioning
+  // serve/service all indicate process service.
+  if (/^ps\b/.test(disp) || /serv/.test(disp)) return 'Process Service';
+  return undefined;
+}
+
+/**
+ * Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into recipient-
+ * readable date + time. Date renders as MM/DD/YYYY (US legal-document
+ * convention); time stays HH:MM 24-hour (police-form convention). The
+ * raw ISO date was leaking through to the PDF as "2026-06-20" which
+ * looked wrong against the long-format notice date ("June 21, 2026").
+ */
 function splitStamp(ts?: string): { date: string; time: string } {
   if (!ts) return { date: '', time: '' };
   const norm = ts.replace('T', ' ');
-  const date = norm.slice(0, 10);
+  const iso = norm.slice(0, 10);                       // "YYYY-MM-DD"
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = m ? `${m[2]}/${m[3]}/${m[1]}` : iso;    // "MM/DD/YYYY"
   const time = norm.slice(11, 16);
   return { date, time };
 }
 
 /**
+ * Best-effort lookup of the serve_queue job linked to a call — the
+ * respondent name, document type, and court case live there, not on the
+ * CFS row (process_served_to is null in practice). Returns null on any
+ * failure; the notice degrades to "Occupant / Respondent" wording.
+ */
+export async function fetchServeJobForCall(callId: string | number): Promise<ServeJobInfo | null> {
+  try {
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
+    const rows = await apiFetch<any[]>('/process-server?limit=500');
+    const list = Array.isArray(rows) ? rows : [];
+    const row = list.find((r) => r && r.call_id != null && String(r.call_id) === String(callId));
+    if (!row) return null;
+    return {
+      respondentName: row.recipient_name || row.defendant_name || undefined,
+      documentType: row.document_type || undefined,
+      courtCaseNumber: row.case_number || undefined,
+      courtName: row.court_name || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the Notice of Communication payload from a failed PSO call.
  * `call` is the attempt that did not complete (the one being re-dispatched).
+ * `serveJob` (optional) supplies the respondent/legal-matter fields from the
+ * linked serve_queue row — see fetchServeJobForCall.
  */
 export function buildNoticeOfCommunicationFromCall(
   call: CallForService,
   ctx: PsoNoticeContext,
+  serveJob?: ServeJobInfo | null,
 ): NoticeOfCommunicationData {
   const filled = applyCallPdfAutofill(call);
   const c = filled as unknown as Record<string, unknown>;
 
+  // Contracting client — printed only as a one-line "requested by" reference
+  // on the respondent copy. Client record (authoritative), then the requestor
+  // block, then the call-level caller.
   const clientName =
-    filled.pso_requestor_name || filled.client_name || filled.caller_name || 'Contracting Client';
-  const clientPhone = filled.pso_requestor_phone || filled.caller_phone || undefined;
-  const clientAddress = filled.caller_address || (c.client_address as string | undefined) || undefined;
+    filled.client_name || filled.pso_requestor_name || filled.caller_name || 'Contracting Client';
+  const clientContact = (c.client_contact_name as string | undefined) || undefined;
+  const clientPhone =
+    (c.client_phone as string | undefined) || filled.pso_requestor_phone || filled.caller_phone || undefined;
+  const clientAddress =
+    (c.client_address as string | undefined) || filled.caller_address || undefined;
 
-  // The failed call IS the unsuccessful attempt. Represent it as one row.
-  const stamp = splitStamp(filled.cleared_at || filled.closed_at || filled.created_at);
-  const attempt: NoticeOfCommunicationAttempt = {
+  // The respondent — serve job is authoritative; process_served_to is the
+  // only call-level fallback (usually null in practice).
+  const respondentName = serveJob?.respondentName || filled.process_served_to || undefined;
+
+  // The failed call IS the unsuccessful attempt. The TIME OF ARRIVAL on
+  // the notice should reflect when the officer actually arrived on scene
+  // (onscene_at), not when the dispatcher cleared the call (cleared_at).
+  // Falls back through the lifecycle stamps so a call closed without an
+  // onscene transition still gets a meaningful timestamp.
+  const filledAny = filled as Record<string, any>;
+  const stamp = splitStamp(
+    filledAny.onscene_at
+    || filledAny.enroute_at
+    || filled.cleared_at
+    || filled.closed_at
+    || filled.created_at,
+  );
+  const currentAttempt: NoticeOfCommunicationAttempt = {
     number: filled.pso_attempt_number || 1,
     date: stamp.date,
     time: stamp.time,
@@ -91,22 +171,70 @@ export function buildNoticeOfCommunicationFromCall(
     notes: filled.action_taken || lastNoteText(filled.notes) || '',
   };
 
-  const noticeDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
+  // Surface the full PSO chain on every notice — every prior visit becomes
+  // its own attempt row so a respondent's second / third / fourth notice
+  // reads as a coherent record of all attempts, not just the latest.
+  // visit_history comes from GET /api/dispatch/calls/:id (server-side
+  // reconstruction via calls_for_service_ext.parent_call_id); the opener
+  // backfills it via fetchVisitHistoryForCall when it's missing from the
+  // CallForService payload (list views don't include it).
+  const historyRows = Array.isArray(call.visit_history) ? call.visit_history : [];
+  const priorAttempts: NoticeOfCommunicationAttempt[] = historyRows.map((v) => {
+    const visitTs = v.onscene_at || v.enroute_at || v.cleared_at || v.closed_at || v.created_at;
+    const visitStamp = splitStamp(visitTs);
+    return {
+      number: v.visit_number || 0,
+      date: visitStamp.date,
+      time: visitStamp.time,
+      result: v.disposition || 'no_contact',
+      notes: v.note || '',
+    };
   });
+
+  // Combine + dedup by visit_number (the server query excludes the current
+  // call via `c.id < ?`, but a future change could include it — guard
+  // anyway so the same attempt never lists twice).
+  const merged = [...priorAttempts, currentAttempt];
+  const seen = new Set<number>();
+  const attempts = merged
+    .filter((a) => {
+      if (seen.has(a.number)) return false;
+      seen.add(a.number);
+      return true;
+    })
+    .sort((a, b) => a.number - b.number);
+
+  // Notice Date renders in the same MM/DD/YYYY format as the attempt
+  // dates below — having one slot read "June 21, 2026" and the table
+  // read "06/20/2026" made the document look like two different forms.
+  // toLocaleDateString('en-US') defaults to M/D/YYYY; manual zero-pad
+  // keeps the field grid columns aligned.
+  const now = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const noticeDate = `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()}`;
 
   return {
     noticeDate,
     callNumber: filled.call_number || '',
+    respondentName,
+    // Prefer the linked serve job's case/court (the serve queue is the
+    // authoritative system of record for legal-matter detail), but FALL
+    // BACK to the call's own case_number / court_name (now an ext column
+    // per mig 0145) so dispatch operators can capture the court even
+    // before a serve_queue row exists.
+    courtCaseNumber: serveJob?.courtCaseNumber || filled.case_number || undefined,
+    courtName: serveJob?.courtName || (filledAny.court_name as string | undefined) || undefined,
     clientName,
+    clientContact,
     clientAddress,
     clientPhone,
-    serviceType: filled.pso_service_type || 'Protective Services',
-    serviceAddress: filled.location || clientAddress || 'Address on file',
-    requestedWindow: formatWindow(filled.pso_service_windows),
+    serviceType: filled.pso_service_type
+      || deriveServiceType(serveJob?.documentType, c.client_industry, filled.disposition)
+      || 'Legal Documents',
+    serviceAddress: filled.location || filled.process_served_address || 'Address on file',
     authorization: filled.pso_authorization || undefined,
     billingCode: filled.pso_billing_code || undefined,
-    attempts: [attempt],
+    attempts,
     redispatchCallNumber: ctx.redispatchCallNumber,
     nextWindow: ctx.nextWindow,
     officerName: ctx.officerName,
@@ -119,13 +247,47 @@ export function buildNoticeOfCommunicationFromCall(
 
 /**
  * Build + render + open the Notice of Communication for a failed PSO call.
+ * Looks up the linked serve_queue job first (best-effort) so the notice is
+ * addressed to the respondent by name with the court case reference.
  * Lazy-imports the generator so jsPDF stays out of the dispatch bundle.
- * Opens in a new window via jsPDF's dataurlnewwindow (same pattern as the
- * serve Notice of Attempt). Throws on failure so callers can toast.
+ * Opens the REAL PDF bytes in a new tab (openPdfDocument) — the old
+ * dataurlnewwindow path opened an HTML wrapper around a session-bound blob
+ * URL, and anything saved from that wrapper was a ~240-byte HTML shell that
+ * rendered as a blank page in every PDF viewer (the
+ * "Notice-of-Communication-CFS26-00055.pdf is blank" incident).
+ * Throws on failure so callers can toast.
  */
 export async function openNoticeOfCommunication(call: CallForService, ctx: PsoNoticeContext): Promise<void> {
-  const data = buildNoticeOfCommunicationFromCall(call, ctx);
-  const { generateNoticeOfCommunication } = await import('../../../utils/psoNoticePdfGenerator');
+  // Backfill visit_history if missing. The dispatch list views ship calls
+  // without it (only the detail endpoint reconstructs the chain), and
+  // every notice past the first MUST surface the full sequence of attempts
+  // so the recipient sees a coherent record.
+  const enrichedCall = (Array.isArray(call.visit_history) && call.visit_history.length > 0)
+    ? call
+    : { ...call, visit_history: await fetchVisitHistoryForCall(call.id) };
+  const serveJob = await fetchServeJobForCall(call.id);
+  const data = buildNoticeOfCommunicationFromCall(enrichedCall, ctx, serveJob);
+  const { generateNoticeOfCommunication } = await importWithRetry(() => import('../../../utils/psoNoticePdfGenerator'));
   const doc = await generateNoticeOfCommunication(data);
-  doc.output('dataurlnewwindow', { filename: `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf` });
+  const { openPdfDocument } = await importWithRetry(() => import('../../../utils/openPdfDocument'));
+  openPdfDocument(doc, `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf`);
+}
+
+/**
+ * Pulls the full PSO chain for a CFS via the dispatch detail endpoint. The
+ * server's GET /api/dispatch/calls/:id reconstructs visit_history from
+ * calls_for_service + calls_for_service_ext.parent_call_id (excluding the
+ * current call via `c.id < ?`). Returns empty on any failure so the caller
+ * just renders the current attempt — never throw a notice generation away
+ * because of a chain-lookup blip.
+ */
+export async function fetchVisitHistoryForCall(callId: string | number): Promise<any[]> {
+  try {
+    const { apiFetch } = await importWithRetry(() => import('../../../hooks/useApi'));
+    const detail = await apiFetch<any>(`/dispatch/calls/${encodeURIComponent(String(callId))}`);
+    const hist = detail && Array.isArray(detail.visit_history) ? detail.visit_history : [];
+    return hist;
+  } catch {
+    return [];
+  }
 }
