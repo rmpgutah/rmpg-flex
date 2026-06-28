@@ -5,9 +5,10 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import RichTextArea from './RichTextArea';
 import {
-  Upload, X, ChevronDown, ChevronRight, Check, AlertCircle,
-  Film, Plus, ArrowLeft, ArrowRight, Loader2, Trash2, Copy,
+  Upload, X, ChevronDown, ChevronRight, Check, AlertCircle, Film, Plus,
+  ArrowLeft, ArrowRight, Loader2, Copy,
 } from 'lucide-react';
 
 // ── Types ───────────────────────────────────────────────────
@@ -436,7 +437,7 @@ export default function DashCamUploadWizard({
               <div
                 className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border ${
                   isActive
-                    ? 'bg-brand-500 border-brand-400 text-white'
+                    ? 'bg-brand-500 border-brand-400 text-rmpg-100'
                     : isDone
                     ? 'bg-brand-500/30 border-brand-500 text-brand-300'
                     : 'bg-surface-sunken border-rmpg-600 text-rmpg-500'
@@ -461,7 +462,7 @@ export default function DashCamUploadWizard({
   // ── Render Step 1 ─────────────────────────
 
   const renderStep1 = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Drop Zone */}
       <div
         onDrop={handleDrop}
@@ -481,7 +482,7 @@ export default function DashCamUploadWizard({
         </span>
         <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM, MKV</span>
       </div>
-      <input
+      <input id="ff-dashcamuploadwizard-0"
         ref={fileRef}
         type="file"
         accept={ACCEPTED_TYPES + ',.mp4,.mov,.avi,.webm,.mkv'}
@@ -565,7 +566,7 @@ export default function DashCamUploadWizard({
         : files[0]?.id || null;
 
     return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
         {/* Apply to All toolbar */}
         <div className="panel-inset p-2 flex items-center justify-between">
           <span className="text-[9px] text-rmpg-400">
@@ -606,7 +607,7 @@ export default function DashCamUploadWizard({
                     </div>
                   )}
                 </div>
-                <span className="text-[11px] text-rmpg-200 font-semibold truncate flex-1 text-left">
+                <span className="text-[11px] text-rmpg-200 font-semibold min-w-0 truncate flex-1 text-left">
                   {entry.file.name}
                 </span>
                 <span className="text-[9px] text-rmpg-500 flex-shrink-0">
@@ -619,10 +620,10 @@ export default function DashCamUploadWizard({
                 <div className="px-3 pb-3 pt-1 space-y-3 border-t border-rmpg-700">
                   {/* Title */}
                   <div>
-                    <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                    <label htmlFor="ff-dashcamuploadwizard-1" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Title <span className="text-red-400">*</span>
                     </label>
-                    <input
+                    <input id="ff-dashcamuploadwizard-1"
                       type="text"
                       value={entry.title}
                       onChange={(e) => updateFile(entry.id, { title: e.target.value })}
@@ -634,10 +635,10 @@ export default function DashCamUploadWizard({
                   {/* Vehicle & Unit */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-2" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Vehicle
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-2"
                         value={entry.vehicleId}
                         onChange={(e) => updateFile(entry.id, { vehicleId: e.target.value })}
                         className="select-dark"
@@ -651,10 +652,10 @@ export default function DashCamUploadWizard({
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-3" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Unit
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-3"
                         value={entry.unitId}
                         onChange={(e) => updateFile(entry.id, { unitId: e.target.value })}
                         className="select-dark"
@@ -672,10 +673,10 @@ export default function DashCamUploadWizard({
                   {/* Recorded At & Classification */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-4" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Recorded At
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-4"
                         type="datetime-local"
                         value={entry.recordedAt}
                         onChange={(e) => updateFile(entry.id, { recordedAt: e.target.value })}
@@ -683,10 +684,10 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-5" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Classification
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-5"
                         value={entry.classification}
                         onChange={(e) => updateFile(entry.id, { classification: e.target.value })}
                         className="select-dark"
@@ -703,10 +704,10 @@ export default function DashCamUploadWizard({
                   {/* Case Number & Speed */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-6" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Case Number
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-6"
                         type="text"
                         value={entry.caseNumber}
                         onChange={(e) => updateFile(entry.id, { caseNumber: e.target.value })}
@@ -715,10 +716,10 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-7" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Speed (MPH)
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-7"
                         type="number"
                         step="0.1"
                         value={entry.speedMph}
@@ -732,10 +733,10 @@ export default function DashCamUploadWizard({
                   {/* Lat/Lng */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-8" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Latitude
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-8"
                         type="number"
                         step="0.0001"
                         value={entry.latitude}
@@ -745,10 +746,10 @@ export default function DashCamUploadWizard({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                      <label htmlFor="ff-dashcamuploadwizard-9" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Longitude
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-9"
                         type="number"
                         step="0.0001"
                         value={entry.longitude}
@@ -761,10 +762,10 @@ export default function DashCamUploadWizard({
 
                   {/* Address */}
                   <div>
-                    <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
+                    <label htmlFor="ff-dashcamuploadwizard-10" className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Address
                     </label>
-                    <input
+                    <input id="ff-dashcamuploadwizard-10"
                       type="text"
                       value={entry.address}
                       onChange={(e) => updateFile(entry.id, { address: e.target.value })}
@@ -778,7 +779,7 @@ export default function DashCamUploadWizard({
                     <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Notes
                     </label>
-                    <textarea
+                    <RichTextArea
                       value={entry.notes}
                       onChange={(e) => updateFile(entry.id, { notes: e.target.value })}
                       rows={2}
@@ -803,7 +804,7 @@ export default function DashCamUploadWizard({
     const totalCount = files.length;
 
     return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         {/* Summary Header */}
         {allDone && (
           <div
@@ -909,7 +910,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={() => setStep(2)}
             disabled={files.length === 0}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             Next <ArrowRight className="w-3 h-3" />
           </button>
@@ -932,7 +933,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={() => setStep(3)}
             disabled={!allHaveTitles}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             Next <ArrowRight className="w-3 h-3" />
           </button>
@@ -959,7 +960,7 @@ export default function DashCamUploadWizard({
           <button
             type="button"
             onClick={handleCloseAfterUpload}
-            className="toolbar-btn-primary text-xs px-4 py-1.5"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5"
           >
             Close
           </button>
@@ -968,7 +969,7 @@ export default function DashCamUploadWizard({
             type="button"
             onClick={startUploadAll}
             disabled={isUploading}
-            className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
+            className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-40"
           >
             {isUploading ? (
               <>

@@ -1,0 +1,601 @@
+/* Spillman Flex grey/steel-blue theme — tokens now live in theme-palettes.css.
+   --spm-* vars invert with the global day/night switcher.
+   Scoped to .records-page (the Records page root); the old .spillman-theme
+   wrapper is removed so colors come from shared theme vars, not a hardcoded
+   light token block. */
+
+/* ── Base surface + text recolor ───────────────────────────── */
+.records-page { background: var(--spm-form); color: var(--spm-text); }
+
+/* rmpg / surface / brand background families → Spillman surfaces.
+   Substring attribute selectors absorb the /alpha utility variants too. */
+.records-page [class*="bg-rmpg-9"],
+.records-page [class*="bg-surface-base"],
+.records-page [class*="bg-surface-deep"],
+.records-page [class*="bg-surface-sunken"] { background-color: var(--spm-form) !important; }
+
+.records-page [class*="bg-rmpg-8"],
+.records-page [class*="bg-rmpg-7"],
+.records-page [class*="bg-surface-raised"],
+.records-page [class*="bg-surface-overlay"] { background-color: var(--spm-field) !important; }
+
+/* Borders → structural Spillman grey */
+.records-page [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
+
+/* Text → theme-correct; brand/amber accents → steel-blue */
+.records-page .text-white { color: var(--spm-text) !important; }
+.records-page [class*="text-rmpg-3"],
+.records-page [class*="text-rmpg-4"],
+.records-page [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
+.records-page [class*="text-brand-4"],
+.records-page [class*="text-brand-5"] { color: var(--spm-accent) !important; }
+
+/* Scrollbars → themed */
+.records-page .scrollbar-dark::-webkit-scrollbar-track { background: var(--spm-chrome) !important; }
+.records-page .scrollbar-dark::-webkit-scrollbar-thumb { background: var(--spm-border) !important; }
+
+/* Window title bar → steel-blue gradient (kept as decorative chrome) */
+.records-page .panel-title-bar {
+  background: linear-gradient(#5a7ea6, #2e4a66) !important;
+  border-color: #2e4a66 !important;
+  color: #ffffff !important;
+}
+.records-page .panel-title-bar .title-icon,
+.records-page .panel-title-bar span { color: #ffffff !important; }
+
+/* Toolbar buttons → classic raised (kept as decorative chrome) */
+.records-page .toolbar-btn {
+  background: var(--spm-toolbar) !important;
+  border: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+}
+.records-page .toolbar-btn:hover { background: var(--spm-toolbar-hover) !important; }
+.records-page .toolbar-btn:active {
+  background: var(--spm-toolbar-active) !important;
+  border-color: var(--spm-border) !important;
+}
+.records-page .toolbar-btn-primary {
+  background: var(--spm-toolbar-primary) !important;
+  border-color: var(--spm-border) !important;
+  color: var(--spm-text) !important;
+  font-weight: 600 !important;
+}
+
+/* ── Group boxes (CollapsibleSection) ──────────────────────── */
+.records-page .collapsible-section {
+  border: 1px solid var(--spm-border) !important;
+  background: var(--spm-field) !important;
+}
+.records-page .collapsible-section-header {
+  background: var(--spm-group-head) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-accent) !important;
+}
+.records-page .collapsible-section-header * { color: var(--spm-accent) !important; }
+
+/* ── Record-type tab strip ─────────────────────────────────── */
+.records-page .spm-record-tabs {
+  display: flex;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  font-size: 11px;
+  overflow-x: auto;
+}
+.records-page .spm-record-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-right: 1px solid var(--spm-border);
+  color: var(--spm-text);
+  white-space: nowrap;
+}
+.records-page .spm-record-tab.on {
+  background: var(--spm-field);
+  font-weight: 600;
+  border-bottom: 2px solid var(--spm-accent);
+}
+.records-page .spm-record-tab-count { color: var(--spm-text-muted); }
+.records-page .spm-record-tab.on .spm-record-tab-count { color: var(--spm-accent); }
+
+/* ── Menu bar ──────────────────────────────────────────────── */
+.records-page .spm-menubar {
+  display: flex;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  font-size: 12px;
+  position: relative;
+  z-index: 20;
+}
+.records-page .spm-menu-label {
+  padding: 3px 10px;
+  color: var(--spm-text);
+}
+.records-page .spm-menu-label:hover,
+.records-page .spm-menu-label[aria-expanded="true"] { background: var(--spm-field-border); }
+.records-page .spm-menu { position: relative; }
+.records-page .spm-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 140px;
+  background: var(--spm-form);
+  border: 1px solid var(--spm-border);
+  box-shadow: 2px 2px 6px rgba(0,0,0,.3);
+  display: flex;
+  flex-direction: column;
+}
+.records-page .spm-menu-item {
+  text-align: left;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--spm-text);
+}
+.records-page .spm-menu-item:hover { background: var(--spm-select); color: #fff; }
+
+/* ── Record form section tabs ──────────────────────────────── */
+.records-page .spm-form-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px 0 4px;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  overflow-x: auto;
+}
+.records-page .spm-form-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--spm-border);
+  border-bottom: none;
+  background: var(--spm-chrome);
+  color: var(--spm-text);
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+}
+.records-page .spm-form-tab.on {
+  background: var(--spm-form);
+  font-weight: 600;
+  position: relative;
+  top: 1px;
+}
+
+/* ── Left results list → themed rows, steel-blue selection ─── */
+.records-page [role="listitem"] {
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+}
+.records-page [role="listitem"]:nth-child(even) { background: var(--spm-field) !important; }
+.records-page [role="listitem"]:hover { background: var(--spm-field-border) !important; }
+.records-page [role="listitem"][aria-selected="true"] {
+  background: var(--spm-select) !important;
+  border-left-color: #1e3f6b !important;
+}
+.records-page [role="listitem"][aria-selected="true"],
+.records-page [role="listitem"][aria-selected="true"] * {
+  color: #ffffff !important;
+}
+/* Colored badges on the selected (steel-blue) row → solid saturated tile + white text.
+   Keeps each badge legible and preserves its color-coded meaning instead of
+   collapsing to white-on-white or white-on-yellow. */
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-red-"] { background: #b91c1c !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-green-"] { background: #15803d !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #ffffff !important; }
+.records-page [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"] { background: #1e3f6b !important; color: #ffffff !important; }
+
+/* ── Detail caution / officer-safety surfaces (theme-aware) ── */
+/* NIGHT (default): dark-tinted caution surfaces, light text */
+.records-page .records-detail [class*="bg-amber-9"],
+.records-page .records-detail [class*="bg-yellow-9"] {
+  background: rgba(212, 160, 23, 0.16) !important;
+  border-color: #8a6d12 !important;
+}
+.records-page .records-detail [class*="bg-amber-9"] *,
+.records-page .records-detail [class*="bg-yellow-9"] * { color: #f5d060 !important; }
+
+.records-page .records-detail [class*="bg-red-9"] {
+  background: rgba(176, 48, 48, 0.20) !important;
+  border-color: #7a2020 !important;
+}
+.records-page .records-detail [class*="bg-red-9"] * { color: #fca5a5 !important; }
+
+/* HIGH RISK / status pills sit on field surface in the identity band (detail panel only) */
+.records-page .records-detail [class*="bg-surface"][class*="rounded"] { background: var(--spm-field) !important; }
+
+/* AlertBanner (caution banners) — NIGHT default */
+.records-page .alert-banner-critical {
+  background: rgba(176, 48, 48, 0.20) !important;
+  border: 1px solid #7a2020 !important;
+}
+.records-page .alert-banner-warning {
+  background: rgba(212, 160, 23, 0.16) !important;
+  border: 1px solid #8a6d12 !important;
+}
+.records-page .alert-banner-critical .text-white { color: #fca5a5 !important; }
+.records-page .alert-banner-warning .text-white { color: #f5d060 !important; }
+.records-page .alert-banner-row .text-rmpg-300 { color: var(--spm-text-muted) !important; }
+/* AlertBanner icon color softening */
+.records-page .alert-banner-critical svg { color: #b03030 !important; }
+.records-page .alert-banner-warning svg { color: #9a7b1e !important; }
+
+/* DAY (light grey theme): restore the warm light caution look */
+html.theme-light .records-page .records-detail [class*="bg-amber-9"],
+html.theme-light .records-page .records-detail [class*="bg-yellow-9"] {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border-color: #c79a2e !important;
+}
+html.theme-light .records-page .records-detail [class*="bg-amber-9"] *,
+html.theme-light .records-page .records-detail [class*="bg-yellow-9"] * { color: #6b4e10 !important; }
+html.theme-light .records-page .records-detail [class*="bg-red-9"] {
+  background: #f6dada !important;
+  border-color: #b03030 !important;
+}
+html.theme-light .records-page .records-detail [class*="bg-red-9"] * { color: #9a1c1c !important; }
+html.theme-light .records-page .alert-banner-critical {
+  background: #f6dada !important;
+  border: 1px solid #b03030 !important;
+}
+html.theme-light .records-page .alert-banner-warning {
+  background: linear-gradient(#fff4d6, #ffe9ad) !important;
+  border: 1px solid #c79a2e !important;
+}
+html.theme-light .records-page .alert-banner-critical .text-white { color: #7a1414 !important; }
+html.theme-light .records-page .alert-banner-warning .text-white { color: #6b4e10 !important; }
+
+/* ── Compact stats strip → Spillman chrome surface ──────────── */
+.records-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
+.records-page .records-stats .text-white { color: var(--spm-text) !important; }
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  Spillman Dashboard screen skin (.dashboard-page)         ║
+   ║  Reuses --spm-* day/night vars, same technique as Records ║
+   ╚══════════════════════════════════════════════════════════╝ */
+.dashboard-page { background: var(--spm-form); color: var(--spm-text); }
+
+/* Recolor the existing token-based surfaces wholesale */
+.dashboard-page [class*="bg-surface-base"],
+.dashboard-page [class*="bg-surface-deep"],
+.dashboard-page [class*="bg-surface-sunken"],
+.dashboard-page [class*="bg-rmpg-9"] { background-color: var(--spm-form) !important; }
+.dashboard-page [class*="bg-surface-raised"],
+.dashboard-page [class*="bg-surface-overlay"],
+.dashboard-page [class*="bg-rmpg-8"],
+.dashboard-page [class*="bg-rmpg-7"] { background-color: var(--spm-field) !important; }
+.dashboard-page [class*="border-rmpg-"] { border-color: var(--spm-border) !important; }
+.dashboard-page .text-white { color: var(--spm-text) !important; }
+.dashboard-page [class*="text-rmpg-3"],
+.dashboard-page [class*="text-rmpg-4"],
+.dashboard-page [class*="text-rmpg-5"] { color: var(--spm-text-muted) !important; }
+.dashboard-page [class*="text-brand-4"],
+.dashboard-page [class*="text-brand-5"] { color: var(--spm-accent) !important; }
+
+/* ── Screen title bar ── */
+.dashboard-page .spm-screen-title {
+  background: linear-gradient(#5a7ea6, #2e4a66);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2e4a66;
+}
+
+/* ── Screen toolbar ── */
+.dashboard-page .spm-screen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  background: var(--spm-chrome);
+  border: 1px solid var(--spm-border);
+  border-top: none;
+  padding: 4px 6px;
+}
+.dashboard-page .spm-toolbtn {
+  background: var(--spm-toolbar);
+  border: 1px solid var(--spm-border);
+  color: var(--spm-text);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.dashboard-page .spm-toolbtn:hover { background: var(--spm-toolbar-hover); }
+.dashboard-page .spm-toolbtn:active { background: var(--spm-toolbar-active); }
+.dashboard-page .spm-toolbtn.spacer { margin-left: auto; }
+
+/* ── View segmented control ── */
+.dashboard-page .spm-view-seg { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.dashboard-page .spm-view-seg-label { font-size: 11px; color: var(--spm-text); }
+.dashboard-page .spm-view-seg-btn {
+  background: var(--spm-toolbar);
+  border: 1px solid var(--spm-border);
+  color: var(--spm-text);
+  font-size: 11px;
+  padding: 3px 11px;
+  cursor: pointer;
+}
+.dashboard-page .spm-view-seg-btn:hover { background: var(--spm-toolbar-hover); }
+.dashboard-page .spm-view-seg-btn.on {
+  background: var(--spm-select);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: #2e4a66;
+}
+
+/* ── Group boxes ── */
+.dashboard-page .spm-group {
+  border: 1px solid var(--spm-border);
+  background: var(--spm-field);
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-page .spm-group-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  padding: 2px 7px;
+  border-bottom: 1px solid var(--spm-border);
+}
+.dashboard-page .spm-group-head.tone-steel { background: linear-gradient(#5a7ea6, #2e4a66); }
+.dashboard-page .spm-group-head.tone-red   { background: linear-gradient(#a23b3b, #6e1f1f); }
+.dashboard-page .spm-group-head.tone-gold  { background: linear-gradient(#c08a2e, #8a5e15); }
+.dashboard-page .spm-group-body { padding: 6px 7px; }
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  UNIVERSAL SPM-PAGE SKIN (.spm-page)                         ║
+   ║  Apply className="spm-page" to any page root to get the full ║
+   ║  Spillman Flex grey/steel-blue treatment (day/night aware).   ║
+   ║  Applied globally via the <main> wrapper in Layout.tsx so    ║
+   ║  every module inherits it without individual page changes.    ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/* ── Base surface + text ─────────────────────────────────────── */
+.spm-page { background: var(--spm-form); color: var(--spm-text); }
+
+/* rmpg / surface / brand tokens → Spillman surfaces */
+.spm-page [class*="bg-rmpg-9"],
+.spm-page [class*="bg-surface-base"],
+.spm-page [class*="bg-surface-deep"],
+.spm-page [class*="bg-surface-sunken"]  { background-color: var(--spm-form)  !important; }
+.spm-page [class*="bg-rmpg-8"],
+.spm-page [class*="bg-rmpg-7"],
+.spm-page [class*="bg-surface-raised"],
+.spm-page [class*="bg-surface-overlay"] { background-color: var(--spm-field) !important; }
+.spm-page [class*="border-rmpg-"]       { border-color: var(--spm-border) !important; }
+
+/* Text recolor */
+.spm-page .text-white                    { color: var(--spm-text) !important; }
+.spm-page [class*="text-rmpg-3"],
+.spm-page [class*="text-rmpg-4"],
+.spm-page [class*="text-rmpg-5"]         { color: var(--spm-text-muted) !important; }
+.spm-page [class*="text-brand-4"],
+.spm-page [class*="text-brand-5"]        { color: var(--spm-accent) !important; }
+
+/* ── Panel title bar → steel-blue gradient ───────────────────── */
+.spm-page .panel-title-bar {
+  background: linear-gradient(#5a7ea6, #2e4a66) !important;
+  border-color: #2e4a66 !important;
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+.spm-page .panel-title-bar .title-icon { color: #ffffff !important; filter: none !important; }
+.spm-page .panel-title-bar span         { color: #ffffff !important; }
+
+/* ── Toolbar buttons → classic Spillman raised ───────────────── */
+.spm-page .toolbar-btn {
+  background: var(--spm-toolbar) !important;
+  border: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 11px !important;
+}
+.spm-page .toolbar-btn:hover:not(:disabled)  { background: var(--spm-toolbar-hover)   !important; color: var(--spm-text) !important; }
+.spm-page .toolbar-btn:active:not(:disabled) { background: var(--spm-toolbar-active)  !important; }
+.spm-page .toolbar-btn-primary {
+  background: var(--spm-toolbar-primary) !important;
+  border-color: var(--spm-border) !important;
+  color: var(--spm-text) !important;
+  font-weight: 600 !important;
+}
+.spm-page .toolbar-btn-danger  { background: linear-gradient(#a23b3b, #6e1f1f) !important; border-color: #7a2020 !important; color: #ffcccc !important; }
+.spm-page .toolbar-btn-success { background: linear-gradient(#2e6e3c, #1d4a28) !important; border-color: #1d6b38 !important; color: #ccffcc !important; }
+
+/* ── CollapsibleSection → Spillman group boxes ───────────────── */
+.spm-page .collapsible-section {
+  border: 1px solid var(--spm-border) !important;
+  background: var(--spm-field) !important;
+}
+.spm-page .collapsible-section-header {
+  background: var(--spm-group-head) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-accent) !important;
+}
+.spm-page .collapsible-section-header * { color: var(--spm-accent) !important; }
+
+/* ── List rows → themed, steel-blue selection ────────────────── */
+.spm-page [role="listitem"] {
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+}
+.spm-page [role="listitem"]:nth-child(even)         { background: var(--spm-field) !important; }
+.spm-page [role="listitem"]:hover                   { background: var(--spm-field-border) !important; }
+.spm-page [role="listitem"][aria-selected="true"]   {
+  background: var(--spm-select) !important;
+  border-left-color: #1e3f6b !important;
+}
+.spm-page [role="listitem"][aria-selected="true"],
+.spm-page [role="listitem"][aria-selected="true"] * { color: #ffffff !important; }
+/* Badge legibility on steel-blue selected row */
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-red-"]    { background: #b91c1c !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-green-"]  { background: #15803d !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"]   { background: #1e3f6b !important; color: #fff !important; }
+
+/* ── Stats strip → Spillman chrome surface ───────────────────── */
+.spm-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
+.spm-page .records-stats .text-white { color: var(--spm-text) !important; }
+
+/* Scrollbars */
+.spm-page .scrollbar-dark::-webkit-scrollbar-track { background: var(--spm-chrome) !important; }
+.spm-page .scrollbar-dark::-webkit-scrollbar-thumb { background: var(--spm-border) !important; }
+
+/* ── spm-page-shell: the SpillmanPage component chrome ──────── */
+.spm-page-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: linear-gradient(#5a7ea6, #2e4a66);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #2e4a66;
+  user-select: none;
+  flex-shrink: 0;
+}
+.spm-page-title-icon { display: flex; align-items: center; opacity: 0.9; }
+.spm-page-title      { flex: 0 0 auto; }
+.spm-page-screen     { flex: 1; text-align: center; font-weight: 400; font-size: 10px; letter-spacing: 0.1em; opacity: 0.7; }
+.spm-page-body       { background: var(--spm-form); }
+
+/* ── SpillmanModuleGroup component ───────────────────────────── */
+.spm-modgroup        { display: flex; flex-direction: column; min-height: 0; }
+.spm-modgroup-strip  {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  overflow-x: auto;
+}
+.spm-modgroup-group  { display: flex; flex-direction: column; gap: 1px; }
+.spm-modgroup-head   {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+.spm-modgroup-head--steel   { background: linear-gradient(#5a7ea6, #2e4a66); }
+.spm-modgroup-head--red     { background: linear-gradient(#a23b3b, #6e1f1f); }
+.spm-modgroup-head--gold    { background: linear-gradient(#c08a2e, #8a5e15); }
+.spm-modgroup-head--green   { background: linear-gradient(#2e6e3c, #1d4a28); }
+.spm-modgroup-head--neutral { background: var(--spm-field-border); color: var(--spm-text); }
+
+.spm-modgroup-tabs   { display: flex; gap: 1px; }
+.spm-modgroup-tab    {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--spm-border);
+  background: var(--spm-toolbar);
+  color: var(--spm-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.spm-modgroup-tab:hover:not(.disabled) { background: var(--spm-toolbar-hover); }
+.spm-modgroup-tab.on {
+  background: var(--spm-select);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: #1e3f6b;
+}
+.spm-modgroup-tab.disabled { opacity: 0.4; cursor: default; }
+.spm-modgroup-count  { font-size: 10px; color: var(--spm-text-muted); }
+.spm-modgroup-tab.on .spm-modgroup-count { color: rgba(255,255,255,0.7); }
+.spm-modgroup-body   { flex: 1; min-height: 0; background: var(--spm-form); }
+
+/* ── SpillmanTabPanel component ──────────────────────────────── */
+.spm-tabpanel        { display: flex; flex-direction: column; min-height: 0; }
+.spm-tabpanel-body   { flex: 1; min-height: 0; background: var(--spm-form); }
+
+/* ── Existing tab-bar / tab-bar-item → Spillman form-tab style ── */
+/* The `.tab-bar` / `.tab-bar-item` classes are used across many pages.
+   Inside .spm-page, restyle them to match the Spillman spm-form-tab chrome. */
+.spm-page .tab-bar {
+  background: var(--spm-chrome) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+  padding: 3px 4px 0 !important;
+  gap: 2px !important;
+}
+.spm-page .tab-bar-item {
+  padding: 4px 12px !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--spm-text) !important;
+  border: 1px solid var(--spm-border) !important;
+  border-bottom: none !important;
+  background: var(--spm-chrome) !important;
+  border-radius: 3px 3px 0 0 !important;
+  position: relative !important;
+  top: 1px !important;
+}
+.spm-page .tab-bar-item:hover {
+  background: var(--spm-field-border) !important;
+  color: var(--spm-text) !important;
+}
+.spm-page .tab-bar-item.active {
+  background: var(--spm-form) !important;
+  font-weight: 600 !important;
+  color: var(--spm-accent) !important;
+  border-color: var(--spm-border) !important;
+  border-bottom: 2px solid var(--spm-accent) !important;
+}
+
+/* ── spillman-tab / spillman-tab-bar → Spillman form-tab style ── */
+.spm-page .spillman-tab-bar {
+  background: var(--spm-chrome) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+}
+.spm-page .spillman-tab {
+  color: var(--spm-text-muted) !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.spm-page .spillman-tab:hover { color: var(--spm-text) !important; background: var(--spm-field-border) !important; }
+.spm-page .spillman-tab.active {
+  color: var(--spm-accent) !important;
+  border-bottom-color: var(--spm-accent) !important;
+  background: transparent !important;
+}
+.spm-page .spillman-tab.active::after { background: var(--spm-accent) !important; box-shadow: none !important; }
+
+/* ── tactical-dark reset: map / HUD tab bars keep their own look ─ */
+/* The .tactical-dark scope forces night vars but does NOT protect inner
+   tab-bar elements from the .spm-page override above (since !important wins
+   specificity). Explicitly restoring the defaults inside tactical-dark
+   prevents the map sidebar / overlay tabs from getting Spillman chrome. */
+.tactical-dark .tab-bar          { background: transparent !important; border-bottom-color: #222222 !important; padding: 0 4px !important; }
+.tactical-dark .tab-bar-item     { font-size: 10px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; color: #888888 !important; background: transparent !important; border: 1px solid transparent !important; border-radius: 0 !important; top: 2px !important; }
+.tactical-dark .tab-bar-item:hover  { color: #cccccc !important; background: rgba(136,136,136,0.1) !important; }
+.tactical-dark .tab-bar-item.active { color: #d4a017 !important; background: var(--surface-raised) !important; border-color: #222222 !important; border-bottom: 2px solid var(--surface-raised) !important; }
+
+/* ── Day-theme adjustments (spm-page + theme-light) ──────────── */
+/* Panel title bar gradient already reads well in day theme (same blue-grey),
+   but list row colours need a lighter hover since spm-field is near-white. */
+html.theme-light .spm-page [role="listitem"]:hover {
+  background: var(--spm-field-border) !important;
+}

@@ -1,0 +1,26 @@
+ALTER TABLE persons ADD COLUMN mental_health_flags TEXT;
+ALTER TABLE persons ADD COLUMN substance_abuse TEXT;
+ALTER TABLE persons ADD COLUMN medication_notes TEXT;
+ALTER TABLE persons ADD COLUMN education_level TEXT;
+ALTER TABLE persons ADD COLUMN military_branch TEXT;
+ALTER TABLE persons ADD COLUMN military_status TEXT;
+ALTER TABLE persons ADD COLUMN tribal_affiliation TEXT;
+ALTER TABLE persons ADD COLUMN identifying_marks_location TEXT;
+ALTER TABLE persons ADD COLUMN tattoo_description TEXT;
+ALTER TABLE persons ADD COLUMN scar_description TEXT;
+ALTER TABLE persons ADD COLUMN piercing_description TEXT;
+ALTER TABLE persons ADD COLUMN distinguishing_features TEXT;
+ALTER TABLE persons ADD COLUMN email_secondary TEXT;
+ALTER TABLE persons ADD COLUMN date_last_seen TEXT;
+ALTER TABLE persons ADD COLUMN location_last_seen TEXT;
+ALTER TABLE persons ADD COLUMN alias_dob TEXT;
+ALTER TABLE persons ADD COLUMN home_phone TEXT;
+ALTER TABLE persons ADD COLUMN work_phone TEXT;
+-- Missing columns for vehicles_records (46)
+ALTER TABLE vehicles_records ADD COLUMN damage_description TEXT;
+ALTER TABLE vehicles_records ADD COLUMN distinguishing_features TEXT;
+ALTER TABLE vehicles_records ADD COLUMN updated_at TEXT;
+ALTER TABLE vehicles_records ADD COLUMN trim TEXT;
+ALTER TABLE vehicles_records ADD COLUMN engine_type TEXT;
+ALTER TABLE vehicles_records ADD COLUMN fuel_type TEXT;
+ALTER TABLE vehicles_records ADD COLUMN transmission TEXT;

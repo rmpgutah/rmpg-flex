@@ -1,0 +1,443 @@
+// ============================================================
+// RMPG Flex — Serve Scheduler (Full swim-lane view)
+// ============================================================
+// Features:
+//   • Officer swim-lane calendar (drag/drop reschedule + queue assign)
+//   • Unassigned queue sidebar (drag source)
+//   • Auto-rebalance preview modal (admin/manager/supervisor only)
+//   • ConfirmDialog — gates dismiss-slot (DELETE) + unassign-slot (PATCH officer→null)
+//   • Deep-link: ?schedule_id=<id> or ?serve_id=<id> — highlights + scrolls that slot
+//   • Deep-link: ?officer_id=<id> — highlights officer lane header + toast
+//   • N shortcut — opens Rebalance modal (canManage only)
+//   • Esc cascade — closes ConfirmDialog → Rebalance modal → blurs focus
+//   • Role gates: canManage (admin/manager/supervisor) for drag-drop + Rebalance;
+//     canDelete (admin/manager) for dismiss-slot + unassign-slot chip buttons
+//   • 4-state empty: loading / error+retry / no-data / no-results
+// ============================================================
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Navigation, RefreshCcw, Sparkles } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
+import RangePicker from '../components/scheduler/RangePicker';
+import UnassignedQueueSidebar from '../components/scheduler/UnassignedQueueSidebar';
+import OfficerLaneTimeline, { type OfficerOption } from '../components/scheduler/OfficerLaneTimeline';
+import RebalancePreviewModal from '../components/scheduler/RebalancePreviewModal';
+import type { RangeMode } from '../utils/schedulerLanes';
+import type { ScheduleSlot } from '../utils/schedulerView';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+const DELETE_ROLES = new Set(['admin', 'manager']);
+
+interface ScheduleResp {
+  schedule: Array<{ date: string; weekday: string; slots: ScheduleSlot[] }>;
+  generated_at: string;
+}
+
+/** Pending action waiting for ConfirmDialog confirmation */
+type PendingAction =
+  | { type: 'dismiss'; slot: ScheduleSlot }
+  | { type: 'unassign'; slot: ScheduleSlot };
+
+function todayDenver(): string {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' })
+    .format(new Date()); // new-date-ok: passing Date object to Intl, not a server string
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days)); // new-date-ok: epoch from Date.UTC
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+const RANGE_DAYS: Record<RangeMode, number> = { week: 7, 'two-week': 14, month: 31 };
+
+export default function ServeSchedulerPage() {
+  const today = useMemo(todayDenver, []);
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+  const canDelete = DELETE_ROLES.has(user?.role ?? '');
+
+  // ── Deep-link ──────────────────────────────────────────────────────────────
+  // ?schedule_id=<id> or ?serve_id=<id> — highlights + scrolls that slot
+  // ?officer_id=<id> — highlights officer lane header
+  // Strip params after capturing to avoid replay on back-nav.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkSlotId = useRef<number | null>(null);
+  const deepLinkOfficerId = useRef<number | null>(null);
+  const deepLinkFiredRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkFiredRef.current) return;
+    deepLinkFiredRef.current = true;
+
+    const rawSlot = searchParams.get('schedule_id') ?? searchParams.get('serve_id');
+    if (rawSlot) {
+      const parsed = parseInt(rawSlot, 10);
+      if (!isNaN(parsed)) deepLinkSlotId.current = parsed;
+    }
+
+    const rawOfficer = searchParams.get('officer_id');
+    if (rawOfficer) {
+      const parsed = parseInt(rawOfficer, 10);
+      if (!isNaN(parsed)) deepLinkOfficerId.current = parsed;
+    }
+
+    if (rawSlot || rawOfficer) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('schedule_id');
+        next.delete('serve_id');
+        next.delete('officer_id');
+        return next;
+      }, { replace: true });
+    }
+  // Run once on mount — searchParams intentionally excluded to avoid loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const officerHighlightToastedRef = useRef(false);
+
+  const [anchorYmd, setAnchorYmd] = useState(today);
+  const [mode, setMode] = useState<RangeMode>('week');
+  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [officers, setOfficers] = useState<OfficerOption[]>([]);
+  const [showRebalance, setShowRebalance] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const { addToast } = useToast();
+
+  const refetch = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const days = RANGE_DAYS[mode];
+      const endDate = shiftYmd(anchorYmd, days - 1);
+      const data = await apiFetch<ScheduleResp>(
+        `/serve-intake/schedule?start_date=${anchorYmd}&end_date=${endDate}&include=tier`,
+      );
+      const flat = (data.schedule ?? []).flatMap((d) => d.slots);
+      setSlots(flat);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load schedule');
+    } finally {
+      setLoading(false);
+    }
+  }, [anchorYmd, mode]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+  useLiveSync('serve-schedule', refetch);
+
+  // Officer list for the swim-lane view.
+  useEffect(() => {
+    apiFetch<Array<{ id: number; name: string }>>('/serve-intake/officers')
+      .then((rows) => setOfficers(rows.map((u) => ({ id: u.id, name: u.name }))))
+      .catch(() => { /* lanes still render Unassigned even on failure */ });
+  }, []);
+
+  // Toast for officer deep-link — fires once after first data load.
+  useEffect(() => {
+    if (!deepLinkOfficerId.current || officerHighlightToastedRef.current || loading) return;
+    const officerId = deepLinkOfficerId.current;
+    const officer = officers.find((o) => o.id === officerId);
+    officerHighlightToastedRef.current = true;
+    if (officer) {
+      addToast(`Showing schedule for ${officer.name}`, 'info');
+      const el = document.getElementById(`officer-lane-${officerId}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (officers.length > 0) {
+      addToast('Officer not found in scheduler', 'warning');
+    }
+  }, [loading, officers, addToast]);
+
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  //   N — open Rebalance modal (canManage only, not while typing)
+  //   Esc cascade — (1) ConfirmDialog → (2) Rebalance modal → (3) blur focus
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (pendingAction) { setPendingAction(null); return; }
+        if (showRebalance) { setShowRebalance(false); return; }
+        (document.activeElement as HTMLElement | null)?.blur();
+        return;
+      }
+
+      if ((e.key === 'n' || e.key === 'N') && !isTyping && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        if (canManage) setShowRebalance(true);
+        // Non-managers: no primary text input in this drag-drop view — N is a no-op.
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showRebalance, canManage, pendingAction]);
+
+  const handleSlotDrop = useCallback(async (
+    slot: ScheduleSlot, target: { date: string; officer_id: number | null },
+  ) => {
+    // Optimistic update.
+    setSlots((prev) => prev.map((s) =>
+      s.id === slot.id
+        ? { ...s, scheduled_date: target.date, officer_id: target.officer_id, manually_moved: 1 }
+        : s,
+    ));
+    try {
+      await apiFetch(`/serve-intake/schedule/${slot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(target),
+      });
+    } catch (e) {
+      refetch();
+      // Toast instead of native alert — the swim-lane is drag-driven so a
+      // modal would steal focus from the next drop the operator queued up.
+      addToast(`Could not reassign attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [refetch, addToast]);
+
+  const handleQueueDrop = useCallback(async (
+    queueId: number, target: { date: string; officer_id: number | null },
+  ) => {
+    try {
+      // Assign the queue row to the officer first.
+      await apiFetch(`/serve-intake/${queueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ officer_id: target.officer_id }),
+      });
+      refetch();
+    } catch (e) {
+      addToast(`Could not assign paper: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [refetch, addToast]);
+
+  const handleBackfill = useCallback(async () => {
+    setBackfilling(true);
+    try {
+      await apiFetch('/serve-intake/schedule/backfill', { method: 'POST' });
+      await refetch();
+    } catch (e) {
+      addToast(`Schedule generation failed: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  }, [refetch, addToast]);
+
+  // ── ConfirmDialog: dismiss slot (DELETE /schedule/:slotId) ─────────────────
+  const handleConfirmDismiss = useCallback(async (slot: ScheduleSlot) => {
+    setConfirmLoading(true);
+    try {
+      await apiFetch(`/serve-intake/schedule/${slot.id}`, { method: 'DELETE' });
+      setSlots((prev) => prev.filter((s) => s.id !== slot.id));
+      addToast('Slot dismissed', 'success');
+      setPendingAction(null);
+    } catch (e) {
+      addToast(`Could not dismiss slot: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [addToast]);
+
+  // ── ConfirmDialog: unassign slot (PATCH officer_id→null) ───────────────────
+  const handleConfirmUnassign = useCallback(async (slot: ScheduleSlot) => {
+    setConfirmLoading(true);
+    try {
+      await apiFetch(`/serve-intake/schedule/${slot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ officer_id: null }),
+      });
+      setSlots((prev) => prev.map((s) =>
+        s.id === slot.id ? { ...s, officer_id: null } : s,
+      ));
+      addToast('Slot unassigned', 'success');
+      setPendingAction(null);
+    } catch (e) {
+      addToast(`Could not unassign slot: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [addToast]);
+
+  const handleConfirm = useCallback(() => {
+    if (!pendingAction) return;
+    if (pendingAction.type === 'dismiss') return void handleConfirmDismiss(pendingAction.slot);
+    if (pendingAction.type === 'unassign') return void handleConfirmUnassign(pendingAction.slot);
+  }, [pendingAction, handleConfirmDismiss, handleConfirmUnassign]);
+
+  // ── Timeline area: loading / error / empty / data ─────────────────────────
+  const renderTimeline = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-32 text-[11px] text-rmpg-400" role="status">
+          Loading schedule…
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-32 gap-2 text-[11px]" role="alert">
+          <span className="text-red-300">{error}</span>
+          <button
+            type="button"
+            onClick={refetch}
+            className="px-2 py-0.5 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px]"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (slots.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-40 gap-2 text-[11px] text-rmpg-400">
+          <span>No serve attempts scheduled for this window.</span>
+          <span className="text-[10px] text-rmpg-500">
+            Generate a schedule first, then drag slots between lanes to assign officers.
+          </span>
+          <button
+            type="button"
+            onClick={handleBackfill}
+            disabled={backfilling}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-brand-500/20 text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/30 disabled:opacity-50 transition-colors"
+          >
+            {backfilling
+              ? <><RefreshCcw size={11} className="animate-spin" /> Generating…</>
+              : <><Sparkles size={11} /> Generate Schedule</>}
+          </button>
+          {canManage && (
+            <span className="text-[10px] text-rmpg-500">
+              Once slots exist, use Rebalance (N) to optimally redistribute workload.
+            </span>
+          )}
+        </div>
+      );
+    }
+    return (
+      <OfficerLaneTimeline
+        anchorYmd={anchorYmd}
+        mode={mode}
+        slots={slots}
+        officers={officers}
+        todayYmd={today}
+        highlightSlotId={deepLinkSlotId.current ?? undefined}
+        highlightOfficerId={deepLinkOfficerId.current ?? undefined}
+        onSlotDrop={canManage ? handleSlotDrop : undefined}
+        onQueueDrop={canManage ? handleQueueDrop : undefined}
+        onSlotDismiss={canDelete ? (slot) => setPendingAction({ type: 'dismiss', slot }) : undefined}
+        onSlotUnassign={canDelete ? (slot) => setPendingAction({ type: 'unassign', slot }) : undefined}
+      />
+    );
+  };
+
+  // ── ConfirmDialog derived content ──────────────────────────────────────────
+  const confirmTitle = pendingAction?.type === 'dismiss' ? 'Dismiss Slot' : 'Unassign Slot';
+  const confirmMessage = pendingAction?.type === 'dismiss'
+    ? 'This will permanently remove the scheduled attempt window.'
+    : 'This will unassign the serve attempt from the officer, returning it to the Unassigned lane.';
+  const confirmLabel = pendingAction?.type === 'dismiss' ? 'Dismiss' : 'Unassign';
+  const confirmVariant = pendingAction?.type === 'dismiss' ? 'danger' : 'warning';
+
+  return (
+    <div className="p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <Link to="/" className="inline-flex items-center gap-1 text-[11px] text-rmpg-300 hover:text-rmpg-100">
+            <ArrowLeft size={11} /> Dashboard
+          </Link>
+          <span className="text-[12px] font-semibold uppercase tracking-wide text-rmpg-100">
+            Serve Scheduler — Full
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <RangePicker
+            anchorYmd={anchorYmd}
+            mode={mode}
+            onAnchorChange={setAnchorYmd}
+            onModeChange={setMode}
+          />
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setShowRebalance(true)}
+              title="Rebalance (N)"
+              className="px-2 py-0.5 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100 border border-rmpg-700 rounded-[2px]"
+            >
+              <RefreshCcw size={9} className="inline mr-1" /> Rebalance
+            </button>
+          )}
+        </div>
+      </div>
+
+      {slots.length > 0 && (
+        <div className="flex items-center gap-3 px-2 py-1 mb-1 text-[10px] bg-surface-sunken/40 border border-rmpg-800/40 rounded-[2px]">
+          <span className="text-rmpg-400">
+            Total slots: <span className="text-rmpg-100 font-mono tabular-nums">{slots.length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Today: <span className="text-rmpg-100 font-mono tabular-nums">{slots.filter(s => s.scheduled_date === today).length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Critical: <span className={`font-mono tabular-nums ${slots.filter(s => (s as any).urgency_tier === 'critical').length > 0 ? 'text-red-300 animate-pulse' : 'text-rmpg-100'}`}>
+              {slots.filter(s => (s as any).urgency_tier === 'critical').length}
+            </span>
+          </span>
+          <span className="text-rmpg-400">
+            Unassigned: <span className="text-amber-400 font-mono tabular-nums">{slots.filter(s => s.officer_id == null).length}</span>
+          </span>
+          <a
+            href="/serve"
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/20"
+          >
+            Plan Route <Navigation size={9} className="inline" />
+          </a>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <UnassignedQueueSidebar onAssign={(_item, _officerId, _date) => { refetch(); }} />
+        <div className="flex-1 min-w-0">
+          {renderTimeline()}
+        </div>
+      </div>
+
+      {canManage && (
+        <RebalancePreviewModal
+          open={showRebalance}
+          onClose={() => setShowRebalance(false)}
+          onApplied={refetch}
+        />
+      )}
+
+      {/* ConfirmDialog — dismiss slot (danger/DELETE) or unassign slot (warning/PATCH) */}
+      <ConfirmDialog
+        isOpen={pendingAction !== null}
+        onClose={() => setPendingAction(null)}
+        onConfirm={handleConfirm}
+        title={confirmTitle}
+        message={confirmMessage}
+        details={pendingAction?.slot ? (
+          <>
+            <div>{pendingAction.slot.recipient_name ?? '—'}</div>
+            {pendingAction.slot.case_number && <div>{pendingAction.slot.case_number}</div>}
+            <div>{pendingAction.slot.scheduled_date} {pendingAction.slot.window_start}</div>
+          </>
+        ) : undefined}
+        confirmLabel={confirmLabel}
+        confirmVariant={confirmVariant}
+        isLoading={confirmLoading}
+      />
+    </div>
+  );
+}
