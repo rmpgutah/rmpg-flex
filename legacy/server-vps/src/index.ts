@@ -882,6 +882,19 @@ try {
       logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
     }
 
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      console.warn('[Scraper Nightly] Failed to schedule:', err?.message || err);
+    }
+
     // Voice system timers — welfare checks and pursuit updates every 30s
     setInterval(() => {
       try { checkWelfareWatches(); } catch (err: any) {
