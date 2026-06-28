@@ -18,10 +18,8 @@ interface Stats { totalCallouts: number; totalEquipment: number; readyEquipment:
 const EMPTY_CALLOUT = { date: new Date().toISOString().slice(0, 16), call_type: '', location: '', resolution: '', duration_minutes: 0, team_size: 0, notes: '' };
 const EMPTY_EQUIPMENT = { equipment_type: '', serial_number: '', condition: 'ready', assigned_to: '', notes: '' };
 
-/** Roles that may create / edit records */
+/** Roles that may create / delete records */
 const CAN_CREATE_ROLES = new Set(['admin', 'manager', 'supervisor']);
-/** Roles that may delete records (stricter) */
-const CAN_DELETE_ROLES = new Set(['admin', 'manager']);
 
 export default function SpecialOpsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,7 +43,6 @@ export default function SpecialOpsPage() {
   const m = useMenuActions();
 
   const canCreate = CAN_CREATE_ROLES.has(user?.role ?? '');
-  const canDelete = CAN_DELETE_ROLES.has(user?.role ?? '');
 
   // -- Deep-link: ?op_id= or ?operation_id= ---------------------
   // Captured once at mount so navigation after hydration does not re-fire.
@@ -254,7 +251,7 @@ export default function SpecialOpsPage() {
           >
             <Pencil size={12} />
           </button>
-          {canDelete && (
+          {canCreate && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -311,7 +308,7 @@ export default function SpecialOpsPage() {
           >
             <Pencil size={12} />
           </button>
-          {canDelete && (
+          {canCreate && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -428,7 +425,7 @@ export default function SpecialOpsPage() {
               m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
               m.separator(),
               m.copyId(row.id),
-              ...(canDelete
+              ...(canCreate
                 ? [m.action('Delete', () => setDeleteTarget({ id: row.id, label: row.call_type || `Callout #${row.id}` }), { danger: true, icon: <Trash2 size={12} /> })]
                 : []),
             ]}
@@ -448,7 +445,7 @@ export default function SpecialOpsPage() {
               m.separator(),
               m.copy('Copy serial #', row.serial_number),
               m.copyId(row.id),
-              ...(canDelete
+              ...(canCreate
                 ? [m.action('Delete', () => setDeleteTarget({ id: row.id, label: row.equipment_type || `Equipment #${row.id}` }), { danger: true, icon: <Trash2 size={12} /> })]
                 : []),
             ]}
