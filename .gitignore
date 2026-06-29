@@ -31,12 +31,16 @@ server/uploads/
 .idea/
 .vs/
 .vscode/
+.superpowers/
 
 # Visual Studio project files (auto-generated)
 *.sln
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
+*.suo
+*.vsidx
+RMPG Flare/
 
 # Desktop build output
 desktop/dist/
@@ -50,6 +54,8 @@ ios2/*/DerivedData/
 *.swiftsourceinfo
 *.abi.json
 *.xcuserstate
+xcuserdata/
+xcschemes/
 ModuleCache/
 .build/
 
