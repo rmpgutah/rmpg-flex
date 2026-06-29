@@ -3,18 +3,22 @@ import CoreAPI
 import CoreAuth
 import FeatureDispatch
 import FeatureRecords
+import FeatureIncidents
+import FeatureCases
+import FeaturePatrol
+import FeatureFleet
+import FeatureServe
+import FeatureWarrants
 import DesignSystem
 
 public struct AppView: View {
     @StateObject private var authManager: AuthManager
-    @StateObject private var wsClient: WebSocketClient
     @State private var hasRestored = false
 
     public init() {
         let client = APIClient(baseURL: Endpoint.productionBaseURL)
         let auth = AuthManager(apiClient: client)
         _authManager = StateObject(wrappedValue: auth)
-        _wsClient = StateObject(wrappedValue: WebSocketClient(authToken: ""))
     }
 
     public var body: some View {
@@ -49,38 +53,37 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             DispatchView(api: DispatchAPI(client: APIClient(baseURL: Endpoint.productionBaseURL)))
-                .tabItem {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                    Text("Dispatch")
-                }
-                .tag(0)
+                .tabItem { Image(systemName: "antenna.radiowaves.left.and.right"); Text("Dispatch") }.tag(0)
+
+            IncidentsView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
+                .tabItem { Image(systemName: "doc.text.fill"); Text("Incidents") }.tag(1)
+
+            CasesView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
+                .tabItem { Image(systemName: "briefcase.fill"); Text("Cases") }.tag(2)
+
+            WarrantsView()
+                .tabItem { Image(systemName: "doc.text.magnifyingglass"); Text("Warrants") }.tag(3)
 
             RecordsView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
-                .tabItem {
-                    Image(systemName: "folder.fill")
-                    Text("Records")
-                }
-                .tag(1)
+                .tabItem { Image(systemName: "folder.fill"); Text("Records") }.tag(4)
+
+            FleetView()
+                .tabItem { Image(systemName: "car.fill"); Text("Fleet") }.tag(5)
+
+            ServeView()
+                .tabItem { Image(systemName: "envelope.fill"); Text("Serve") }.tag(6)
 
             PatrolView()
-                .tabItem {
-                    Image(systemName: "map.fill")
-                    Text("Patrol")
-                }
-                .tag(2)
+                .tabItem { Image(systemName: "map.fill"); Text("Patrol") }.tag(7)
 
             ProfileView(authManager: authManager)
-                .tabItem {
-                    Image(systemName: "person.fill")
-                    Text("Profile")
-                }
-                .tag(3)
+                .tabItem { Image(systemName: "person.fill"); Text("Profile") }.tag(8)
         }
         .tint(RMPGTheme.brandGold)
         .onAppear {
             let appearance = UITabBarAppearance()
             appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor(Color(hex: "0a0a0a"))
+            appearance.backgroundColor = UIColor(RMPGTheme.baseBlack)
             appearance.stackedLayoutAppearance.selected.iconColor = UIColor(RMPGTheme.brandGold)
             appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(RMPGTheme.brandGold)]
             appearance.stackedLayoutAppearance.normal.iconColor = UIColor(RMPGTheme.textMuted)
@@ -98,26 +101,19 @@ struct ProfileView: View {
     var body: some View {
         ZStack {
             RMPGTheme.baseBlack.ignoresSafeArea()
-
             VStack(spacing: 0) {
                 PanelTitleBar(title: "Profile", icon: "person.fill")
                 RMPGDivider()
-
                 if let user = authManager.currentUser {
                     VStack(spacing: 16) {
                         VStack(spacing: 4) {
                             Image(systemName: "person.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(RMPGTheme.brandGold)
+                                .font(.system(size: 60)).foregroundColor(RMPGTheme.brandGold)
                             Text(user.fullName)
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(RMPGTheme.textPrimary)
+                                .font(.system(size: 18, weight: .bold)).foregroundColor(RMPGTheme.textPrimary)
                             Text(user.role.replacingOccurrences(of: "_", with: " ").uppercased())
-                                .font(.system(size: 11))
-                                .foregroundColor(RMPGTheme.textMuted)
-                        }
-                        .padding(.top, 24)
-
+                                .font(.system(size: 11)).foregroundColor(RMPGTheme.textMuted)
+                        }.padding(.top, 24)
                         VStack(spacing: 0) {
                             RMPGDataRow(label: "Username", value: user.username)
                             RMPGDivider()
@@ -129,28 +125,17 @@ struct ProfileView: View {
                             RMPGDivider()
                             RMPGDataRow(label: "Status", value: user.status, accent: RMPGTheme.statusGreen)
                         }
-                        .background(RMPGTheme.raisedSurface)
-                        .cornerRadius(2)
-                        .padding(.horizontal, 16)
-
+                        .background(RMPGTheme.raisedSurface).cornerRadius(2).padding(.horizontal, 16)
                         Spacer()
-
-                        RMPGDestructiveButton(title: "LOG OUT") {
-                            showLogoutConfirm = true
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 40)
+                        RMPGDestructiveButton(title: "LOG OUT") { showLogoutConfirm = true }
+                            .padding(.horizontal, 16).padding(.bottom, 40)
                     }
                 }
             }
         }
         .alert("Log Out", isPresented: $showLogoutConfirm) {
             Button("Cancel", role: .cancel) {}
-            Button("Log Out", role: .destructive) {
-                Task { await authManager.logout() }
-            }
-        } message: {
-            Text("Are you sure you want to log out? GPS tracking will stop.")
-        }
+            Button("Log Out", role: .destructive) { Task { await authManager.logout() } }
+        } message: { Text("Are you sure you want to log out? GPS tracking will stop.") }
     }
 }
