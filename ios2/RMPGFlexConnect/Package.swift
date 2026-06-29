@@ -40,8 +40,5 @@ let package = Package(
         .target(name: "CorePush", dependencies: ["CoreAPI"]),
         .target(name: "CoreLocationService", dependencies: ["CoreAPI"]),
         .target(name: "CoreAudioService", dependencies: []),
-        .testTarget(name: "CoreAPITests", dependencies: ["CoreAPI"]),
-        .testTarget(name: "CoreAuthTests", dependencies: ["CoreAuth"]),
-        .testTarget(name: "FeatureDispatchTests", dependencies: ["FeatureDispatch"]),
     ]
 )

@@ -40,9 +40,9 @@ xcodebuild archive \
     -destination "generic/platform=iOS" \
     -configuration Release \
     -allowProvisioningUpdates \
-    ${TEAM_ID:+-developmentTeam "$TEAM_ID"} \
+    ${TEAM_ID:+DEVELOPMENT_TEAM="$TEAM_ID"} \
     CODE_SIGN_STYLE=Automatic \
-    | xcpretty || true
+    2>&1 | tail -30
 
 if [ ! -d "$ARCHIVE_PATH" ]; then
     err "Archive failed — no .xcarchive produced"
@@ -58,7 +58,7 @@ xcodebuild -exportArchive \
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>enterprise</string>
+    <string>ad-hoc</string>
     <key>teamID</key>
     <string>${TEAM_ID}</string>
     <key>compileBitcode</key>
@@ -70,7 +70,7 @@ xcodebuild -exportArchive \
 </dict>
 </plist>
 PLIST
-) | xcpretty || true
+) 2>&1 | tail -30
 
 if [ ! -f "$IPA_PATH" ]; then
     err "Export failed — no .ipa produced"
