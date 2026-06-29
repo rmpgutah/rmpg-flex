@@ -88,7 +88,7 @@ jobs:
       # prod for weeks while source moved to v563 because deploy.yml
       # only ran the Worker step. All UI fixes silently rotted.
       - name: Install client dependencies
-        run: cd client && npm ci
+        run: cd client && npm install --legacy-peer-deps
 
       - name: Build client
         run: cd client && npm run build
