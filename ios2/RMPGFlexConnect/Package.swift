@@ -1,0 +1,47 @@
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "RMPGFlexConnect",
+    platforms: [.iOS(.v17)],
+    products: [
+        .library(name: "CoreAPI", targets: ["CoreAPI"]),
+        .library(name: "CoreAuth", targets: ["CoreAuth"]),
+        .library(name: "FeatureDispatch", targets: ["FeatureDispatch"]),
+        .library(name: "FeatureRecords", targets: ["FeatureRecords"]),
+        .library(name: "FeatureIncidents", targets: ["FeatureIncidents"]),
+        .library(name: "FeatureCases", targets: ["FeatureCases"]),
+        .library(name: "FeaturePatrol", targets: ["FeaturePatrol"]),
+        .library(name: "FeatureFleet", targets: ["FeatureFleet"]),
+        .library(name: "FeatureServe", targets: ["FeatureServe"]),
+        .library(name: "FeatureWarrants", targets: ["FeatureWarrants"]),
+        .library(name: "FeatureShell", targets: ["FeatureShell"]),
+        .library(name: "DesignSystem", targets: ["DesignSystem"]),
+        .library(name: "CoreOffline", targets: ["CoreOffline"]),
+        .library(name: "CorePush", targets: ["CorePush"]),
+        .library(name: "CoreLocationService", targets: ["CoreLocationService"]),
+        .library(name: "CoreAudioService", targets: ["CoreAudioService"]),
+    ],
+    dependencies: [],
+    targets: [
+        .target(name: "CoreAPI", dependencies: []),
+        .target(name: "CoreAuth", dependencies: ["CoreAPI", "DesignSystem"]),
+        .target(name: "FeatureDispatch", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CoreLocationService", "CorePush"]),
+        .target(name: "FeatureRecords", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeatureIncidents", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeatureCases", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeaturePatrol", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CoreLocationService"]),
+        .target(name: "FeatureFleet", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeatureServe", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeatureWarrants", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
+        .target(name: "FeatureShell", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CorePush", "FeatureDispatch", "FeatureRecords", "FeatureIncidents", "FeatureCases", "FeaturePatrol", "FeatureFleet", "FeatureServe", "FeatureWarrants"]),
+        .target(name: "DesignSystem", dependencies: []),
+        .target(name: "CoreOffline", dependencies: ["CoreAPI"]),
+        .target(name: "CorePush", dependencies: ["CoreAPI"]),
+        .target(name: "CoreLocationService", dependencies: ["CoreAPI"]),
+        .target(name: "CoreAudioService", dependencies: []),
+        .testTarget(name: "CoreAPITests", dependencies: ["CoreAPI"]),
+        .testTarget(name: "CoreAuthTests", dependencies: ["CoreAuth"]),
+        .testTarget(name: "FeatureDispatchTests", dependencies: ["FeatureDispatch"]),
+    ]
+)
