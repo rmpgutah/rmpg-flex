@@ -9,13 +9,14 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
+import { Maximize2, MapPin, RefreshCw, Car, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
+import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
+import { PRIORITY_HEX } from '../utils/statusColors';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -63,6 +64,8 @@ function formatEta(seconds: number): string {
   const rem = mins % 60;
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
 }
+
+const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
 /** Format meters into a human-readable distance */
 function formatDistance(meters: number): string {
@@ -147,6 +150,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // (~1/sec) when THIS device is the unit being routed, instead of waiting
   // for the server units feed to round-trip on a tab switch.
   const devGps = useGpsTracking({ upload: false });
+
+  const assignedUnits = call?.assigned_units
+    ? (Array.isArray(call.assigned_units) ? call.assigned_units : [call.assigned_units]).filter(Boolean)
+    : [];
+  const assignedWithGpsCount = units.filter((u) =>
+    u.latitude != null && u.longitude != null &&
+    assignedUnits.some((au: any) => String(au.id ?? au) === String(u.id))
+  ).length;
+  const mapHeading = devGps.headingSmoothed ?? devGps.course ?? devGps.heading ?? 0;
 
   // Load Mapbox token + init map
   useEffect(() => {
