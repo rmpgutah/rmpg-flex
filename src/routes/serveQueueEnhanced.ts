@@ -941,4 +941,76 @@ sqe.get('/cross-reference/dispatch', async (c) => {
   return c.json({ unmatched: rows, count: rows.length });
 });
 
+// ── POST /optimize-route — run server-side nearest-neighbor optimization ──
+// Accepts user's current GPS coordinates as the route origin so the
+// optimized order starts from wherever the officer actually is.
+sqe.post('/optimize-route', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{ attempt_ids: number[]; user_lat?: number; user_lng?: number }>();
+    if (!Array.isArray(body.attempt_ids) || !body.attempt_ids.length) {
+      return c.json({ error: 'attempt_ids array required' }, 400);
+    }
+    const { optimizeRoute, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
+    let result;
+    if (body.user_lat != null && body.user_lng != null && isFinite(body.user_lat) && isFinite(body.user_lng)) {
+      result = await optimizeRouteFromUserLocation(db, body.attempt_ids, body.user_lat, body.user_lng);
+    } else {
+      result = await optimizeRoute(db, userId ?? 0, body.attempt_ids);
+    }
+    return c.json(result);
+  } catch (err) {
+    console.error('[serve-queue] optimize-route error', err);
+    return c.json({ error: 'Route optimization failed' }, 500);
+  }
+});
+
+// ── POST /route-progress — update route completion progress ──
+sqe.post('/route-progress', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{ route_id: number; visited_queue_ids: number[]; current_lat?: number; current_lng?: number }>();
+    if (!body.route_id || !Array.isArray(body.visited_queue_ids)) {
+      return c.json({ error: 'route_id and visited_queue_ids required' }, 400);
+    }
+    await execute(db,
+      `UPDATE serve_routes SET visited_queue_ids = ?, current_lat = ?, current_lng = ?, updated_at = datetime('now','localtime')
+       WHERE id = ? AND officer_id = ?`,
+      JSON.stringify(body.visited_queue_ids), body.current_lat ?? null, body.current_lng ?? null,
+      body.route_id, userId);
+    return c.json({ success: true });
+  } catch { return c.json({ error: 'Progress update failed' }, 500); }
+});
+
+// ── POST /batch-optimize — optimize routes for all servers at once ──
+sqe.post('/batch-optimize', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  try {
+    const db = getDb(c.env);
+    const { batchOptimizeAllServers } = await import('../utils/serveRouteOptimizer');
+    const result = await batchOptimizeAllServers(db);
+    return c.json(result);
+  } catch (err) {
+    console.error('[serve-queue] batch-optimize error', err);
+    return c.json({ error: 'Batch optimization failed' }, 500);
+  }
+});
+
+// ── GET /nearest-unassigned — find closest unassigned job to a location ──
+sqe.get('/nearest-unassigned', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const lat = parseFloat(c.req.query('lat') || '');
+    const lng = parseFloat(c.req.query('lng') || '');
+    const radius = parseFloat(c.req.query('radius') || '50');
+    if (isNaN(lat) || isNaN(lng)) return c.json({ error: 'lat and lng required' }, 400);
+    const { getNearestUnassignedAttempt } = await import('../utils/serveRouteOptimizer');
+    const result = await getNearestUnassignedAttempt(db, lat, lng, radius);
+    return c.json(result);
+  } catch { return c.json({ error: 'Lookup failed' }, 500); }
+});
+
 export default sqe;

@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { Brain, Check, X, Loader2 } from 'lucide-react';
+import { Brain, Check, X, Loader2, ScanLine } from 'lucide-react';
 
 interface NarrativeAssistProps {
   notes: string;
   incidentType?: string;
   locationAddress?: string;
   onAccept: (narrative: string) => void;
+  onExtractFields?: (fields: Record<string, unknown>) => void;
 }
 
-export default function NarrativeAssist({ notes, incidentType, locationAddress, onAccept }: NarrativeAssistProps) {
+export default function NarrativeAssist({ notes, incidentType, locationAddress, onAccept, onExtractFields }: NarrativeAssistProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -54,7 +56,24 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
 
   const handleDiscard = () => {
     setPreview(null);
-    setError(null);
+  };
+
+  const handleExtractFields = async () => {
+    if (!onExtractFields || notes.length < 20) return;
+    setExtracting(true);
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const res = await fetch('/api/ai/extract-fields', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: notes }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.result) onExtractFields(data.result);
+      }
+    } catch { /* best-effort */ }
+    finally { setExtracting(false); }
   };
 
   return (
@@ -73,6 +92,20 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
         {aiUnavailable ? 'AI Unavailable' : isLoading ? 'Generating...' : 'AI Assist'}
       </button>
+
+      {/* Extract Fields button */}
+      {onExtractFields && (
+        <button
+          onClick={handleExtractFields}
+          disabled={extracting || !notes?.trim() || notes.length < 20}
+          className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors ml-1.5"
+          style={{ background: '#06b6d415', borderColor: '#06b6d440', color: '#22d3ee' }}
+          title={notes.length < 20 ? 'Enter at least 20 characters of text first' : 'Extract caller name, address, persons, and incident type from notes'}
+        >
+          {extracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
+          {extracting ? 'Extracting...' : 'Auto-Fill Fields'}
+        </button>
+      )}
 
       {/* Error message */}
       {error && !preview && (

@@ -34,6 +34,8 @@ import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
 import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
+import IntegrationDashboardPanel from './dashboard/IntegrationDashboardPanel';
+import { useDashboardPanels } from './dashboard/useDashboardPanels';
 import {
   resolveDashboardView, canSwitchView, writeSavedView,
   VIEW_PANELS, toolbarActionsForView,
@@ -1720,6 +1722,9 @@ export default function DashboardPage() {
       {hasPanel('servePerformance') && (
         <ServeDashboardPerformance />
       )}
+
+      {/* Integration Overview — cross-system KPI widget */}
+      {hasPanel('statusSummary') && <IntegrationDashboardPanel />}
 
       {/* Main Content Grid */}
       {hasPanel('callAnalytics') && (

@@ -162,6 +162,26 @@ calls.post('/', async (c) => {
       }
     }
 
+    // ── Smart context defaults ──
+    // Time-of-day: night shift (18-06) auto-sets officer safety + lighting flags
+    if (body.officer_safety_caution == null) {
+      const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false }), 10);
+      if (hour >= 18 || hour < 6) body.officer_safety_caution = 1;
+    }
+    // Weather: if weather data available and hazardous, auto-set caution flag
+    // (best-effort — weather endpoint may be unavailable)
+    if (!body.officer_safety_caution && body.latitude != null && body.longitude != null) {
+      try {
+        const weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${body.latitude}&longitude=${body.longitude}&current=weather_code&timezone=America%2FDenver`);
+        const weather = await weatherResp.json() as any;
+        const code = weather?.current?.weather_code;
+        // WMO weather codes: 95-99 = thunderstorm, 71-77 = snow, 56-67 = freezing, 85-86 = snow showers
+        if (code && (code >= 95 || code === 71 || code === 73 || code === 75 || code === 77 || code === 85 || code === 86 || code === 66 || code === 67)) {
+          body.officer_safety_caution = 1;
+        }
+      } catch { /* best-effort */ }
+    }
+
     // Call-number format: CFS{YY}-{NNNNN}, 5-digit sequence, resets
     // each calendar year (the LIKE filter is YY-scoped so MAX() only
     // sees this year's rows). Example: CFS26-00001.
@@ -946,6 +966,78 @@ calls.post('/:id/dispatch', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
+});
+
+// POST /dispatch/calls/:id/split — split a call into multiple child CFS records
+calls.post('/:id/split', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const parent = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!parent) return c.json({ error: 'Parent call not found' }, 404);
+    const { splits } = await c.req.json<{ splits: Array<{ incident_type: string; description?: string; location_address?: string }> }>();
+    if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
+    const userId = c.get('userId') as number | undefined;
+    const created: number[] = [];
+    for (const s of splits) {
+      const result = await execute(db,
+        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, split_from_id, created_at, updated_at)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, id);
+      created.push(Number(result.meta.last_row_id));
+    }
+    await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
+    if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
+    return c.json({ success: true, parent_id: id, child_ids: created });
+  } catch (err) { return c.json({ error: 'Call split failed' }, 500); }
+});
+
+// GET /dispatch/calls/:id/evidence-prompt — check if evidence should be collected before clearing
+calls.get('/:id/evidence-prompt', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const call = await queryFirst<{ photos_taken: number | null }>(db,
+      'SELECT (SELECT COUNT(*) FROM field_photos WHERE call_id = ?) AS photos_taken', id);
+    const notes = (await queryFirst<{ n: number }>(db,
+      'SELECT COUNT(*) AS n FROM call_notes WHERE call_id = ?', id))?.n ?? 0;
+    return c.json({ prompt_evidence: !call?.photos_taken || call.photos_taken === 0, photos_count: call?.photos_taken ?? 0, notes_count: notes });
+  } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
+});
+
+// ── Call Templates (CRUD for reusable dispatch patterns) ─────
+calls.get('/templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM call_templates WHERE (owner_user_id = ? OR is_shared = 1) AND active = 1 ORDER BY use_count DESC, name`, userId ?? 0);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+calls.post('/templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const body = await c.req.json<{ name: string; incident_type: string; priority?: string; auto_flags?: any; notes?: string; is_shared?: boolean }>();
+    if (!body.name || !body.incident_type) return c.json({ error: 'name and incident_type required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO call_templates (name, incident_type, priority, auto_flags, notes, owner_user_id, is_shared, created_at)
+       VALUES (?,?,?,?,?,?,?,datetime('now','localtime'))`,
+      body.name, body.incident_type, body.priority || 'P3', JSON.stringify(body.auto_flags || {}), body.notes || null, userId, body.is_shared ? 1 : 0);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch { return c.json({ error: 'Template creation failed' }, 500); }
+});
+
+calls.delete('/templates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const id = parseInt(c.req.param('id'), 10);
+    await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
+    return c.json({ success: true });
+  } catch { return c.json({ error: 'Delete failed' }, 500); }
 });
 
 export default calls;

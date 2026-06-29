@@ -500,9 +500,7 @@ stubs.get('/dashcam-events/recent', (c) => c.json([]));
 stubs.get('/dashcam-events/:id', (c) => c.json(null));
 stubs.get('/live-locations', (c) => c.json([]));
 
-// ── ServeManager stubs (mounted at /api/servemanager) ────────
-// The /status and /jobs routes above already handle their paths.
-// These cover the endpoints AdminServeManagerTab.tsx calls that were 404-ing.
+// ── ServeManager stubs (superseded by src/routes/serveManagerRoutes.ts) ──
 stubs.get('/sync/log', (c) => c.json({ data: [] }));
 stubs.get('/poller/status', (c) => c.json({
   enabled: false, poll_interval: 300, target_client: '',

@@ -552,6 +552,7 @@ export default function ServePage() {
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
   const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const serveGeoWatchId = useRef<number | null>(null);
 
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
@@ -1064,6 +1065,7 @@ export default function ServePage() {
   // Dispose the map + recovery listener on unmount (kept out of the init
   // effect's cleanup so a tab switch doesn't tear down the persisted map).
   useEffect(() => () => {
+    if (serveGeoWatchId.current != null) { navigator.geolocation.clearWatch(serveGeoWatchId.current); serveGeoWatchId.current = null; }
     if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
     markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
     markersRef.current = [];
@@ -1123,6 +1125,30 @@ export default function ServePage() {
 
       markersRef.current.push(marker);
     });
+
+    // ── User location marker on the map ──
+    let userLocationMarker: mapboxgl.Marker | null = null;
+    if (navigator.geolocation) {
+      // Clear previous watch
+      if (serveGeoWatchId.current != null) { navigator.geolocation.clearWatch(serveGeoWatchId.current); }
+      try {
+        const updateUserMarker = (pos: GeolocationPosition) => {
+          const lngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+          bounds.extend(lngLat);
+          if (!userLocationMarker) {
+            const el = document.createElement('div');
+            el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:rgba(59,130,246,0.6);border:3px solid rgba(59,130,246,0.9);box-shadow:0 0 12px rgba(59,130,246,0.5);cursor:pointer;animation:pulse 2s infinite;';
+            userLocationMarker = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat).addTo(mapRef.current!);
+          } else {
+            userLocationMarker.setLngLat(lngLat);
+          }
+          hasMarkers = true;
+        };
+        navigator.geolocation.getCurrentPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 10000 });
+        serveGeoWatchId.current = navigator.geolocation.watchPosition(updateUserMarker, () => {}, { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 });
+        markersRef.current.push(userLocationMarker as any);
+      } catch { /* geolocation unavailable */ }
+    }
 
     // Draw trail if route planned
     if (routeData && routeData.orderedIds.length > 1) {

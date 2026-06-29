@@ -162,6 +162,7 @@ import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
+import serveManagerRoutes from './routes/serveManagerRoutes';
 import stubs from './routes/stubs';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
@@ -633,7 +634,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
-  { prefix: '/api/servemanager', router: stubs, auth: 'required' },
+  { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
   { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
 
   // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────

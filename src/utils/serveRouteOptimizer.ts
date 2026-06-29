@@ -316,6 +316,34 @@ export async function optimizeRoute(
   };
 }
 
+/**
+ * Optimize route using USER-PROVIDED GPS as the start origin (browser geolocation).
+ * Unlike optimizeRoute() which uses server-side ClearPathGPS data, this accepts
+ * lat/lng directly from the client so the optimization starts from the officer's
+ * actual real-time position.
+ */
+export async function optimizeRouteFromUserLocation(
+  db: D1Database,
+  attemptIds: number[],
+  userLat: number,
+  userLng: number,
+): Promise<OptimizationResult> {
+  if (attemptIds.length === 0) {
+    return { orderedAttemptIds: [], totalDistanceMiles: 0, estimatedDriveTimeMinutes: 0, stops: [] };
+  }
+  const { withCoords, withoutCoords } = await fetchStops(db, attemptIds);
+  const { ordered, totalMiles } = nearestNeighborSort(withCoords, userLat, userLng);
+  const allStops = [...ordered, ...withoutCoords];
+  const foundIds = new Set(allStops.map((s) => s.attemptId));
+  const missingIds = attemptIds.filter((id) => !foundIds.has(id));
+  return {
+    orderedAttemptIds: [...allStops.map((s) => s.attemptId), ...missingIds],
+    totalDistanceMiles: Math.round(totalMiles * 10) / 10,
+    estimatedDriveTimeMinutes: estimateDriveTime(totalMiles),
+    stops: allStops,
+  };
+}
+
 // ── Batch optimization ─────────────────────────────────────
 
 /**

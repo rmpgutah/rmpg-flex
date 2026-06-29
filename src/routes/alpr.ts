@@ -308,6 +308,33 @@ async function finalizeCapture(
 
     const screen = await screenVehicle(db, { plate });
     out.hits.push(...screen.hits);
+
+    // ── BOLO ALPR match: check active vehicle BOLOs against captured plate ──
+    try {
+      const boloMatch = await queryFirst<{ id: number; bolo_number: string; description: string }>(
+        db,
+        `SELECT id, bolo_number, description FROM bolos
+          WHERE status = 'active' AND bolo_type = 'vehicle'
+            AND (plate_number = ? OR UPPER(description) LIKE ?)
+          LIMIT 1`,
+        plate, `%${plate.toUpperCase()}%`,
+      );
+      if (boloMatch) {
+        out.hits.push({
+          kind: 'bolo',
+          severity: 'critical',
+          detail: `ACTIVE BOLO MATCH: ${boloMatch.bolo_number} — ${boloMatch.description}`,
+        });
+        await execute(db,
+          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+           VALUES ('bolo_alpr_match', 'critical', ?, ?, 'bolo', ?, ?, 0, datetime('now'))`,
+          `BOLO ALPR HIT: ${plate} matched BOLO ${boloMatch.bolo_number}`,
+          `Vehicle plate ${plate} captured by ALPR matched active BOLO ${boloMatch.bolo_number}: ${boloMatch.description}`,
+          boloMatch.id, args.userId,
+        ).catch(() => {});
+      }
+    } catch { /* best-effort */ }
+
     const critical = screen.hits.filter((h) => h.severity === 'critical');
     if (critical.length) {
       try {
