@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { toDenverWallClock } from '../utils/denverTime';
 
 const sd = new Hono<Env>();
 
@@ -35,7 +36,7 @@ sd.get('/daily-summary', async (c) => {
   const denied = requireRole(c, ...DASHBOARD_ROLES);
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toDenverWallClock(new Date()).slice(0, 10);
 
   const total = await queryFirst<{ n: number }>(
     db,
@@ -279,8 +280,7 @@ sd.get('/workload-distribution', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const capacityThreshold = parseInt(c.req.query('capacity') || '20', 10);
-  const today = new Date().toISOString().slice(0, 10);
-
+  const today = toDenverWallClock(new Date()).slice(0, 10);
   const rows = await query<{
     officer_id: number;
     officer_name: string;

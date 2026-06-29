@@ -1918,9 +1918,12 @@ si.post('/:id/attempts', async (c) => {
   else if (nextNum >= (queue.max_attempts || 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 
+  const closedClause = (newStatus === 'served' || newStatus === 'failed')
+    ? ", closed_at = datetime('now','localtime')"
+    : '';
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
     nextNum, newStatus, id,
   );
 

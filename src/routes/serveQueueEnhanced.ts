@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { toDenverWallClock } from '../utils/denverTime';
 import {
   optimizeRoute,
   haversineDistance,
@@ -559,7 +560,7 @@ sqe.post('/complete-with-proof', async (c) => {
      SET result = ?, notes = COALESCE(notes, '') || ? || char(10) || ?
      WHERE id = ?`,
     result,
-    `[Proof of Service - ${new Date().toISOString()}]`,
+    `[Proof of Service - ${toDenverWallClock(new Date())}]`,
     `Method: ${method} | Location: ${body.location || 'N/A'}${body.notes ? ` | Notes: ${body.notes}` : ''}`,
     body.attemptId,
   );
@@ -587,7 +588,7 @@ sqe.post('/complete-with-proof', async (c) => {
     recipientSignature: body.recipientSignature || null,
     witnessName: body.witnessName || null,
     witnessSignature: body.witnessSignature || null,
-    servedAt: new Date().toISOString(),
+    servedAt: toDenverWallClock(new Date()),
     servedBy: userId,
     proofGenerated: true,
   };
@@ -751,7 +752,7 @@ sqe.post('/schedule-attempt', async (c) => {
     documentType: queue.document_type,
     priority: queue.priority,
     scheduledBy: userId,
-    scheduledAt: new Date().toISOString(),
+    scheduledAt: toDenverWallClock(new Date()),
     isBusinessServe,
   };
 
@@ -773,8 +774,7 @@ sqe.get('/workload-summary', async (c) => {
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
   const db = getDb(c.env);
-  const today = new Date().toISOString().slice(0, 10);
-
+  const today = toDenverWallClock(new Date()).slice(0, 10);
   const rows = await query<{
     officer_id: number;
     officer_name: string;

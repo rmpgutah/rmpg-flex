@@ -48,6 +48,7 @@ import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
+import { toDenverWallClock } from '../utils/denverTime';
 import { broadcastAll } from './ws';
 
 const sv = new Hono<Env>();
@@ -62,7 +63,9 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return '""';
-  return `"${String(v).replace(/"/g, '""')}"`;
+  const s = String(v).replace(/"/g, '""');
+  // Wrap in quotes and collapse newlines so CSV rows stay intact
+  return `"${s.replace(/\n/g, ' ').replace(/\r/g, '')}"`;
 }
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -277,7 +280,7 @@ sv.get('/assignments/board', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
-  const now = new Date().toISOString();
+  const now = toDenverWallClock(new Date());
   const settings = await loadNudgeSettings(db);
   const jobs = await loadOpenJobsWithAttempts(db);
   const officers = await query<any>(db, "SELECT id, full_name FROM users WHERE role IN ('officer','supervisor','manager','admin') ORDER BY full_name LIMIT 200");
@@ -336,7 +339,7 @@ sv.get('/assignments/needs-attention', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
-  const now = new Date().toISOString();
+  const now = toDenverWallClock(new Date());
   const settings = await loadNudgeSettings(db);
   const jobs = await loadOpenJobsWithAttempts(db);
   const flagged = jobs.map((j) => ({ ...j, attention: classifyServeJob({ id: j.id, status: j.status, officer_id: j.officer_id, deadline: j.deadline, last_attempt_at: j.last_attempt_at }, now, settings) }))
@@ -707,7 +710,9 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // Best-effort: bill on completion (served or non-est/failed). Must never
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {
-    await generateServeCharges(db, id);
+    await generateServeCharges(db, id).catch((err) => {
+      console.error('[serve] billing generation failed for queue', id, err);
+    });
     // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
   }
@@ -1122,50 +1127,54 @@ sv.get('/:id/gps-trail', async (c) => {
   });
 });
 
-// ── Bulk status update ────────────────────────────────────────────────────────
-// POST /serve/bulk-status { ids: number[], status: string }
-// Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
-sv.put('/bulk-status', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
-  if (denied) return c.json({ error: denied }, 403);
-  const body = await c.req.json<{ ids?: number[]; status?: string }>();
-  const { ids, status } = body;
-  if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'ids required' }, 400);
-  const VALID = ['pending', 'in_progress', 'served', 'failed', 'archived'] as const;
-  if (!status || !(VALID as readonly string[]).includes(status)) {
-    return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
-  }
-  const db = getDb(c.env);
-  const closedAt = (status === 'served' || status === 'failed')
-    ? `datetime('now','localtime')`
-    : 'NULL';
-  // D1 doesn't support array bindings — use a parameterized IN clause
-  const placeholders = ids.map(() => '?').join(',');
-  await db.prepare(
-    `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
-     WHERE id IN (${placeholders})`
-  ).bind(status, ...ids).run();
-
-  // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
-  if (status === 'served' || status === 'failed') {
-    const affected = await query<{ id: number }>(
-      db, `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
-      ...ids,
-    );
-    for (const q of affected) {
-      syncServeCompletionToCfs(db, q.id).catch(() => {});
+  // ── Bulk status update ────────────────────────────────────────────────────────
+  // POST /serve/bulk-status { ids: number[], status: string }
+  // Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
+  sv.put('/bulk-status', async (c) => {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied }, 403);
+    const body = await c.req.json<{ ids?: number[]; status?: string }>();
+    const { ids, status } = body;
+    if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'ids required' }, 400);
+    const VALID = ['pending', 'in_progress', 'served', 'failed', 'archived'] as const;
+    if (!status || !(VALID as readonly string[]).includes(status)) {
+      return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
     }
-  }
+    const db = getDb(c.env);
+    // Prevent reverting terminal jobs: served/failed/archived should not be moved back
+    // to pending/in_progress via bulk operations. Skip those rows.
+    const placeholders = ids.map(() => '?').join(',');
+    const closedAt = (status === 'served' || status === 'failed')
+      ? `datetime('now','localtime')`
+      : 'NULL';
+    const skipIf = ['served', 'failed', 'archived'].includes(status)
+      ? '' // moving TO terminal — allowed for all
+      : ` AND status NOT IN ('served','failed','archived')`; // moving FROM terminal — blocked
+    await db.prepare(
+      `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
+       WHERE id IN (${placeholders})${skipIf}`
+    ).bind(status, ...ids).run();
 
-  return c.json({ updated: ids.length, status });
-});
+    // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
+    if (status === 'served' || status === 'failed') {
+      const affected = await query<{ id: number }>(
+        db, `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
+        ...ids,
+      );
+      for (const q of affected) {
+        syncServeCompletionToCfs(db, q.id).catch(() => {});
+      }
+    }
+
+    return c.json({ updated: ids.length, status });
+  });
 
 // ── Folder stats ──────────────────────────────────────────────────────────────
 // GET /serve/folder-stats?date=YYYY-MM-DD
 sv.get('/folder-stats', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
-  const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+  const date = c.req.query('date') ?? toDenverWallClock(new Date()).slice(0, 10);
   const db = getDb(c.env);
   const rows = await query<{ status: string; cnt: number }>(
     db,
@@ -1187,8 +1196,10 @@ sv.get('/schedule-analytics', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
-  const startDate = c.req.query('start_date') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const endDate = c.req.query('end_date') || new Date().toISOString().slice(0, 10);
+  const nowDenver = toDenverWallClock(new Date());
+  const startDenver = new Date(Date.now() - 30 * 86400000);
+  const startDate = c.req.query('start_date') || toDenverWallClock(startDenver).slice(0, 10);
+  const endDate = c.req.query('end_date') || nowDenver.slice(0, 10);
 
   const attempts = await query<any>(
     db,
@@ -1221,12 +1232,14 @@ sv.get('/schedule-analytics', async (c) => {
 
     if (a.attempt_at) {
       const d = new Date(a.attempt_at);
-      const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] || 'Unknown';
+      if (isNaN(d.getTime())) continue;
+      // Use Denver-local day-of-week and hour for operator-facing analytics
+      const dow = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', weekday: 'short' }).format(d);
       if (!byDow[dow]) byDow[dow] = { total: 0, served: 0 };
       byDow[dow].total++;
       if (a.result === 'served' || a.result === 'sub_served') byDow[dow].served++;
 
-      const hour = String(d.getUTCHours()).padStart(2, '0');
+      const hour = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false }).format(d);
       const hourKey = `${hour}:00`;
       if (!byHour[hourKey]) byHour[hourKey] = { total: 0, served: 0 };
       byHour[hourKey].total++;
