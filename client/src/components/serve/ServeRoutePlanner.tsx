@@ -178,6 +178,8 @@ export default function ServeRoutePlanner({
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const gpsWatchId = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
   const [routeDate] = useState(() => {
@@ -213,14 +215,39 @@ export default function ServeRoutePlanner({
     setError(null);
   }, [isOpen, jobs]);
 
+  // ─── Live GPS tracking (watchPosition for real-time location) ───
+  const watchIdRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      if (gpsWatchId.current != null) { navigator.geolocation.clearWatch(gpsWatchId.current); gpsWatchId.current = null; }
+      return;
+    }
     if (!navigator.geolocation) return;
+
+    // Initial one-shot for fast response
     navigator.geolocation.getCurrentPosition(
-      pos => setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      pos => {
+        setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGpsAccuracy(pos.coords.accuracy || null);
+      },
       () => {},
       { enableHighAccuracy: true, timeout: 10000 },
     );
+
+    // Continuous tracking while planner is open
+    gpsWatchId.current = navigator.geolocation.watchPosition(
+      pos => {
+        setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGpsAccuracy(pos.coords.accuracy || null);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 },
+    );
+
+    return () => {
+      if (gpsWatchId.current != null) { navigator.geolocation.clearWatch(gpsWatchId.current); gpsWatchId.current = null; }
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -489,6 +516,10 @@ export default function ServeRoutePlanner({
             optimized_order_json: JSON.stringify(selectedIds),
             waypoints_json: JSON.stringify(waypoints),
             total_distance_miles: totalDistance, total_time_minutes: totalDuration,
+            start_lat: currentLocation?.lat ?? null,
+            start_lng: currentLocation?.lng ?? null,
+            end_lat: selectedStops.length > 0 ? selectedStops[selectedStops.length - 1].job.recipient_lat ?? null : null,
+            end_lng: selectedStops.length > 0 ? selectedStops[selectedStops.length - 1].job.recipient_lng ?? null : null,
           }),
         });
       } catch {
@@ -514,6 +545,13 @@ export default function ServeRoutePlanner({
             {totalDistance > 0 && (
               <span className="text-[10px] text-rmpg-400 ml-2 pl-2 border-l border-rmpg-700 font-mono">
                 {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
+              </span>
+            )}
+            {currentLocation && (
+              <span className={`text-[10px] ml-2 pl-2 border-l border-rmpg-700 font-mono ${gpsAccuracy && gpsAccuracy < 20 ? 'text-green-400' : gpsAccuracy && gpsAccuracy < 50 ? 'text-amber-400' : 'text-rmpg-400'}`}>
+                <MapPin size={10} className="inline mr-0.5" />
+                {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+                {gpsAccuracy != null ? ` (±${Math.round(gpsAccuracy)}m)` : ''}
               </span>
             )}
             {officers && officers.length > 0 && (
