@@ -984,4 +984,33 @@ sqe.post('/route-progress', async (c) => {
   } catch { return c.json({ error: 'Progress update failed' }, 500); }
 });
 
+// ── POST /batch-optimize — optimize routes for all servers at once ──
+sqe.post('/batch-optimize', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  try {
+    const db = getDb(c.env);
+    const { batchOptimizeAllServers } = await import('../utils/serveRouteOptimizer');
+    const result = await batchOptimizeAllServers(db);
+    return c.json(result);
+  } catch (err) {
+    console.error('[serve-queue] batch-optimize error', err);
+    return c.json({ error: 'Batch optimization failed' }, 500);
+  }
+});
+
+// ── GET /nearest-unassigned — find closest unassigned job to a location ──
+sqe.get('/nearest-unassigned', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const lat = parseFloat(c.req.query('lat') || '');
+    const lng = parseFloat(c.req.query('lng') || '');
+    const radius = parseFloat(c.req.query('radius') || '50');
+    if (isNaN(lat) || isNaN(lng)) return c.json({ error: 'lat and lng required' }, 400);
+    const { getNearestUnassignedAttempt } = await import('../utils/serveRouteOptimizer');
+    const result = await getNearestUnassignedAttempt(db, lat, lng, radius);
+    return c.json(result);
+  } catch { return c.json({ error: 'Lookup failed' }, 500); }
+});
+
 export default sqe;
