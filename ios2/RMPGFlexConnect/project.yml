@@ -1,91 +1,106 @@
 name: RMPGFlexConnect
 options:
-  bundleIdPrefix: us.rmpgutah
+  bundleIdPrefix: com.rmpg.flex
   deploymentTarget:
     iOS: "17.0"
-  xcodeVersion: "26.5"
-  projectFormat: xcode16_0
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
 
 settings:
   base:
-    DEVELOPMENT_TEAM: D3LYU7YCCN
-    SWIFT_VERSION: "6.0"
-    SDKROOT: iphoneos
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+packages:
+  CoreAPI:
+    path: .
+  CoreAuth:
+    path: .
+  FeatureDispatch:
+    path: .
+  FeatureRecords:
+    path: .
+  FeatureIncidents:
+    path: .
+  FeatureCases:
+    path: .
+  FeaturePatrol:
+    path: .
+  FeatureFleet:
+    path: .
+  FeatureServe:
+    path: .
+  FeatureWarrants:
+    path: .
+  FeatureShell:
+    path: .
+  DesignSystem:
+    path: .
+  CoreOffline:
+    path: .
+  CorePush:
+    path: .
+  CoreLocationService:
+    path: .
+  CoreAudioService:
+    path: .
 
 targets:
   RMPGFlexConnect:
     type: application
     platform: iOS
-    deploymentTarget: "17.0"
     sources:
-      - RMPGFlexConnect
+      - path: App
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: us.rmpgutah.flexconnect
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/RMPGFlexConnect.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.rmpg.flex.connect
         PRODUCT_NAME: "RMPG Flex Connect"
-        MARKETING_VERSION: "0.1"
-        CURRENT_PROJECT_VERSION: "1"
+        DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: D3LYU7YCCN
-        INFOPLIST_FILE: RMPGFlexConnect/Info.plist
-        TARGETED_DEVICE_FAMILY: "1"
-        LD_RUNPATH_SEARCH_PATHS:
-          - "$(inherited)"
-          - "@executable_path/Frameworks"
-        OTHER_LDFLAGS:
-          - "-Wl,-weak_framework,DeveloperToolsSupport,-weak_framework,_MapKit_SwiftUI,-weak_framework,_Translation_SwiftUI,-weak_framework,SwiftData,-weak_framework,Symbols,-weak_framework,ActivityKit,-weak_framework,WidgetKit,-weak_framework,CoreImage,-weak_framework,Vision"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
     dependencies:
       - package: CoreAPI
+        product: CoreAPI
       - package: CoreAuth
-      - package: DesignSystem
+        product: CoreAuth
+      - package: FeatureDispatch
+        product: FeatureDispatch
+      - package: FeatureRecords
+        product: FeatureRecords
+      - package: FeatureIncidents
+        product: FeatureIncidents
+      - package: FeatureCases
+        product: FeatureCases
+      - package: FeaturePatrol
+        product: FeaturePatrol
+      - package: FeatureFleet
+        product: FeatureFleet
+      - package: FeatureServe
+        product: FeatureServe
+      - package: FeatureWarrants
+        product: FeatureWarrants
       - package: FeatureShell
-      - package: FeatureQuickActions
-      - package: FeatureDuty
-      - package: FeatureCFS
+        product: FeatureShell
+      - package: DesignSystem
+        product: DesignSystem
       - package: CoreOffline
-      - package: CoreLocationService
+        product: CoreOffline
       - package: CorePush
+        product: CorePush
+      - package: CoreLocationService
+        product: CoreLocationService
       - package: CoreAudioService
-      - package: FeatureRunPlate
-      - package: FeatureRunID
-      - package: FeatureMap
-      - package: FeatureReports
-      - package: FeatureLiveActivity
-      - package: FeatureWidgets
-
-packages:
-  CoreAPI:
-    path: Packages/CoreAPI
-  CoreAuth:
-    path: Packages/CoreAuth
-  CoreOffline:
-    path: Packages/CoreOffline
-  CoreLocationService:
-    path: Packages/CoreLocationService
-  CorePush:
-    path: Packages/CorePush
-  CoreAudioService:
-    path: Packages/CoreAudioService
-  DesignSystem:
-    path: Packages/DesignSystem
-  FeatureShell:
-    path: Packages/FeatureShell
-  FeatureCFS:
-    path: Packages/FeatureCFS
-  FeatureDuty:
-    path: Packages/FeatureDuty
-  FeatureQuickActions:
-    path: Packages/FeatureQuickActions
-  FeatureReports:
-    path: Packages/FeatureReports
-  FeatureRunID:
-    path: Packages/FeatureRunID
-  FeatureRunPlate:
-    path: Packages/FeatureRunPlate
-  FeatureMap:
-    path: Packages/FeatureMap
-  FeatureLiveActivity:
-    path: Packages/FeatureLiveActivity
-  FeatureWidgets:
-    path: Packages/FeatureWidgets
+        product: CoreAudioService
+    preBuildScripts:
+      - name: "SwiftLint"
+        script: |
+          if which swiftlint > /dev/null; then
+            swiftlint
+          fi
+        basedOnDependencyAnalysis: false

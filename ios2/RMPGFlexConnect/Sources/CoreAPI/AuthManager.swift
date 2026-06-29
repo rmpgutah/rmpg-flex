@@ -7,21 +7,18 @@ public final class AuthManager: ObservableObject {
     @Published public private(set) var authError: String?
 
     private let apiClient: APIClient
-    private let keychain: KeychainProtocol
+    private let keychain: PersistentAuthProtocol
     private var refreshTask: Task<Void, Error>?
 
-    private let tokenKey = "rmpg_flex_access_token"
-    private let refreshTokenKey = "rmpg_flex_refresh_token"
-    private let sessionIdKey = "rmpg_flex_session_id"
-
-    public init(apiClient: APIClient, keychain: KeychainProtocol = Keychain()) {
+    public init(apiClient: APIClient, keychain: PersistentAuthProtocol = PersistentAuth()) {
         self.apiClient = apiClient
         self.keychain = keychain
+        keychain.migrateIfNeeded()
     }
 
     public func restoreSession() async {
-        guard let token = keychain.get(tokenKey),
-              let refreshToken = keychain.get(refreshTokenKey) else {
+        guard let token = keychain.storedToken(),
+              let refreshToken = keychain.storedRefreshToken() else {
             return
         }
         await apiClient.setAuthToken(token)
@@ -48,9 +45,9 @@ public final class AuthManager: ObservableObject {
         ))
 
         await apiClient.setAuthToken(response.token)
-        keychain.set(response.token, forKey: tokenKey)
-        keychain.set(response.refreshToken, forKey: refreshTokenKey)
-        keychain.set(response.sessionId, forKey: sessionIdKey)
+        keychain.storeToken(response.token)
+        keychain.storeRefreshToken(response.refreshToken)
+        keychain.storeSessionId(response.sessionId)
 
         currentUser = UserProfile(
             id: response.userId,
@@ -72,9 +69,7 @@ public final class AuthManager: ObservableObject {
         } catch {}
 
         await apiClient.setAuthToken(nil)
-        keychain.delete(tokenKey)
-        keychain.delete(refreshTokenKey)
-        keychain.delete(sessionIdKey)
+        keychain.clearAll()
         currentUser = nil
         isAuthenticated = false
     }
@@ -102,8 +97,8 @@ public final class AuthManager: ObservableObject {
             ))
 
             await apiClient.setAuthToken(response.token)
-            keychain.set(response.token, forKey: tokenKey)
-            keychain.set(response.refreshToken, forKey: refreshTokenKey)
+            keychain.storeToken(response.token)
+            keychain.storeRefreshToken(response.refreshToken)
 
             let user: UserProfile = try await apiClient.request(Endpoint(
                 path: "/api/auth/me",
@@ -113,9 +108,7 @@ public final class AuthManager: ObservableObject {
             isAuthenticated = true
         } catch {
             await apiClient.setAuthToken(nil)
-            keychain.delete(tokenKey)
-            keychain.delete(refreshTokenKey)
-            keychain.delete(sessionIdKey)
+            keychain.clearAll()
             isAuthenticated = false
             authError = "Session expired. Please log in again."
         }
@@ -170,48 +163,4 @@ public struct RefreshResponse: Codable, Sendable {
 struct ChangePasswordRequest: Codable {
     let currentPassword: String
     let newPassword: String
-}
-
-// MARK: - Keychain
-
-public protocol KeychainProtocol {
-    func get(_ key: String) -> String?
-    func set(_ value: String, forKey key: String)
-    func delete(_ key: String)
-}
-
-public struct Keychain: KeychainProtocol {
-    public init() {}
-
-    public func get(_ key: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    public func set(_ value: String, forKey key: String) {
-        let data = value.data(using: .utf8)!
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
-        ]
-        SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    public func delete(_ key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
 }
