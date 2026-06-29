@@ -52,7 +52,9 @@ struct MainTabView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        VStack(spacing: 0) {
+            DemoBanner()
+            TabView(selection: $selectedTab) {
             QuickActionsView()
                 .tabItem { Image(systemName: "bolt.fill"); Text("Actions") }.tag(0)
 
@@ -94,6 +96,7 @@ struct MainTabView: View {
             appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor(RMPGTheme.textMuted)]
             UITabBar.appearance().standardAppearance = appearance
             UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
         }
     }
 }

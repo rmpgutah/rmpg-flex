@@ -178,6 +178,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.rmpg.flex.connect;
 				PRODUCT_NAME = "RMPG Flex Connect";
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEMO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -265,6 +266,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.rmpg.flex.connect;
 				PRODUCT_NAME = "RMPG Flex Connect";
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEMO;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
