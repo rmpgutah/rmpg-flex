@@ -1295,7 +1295,8 @@ si.get('/schedule', async (c) => {
   const endDate = endParam && YMD.test(endParam)
     ? endParam
     : (() => {
-        const d = new Date(Date.parse(`${startDate}T12:00:00Z`) + 14 * 86_400_000);
+        const [sy, sm, sd] = startDate.split('-').map(Number);
+        const d = new Date(Date.UTC(sy, sm - 1, sd) + 14 * 86_400_000);
         return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' }).format(d);
       })();
   const include = new Set((c.req.query('include') ?? '').split(',').map((s) => s.trim()).filter(Boolean));

@@ -28,16 +28,11 @@ import type jsPDF from 'jspdf';
  */
 export function openPdfDocument(doc: jsPDF, filename: string): void {
   const blob = doc.output('blob');
-  // A File (vs bare Blob) carries the filename into the browser PDF viewer's
-  // download action, so a user who saves from the viewer gets
-  // "Notice-of-Communication-….pdf" instead of a random UUID.
   const file = new File([blob], filename, { type: 'application/pdf' });
   const url = URL.createObjectURL(file);
 
   const win = window.open(url, '_blank');
   if (!win) {
-    // Popup blocked — deliver as a download instead so the user still gets
-    // the real PDF bytes.
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -46,8 +41,44 @@ export function openPdfDocument(doc: jsPDF, filename: string): void {
     document.body.removeChild(a);
   }
 
-  // Give the new tab ample time to load the bytes before revoking. Once the
-  // viewer has parsed the document, printing/saving keeps working after the
-  // URL is revoked.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Get the raw PDF bytes from a jsPDF document as a Uint8Array.
+ * Used when routing to the PDF editor for pre-print editing.
+ */
+export function getPdfBytes(doc: jsPDF): Uint8Array {
+  return new Uint8Array(doc.output('arraybuffer'));
+}
+
+/**
+ * Store a generated PDF in sessionStorage so the PDF editor can pick it up.
+ * sessionStorage is per-tab but persists through navigation within the same tab.
+ */
+export function storePdfForEditor(bytes: Uint8Array, filename: string): void {
+  try {
+    const base64 = btoa(String.fromCharCode(...bytes));
+    sessionStorage.setItem('rmpg-pdf-editor-pending', JSON.stringify({ bytes: base64, filename }));
+  } catch {
+    // sessionStorage can fail if too large — fall through
+  }
+}
+
+/**
+ * Retrieve and clear a pending PDF from sessionStorage for the PDF editor.
+ */
+export function loadPdfFromEditor(): { bytes: Uint8Array; filename: string } | null {
+  try {
+    const raw = sessionStorage.getItem('rmpg-pdf-editor-pending');
+    if (!raw) return null;
+    sessionStorage.removeItem('rmpg-pdf-editor-pending');
+    const { bytes: base64, filename } = JSON.parse(raw);
+    const binary = atob(base64);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    return { bytes: arr, filename };
+  } catch {
+    return null;
+  }
 }

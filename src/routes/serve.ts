@@ -48,6 +48,7 @@ import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
+import { broadcastAll } from './ws';
 
 const sv = new Hono<Env>();
 
@@ -593,6 +594,9 @@ sv.put('/:id', async (c) => {
   if (body.status === 'served' || body.status === 'failed') {
     syncServeCompletionToCfs(getDb(c.env), id).catch(() => {});
   }
+  try {
+    broadcastAll('data_changed', { module: 'process-server', entity: 'queue', action: 'updated', queue_id: id });
+  } catch { /* best-effort */ }
   return c.json({ success: true });
 });
 
@@ -707,6 +711,10 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
   }
+  // Broadcast so connected clients (serve page, dispatch page via liveSync) refetch.
+  try {
+    broadcastAll('data_changed', { module: 'process-server', entity: 'attempt', action: 'logged', queue_id: id, queue_status: newStatus });
+  } catch { /* best-effort */ }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 }
 
@@ -755,6 +763,9 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await generateServeCharges(db, id);
   syncServeCompletionToCfs(db, id).catch(() => {});
+  try {
+    broadcastAll('data_changed', { module: 'process-server', entity: 'attempt', action: 'substitute', queue_id: id, queue_status: 'served' });
+  } catch { /* best-effort */ }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 
@@ -897,6 +908,9 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
     }
   }
 
+  try {
+    broadcastAll('data_changed', { module: 'process-server', entity: 'attempt', action: 'updated', queue_id: queueId, attempt_id: attemptId });
+  } catch { /* best-effort */ }
   return c.json({
     success: true,
     attempt_id: attemptId,
@@ -1003,6 +1017,9 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
     ).catch(() => {});
   }
 
+  try {
+    broadcastAll('data_changed', { module: 'process-server', entity: 'attempt', action: 'deleted', queue_id: queueId, attempt_id: attemptId });
+  } catch { /* best-effort */ }
   return c.json({
     success: true,
     deleted_attempt_id: attemptId,

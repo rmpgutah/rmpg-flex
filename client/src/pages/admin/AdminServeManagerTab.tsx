@@ -3,6 +3,7 @@ import {
   Link2, Key, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
   Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap, Play, Save,
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
+  Settings, Bell, BellOff,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
@@ -93,6 +94,57 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setSyncLog(asArray<SMSyncLogEntry>(res?.data));
     } catch (e) { console.error('Failed to fetch sync log:', e); }
   }, []);
+
+  // ── Nudge settings (attempt scheduling + notification config) ──
+  const [nudgeSettings, setNudgeSettings] = useState<{
+    approaching_hours: number;
+    diligence_gap_days: number;
+    unassigned_window_hours: number;
+    renotify_hours: number;
+    notify_supervisor_email: number;
+    digest_sender_user_id: number | null;
+  } | null>(null);
+  const [nudgeSaving, setNudgeSaving] = useState(false);
+  const [nudgeDirty, setNudgeDirty] = useState(false);
+
+  const fetchNudgeSettings = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: any }>('/process-server/assignments/settings');
+      if (res?.data) {
+        setNudgeSettings({
+          approaching_hours: res.data.approaching_hours ?? 48,
+          diligence_gap_days: res.data.diligence_gap_days ?? 3,
+          unassigned_window_hours: res.data.unassigned_window_hours ?? 72,
+          renotify_hours: res.data.renotify_hours ?? 24,
+          notify_supervisor_email: res.data.notify_supervisor_email ?? 1,
+          digest_sender_user_id: res.data.digest_sender_user_id ?? null,
+        });
+      }
+    } catch { /* settings table may not exist yet */ }
+  }, []);
+
+  useEffect(() => { fetchNudgeSettings(); }, [fetchNudgeSettings]);
+
+  const nudgeSet = useCallback((patch: Partial<typeof nudgeSettings>) => {
+    setNudgeSettings((prev) => prev ? { ...prev, ...patch as any } : prev);
+    setNudgeDirty(true);
+  }, []);
+
+  const handleNudgeSave = async () => {
+    if (!nudgeSettings) return;
+    setNudgeSaving(true);
+    try {
+      await apiFetch('/process-server/assignments/settings', {
+        method: 'PUT',
+        body: JSON.stringify(nudgeSettings),
+      });
+      setNudgeDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setNudgeSaving(false);
+    }
+  };
 
   const fetchJobs = useCallback(async () => {
     setLoadingJobs(true);
@@ -686,6 +738,83 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           )}
         </div>
       )}
+
+      {/* ═══ Section 4: Serve Nudge Settings ═══ */}
+      <div className="panel-beveled bg-surface-base p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
+            <Settings className="w-3.5 h-3.5" />
+            Attempt Notification Settings
+          </div>
+          <button type="button"
+            onClick={handleNudgeSave}
+            disabled={nudgeSaving || !nudgeDirty}
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
+          >
+            {nudgeSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            Save
+          </button>
+        </div>
+        {nudgeSettings && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Deadline Approaching (hours)</div>
+              <input
+                type="number" min={1} max={720}
+                value={nudgeSettings.approaching_hours}
+                onChange={(e) => nudgeSet({ approaching_hours: parseInt(e.target.value, 10) || 48 })}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+              />
+              <div className="text-[9px] text-rmpg-500">Flag jobs this many hours before court deadline</div>
+            </div>
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Diligence Gap (days)</div>
+              <input
+                type="number" min={1} max={30}
+                value={nudgeSettings.diligence_gap_days}
+                onChange={(e) => nudgeSet({ diligence_gap_days: parseInt(e.target.value, 10) || 3 })}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+              />
+              <div className="text-[9px] text-rmpg-500">Days without a logged attempt before flagging</div>
+            </div>
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Unassigned Window (hours)</div>
+              <input
+                type="number" min={1} max={720}
+                value={nudgeSettings.unassigned_window_hours}
+                onChange={(e) => nudgeSet({ unassigned_window_hours: parseInt(e.target.value, 10) || 72 })}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+              />
+              <div className="text-[9px] text-rmpg-500">Hours an unassigned job remains before escalating</div>
+            </div>
+            <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-200">Re-notify (hours)</div>
+              <input
+                type="number" min={1} max={168}
+                value={nudgeSettings.renotify_hours}
+                onChange={(e) => nudgeSet({ renotify_hours: parseInt(e.target.value, 10) || 24 })}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors font-mono"
+              />
+              <div className="text-[9px] text-rmpg-500">Minimum hours between repeated notifications</div>
+            </div>
+            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-[2px]">
+              <div>
+                <div className="text-[10px] font-bold text-rmpg-200">Supervisor Email Digest</div>
+                <div className="text-[9px] text-rmpg-500">Email supervisors with daily digest</div>
+              </div>
+              <button type="button"
+                onClick={() => nudgeSet({ notify_supervisor_email: nudgeSettings.notify_supervisor_email ? 0 : 1 })}
+                className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
+              >
+                {nudgeSettings.notify_supervisor_email
+                  ? <Bell className="w-5 h-5 text-green-400" />
+                  : <BellOff className="w-5 h-5 text-rmpg-600" />
+                }
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Not configured hint */}
       {!status?.configured && (

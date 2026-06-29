@@ -677,6 +677,27 @@ calls.post('/:id/status', async (c) => {
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // ── PSO cross-link: on clear/close of a process-server call, mirror
+    // the outcome into serve_queue (creates or updates the linked job).
+    // Fire-and-forget — the status transition must never fail on PSO sync.
+    if (status === 'cleared' || status === 'closed') {
+      const userId = c.get('userId') as number | undefined;
+      import('../../utils/psoServeCrosslink').then((m) => {
+        m.crossLinkPsoCloseToServe(db, id, { actorUserId: userId ?? null })
+          .then((r: { skipped: boolean; queueId: number | null; attemptId: number | null; dispositionCode: string | null }) => {
+            if (!r.skipped) {
+              console.log(`[pso-crosslink] CFS ${id} → queue ${r.queueId} attempt ${r.attemptId} (${r.dispositionCode})`);
+              // Broadcast serve queue change so ServePage polls and picks up the new entry
+              try {
+                broadcastAll('data_changed', { module: 'process-server', entity: 'queue', action: 'crosslinked', queue_id: r.queueId, call_id: id });
+              } catch { /* best-effort */ }
+            }
+          })
+          .catch((err: Error) => console.error('[pso-crosslink] sync failed:', err));
+      }).catch(() => {});
+    }
+
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);

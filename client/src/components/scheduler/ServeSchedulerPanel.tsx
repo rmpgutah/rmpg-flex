@@ -34,7 +34,8 @@ export default function ServeSchedulerPanel() {
       setError(null);
       const include = 'tier';
       const range = view === 'week' ? 7 : 31;
-      const startMs = Date.parse(`${today}T12:00:00Z`);
+      const [y, m, d] = today.split('-').map(Number);
+      const startMs = Date.UTC(y, m - 1, d);
       const endDate = new Date(startMs + (range - 1) * 86_400_000) // new-date-ok: epoch-ms arithmetic, not a server string
         .toISOString().slice(0, 10);
       const data = await apiFetch<ScheduleResp>(
@@ -161,6 +162,7 @@ export default function ServeSchedulerPanel() {
             anchorYmd={today}
             slots={slots}
             todayYmd={today}
+            onSlotDrop={handleSlotDrop}
           />
         )
       }
