@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreAPI
+import CoreLocation
 import DesignSystem
 
 public struct PatrolView: View {
@@ -108,7 +109,7 @@ public struct PatrolView: View {
 }
 
 @MainActor
-final class PatrolViewModel: ObservableObject {
+final class PatrolViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var currentLocation: CLLocation?
     @Published var isTracking = false
 
@@ -117,13 +118,14 @@ final class PatrolViewModel: ObservableObject {
     private var uploadTimer: Timer?
     private var pendingPoints: [GPSPoint] = []
 
-    init() {
+    override init() {
+        super.init()
+        locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 5
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.activityType = .automotiveNavigation
-        locationManager.delegate = self
     }
 
     func toggleTracking(_ on: Bool) {
@@ -154,7 +156,7 @@ final class PatrolViewModel: ObservableObject {
     }
 }
 
-extension PatrolViewModel: @preconcurrency CLLocationManagerDelegate {
+extension PatrolViewModel {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last, loc.horizontalAccuracy >= 0 else { return }
         currentLocation = loc

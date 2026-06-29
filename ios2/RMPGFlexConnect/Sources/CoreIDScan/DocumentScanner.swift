@@ -1,6 +1,7 @@
 import SwiftUI
 import Vision
 import AVFoundation
+import DesignSystem
 
 @MainActor
 public final class DocumentScannerViewModel: ObservableObject {

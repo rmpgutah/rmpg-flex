@@ -10,7 +10,7 @@ public final class DispatchViewModel: ObservableObject {
     @Published public var errorMessage: String?
     @Published public var selectedStatus: String?
 
-    private let api: DispatchAPI
+    let api: DispatchAPI
     private var refreshTask: Task<Void, Never>?
 
     public init(api: DispatchAPI) {

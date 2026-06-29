@@ -10,7 +10,9 @@
 		<string>webcredentials:rmpgutah.us</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
-	<array/>
+	<array>
+		<string>group.com.rmpg.flex</string>
+	</array>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)com.rmpg.flex.connect</string>

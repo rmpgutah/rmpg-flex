@@ -10,32 +10,32 @@ public enum IDDocumentType: String, Codable, Sendable {
 }
 
 public struct ScannedID: Codable, Sendable {
-    public let documentType: IDDocumentType
-    public let firstName: String?
-    public let lastName: String?
-    public let middleName: String?
-    public let fullName: String?
-    public let dateOfBirth: String?
-    public let address: String?
-    public let city: String?
-    public let state: String?
-    public let zipCode: String?
-    public let documentNumber: String?
-    public let expirationDate: String?
-    public let issueDate: String?
-    public let issuingState: String?
-    public let gender: String?
-    public let eyeColor: String?
-    public let hairColor: String?
-    public let height: String?
-    public let weight: String?
-    public let organDonor: Bool?
-    public let veteran: Bool?
-    public let nationality: String?
-    public let passportNumber: String?
-    public let rawMRZ: String?
-    public let rawText: [String]
-    public let confidence: Float
+    public var documentType: IDDocumentType
+    public var firstName: String?
+    public var lastName: String?
+    public var middleName: String?
+    public var fullName: String?
+    public var dateOfBirth: String?
+    public var address: String?
+    public var city: String?
+    public var state: String?
+    public var zipCode: String?
+    public var documentNumber: String?
+    public var expirationDate: String?
+    public var issueDate: String?
+    public var issuingState: String?
+    public var gender: String?
+    public var eyeColor: String?
+    public var hairColor: String?
+    public var height: String?
+    public var weight: String?
+    public var organDonor: Bool?
+    public var veteran: Bool?
+    public var nationality: String?
+    public var passportNumber: String?
+    public var rawMRZ: String?
+    public var rawText: [String]
+    public var confidence: Float
     public let scannedAt: Date
 
     public init(

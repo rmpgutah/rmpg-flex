@@ -220,7 +220,7 @@ final class QuickActionsViewModel: ObservableObject {
         guard let name = [id.firstName, id.lastName].compactMap({ $0 }).joined(separator: " ").addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return }
         do {
             try await client.requestVoid(Endpoint(
-                path: "/api/warrants/search", queryItems: [URLQueryItem(name: "name", value: name)], method: .post
+                path: "/api/warrants/search", method: .post, queryItems: [URLQueryItem(name: "name", value: name)]
             ))
         } catch { print("Warrant check failed: \(error)") }
     }

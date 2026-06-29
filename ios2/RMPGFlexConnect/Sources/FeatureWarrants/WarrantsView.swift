@@ -96,8 +96,8 @@ final class WarrantsViewModel: ObservableObject {
                 let r: WarrantList = try await client.request(Endpoint(path: "/api/warrants", queryItems: items))
                 warrants = r.results
                 error = nil
-            } catch {
-                error = error.localizedDescription
+            } catch let e {
+                self.error = e.localizedDescription
             }
             isLoading = false
         }
@@ -109,8 +109,8 @@ final class WarrantsViewModel: ObservableObject {
             let r: WarrantList = try await client.request(Endpoint(
                 path: "/api/warrants", queryItems: [URLQueryItem(name: "q", value: query)]
             ))
-            warrants = r.results; error = nil
-        } catch { error = error.localizedDescription }
+            warrants = r.results; self.error = nil
+        } catch let e { self.error = e.localizedDescription }
         isLoading = false
     }
 
@@ -118,8 +118,8 @@ final class WarrantsViewModel: ObservableObject {
         isScanning = true
         do {
             try await client.requestVoid(Endpoint(path: "/api/warrants/utah-scan", method: .post))
-            error = nil
-        } catch { error = "Scan failed: \(error.localizedDescription)" }
+            self.error = nil
+        } catch let e { self.error = "Scan failed: \(e.localizedDescription)" }
         isScanning = false
     }
 
