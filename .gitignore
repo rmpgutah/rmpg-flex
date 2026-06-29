@@ -11,3 +11,50 @@ client/dist/
 
 # Generated PDFs that shouldn't be tracked in source
 client/RMPG-Dispatch-Guide-*.pdf
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Secrets (never commit env files)
+.env
+*.env
+server/.env
+client/.env
+
+# Retired VPS server build output (legacy, moved to legacy/server-vps/)
+server/dist/
+server/data/*.db*
+server/uploads/
+
+# IDE configs
+.idea/
+.vs/
+.vscode/
+
+# Visual Studio project files (auto-generated)
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Desktop build output
+desktop/dist/
+
+# iOS / Swift build artifacts
+ios/
+ios2/*/build/
+ios2/*/DerivedData/
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+*.xcuserstate
+ModuleCache/
+.build/
+
+# Temp files
+tmp/
+
+# Generated audit / analysis
+.audit-rms-result.json
