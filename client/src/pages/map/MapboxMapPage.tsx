@@ -82,8 +82,8 @@ import { useMapSnapshot } from '../../hooks/useMapSnapshot';
 import { useMapOptimization } from '../../hooks/useMapOptimization';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
-import MapLayersPanel from './components/MapLayersPanel';
-import type { LayerGroup } from './components/MapLayersPanel';
+import MapOverlaysPanel from './components/MapOverlaysPanel';
+import type { LayerGroup } from './components/MapOverlaysPanel';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
@@ -1923,7 +1923,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       )}
 
       {/* Layers Panel */}
-      <MapLayersPanel
+      <MapOverlaysPanel
         open={layersPanelOpen}
         onClose={() => setLayersPanelOpen(false)}
         groups={layerGroups}

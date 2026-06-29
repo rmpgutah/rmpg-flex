@@ -107,13 +107,6 @@ export function displayStatus(status: string): string {
   return status.toUpperCase();
 }
 
-// ── Status Display Helper — "archived" shows as "CLOSED" in printed documents ──
-export function displayStatus(status: string): string {
-  if (!status) return '';
-  if (status.toLowerCase() === 'archived') return 'CLOSED';
-  return status.toUpperCase();
-}
-
 // ── Branding Interface (matches Admin BrandingConfig) ────────
 
 export interface PdfBranding {
@@ -464,31 +457,6 @@ export function getCachedLogoDark(): string | null {
 
 // ── Base Helpers ─────────────────────────────────────────────
 
-/** Convert a dataURL image to grayscale via canvas, returns new dataURL */
-export async function convertToGrayscale(dataUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('no ctx')); return; }
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const d = imageData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const gray = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
-        d[i] = d[i + 1] = d[i + 2] = gray;
-      }
-      ctx.putImageData(imageData, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
 /** Parse hex color to RGB tuple */
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
@@ -642,7 +610,7 @@ export function addReportHeader(
 
   const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
   const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
-  const caseBoxY = LAYOUT.HEADER_TOP + 1;
+  let caseBoxY = LAYOUT.HEADER_TOP + 1;
   const textMaxWidth = Math.max(20, caseBoxX - textStartX - SPACING.MD);
 
   // ── Line 1: Agency name ────────────────────────────────
@@ -698,9 +666,7 @@ export function addReportHeader(
   }
 
   // ── Case number box (right) ────────────────────────────
-  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
-  const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
-  const caseBoxY = headerY + 1;
+  caseBoxY = headerY + 1;
 
   doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.setLineWidth(0.3);

@@ -21,7 +21,6 @@ GlobalWorkerOptions.workerSrc = workerUrl;
 interface UploadedFile {
   name: string;
   type: string;
-  file: File;
   text: string;
   status: 'pending' | 'extracted' | 'error';
   ocrResult?: any;
@@ -91,10 +90,13 @@ interface IntakeResult {
   lighting: string | null;
   extracted: {
     defendant: { first: string; middle: string; last: string; dob: string };
+    name: { first: string; middle: string; last: string };
+    dob: string;
     address: string;
     plaintiff: string;
     court: string;
     documents: string;
+    docs: string;
     primaryDoc: string;
     serviceType: string;
     clientJobNumber: string;
@@ -296,6 +298,7 @@ async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
 
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   // Upload telemetry. `uploadPhase` distinguishes the byte-transfer phase
   // (determinate %) from the server-side OCR/extraction phase (indeterminate)

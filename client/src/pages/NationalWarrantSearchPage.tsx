@@ -208,7 +208,6 @@ const STATE_GRID: { code: string; label: string; col: number; row: number }[] = 
 // theme palette so they re-skin between night and day. Pre-PR-1033 the hex
 // values were hardcoded green-800/amber-900/15803d/92400e which froze the
 // coverage map at night-only saturation even when the day skin was active.
-type CoverageStatus = 'active' | 'pending' | 'disabled';
 function coverageFill(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return 'rgb(var(--sev-ok-rgb) / 0.35)';
@@ -281,9 +280,6 @@ export default function NationalWarrantSearchPage() {
   // canPrint: admin or manager may open court-ready PDFs.
   // Any authenticated user may run searches (backend enforces READ_ROLES).
   const canPrint = !!(user?.role === 'admin' || user?.role === 'manager');
-
-  // ── Ref: first name input (for N / `/` shortcut focus) ────
-  const firstNameRef = useRef<HTMLInputElement>(null);
 
   // ── Ref: first name input (for N / `/` shortcut focus) ────
   const firstNameRef = useRef<HTMLInputElement>(null);
@@ -827,6 +823,7 @@ export default function NationalWarrantSearchPage() {
                         key={`local-${i}`}
                         warrant={w}
                         preparedBy={preparedBy}
+                        canPrint={canPrint}
                         highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                         onClearHighlight={() => setHighlightId('')}
                       />
@@ -864,6 +861,7 @@ export default function NationalWarrantSearchPage() {
                           key={`${stateCode}-${i}`}
                           warrant={w}
                           preparedBy={preparedBy}
+                          canPrint={canPrint}
                           highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                           onClearHighlight={() => setHighlightId('')}
                         />
@@ -922,11 +920,13 @@ function WarrantRow({
   preparedBy,
   highlighted,
   onClearHighlight,
+  canPrint,
 }: {
   warrant: any;
   preparedBy?: string;
   highlighted?: boolean;
   onClearHighlight?: () => void;
+  canPrint?: boolean;
 }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();

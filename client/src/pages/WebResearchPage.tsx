@@ -33,6 +33,7 @@ import { useToast } from '../components/ToastProvider';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { safeDateTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import { openWebResearchReportPdf } from '../utils/webResearchReportPdf';
 
 // ── Types ────────────────────────────────────────────────────

@@ -1060,7 +1060,7 @@ export async function announceBackupRequest(data: { officer_name?: string; locat
   await delay(TONE_GAP_MS);
 
   enqueuePhrases([
-    { text: `Backup requested for call ${callNum} at ${loc} by ${unit}. Available units respond.` },
+    { text: `Backup requested for call ${data.call_number ?? 'unknown'} at ${data.location ?? 'unknown location'} by ${data.officer_name ?? 'unknown unit'}. Available units respond.` },
   ]);
 }
 

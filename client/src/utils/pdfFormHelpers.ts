@@ -213,7 +213,6 @@ export function drawFormCell(
     const textH = fontSize * 0.35;  // Approximate cap height in mm
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
 
-    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
       doc.text(displayVal, x + w / 2, valueY, { align: 'center' });
     } else if (cell.align === 'right') {

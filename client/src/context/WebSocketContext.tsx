@@ -111,40 +111,6 @@ function playPriorityChime(priority: string | undefined): void {
   } catch { /* Audio not available */ }
 }
 
-// Audible chime for an incoming high-priority (P1/P2) call. Extracted from the
-// inline onmessage handler so it can fire from the dispatch_update branch: the
-// live Worker delivers new calls as dispatch_update/call_created — it never
-// emits a 'calls:created' message type (see broadcastAll in src/routes/ws.ts),
-// so the previous type-keyed alert never played.
-function playPriorityChime(priority: string | undefined): void {
-  if (priority !== 'P1' && priority !== 'P2') return;
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = priority === 'P1' ? 'square' : 'triangle';
-    osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.5);
-    if (priority === 'P1') {
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.type = 'square';
-      osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
-      gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-      osc2.start(ctx.currentTime + 0.15);
-      osc2.stop(ctx.currentTime + 0.6);
-    }
-  } catch { /* Audio not available */ }
-}
-
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);

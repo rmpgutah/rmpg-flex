@@ -88,26 +88,20 @@ jobs:
       # prod for weeks while source moved to v563 because deploy.yml
       # only ran the Worker step. All UI fixes silently rotted.
       - name: Install client dependencies
-        run: cd client && npm install --legacy-peer-deps
-        continue-on-error: true
+        run: cd client && npm ci --legacy-peer-deps
 
       - name: Build client
         run: cd client && npm run build
-        continue-on-error: true
         env:
           VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
 
-      # Copy Pages Functions into the deployment directory so wrangler picks
-      # them up. In wrangler v4 there is no --functions flag; functions must
-      # be inside the output directory or at the project root. Copying makes
-      # the dependency explicit and avoids root-directory ambiguity.
       - name: Stage Pages Functions
-        if: success() || failure()
         run: |
           if [ -d "client/dist" ]; then
             cp -r functions/ client/dist/functions/
           else
             echo "No client/dist directory — skipping Pages Functions staging"
+            exit 1
           fi
 
       - name: Deploy client to Pages
@@ -115,7 +109,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
+          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true --no-config
 
       # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
       # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy

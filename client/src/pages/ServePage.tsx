@@ -937,7 +937,7 @@ export default function ServePage() {
       } catch {
         if (!cancelled) setMapReady(false);
       }
-    };
+    })();
 
     initMap();
 

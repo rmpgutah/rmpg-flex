@@ -168,53 +168,6 @@ function pushRecentStatute(userId: string | undefined, s: StatuteResult): Recent
   } catch { return getRecentStatutes(userId); }
 }
 
-// Offense-level filter chips, ordered most→least severe, color-coded.
-const LEVELS: { key: string; short: string; dot: string }[] = [
-  { key: 'capital_felony', short: 'Capital', dot: '#dc2626' },
-  { key: 'first_degree_felony', short: '1° Felony', dot: '#ef4444' },
-  { key: 'second_degree_felony', short: '2° Felony', dot: '#f87171' },
-  { key: 'third_degree_felony', short: '3° Felony', dot: '#fb923c' },
-  { key: 'class_a_misdemeanor', short: 'Class A', dot: '#fbbf24' },
-  { key: 'class_b_misdemeanor', short: 'Class B', dot: '#facc15' },
-  { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
-  { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
-];
-
-// Indent depth for a statutory line, from its leading (1)/(a)/(i)/(A) marker.
-function lineDepth(line: string): number {
-  const m = line.match(/^\(([0-9a-zA-Z]{1,4})\)/);
-  if (!m) return -1; // continuation / prose
-  const tok = m[1];
-  if (/^\d+$/.test(tok)) return 0;
-  if (/^[ivxl]{2,}$/.test(tok)) return 2;      // roman numerals (ii, iii, iv…)
-  if (/^[A-Z]+$/.test(tok)) return 3;          // (A), (B)…
-  if (/^[a-z]$/.test(tok)) return 1;           // single letter (a)…
-  if (/^[ivxl]$/.test(tok)) return 2;          // lone roman (i)
-  return 1;
-}
-
-function StatuteBody({ text }: { text: string }) {
-  const lines = text.split('\n').filter((l) => l.trim());
-  let last = 0;
-  return (
-    <div className="space-y-1" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-      {lines.map((ln, i) => {
-        let d = lineDepth(ln);
-        if (d < 0) d = last; else last = d;
-        const marker = ln.match(/^(\([0-9a-zA-Z]{1,4}\)(\s*\([0-9a-zA-Z]{1,4}\))*)\s*/);
-        const head = marker ? marker[1] : '';
-        const rest = marker ? ln.slice(marker[0].length) : ln;
-        return (
-          <p key={i} className="text-[12.5px] text-rmpg-100 leading-relaxed" style={{ paddingLeft: d * 18 }}>
-            {head && <span className="font-mono text-brand-gold-500 mr-1.5">{head}</span>}
-            {rest}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function LawBookPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
