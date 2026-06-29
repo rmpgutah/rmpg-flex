@@ -434,10 +434,58 @@ admin.post('/clients/:id/unarchive', async (c) => {
 
 export default admin;
 
-// Stub admin endpoints
-admin.get('/shift-stats', (c) => c.json([]));
-admin.get('/upcoming-court-dates', (c) => c.json([]));
-admin.get('/expiring-certifications', (c) => c.json([]));
+// ── Admin dashboard data endpoints ──
+admin.get('/shift-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const now = new Date();
+    const shiftHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false }), 10);
+    const shiftName = shiftHour >= 6 && shiftHour < 14 ? 'Day' : shiftHour >= 14 && shiftHour < 22 ? 'Swing' : 'Night';
+    const startHour = shiftName === 'Day' ? 6 : shiftName === 'Swing' ? 14 : 22;
+    const endHour = shiftName === 'Day' ? 14 : shiftName === 'Swing' ? 22 : 6;
+    const dateCondition = shiftName === 'Night'
+      ? `(CAST(strftime('%H', created_at) AS INTEGER) >= ${startHour} OR CAST(strftime('%H', created_at) AS INTEGER) < ${endHour})`
+      : `CAST(strftime('%H', created_at) AS INTEGER) BETWEEN ${startHour} AND ${endHour - 1}`;
+    const calls = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${dateCondition}`))?.n ?? 0;
+    const incidents = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE ${dateCondition}`))?.n ?? 0;
+    const citations = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE ${dateCondition.replace('created_at','issued_at')}`))?.n ?? 0;
+    const patrolScans = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM patrol_scans'))?.n ?? 0;
+    return c.json({ shift_name: shiftName, calls, incidents, citations, patrol_scans: patrolScans });
+  } catch { return c.json({ shift_name: 'Unknown', calls: 0, incidents: 0, citations: 0, patrol_scans: 0 }); }
+});
+
+admin.get('/upcoming-court-dates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = parseInt(c.req.query('days') || '30', 10);
+    const rows = await query<{ date: string; case_number: string; officer_name: string }>(db,
+      `SELECT ce.hearing_date AS date, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
+       WHERE ce.hearing_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       ORDER BY ce.hearing_date LIMIT 50`);
+    return c.json({ count: rows.length, dates: rows });
+  } catch { return c.json({ count: 0, dates: [] }); }
+});
+
+admin.get('/expiring-certifications', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = parseInt(c.req.query('days') || '30', 10);
+    const rows = await query<{ officer_name: string; cert: string; days_left: number; expiry_date: string }>(db,
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
+              CAST(julianday(pc.expiry_date) - julianday('now') AS INTEGER) AS days_left, pc.expiry_date
+       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
+       WHERE pc.expiry_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       ORDER BY pc.expiry_date LIMIT 30`);
+    const expired = await query<{ officer_name: string; cert: string; days_left: number }>(db,
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
+              CAST(julianday('now') - julianday(pc.expiry_date) AS INTEGER) AS days_left
+       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
+       WHERE pc.expiry_date < DATE('now') ORDER BY pc.expiry_date LIMIT 20`);
+    return c.json({ expiring_count: rows.length, expired_count: expired.length, items: [...rows, ...expired.map(e => ({ ...e, expiry_date: 'EXPIRED' }))] });
+  } catch { return c.json({ expiring_count: 0, expired_count: 0, items: [] }); }
+});
+
 admin.get('/google-maps-config', (c) => c.json({}));
 admin.get('/config/branding', (c) => c.json([]));
 

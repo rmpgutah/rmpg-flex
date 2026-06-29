@@ -11,7 +11,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, queryFirst, execute } from '../../utils/db';
+import { getDb, queryFirst, execute, query } from '../../utils/db';
 import {
   broadcastDispatchUpdate,
   broadcastPanic,
@@ -81,6 +81,51 @@ welfare.post('/welfare/snooze', async (c) => {
   const userId = c.get('userId') as number;
   await recordActivity(c.env, userId);
   return c.json({ success: true, message: 'Activity recorded — timer reset' });
+});
+
+// ── GET /welfare/status — full welfare status for all on-duty officers ──
+welfare.get('/welfare/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT ow.*, u.full_name AS officer_name, u.badge_number,
+             un.call_sign, un.status AS unit_status,
+             CAST((julianday('now') - julianday(COALESCE(ow.last_ack_at, ow.last_activity_at))) * 24 * 60 AS INTEGER) AS minutes_since_last_check
+      FROM officer_welfare ow
+      LEFT JOIN users u ON ow.user_id = u.id
+      LEFT JOIN units un ON un.officer_id = u.id
+      ORDER BY ow.last_activity_at DESC
+      LIMIT 100
+    `).catch(() => []);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── POST /welfare/escalate — manually escalate welfare stage ──
+welfare.post('/welfare/escalate', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { user_id, stage, reason } = await c.req.json<{ user_id: number; stage: number; reason?: string }>();
+    const user = await queryFirst<{ full_name: string; badge_number: string }>(
+      db, 'SELECT full_name, badge_number FROM users WHERE id = ?', user_id,
+    );
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    await execute(db,
+      `INSERT INTO officer_welfare_escalations (user_id, stage, reason, created_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      user_id, stage || 1, reason || null);
+    const payload = {
+      action: 'welfare_escalated',
+      user_id,
+      officer_name: user.full_name,
+      badge_number: user.badge_number,
+      stage,
+      reason,
+    };
+    c.executionCtx.waitUntil(sendToRoles(c.env, ['dispatcher', 'supervisor', 'manager', 'admin'],
+      'welfare_alert', payload).then(() => {}));
+    return c.json({ success: true, stage });
+  } catch { return c.json({ error: 'Escalation failed' }, 500); }
 });
 
 export default welfare;

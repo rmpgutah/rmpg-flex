@@ -30,6 +30,7 @@ units.get('/', async (c) => {
         fv.model as vehicle_model, fv.status as vehicle_status,
         fv.current_mileage, fv.next_service_mileage, fv.next_service_date,
         fv.insurance_expiry, fv.registration_expiry,
+        fv.fuel_level, fv.pursuit_rated,
         CASE
           WHEN fv.id IS NULL THEN NULL
           WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) < date('now') THEN 'overdue'
@@ -39,11 +40,14 @@ units.get('/', async (c) => {
           WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
                AND (fv.next_service_mileage - fv.current_mileage) < 500 THEN 'due_soon'
           ELSE 'ok'
-        END as maintenance_status
+        END as maintenance_status,
+        te.id as active_shift_id, te.clock_in,
+        CAST((julianday('now') - julianday(te.clock_in)) * 24 AS REAL) as shift_hours_elapsed
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+      LEFT JOIN time_entries te ON te.user_id = u.officer_id AND te.clock_out IS NULL
       ORDER BY u.call_sign
     `);
     return c.json(rows);
@@ -279,9 +283,36 @@ units.put('/:id/status', async (c) => {
 });
 
 // NOTE: the unit-assignment handler lives at POST /dispatch/calls/:id/assign-unit
-// (src/routes/dispatch/calls.ts) — that is the path the client and proxy use. A
-// duplicate POST /dispatch/units/assign-unit handler previously sat here with a
-// weaker guard and a misleading comment; it had no client caller and no proxy
-// route (dead code) and was removed to avoid confusion over which one is live.
+// (src/routes/dispatch/calls.ts) — that is the path the client and proxy use.
+
+// POST /dispatch/units/batch-status — mass unit status update (post-briefing, shift change)
+units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
+    if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'unavailable', 'out_of_service'];
+    if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
+
+    let updated = 0;
+    const userId = c.get('userId') as number | undefined;
+    for (const unitId of unit_ids) {
+      const r = await execute(db,
+        `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        status, unitId);
+      if ((r as any)?.meta?.changes > 0) {
+        updated++;
+        if (userId) {
+          await execute(db,
+            `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
+            userId, unitId, `Batch set to ${status}`);
+        }
+      }
+    }
+    return c.json({ updated, total: unit_ids.length });
+  } catch (err) {
+    return c.json({ error: 'Failed to update unit statuses' }, 500);
+  }
+});
 
 export default units;

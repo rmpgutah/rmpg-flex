@@ -1130,8 +1130,71 @@ callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) =
   }
 });
 
-// POST /:id/transfer — move a call from one unit to another. Frees the source
-// unit, dispatches the target, and rewrites assigned_unit_ids.
+// ── External Agency Referral Tracking ───────────────────────
+// POST /:id/referrals — create a referral tracking entry
+callActions.post('/:id/referrals', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+    const body = await c.req.json<{ agency_name: string; referral_reason: string; agency_case_number?: string; follow_up_date?: string }>();
+    if (!body.agency_name || !body.referral_reason) return c.json({ error: 'agency_name and referral_reason required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO external_referrals (call_id, agency_name, agency_case_number, referral_reason, status, follow_up_date, created_by, created_at, updated_at)
+       VALUES (?,?,?,?,'pending',?,?,datetime('now','localtime'),datetime('now','localtime'))`,
+      id, body.agency_name, body.agency_case_number || null, body.referral_reason, body.follow_up_date || null, userId ?? null);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch { return c.json({ error: 'Referral creation failed' }, 500); }
+});
+// GET /:id/referrals — list referrals for a call
+callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM external_referrals WHERE call_id = ? ORDER BY created_at DESC', id).catch(() => []);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── BOLO Metrics ─────────────────────────────────────────────
+callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const total = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolos");
+    const active = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'");
+    const resolved = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolo_resolutions");
+    const avgResolve = await queryFirst<{ avg_hours: number }>(db,
+      "SELECT AVG((julianday(r.resolved_at) - julianday(b.created_at)) * 24) AS avg_hours FROM bolo_resolutions r JOIN bolos b ON r.bolo_id = b.id");
+    return c.json({ total: total?.n ?? 0, active: active?.n ?? 0, expired: (total?.n ?? 0) - (active?.n ?? 0), resolved: resolved?.n ?? 0, avg_resolve_hours: Math.round(avgResolve?.avg_hours ?? 0) });
+  } catch { return c.json({ total: 0, active: 0, expired: 0, resolved: 0 }); }
+});
+
+// ── Geofence CRUD ────────────────────────────────────────────
+callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE active = 1 ORDER BY name').catch(() => []);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ name: string; geojson: any; alert_type?: string }>();
+    if (!body.name || !body.geojson) return c.json({ error: 'name and geojson required' }, 400);
+    const userId = c.get('userId') as number | undefined;
+    const r = await execute(db,
+      `INSERT INTO geofences (name, geojson, alert_type, created_by, created_at, updated_at)
+       VALUES (?,?,?,'info',?,datetime('now','localtime'),datetime('now','localtime'))`,
+      body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch { return c.json({ error: 'Geofence creation failed' }, 500); }
+});
+
+// POST /:id/transfer — move a call from one unit to another
 callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -1348,6 +1411,37 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
       incidentNumber, id, call.incident_type, call.priority || 'P3',
       call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId);
     const incidentId = result.meta.last_row_id;
+
+    // ── Auto-attach call documents, persons, vehicles to incident ──
+    // Copy linked persons from call to incident
+    await execute(db,
+      `INSERT INTO incident_persons (incident_id, person_id, role)
+       SELECT ?, person_id, COALESCE(role, 'involved')
+       FROM call_persons WHERE call_id = ?`, incidentId, id,
+    ).catch(() => {});
+    // Copy linked vehicles from call to incident
+    await execute(db,
+      `INSERT INTO incident_vehicles (incident_id, vehicle_id, role)
+       SELECT ?, vehicle_id, COALESCE(role, 'observed')
+       FROM call_vehicles WHERE call_id = ?`, incidentId, id,
+    ).catch(() => {});
+    // Copy call notes as incident narrative supplements
+    const callNotes = await query<{ note: string }>(
+      db, 'SELECT note FROM call_notes WHERE call_id = ? ORDER BY created_at LIMIT 20', id,
+    ).catch(() => []);
+    if (callNotes.length > 0) {
+      const notesBlock = '\n\n=== Call Notes ===\n' + callNotes.map((n, i) => `${i + 1}. ${n.note}`).join('\n');
+      await execute(db,
+        `UPDATE incidents SET narrative = COALESCE(narrative, '') || ? WHERE id = ?`,
+        notesBlock, incidentId,
+      ).catch(() => {});
+    }
+    // Copy field photos linked to the call
+    await execute(db,
+      `INSERT INTO incident_photos (incident_id, photo_id, call_id)
+       SELECT ?, file_id, call_id FROM field_photos WHERE call_id = ?`,
+      incidentId, id,
+    ).catch(() => {});
 
     await execute(db,
       `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)

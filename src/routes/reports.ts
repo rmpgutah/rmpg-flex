@@ -1215,4 +1215,135 @@ reports.post('/custom', async (c) => {
   }
 });
 
+// ── Dashboard widget supplements (missing endpoints previously 404'd silently) ──
+
+// GET /reports/dashboard-weekly-trend
+reports.get('/dashboard-weekly-trend', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daily = await query<{ date: string; count: number }>(db,
+      `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
+       WHERE created_at >= datetime('now','-14 days') GROUP BY date ORDER BY date`);
+    const todayN = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now')"))?.n ?? 0;
+    const yesterdayN = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-1 day')"))?.n ?? 0;
+    const lastWeekN = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-7 days')"))?.n ?? 0;
+    return c.json({ dailyTrend: daily, today: todayN, yesterday: yesterdayN, lastWeekSameDay: lastWeekN });
+  } catch { return c.json({ dailyTrend: [], today: 0, yesterday: 0, lastWeekSameDay: 0 }); }
+});
+
+// GET /reports/dashboard-calls-by-type
+reports.get('/dashboard-calls-by-type', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ type: string; count: number }>(db,
+      `SELECT incident_type AS type, COUNT(*) AS count FROM calls_for_service
+       WHERE DATE(created_at) = DATE('now') GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// GET /reports/dashboard-unit-status
+reports.get('/dashboard-unit-status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const statusCounts = await query<{ status: string; count: number }>(db,
+      'SELECT status, COUNT(*) AS count FROM units WHERE status IS NOT NULL GROUP BY status');
+    const activeUnits = await query<Record<string, unknown>>(db,
+      `SELECT u.id, u.call_sign, u.status, usr.full_name AS officer_name, usr.badge_number,
+              fv.vehicle_number FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
+       LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+       WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign`);
+    return c.json({ statusCounts: statusCounts.map(s => ({ status: s.status, count: s.count })), activeUnits });
+  } catch { return c.json({ statusCounts: [], activeUnits: [] }); }
+});
+
+// GET /reports/shift-comparison
+reports.get('/shift-comparison', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = parseInt(c.req.query('days') || '30', 10);
+    // Shift hours: Day=0600-1359, Swing=1400-2159, Night=2200-0559
+    const rows = await query<{ shift: string; calls: number; incidents: number; avg_resp_min: number; hours: number }>(db,
+      `SELECT CASE WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 6 AND 13 THEN 'Day'
+                   WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 14 AND 21 THEN 'Swing'
+                   ELSE 'Night' END AS shift,
+              COUNT(*) AS calls,
+              COALESCE(SUM(CASE WHEN incident_type IS NOT NULL THEN 1 ELSE 0 END), 0) AS incidents,
+              ROUND(AVG(COALESCE(response_time_seconds/60.0, (julianday(onscene_at)-julianday(created_at))*1440)),1) AS avg_resp_min,
+              COUNT(DISTINCT DATE(created_at)) * 8 AS hours
+       FROM calls_for_service WHERE created_at >= datetime('now','-${days} days') GROUP BY shift`);
+    return c.json({ shifts: rows, period_days: days });
+  } catch { return c.json({ shifts: [], period_days: 30 }); }
+});
+
+// GET /reports/clearance-rate
+reports.get('/clearance-rate', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = parseInt(c.req.query('days') || '30', 10);
+    const cleared = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'closed' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
+    const total = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','-${days} days')`))?.n ?? 1;
+    const active = total - cleared;
+    return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, days });
+  } catch { return c.json({ rate: 0, cleared: 0, total: 0, active: 0, days: 30 }); }
+});
+
+// GET /reports/patrol-coverage
+reports.get('/patrol-coverage', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const totalBeats = (await queryFirst<{ n: number }>(db,
+      'SELECT COUNT(DISTINCT beat_id) AS n FROM dispatch_geography'))?.n ?? 0;
+    const coveredBeats = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
+    return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });
+  } catch { return c.json({ coverage: 0, coveredBeats: 0, totalBeats: 0 }); }
+});
+
+// GET /reports/evidence-pending
+reports.get('/evidence-pending', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const pending = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM field_photos WHERE reviewed_at IS NULL"))?.n ?? 0;
+    const total = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM field_photos'))?.n ?? 0;
+    const reviewed = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM field_photos WHERE reviewed_at IS NOT NULL"))?.n ?? 0;
+    return c.json({ pending, total, reviewed });
+  } catch { return c.json({ pending: 0, total: 0, reviewed: 0 }); }
+});
+
+// GET /reports/upcoming-court
+reports.get('/upcoming-court', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ date: string; time: string; case_number: string; officer_name: string }>(db,
+      `SELECT ce.hearing_date AS date, ce.hearing_time AS time, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
+       WHERE ce.hearing_date >= DATE('now') AND ce.hearing_date <= DATE('now','+7 days')
+       ORDER BY ce.hearing_date, ce.hearing_time LIMIT 30`);
+    return c.json({ upcoming: rows });
+  } catch { return c.json({ upcoming: [] }); }
+});
+
+// GET /reports/overdue-reports
+reports.get('/overdue-reports', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ id: number; title: string; officer_name: string; days_overdue: number }>(db,
+      `SELECT i.id, COALESCE(i.incident_number, 'INC-' || i.id) AS title,
+              COALESCE(u.full_name, 'Unassigned') AS officer_name,
+              CAST(julianday('now') - julianday(i.created_at) AS INTEGER) AS days_overdue
+       FROM incidents i LEFT JOIN users u ON u.id = i.officer_id
+       WHERE i.status = 'draft' AND i.created_at <= datetime('now','-7 days')
+       ORDER BY i.created_at LIMIT 20`);
+    return c.json({ count: rows.length, items: rows });
+  } catch { return c.json({ count: 0, items: [] }); }
+});
+
 export default reports;
