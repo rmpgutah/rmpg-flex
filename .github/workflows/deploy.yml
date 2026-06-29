@@ -103,7 +103,12 @@ jobs:
       # the dependency explicit and avoids root-directory ambiguity.
       - name: Stage Pages Functions
         if: success() || failure()
-        run: cp -r functions/ client/dist/functions/
+        run: |
+          if [ -d "client/dist" ]; then
+            cp -r functions/ client/dist/functions/
+          else
+            echo "No client/dist directory — skipping Pages Functions staging"
+          fi
 
       - name: Deploy client to Pages
         if: success() || failure()
