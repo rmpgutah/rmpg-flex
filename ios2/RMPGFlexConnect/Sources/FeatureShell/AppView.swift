@@ -9,6 +9,7 @@ import FeaturePatrol
 import FeatureFleet
 import FeatureServe
 import FeatureWarrants
+import FeatureQuickActions
 import DesignSystem
 
 public struct AppView: View {
@@ -52,32 +53,35 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            QuickActionsView()
+                .tabItem { Image(systemName: "bolt.fill"); Text("Actions") }.tag(0)
+
             DispatchView(api: DispatchAPI(client: APIClient(baseURL: Endpoint.productionBaseURL)))
-                .tabItem { Image(systemName: "antenna.radiowaves.left.and.right"); Text("Dispatch") }.tag(0)
+                .tabItem { Image(systemName: "antenna.radiowaves.left.and.right"); Text("Dispatch") }.tag(1)
 
             IncidentsView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
-                .tabItem { Image(systemName: "doc.text.fill"); Text("Incidents") }.tag(1)
+                .tabItem { Image(systemName: "doc.text.fill"); Text("Incidents") }.tag(2)
 
             CasesView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
-                .tabItem { Image(systemName: "briefcase.fill"); Text("Cases") }.tag(2)
+                .tabItem { Image(systemName: "briefcase.fill"); Text("Cases") }.tag(3)
 
             WarrantsView()
-                .tabItem { Image(systemName: "doc.text.magnifyingglass"); Text("Warrants") }.tag(3)
+                .tabItem { Image(systemName: "doc.text.magnifyingglass"); Text("Warrants") }.tag(4)
 
             RecordsView(apiClient: APIClient(baseURL: Endpoint.productionBaseURL))
-                .tabItem { Image(systemName: "folder.fill"); Text("Records") }.tag(4)
+                .tabItem { Image(systemName: "folder.fill"); Text("Records") }.tag(5)
 
             FleetView()
-                .tabItem { Image(systemName: "car.fill"); Text("Fleet") }.tag(5)
+                .tabItem { Image(systemName: "car.fill"); Text("Fleet") }.tag(6)
 
             ServeView()
-                .tabItem { Image(systemName: "envelope.fill"); Text("Serve") }.tag(6)
+                .tabItem { Image(systemName: "envelope.fill"); Text("Serve") }.tag(7)
 
             PatrolView()
-                .tabItem { Image(systemName: "map.fill"); Text("Patrol") }.tag(7)
+                .tabItem { Image(systemName: "map.fill"); Text("Patrol") }.tag(8)
 
             ProfileView(authManager: authManager)
-                .tabItem { Image(systemName: "person.fill"); Text("Profile") }.tag(8)
+                .tabItem { Image(systemName: "person.fill"); Text("Profile") }.tag(9)
         }
         .tint(RMPGTheme.brandGold)
         .onAppear {

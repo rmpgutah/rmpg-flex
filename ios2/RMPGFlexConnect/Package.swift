@@ -21,6 +21,8 @@ let package = Package(
         .library(name: "CorePush", targets: ["CorePush"]),
         .library(name: "CoreLocationService", targets: ["CoreLocationService"]),
         .library(name: "CoreAudioService", targets: ["CoreAudioService"]),
+        .library(name: "CoreIDScan", targets: ["CoreIDScan"]),
+        .library(name: "FeatureQuickActions", targets: ["FeatureQuickActions"]),
     ],
     dependencies: [],
     targets: [
@@ -40,5 +42,7 @@ let package = Package(
         .target(name: "CorePush", dependencies: ["CoreAPI"]),
         .target(name: "CoreLocationService", dependencies: ["CoreAPI"]),
         .target(name: "CoreAudioService", dependencies: []),
+        .target(name: "CoreIDScan", dependencies: []),
+        .target(name: "FeatureQuickActions", dependencies: ["CoreAPI", "CoreIDScan", "DesignSystem"]),
     ]
 )

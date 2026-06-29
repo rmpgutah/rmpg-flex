@@ -45,6 +45,10 @@ packages:
     path: .
   CoreAudioService:
     path: .
+  CoreIDScan:
+    path: .
+  FeatureQuickActions:
+    path: .
 
 targets:
   RMPGFlexConnect:
@@ -97,6 +101,10 @@ targets:
         product: CoreLocationService
       - package: CoreAudioService
         product: CoreAudioService
+      - package: CoreIDScan
+        product: CoreIDScan
+      - package: FeatureQuickActions
+        product: FeatureQuickActions
     preBuildScripts:
       - name: "SwiftLint"
         script: |
