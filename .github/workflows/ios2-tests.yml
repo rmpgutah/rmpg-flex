@@ -23,7 +23,7 @@ jobs:
       matrix:
         package: [CoreAPI, CoreAuth, DesignSystem, FeatureShell]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode (pinned to the GitHub macos-14 default)
         run: |
