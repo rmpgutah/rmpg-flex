@@ -106,7 +106,7 @@
     "serialport": "^13.0.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
+    "@electron/rebuild": "^4.0.6",
     "electron": "^40.10.4",
     "electron-builder": "^26.15.2"
   },
