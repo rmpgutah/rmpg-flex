@@ -23,6 +23,7 @@ import TrustBadge from '../components/TrustBadge';
 import { openPlateCapturePdf, type PlateCaptureForPdf } from '../utils/plateCapturePdf';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -118,7 +119,10 @@ const DELETE_ROLES = new Set(['admin', 'manager']);
 
 export default function PlateLogPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
+  const canDelete = DELETE_ROLES.has(user?.role ?? '');
+  const [confirmDismissScan, setConfirmDismissScan] = useState(false);
 
   const [plate, setPlate] = useState('');
   const [location, setLocation] = useState('');

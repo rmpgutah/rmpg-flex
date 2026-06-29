@@ -8,7 +8,8 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
-  Globe, ScanSearch, Film, CalendarDays,
+  Globe, ScanSearch, Film, CalendarDays, Route, Fingerprint, FileSearch,
+  Store, PawPrint, Warehouse, UserCog, MessageCircleQuestion, FlaskConical, Handshake,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
