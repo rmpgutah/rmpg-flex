@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -390,6 +390,141 @@ export default function ServePage() {
     } catch (err) {
       console.error('[serve] Job sheet generation failed:', err);
       setFetchError('Could not generate the Job Information Sheet — please try again.');
+    }
+  };
+
+  // ── Affidavit of Service (sworn, notarized, filed with court) ──
+  const handleAffidavitOfService = async (jobId: number) => {
+    try {
+      const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
+      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+        .filter(Boolean).join(', ');
+      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+
+      // Find the attempt that resulted in service
+      const serviceAttempt = (job.attempts || []).find((a) => {
+        const code = String((a as any).disposition_code || '').toUpperCase();
+        return (a.result || '').toLowerCase() === 'served' || code.startsWith('PS/05') || code.startsWith('PS/10');
+      });
+
+      if (!serviceAttempt) {
+        setFetchError('No served attempt found — log a successful attempt before generating an Affidavit of Service.');
+        return;
+      }
+
+      const ts = serviceAttempt.attempt_at || serviceAttempt.created_at || null;
+      const at = ts ? parseTimestamp(ts) : new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+
+      const method = serviceAttempt.attempt_type === 'substitute' ? 'substitute'
+        : serviceAttempt.attempt_type === 'posting' ? 'posting'
+        : 'personal';
+
+      const subInfo = method === 'substitute' && serviceAttempt.person_served_name
+        ? {
+            name: serviceAttempt.person_served_name,
+            relationship: serviceAttempt.person_served_relationship || 'Unknown',
+            description: serviceAttempt.person_served_description || 'Person of suitable age and discretion',
+          }
+        : undefined;
+
+      const { generateAffidavitOfService } = await importWithRetry(() => import('../utils/servePdfGenerator'));
+      const pdf = await generateAffidavitOfService({
+        courtName: job.court_name || 'Salt Lake County District Court',
+        caseNumber: job.case_number || '',
+        jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
+        serverName: user?.full_name || user?.username || 'Process Server',
+        serverBadge: user?.badge_number || '',
+        serverCompany: 'Rocky Mountain Protective Group',
+        recipientName: job.recipient_name,
+        recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
+        documentType: job.document_type || 'Legal Documents',
+        serviceDate: !isNaN(at.getTime())
+          ? `${pad(at.getMonth() + 1)}/${pad(at.getDate())}/${at.getFullYear()}`
+          : new Date().toLocaleDateString('en-US'),
+        serviceTime: !isNaN(at.getTime())
+          ? at.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+          : '',
+        serviceMethod: method,
+        gpsLat: serviceAttempt.latitude ?? 0,
+        gpsLng: serviceAttempt.longitude ?? 0,
+        substituteInfo: subInfo,
+        signature: serviceAttempt.signature_data || undefined,
+      });
+
+      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
+      openPdfDocument(pdf, `Affidavit-of-Service-${job.case_number || job.id}.pdf`);
+    } catch (err) {
+      console.error('[serve] Affidavit of Service generation failed:', err);
+      setFetchError('Could not generate the Affidavit of Service — please try again.');
+    }
+  };
+
+  // ── Affidavit of Non-Service / Due Diligence (sworn, notarized) ──
+  const handleAffidavitOfNonService = async (jobId: number) => {
+    try {
+      const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
+      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+        .filter(Boolean).join(', ');
+      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+
+      // Filter to only unsuccessful attempts
+      const attempts = (job.attempts || [])
+        .filter((a) => {
+          if ((a.result || '').toLowerCase() === 'served') return false;
+          const code = String((a as any).disposition_code || '').toUpperCase();
+          if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
+          return true;
+        })
+        .map((a, i) => {
+          const ts = a.attempt_at || a.created_at || null;
+          const at = ts ? parseTimestamp(ts) : null;
+          const resultText = (a as any).disposition_code || a.result || 'other';
+          const pad = (n: number) => String(n).padStart(2, '0');
+          return {
+            number: a.attempt_number ?? i + 1,
+            date: at && !isNaN(at.getTime()) ? `${pad(at.getMonth() + 1)}/${pad(at.getDate())}/${at.getFullYear()}` : '',
+            time: at && !isNaN(at.getTime()) ? at.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+            gpsLat: a.latitude ?? 0,
+            gpsLng: a.longitude ?? 0,
+            result: resultText,
+            notes: a.notes || '',
+          };
+        });
+
+      if (attempts.length === 0) {
+        setFetchError('No unsuccessful attempts recorded — log at least one failed attempt before generating an Affidavit of Non-Service.');
+        return;
+      }
+
+      // Map skip traces if available
+      const skipTraces = ((job as any).skipTraces || []).map((st: any) => ({
+        date: st.searched_at || '',
+        searchType: st.search_type || 'Skip Trace',
+        addressesFound: st.addresses_found || 0,
+        addressesTried: st.addresses_tried_json ? JSON.parse(st.addresses_tried_json) : [],
+      }));
+
+      const { generateAffidavitOfNonService } = await importWithRetry(() => import('../utils/servePdfGenerator'));
+      const pdf = await generateAffidavitOfNonService({
+        courtName: job.court_name || 'Salt Lake County District Court',
+        caseNumber: job.case_number || '',
+        jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
+        serverName: user?.full_name || user?.username || 'Process Server',
+        serverBadge: user?.badge_number || '',
+        recipientName: job.recipient_name,
+        recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
+        documentType: job.document_type || 'Legal Documents',
+        attempts,
+        skipTraces: skipTraces.length > 0 ? skipTraces : undefined,
+        signature: user?.signature_data || undefined,
+      });
+
+      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
+      openPdfDocument(pdf, `Affidavit-of-Non-Service-${job.case_number || job.id}.pdf`);
+    } catch (err) {
+      console.error('[serve] Affidavit of Non-Service generation failed:', err);
+      setFetchError('Could not generate the Affidavit of Non-Service — please try again.');
     }
   };
 
@@ -1139,6 +1274,12 @@ export default function ServePage() {
       ...(job.attempt_count > 0 ? [
         m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
+      ] : []),
+      ...(job.status === 'served' ? [
+        m.action('Affidavit of Service', () => handleAffidavitOfService(job.id), { icon: <FileSignature size={12} /> }),
+      ] : []),
+      ...(job.attempt_count > 0 && job.status !== 'served' ? [
+        m.action('Affidavit of Non-Service', () => handleAffidavitOfNonService(job.id), { icon: <ScrollText size={12} /> }),
       ] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
       moveSubmenu.length > 0
