@@ -111,7 +111,6 @@ jobs:
           fi
 
       - name: Deploy client to Pages
-        if: success() || failure()
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -135,6 +134,7 @@ jobs:
       # continue-on-error — confirm proxy/index.ts still exports those four stub
       # classes. See memory project-auth-outage-name-collision.
       - name: Deploy proxy
+        if: always()
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -146,7 +146,7 @@ jobs:
       # This catches deploy failures that return a non-2xx Wrangler exit code
       # but still "succeed" because the old Worker version keeps running.
       - name: Verify Worker health
-        if: ${{ env.SKIP_VERIFY != '1' }}
+        if: always() && env.SKIP_VERIFY != '1'
         run: |
           set -euo pipefail
           echo "Verifying Worker health..."
