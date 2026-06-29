@@ -36,7 +36,7 @@ let package = Package(
         .target(name: "FeatureFleet", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
         .target(name: "FeatureServe", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
         .target(name: "FeatureWarrants", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
-        .target(name: "FeatureShell", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CorePush", "FeatureDispatch", "FeatureRecords", "FeatureIncidents", "FeatureCases", "FeaturePatrol", "FeatureFleet", "FeatureServe", "FeatureWarrants"]),
+        .target(name: "FeatureShell", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CorePush", "FeatureDispatch", "FeatureRecords", "FeatureIncidents", "FeatureCases", "FeaturePatrol", "FeatureFleet", "FeatureServe", "FeatureWarrants", "FeatureQuickActions"]),
         .target(name: "DesignSystem", dependencies: []),
         .target(name: "CoreOffline", dependencies: ["CoreAPI"]),
         .target(name: "CorePush", dependencies: ["CoreAPI"]),
