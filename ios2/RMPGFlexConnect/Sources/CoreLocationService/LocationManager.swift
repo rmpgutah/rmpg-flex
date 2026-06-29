@@ -71,7 +71,7 @@ public final class LocationManager: NSObject, ObservableObject, @unchecked Senda
     }
 }
 
-extension LocationManager: CLLocationManagerDelegate {
+extension LocationManager: @preconcurrency CLLocationManagerDelegate {
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
         switch manager.authorizationStatus {

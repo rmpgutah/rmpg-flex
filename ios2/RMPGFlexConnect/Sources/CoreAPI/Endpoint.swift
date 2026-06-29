@@ -1,6 +1,6 @@
 import Foundation
 
-public struct Endpoint {
+public struct Endpoint: Sendable {
     public let path: String
     public let method: HTTPMethod
     public let queryItems: [URLQueryItem]
@@ -24,7 +24,7 @@ public struct Endpoint {
         self.timeout = timeout
     }
 
-    public enum HTTPMethod: String {
+    public enum HTTPMethod: String, Sendable {
         case get = "GET"
         case post = "POST"
         case put = "PUT"

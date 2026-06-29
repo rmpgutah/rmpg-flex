@@ -85,7 +85,7 @@ public struct OfflineAction: Codable, Sendable {
     }
 }
 
-public struct AnyCodable: Codable, Sendable {
+public struct AnyCodable: Codable, @unchecked Sendable {
     public let value: Any
     public init(_ value: Any) { self.value = value }
     public init(from decoder: Decoder) throws { self.value = 0 }

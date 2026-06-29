@@ -109,7 +109,7 @@ public struct PatrolView: View {
 }
 
 @MainActor
-final class PatrolViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
+final class PatrolViewModel: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     @Published var currentLocation: CLLocation?
     @Published var isTracking = false
 

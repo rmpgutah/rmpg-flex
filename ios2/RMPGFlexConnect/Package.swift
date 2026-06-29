@@ -1,9 +1,9 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "RMPGFlexConnect",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v18)],
     products: [
         .library(name: "CoreAPI", targets: ["CoreAPI"]),
         .library(name: "CoreAuth", targets: ["CoreAuth"]),
