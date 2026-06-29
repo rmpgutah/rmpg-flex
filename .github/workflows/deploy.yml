@@ -140,10 +140,11 @@ jobs:
         run: |
           set -euo pipefail
           echo "Verifying Worker health..."
-          curl -sf --max-time 10 https://api.rmpgutah.us/api/health | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-assert data.get('status') in ('ok', 'degraded'), f'unexpected status: {data.get(\"status\")}'
-assert data.get('version'), 'version missing'
-print(f'Worker health OK: status={data[\"status\"]}, version={data[\"version\"]}')
-"
+          HEALTH=$(curl -sf --max-time 10 https://api.rmpgutah.us/api/health)
+          STATUS=$(echo "$HEALTH" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status',''))")
+          VERSION=$(echo "$HEALTH" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))")
+          if [ "$STATUS" != "ok" ] && [ "$STATUS" != "degraded" ]; then
+            echo "ERROR: unexpected status: $STATUS"
+            exit 1
+          fi
+          echo "Worker health OK: status=$STATUS, version=$VERSION"
