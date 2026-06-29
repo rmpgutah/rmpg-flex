@@ -385,4 +385,50 @@ ai.post('/refine', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+// ─── POST /ai/extract-fields ──────────────────────────────────
+// Body: { text: string }
+// Extracts structured fields (caller_name, location, description, person names)
+// from freeform narrative text using AI. Returns a JSON object with field keys
+// the client can auto-populate into dispatch/citation/incident forms.
+ai.post('/extract-fields', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (!text || text.length < 20) {
+      return c.json({ error: 'Text must be at least 20 characters', code: 'TEXT_TOO_SHORT' }, 400);
+    }
+    const systemPrompt = `You are a police CAD field extractor. From the narrative text, extract structured fields.
+Return ONLY valid JSON with these keys (use null for missing fields):
+{
+  "caller_name": "full name of the caller/reporting party",
+  "caller_phone": "phone number if mentioned",
+  "location_address": "street address or intersection",
+  "description": "one-sentence summary of the incident",
+  "persons_mentioned": ["array of full names mentioned"],
+  "vehicle_plates": ["array of license plates mentioned"],
+  "incident_type": "best matching CAD incident type (lowercase, underscores)",
+  "weapons_mentioned": true/false,
+  "injuries_mentioned": true/false
+}`;
+    const ai = c.env.AI as any;
+    if (!ai) return c.json({ result: null, error: 'AI not configured' }, 503);
+    const res = await ai.run('@cf/meta/llama-3.3-70b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: text.slice(0, 3000) },
+      ],
+      max_tokens: 500,
+      temperature: 0.1,
+    }) as { response?: string };
+    const result = res?.response?.trim() ?? '';
+    if (!result) return c.json({ result: null, error: null });
+    // Parse JSON — AI may wrap in code fences
+    const cleaned = result.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    return c.json({ result: JSON.parse(cleaned), source: 'ai' });
+  } catch (err) {
+    console.error('[ai] extract-fields error', err);
+    return c.json({ result: null, error: 'Extraction failed' }, 500);
+  }
+});
+
 export default ai;

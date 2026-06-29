@@ -5,14 +5,6 @@
 //
 // Migration: 0027_citations.sql (citations + citation_violations +
 // citation_payments).
-//
-// MVP scope — 16 endpoints. Niche endpoints deferred to a follow-up:
-//   - GET /statutes/lookup, GET /calculate-fine (need utah_statutes
-//     table — separate Phase 5 port)
-//   - GET /stats/by-officer, GET /:id/full, GET /:id/completeness
-//     (reporting — non-critical)
-//   - POST /batch/void, POST /batch/status (batch ops; per-:id PUT
-//     handles the common case)
 // ============================================================
 
 import { Hono } from 'hono';
@@ -932,6 +924,95 @@ citations.get('/export/csv', async (c) => {
   } catch (err) {
     return c.json({ error: 'Failed to export citations', code: 'EXPORT_ERROR' }, 500);
   }
+});
+
+// ── Statute lookup / autocomplete ─────────────────────────────
+citations.get('/statutes/lookup', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    const offenseLevel = c.req.query('offense_level');
+    if (!q || q.length < 2) return c.json({ data: [] });
+    const searchTerm = `%${q}%`;
+    const params: unknown[] = [searchTerm, searchTerm, searchTerm];
+    let whereExtra = '';
+    if (offenseLevel) { whereExtra = ' AND s.offense_level = ?'; params.push(offenseLevel); }
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT s.id, s.citation_code, s.title, s.offense_level, s.default_fine, s.description
+       FROM utah_statutes s WHERE (s.citation_code LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
+       ORDER BY s.citation_code LIMIT 20`, ...params);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// ── Fine calculation ─────────────────────────────────────────
+citations.get('/calculate-fine', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const statuteId = c.req.query('statute_id');
+    const offenseLevel = c.req.query('offense_level');
+    const type = c.req.query('type') || 'traffic';
+    let baseFine = 0;
+    if (statuteId) {
+      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
+        db, 'SELECT default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
+      ).catch(() => null);
+      if (statute?.default_fine) baseFine = statute.default_fine;
+    }
+    if (!baseFine) {
+      const fineSchedule: Record<string, number> = {
+        felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350,
+        misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100,
+      };
+      baseFine = fineSchedule[offenseLevel as string] || 100;
+    }
+    const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
+    const multiplier = typeMultipliers[type] || 1.0;
+    const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
+    return c.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type } });
+  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic' } }); }
+});
+
+// ── Batch citation creation (traffic enforcement) ────────────
+citations.post('/batch', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{ citations: Array<Record<string, unknown>> }>();
+    if (!Array.isArray(body.citations) || !body.citations.length) return c.json({ error: 'citations array required' }, 400);
+    const created: number[] = [];
+    for (const cit of body.citations) {
+      if (!cit.type || !cit.person_name || !cit.violation_description) continue;
+      const cols = ['type', 'person_name', 'violation_description', 'status', 'issuing_officer_id', 'created_at', 'updated_at'];
+      const vals = ['?', '?', '?', "'issued'", '?', "datetime('now','localtime')", "datetime('now','localtime')"];
+      const params: unknown[] = [cit.type, cit.person_name, cit.violation_description, userId ?? null];
+      if (cit.person_dob) { cols.push('person_dob'); vals.push('?'); params.push(cit.person_dob); }
+      if (cit.statute_id) { cols.push('statute_id'); vals.push('?'); params.push(cit.statute_id); }
+      if (cit.fine_amount) { cols.push('fine_amount'); vals.push('?'); params.push(cit.fine_amount); }
+      if (cit.location) { cols.push('location'); vals.push('?'); params.push(cit.location); }
+      if (cit.court_name) { cols.push('court_name'); vals.push('?'); params.push(cit.court_name); }
+      if (cit.violation_date) { cols.push('violation_date'); vals.push('?'); params.push(cit.violation_date); }
+      if (cit.notes) { cols.push('notes'); vals.push('?'); params.push(cit.notes); }
+      const r = await execute(db, `INSERT INTO citations (${cols.join(',')}) VALUES (${vals.join(',')})`, ...params);
+      created.push(Number(r.meta.last_row_id));
+    }
+    return c.json({ success: true, created: created.length, ids: created });
+  } catch { return c.json({ error: 'Batch creation failed' }, 500); }
+});
+
+// ── Vehicle plate lookup (for auto-filling vehicle details) ──
+citations.get('/vehicle-lookup', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const plate = c.req.query('plate');
+    if (!plate || plate.length < 2) return c.json({ found: false });
+    const vehicle = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, plate_number, make, model, year, color, vin, registered_owner
+       FROM vehicles_records WHERE UPPER(REPLACE(plate_number,' ','')) = UPPER(REPLACE(?,' ',''))
+       LIMIT 1`, plate);
+    if (vehicle) return c.json({ found: true, ...vehicle });
+    return c.json({ found: false });
+  } catch { return c.json({ found: false }); }
 });
 
 export default citations;
