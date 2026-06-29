@@ -154,16 +154,94 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     });
   }
 
+  // Rule 3 — Priority auto-reassessment: escalate aging calls
+  let escalated = 0;
+  const agingCalls = await query<{ id: number; call_number: string; priority: string; created_at: string }>(
+    db,
+    `SELECT id, call_number, priority, created_at FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched')
+        AND priority IN ('P2', 'P3')
+        AND created_at <= datetime('now', CASE WHEN priority = 'P2' THEN '-30 minutes' ELSE '-60 minutes' END)
+      LIMIT 50`,
+  );
+  for (const call of agingCalls) {
+    const newPriority = call.priority === 'P2' ? 'P1' : 'P2';
+    await execute(db,
+      `UPDATE calls_for_service SET priority = ?, updated_at = datetime('now') WHERE id = ? AND priority = ?`,
+      newPriority, call.id, call.priority);
+    candidates.push({
+      dedup_key: `priority_escalated:${call.id}`,
+      alert_type: 'priority_escalated',
+      severity: 'high',
+      title: `${call.call_number} escalated to ${newPriority}`,
+      details: `Call ${call.call_number} auto-escalated from ${call.priority} to ${newPriority} after aging past SLA.`,
+      zone_beat: null,
+    });
+    escalated++;
+  }
+
+  // Rule 4 — BOLO auto-expiry
+  const expiredBolos = await query<{ id: number; bolo_number: string }>(
+    db,
+    `SELECT id, bolo_number FROM bolos
+      WHERE status = 'active' AND expires_at <= datetime('now')
+      LIMIT 50`,
+  );
+  for (const b of expiredBolos) {
+    await execute(db, `UPDATE bolos SET status = 'expired', updated_at = datetime('now') WHERE id = ?`, b.id);
+    candidates.push({
+      dedup_key: `bolo_expired:${b.id}`,
+      alert_type: 'bolo_expired',
+      severity: 'low',
+      title: `BOLO ${b.bolo_number} expired`,
+      details: `BOLO ${b.bolo_number} has passed its expiration date and was auto-set to expired.`,
+      zone_beat: null,
+    });
+  }
+
+  // Rule 5 — Repeat address alert escalation (5+ calls in 30 days)
+  const hotAddresses = await query<{ location_address: string; call_count: number }>(
+    db,
+    `SELECT location_address, COUNT(*) AS call_count FROM calls_for_service
+      WHERE created_at >= datetime('now', '-30 days')
+        AND location_address IS NOT NULL AND location_address != ''
+      GROUP BY location_address
+      HAVING COUNT(*) >= 5
+      ORDER BY call_count DESC
+      LIMIT 20`,
+  );
+  for (const addr of hotAddresses) {
+    const existing = await queryFirst<{ id: number }>(
+      db, "SELECT id FROM premise_alerts WHERE address = ? AND alert_type = 'hotspot' AND active = 1", addr.location_address,
+    ).catch(() => null);
+    if (!existing) {
+      await execute(db,
+        `INSERT INTO premise_alerts (address, alert_type, alert_level, title, description, active, flags, created_at)
+         VALUES (?, 'hotspot', 'warning', ?, ?, 1, '["repeat_address"]', datetime('now'))`,
+        addr.location_address,
+        `High-call address: ${addr.location_address}`,
+        `This address has generated ${addr.call_count} calls in the last 30 days. Automatic hotspot flag.`,
+      );
+      candidates.push({
+        dedup_key: `hotspot:${addr.location_address}`,
+        alert_type: 'repeat_address_hotspot',
+        severity: 'medium',
+        title: `Hotspot address flagged`,
+        details: `${addr.location_address} — ${addr.call_count} calls in 30 days. Premise alert auto-created.`,
+        zone_beat: null,
+      });
+    }
+  }
+
   for (const a of candidates) await upsertActiveAlert(db, a);
 
-  // Auto-resolve: acknowledge active alerts of these types whose
-  // condition no longer holds (not in this run's candidate set).
+  // Auto-resolve alerts whose condition no longer holds
   const liveKeys = new Set(candidates.map((a) => a.dedup_key));
   const active = await query<{ id: number; dedup_key: string }>(
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot')`,
   );
   let resolved = 0;
   for (const row of active) {

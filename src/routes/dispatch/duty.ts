@@ -284,6 +284,25 @@ duty.post('/start', async (c) => {
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     const officerName = officer?.full_name ?? null;
 
+    // Fatigue check: warn if less than 8 hours since last shift ended
+    const lastShift = await queryFirst<{ clock_out: string }>(
+      db, 'SELECT clock_out FROM time_entries WHERE user_id = ? AND clock_out IS NOT NULL ORDER BY clock_out DESC LIMIT 1', officerId,
+    ).catch(() => null);
+    if (lastShift?.clock_out) {
+      const hoursSince = Math.round((Date.now() - new Date(lastShift.clock_out).getTime()) / 3600000 * 10) / 10;
+      if (hoursSince < 8) {
+        const override = c.req.query('override_fatigue');
+        if (override !== '1') {
+          return c.json({
+            warning: 'fatigue_risk',
+            message: `Only ${hoursSince}h since your last shift ended. Minimum 8h rest recommended. Add ?override_fatigue=1 to proceed.`,
+            hours_since_last_shift: hoursSince,
+            code: 'FATIGUE_RISK',
+          }, 409);
+        }
+      }
+    }
+
     // RESUME guard — a second login (new device, expired session, accidental
     // OFF→ON bounce) while a shift is already open must NOT force the vehicle
     // report + odometer ritual again. The open entry IS the shift; we just

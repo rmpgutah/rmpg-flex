@@ -291,6 +291,18 @@ calls.post('/', async (c) => {
       // without a manual refresh. Matches the legacy POST behavior.
       broadcastAll('dispatch_update', { action: 'call_created', call });
 
+      // Reverse geocode: populate address from GPS if missing
+      if ((!body.location_address || body.location_address === '') && body.latitude != null && body.longitude != null) {
+        import('../geocode').then(async (geo) => {
+          try {
+            const coords = await geo.geocodeAddress(c.env, `${body.latitude},${body.longitude}`);
+            if (coords && coords.lat != null) {
+              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, `${coords.lat}, ${coords.lng}`, callId);
+            }
+          } catch { /* best-effort */ }
+        }).catch(() => {});
+      }
+
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
       // Surface the real SQL error so the dispatcher (and we) can see
@@ -387,18 +399,56 @@ calls.get('/check-duplicate', async (c) => {
   try {
     const db = getDb(c.env);
     const address = c.req.query('address');
-    if (!address || address.length < 3) return c.json({ duplicates: [], count: 0 });
+    const latStr = c.req.query('lat');
+    const lngStr = c.req.query('lng');
 
-    const normalized = address.toUpperCase().replace(/\s+/g, ' ').trim();
-    const rows = await query<Record<string, unknown>>(db, `
-      SELECT id, call_number, incident_type, priority, status, location_address, created_at
-      FROM calls_for_service
-      WHERE status NOT IN ('cleared','closed','cancelled','archived')
-        AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
-      ORDER BY created_at DESC LIMIT 5
-    `, `%${normalized}%`);
+    if (!address && (!latStr || !lngStr)) return c.json({ duplicates: [], count: 0 });
 
-    return c.json({ duplicates: rows, count: rows.length });
+    // Text-based duplicate check
+    const textResults: Record<string, unknown>[] = [];
+    if (address && address.length >= 3) {
+      const normalized = address.toUpperCase().replace(/\s+/g, ' ').trim();
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
+        FROM calls_for_service
+        WHERE status NOT IN ('cleared','closed','cancelled','archived')
+          AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
+        ORDER BY created_at DESC LIMIT 10
+      `, `%${normalized}%`);
+      textResults.push(...rows);
+    }
+
+    // Spatial proximity check (within 100m of active calls)
+    const spatialResults: Record<string, unknown>[] = [];
+    if (latStr && lngStr) {
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        const dLat = 0.001; // ~111m
+        const dLng = 0.001 / Math.max(0.01, Math.cos(lat * Math.PI / 180));
+        const rows = await query<Record<string, unknown>>(db, `
+          SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
+          FROM calls_for_service
+          WHERE status NOT IN ('cleared','closed','cancelled','archived')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+            AND latitude BETWEEN ? AND ?
+            AND longitude BETWEEN ? AND ?
+          ORDER BY created_at DESC LIMIT 10
+        `, lat - dLat, lat + dLat, lng - dLng, lng + dLng);
+        spatialResults.push(...rows);
+      }
+    }
+
+    // Dedupe by id
+    const seen = new Set<number>();
+    const all = [...textResults, ...spatialResults].filter((r) => {
+      const id = r.id as number;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    return c.json({ duplicates: all.slice(0, 15), count: all.length });
   } catch (err) {
     return c.json({ error: 'Duplicate check failed' }, 500);
   }
@@ -638,6 +688,51 @@ calls.get('/:id/audit-trail', async (c) => {
   }
 });
 
+// POST /dispatch/calls/:id/merge — consolidate duplicate CFS into a master call
+calls.post('/:id/merge', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const { merge_call_ids } = await c.req.json<{ merge_call_ids: number[] }>();
+    if (!Array.isArray(merge_call_ids) || !merge_call_ids.length) {
+      return c.json({ error: 'merge_call_ids array required' }, 400);
+    }
+    const master = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!master) return c.json({ error: 'Master call not found' }, 404);
+
+    const userId = c.get('userId') as number | undefined;
+    let merged = 0;
+    for (const mergeId of merge_call_ids) {
+      if (mergeId === id) continue;
+      // Copy linked persons from merged call to master
+      await execute(db,
+        `INSERT OR IGNORE INTO call_persons (call_id, person_id, role)
+         SELECT ?, person_id, COALESCE(role, 'involved')
+         FROM call_persons WHERE call_id = ?`, id, mergeId);
+      // Copy notes to master
+      await execute(db,
+        `INSERT INTO call_notes (call_id, user_id, note, created_at)
+         SELECT ?, user_id, '[Merged from CFS #' || cn.call_id || '] ' || note, datetime('now')
+         FROM (SELECT call_id, user_id, note FROM call_notes WHERE call_id = ? LIMIT 50) cn`,
+        id, mergeId);
+      // Mark merged call as merged with reference
+      await execute(db,
+        `UPDATE calls_for_service SET status = 'merged', merged_into_id = ?, notes = COALESCE(notes || char(10), '') || '[Merged into CFS ' || ? || ']'
+         WHERE id = ?`, id, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
+      if (userId) {
+        await execute(db,
+          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
+          userId, mergeId, JSON.stringify({ merged_into: id }));
+      }
+      merged++;
+    }
+    return c.json({ success: true, merged, master_call_id: id });
+  } catch (err) {
+    console.error('[dispatch] call merge failed:', err);
+    return c.json({ error: 'Call merge failed' }, 500);
+  }
+});
+
 // DELETE /dispatch/calls/:id
 calls.delete('/:id', async (c) => {
   try {
@@ -751,6 +846,19 @@ calls.post('/:id/assign-unit', async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
+
+    // Fleet maintenance guard: warn if unit's vehicle is out of service
+    const vehicle = await queryFirst<{ status: string; vehicle_number: string }>(
+      db, `SELECT fv.status, fv.vehicle_number FROM fleet_vehicles fv WHERE fv.assigned_unit_id = ?`, unit_id,
+    ).catch(() => null);
+    if (vehicle && (vehicle.status === 'out_of_service' || vehicle.status === 'in_maintenance')) {
+      return c.json({
+        warning: 'vehicle_unavailable',
+        message: `Unit's assigned vehicle (${vehicle.vehicle_number}) is ${vehicle.status}. Override with confirm=1 to proceed.`,
+        code: 'VEHICLE_UNAVAILABLE',
+      }, 409);
+    }
+
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
 

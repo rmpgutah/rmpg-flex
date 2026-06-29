@@ -784,4 +784,39 @@ links.patch('/calls/:id/businesses/:linkId', async (c) => {
   return c.json(updated);
 });
 
+// ── Person Risk Scoring ──────────────────────────────────────
+links.get('/persons/:id/risk-score', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const personId = parseInt(c.req.param('id'), 10);
+    let score = 0;
+    const flags: string[] = [];
+    const warrantCount = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE person_id = ? AND status = 'active'", personId,
+    );
+    if (warrantCount?.n) { score += Math.min(warrantCount.n * 20, 60); flags.push(`${warrantCount.n} active warrant(s)`); }
+    const cautionCount = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM person_flags WHERE person_id = ? AND flag_type = 'caution'", personId,
+    );
+    if (cautionCount?.n) { score += Math.min(cautionCount.n * 5, 25); flags.push(`${cautionCount.n} caution flag(s)`); }
+    const violentCount = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM incident_persons ip JOIN incidents i ON ip.incident_id = i.id WHERE ip.person_id = ? AND i.incident_type LIKE '%assault%'", personId,
+    ).catch(() => null);
+    if (violentCount?.n) { score += Math.min(violentCount.n * 3, 15); flags.push(`${violentCount.n} violent incident(s)`); }
+    return c.json({ person_id: personId, risk_score: Math.min(score, 100), risk_level: score >= 50 ? 'high' : score >= 20 ? 'medium' : 'low', flags });
+  } catch { return c.json({ risk_score: 0, risk_level: 'unknown', flags: [] }); }
+});
+
+// ── Protection Order Check ───────────────────────────────────
+links.get('/persons/:id/protection-orders', async (c) => {
+  const db = getDb(c.env);
+  const personId = parseInt(c.req.param('id'), 10);
+  try {
+    const orders = await query<{ case_number: string; status: string }>(
+      db, "SELECT case_number, status FROM protection_orders WHERE respondent_person_id = ? AND status = 'active'", personId,
+    ).catch(() => []);
+    return c.json({ person_id: personId, active_orders: orders.length, orders });
+  } catch { return c.json({ person_id: personId, active_orders: 0, orders: [] }); }
+});
+
 export default links;

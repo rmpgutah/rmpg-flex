@@ -87,6 +87,50 @@ panic.post('/panic', async (c) => {
   for (const t of targets) {
     sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
   }
+
+  // Automated backup dispatch: assign 2 nearest available units to the officer's location
+  try {
+    const available = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
+      db,
+      `SELECT id, call_sign, latitude, longitude FROM units
+        WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY (CASE WHEN latitude IS NULL OR longitude IS NULL THEN 999
+                  ELSE ((latitude - ?) * (latitude - ?) + (longitude - ?) * (longitude - ?)) END)
+        LIMIT 2`,
+      body.latitude ?? 0, body.latitude ?? 0, body.longitude ?? 0, body.longitude ?? 0,
+    );
+    if (available.length > 0) {
+      const ins = await execute(db,
+        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
+           description, source, officer_safety_alert, created_at, updated_at)
+         VALUES ('officer_assist', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+        body.location_address ?? 'Panic activation location',
+        body.latitude ?? null, body.longitude ?? null,
+        `OFFICER NEEDS ASSISTANCE — Panic activated by Officer ${created?.user_name || 'Unknown'} (Badge ${created?.badge_number || '?'})`,
+      );
+      const backupCallId = Number(ins.meta.last_row_id);
+      for (const unit of available) {
+        await execute(db,
+          `UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?`,
+          backupCallId, unit.id);
+      }
+      await execute(db,
+        `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
+        JSON.stringify(available.map((u) => u.id)), backupCallId);
+      await execute(db,
+        `UPDATE panic_alerts SET backup_call_id = ?, backup_units = ? WHERE id = ?`,
+        backupCallId, JSON.stringify(available.map((u) => u.call_sign)), panicId);
+      broadcastAll('dispatch_update', {
+        action: 'backup_dispatched',
+        panic_id: panicId,
+        backup_call_id: backupCallId,
+        units: available.map((u) => u.call_sign),
+      });
+    }
+  } catch (err) {
+    console.error('[panic] auto-backup dispatch failed:', err);
+  }
+
   return c.json(created, 201);
 });
 
