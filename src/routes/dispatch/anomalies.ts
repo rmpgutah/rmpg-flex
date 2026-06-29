@@ -8,7 +8,6 @@
 
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
-import { log } from '../../utils/logger';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
@@ -39,7 +38,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     // Table-missing or query error → empty list so the banner degrades
     // to "no alerts" rather than throwing.
-    log.error('[dispatch] anomaly-alerts list error', {}, err);
+    console.error('[dispatch] anomaly-alerts list error', err);
     return c.json([]);
   }
 });
@@ -65,7 +64,7 @@ anomalies.post('/anomaly-alerts/:id/acknowledge', requireRole(...READ_ROLES), as
     );
     return c.json({ success: true, id });
   } catch (err) {
-    log.error('[dispatch] anomaly acknowledge error', {}, err);
+    console.error('[dispatch] anomaly acknowledge error', err);
     return c.json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERR' }, 500);
   }
 });
@@ -155,32 +154,6 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     });
   }
 
-  // Rule 3 — responding unit with a STALE GPS fix (GPS-fed officer safety).
-  // A unit actively assigned to a call but whose last position is >10 min old
-  // (or never reported) can't be located by dispatch — surface it so someone
-  // confirms the officer. Ties live GPS freshness into the dispatch alert feed.
-  const staleResponders = await query<{ id: number; call_sign: string; call_number: string | null; gps_updated_at: string | null; beat_id: number | null }>(
-    db,
-    `SELECT u.id, u.call_sign, c.call_number, u.gps_updated_at, c.beat_id
-       FROM units u
-       JOIN calls_for_service c ON c.id = u.current_call_id
-      WHERE u.current_call_id IS NOT NULL
-        AND u.status IN ('dispatched', 'enroute', 'en_route', 'onscene')
-        AND (u.gps_updated_at IS NULL OR u.gps_updated_at <= datetime('now', '-10 minutes'))
-      LIMIT 100`,
-  );
-  for (const u of staleResponders) {
-    const lastFix = u.gps_updated_at ? `last fix ${u.gps_updated_at} UTC` : 'no GPS ever reported';
-    candidates.push({
-      dedup_key: `gps_stale_unit:${u.id}`,
-      alert_type: 'gps_stale_unit',
-      severity: 'high',
-      title: `Unit ${u.call_sign} GPS stale while responding`,
-      details: `Unit ${u.call_sign} is assigned to call ${u.call_number ?? '?'} but its GPS is stale (${lastFix}). Dispatch cannot confirm the unit's location — verify officer status.`,
-      zone_beat: u.beat_id != null ? String(u.beat_id) : null,
-    });
-  }
-
   for (const a of candidates) await upsertActiveAlert(db, a);
 
   // Auto-resolve: acknowledge active alerts of these types whose
@@ -190,7 +163,7 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'gps_stale_unit')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene')`,
   );
   let resolved = 0;
   for (const row of active) {

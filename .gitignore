@@ -1,85 +1,66 @@
-# ─── Dependencies ───────────────────────────────────────────
 node_modules/
-**/node_modules/
+.cloudflare/
+*.log
+.wrangler/
 
-# ─── Build outputs ──────────────────────────────────────────
-dist/
-**/dist/
-build/
-**/build/
-*.tsbuildinfo
+# Vite build output (deploy.yml rebuilds this; never track it)
 client/dist/
-desktop/dist/
 
-# ─── Environment / secrets ──────────────────────────────────
-.env
-.env.local
-.env.*.local
-**/.env
-**/.env.local
-*.pem
-.dev.vars
+# Claude Code tooling (per-worktree, not committed)
+.claude/
 
-# ─── OS files ───────────────────────────────────────────────
+# Generated PDFs that shouldn't be tracked in source
+client/RMPG-Dispatch-Guide-*.pdf
+
+# macOS
 .DS_Store
 **/.DS_Store
-Thumbs.db
 
-# ─── Editors / IDEs ─────────────────────────────────────────
-.vscode/
+# Secrets (never commit env files)
+.env
+*.env
+server/.env
+client/.env
+
+# Retired VPS server build output (legacy, moved to legacy/server-vps/)
+server/dist/
+server/data/*.db*
+server/uploads/
+
+# IDE configs
 .idea/
-**/.idea/
 .vs/
-**/.vs/
-*.swp
-*.swo
+.vscode/
+.superpowers/
 
-# ─── Visual Studio project (stray C++ project artifacts) ────
-# These were never meant to be in the repo — a desktop-build side
-# project leaked them in. Ignore the solution, project files, and
-# the generated "RMPG Flare/" tree (incl. its bundled image cache).
+# Visual Studio project files (auto-generated)
 *.sln
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
-/RMPG Flare/
+*.suo
+*.vsidx
+RMPG Flare/
 
-# ─── Cloudflare / Wrangler ──────────────────────────────────
-.wrangler/
+# Desktop build output
+desktop/dist/
 
-# ─── Logs ───────────────────────────────────────────────────
-logs/
-*.log
+# iOS / Swift build artifacts
+ios/
+ios2/*/build/
+ios2/*/DerivedData/
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+*.xcuserstate
+xcuserdata/
+xcschemes/
+ModuleCache/
+.build/
 
-# ─── Test / coverage output ─────────────────────────────────
-coverage/
-.cache/
-test-results/
-playwright-report/
+# Temp files
+tmp/
 
-# ─── Local uploads / databases (dev only) ───────────────────
-uploads/
-server/uploads/
-data/
-*.db
-*.sqlite
-*.sqlite3
-*.db-journal
-
-# ─── Local notes (never publish) ────────────────────────────
-*.notes.md
-CLAUDE-private.md
-
-# Generated Dispatch Guide PDF (jsPDF doc.save under vitest/jsdom dirties the tree)
-client/RMPG-Dispatch-Guide-*.pdf
-# Dispatch-guide screenshot working dirs (sources for dispatchGuideShots.ts)
-client/.guide-shots/
-.shots/
-
-# Audit workflow tracker artifacts (local only)
-.audit-*.json
-.audit-*.md
-.live_schema.json
-
-# Superpowers brainstorm visual-companion scaffolding (local only)
-.superpowers/
+# Generated audit / analysis
+.audit-rms-result.json
