@@ -1092,29 +1092,11 @@ export default function CourtTrackerPage() {
                     <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '--'}</div>
                   </div>
-                  <div className="text-[10px] text-rmpg-500">
-                    Tip: dropdown values for Court / Judge / Prosecutor / Defense Attorney are admin-managed under Admin → Court Tracker Lookups.
-                  </div>
+                ))}
+                <div className="text-[10px] text-rmpg-500">
+                  Tip: dropdown values for Court / Judge / Prosecutor / Defense Attorney are admin-managed under Admin → Court Tracker Lookups.
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    ['Event Date', selected.event_date ? formatDate(selected.event_date) : '--'],
-                    ['Time', selected.event_time || '--'],
-                    ['Court', selected.court_name],
-                    ['Courtroom', selected.courtroom || '--'],
-                    ['Judge', selected.judge_name || '--'],
-                    ['Court Case #', selected.court_case_number || '--'],
-                    ['Defendant', selected.defendant_name || '--'],
-                    ['Prosecutor', selected.prosecutor || '--'],
-                  ].map(([label, value]) => (
-                    <div key={label as string}>
-                      <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
-                      <div className="text-xs text-white mt-0.5">{value || '--'}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              </div>
 
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">

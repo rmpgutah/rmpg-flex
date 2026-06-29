@@ -11,6 +11,7 @@ import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
+import { getMeaningfulPersonStatus } from './personStatus';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -850,14 +851,6 @@ export interface PersonPdfData {
   citizenship?: string;
   marital_status?: string;
   place_of_birth?: string;
-  // LE Identifiers
-  ncic_number?: string;
-  sor_number?: string;
-  fbi_number?: string;
-  state_id_number?: string;
-  passport_number?: string;
-  passport_country?: string;
-  immigration_status?: string;
   // Military / Education
   military_branch?: string;
   military_status?: string;
@@ -873,12 +866,6 @@ export interface PersonPdfData {
   dietary_restrictions?: string;
   // Physical descriptor — for FI cards / BOLO when subject was heard
   voice_description?: string;
-  // Detailed Marks
-  tattoo_description?: string;
-  scar_description?: string;
-  piercing_description?: string;
-  distinguishing_features?: string;
-  identifying_marks_location?: string;
   // Flags
   is_sex_offender?: boolean;
   is_veteran?: boolean;
@@ -988,7 +975,6 @@ export interface VehiclePdfData {
   modifications?: string;
   equipment_notes?: string;
   // Additional Registration / Owner
-  registered_owner?: string;
   registration_state?: string;
   owner_dl_number?: string;
   owner_dob?: string;
@@ -1296,6 +1282,13 @@ export interface PersonnelPdfData {
   deployments?: PersonnelDeploymentEntry[];
   time_entries?: PersonnelTimeEntry[];
   report_type?: 'full' | 'credentials' | 'training' | 'equipment' | 'time';
+}
+
+export interface BusinessPdfData {
+  [key: string]: any;
+  id?: string;
+  name?: string;
+  dba_name?: string;
 }
 
 export interface PropertyPdfData {
@@ -1627,7 +1620,7 @@ function addConnectionsSection(
   const lx = getLeftX();
   y = checkPageBreak(doc, y, 25, priority);
   { const sec = openAutoSection(doc, 'Connected Profiles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-  const rows = connections.map(c => [
+  const rows = connections.map((c: any) => [
     titleCase(c.type.replace(/_/g, ' ')),
     c.label || 'N/A',
     titleCase(c.relationship.replace(/_/g, ' ')),
@@ -3935,7 +3928,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const incidentRows = data.incidents.map(inc => [
+    const incidentRows = data.incidents.map((inc: any) => [
       inc.incident_number || 'N/A',
       toDisplayLabel(inc.incident_type || ''),
       toDisplayLabel(inc.role || ''),
@@ -3962,7 +3955,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const citationRows = data.citations.map(c => [
+    const citationRows = data.citations.map((c: any) => [
       c.citation_number || 'N/A',
       toDisplayLabel(c.type || ''),
       toDisplayLabel(c.status || ''),
@@ -3989,7 +3982,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const callRows = data.calls.map(c => [
+    const callRows = data.calls.map((c: any) => [
       c.call_number || 'N/A',
       formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
@@ -4391,7 +4384,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const incRows = data.incidents.map(inc => [
+    const incRows = data.incidents.map((inc: any) => [
       inc.incident_number || 'N/A',
       formatEnumValue(inc.incident_type),
       titleCase(inc.status || ''),
@@ -4406,7 +4399,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const callRows = data.calls.map(c => [
+    const callRows = data.calls.map((c: any) => [
       c.call_number || 'N/A',
       formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
@@ -4422,7 +4415,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const citRows = data.citations.map(c => [
+    const citRows = data.citations.map((c: any) => [
       c.citation_number || 'N/A',
       titleCase(c.type || ''),
       titleCase(c.status || ''),
@@ -5081,7 +5074,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = checkPageBreak(doc, y, 25);
     const sec = openAutoSection(doc, 'Chain of Custody', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const custodyRows = data.chain_of_custody.map(c => [
+    const custodyRows = data.chain_of_custody.map((c: any) => [
       fmtTimestamp(c.timestamp),
       (c.action || '').toUpperCase(),
       c.from_person || '',
@@ -5820,7 +5813,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of credColW) { credColPos.push(cx); cx += w; } }
     const credHeaders = ['Type', 'Number', 'Issuing Authority', 'Issued', 'Expiry', 'Status']
       .map((label, i) => ({ label, x: credColPos[i] }));
-    const credRows = data.credentials.map(c => [
+    const credRows = data.credentials.map((c: any) => [
       (c.type || '').substring(0, 28),
       (c.credential_number || '').substring(0, 22),
       (c.issuing_authority || '').substring(0, 28),
@@ -5853,7 +5846,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of trainColW) { trainColPos.push(cx); cx += w; } }
     const trainHeaders = ['Course', 'Category', 'Provider', 'Completed', 'Expiry', 'Hours', 'Status']
       .map((label, i) => ({ label, x: trainColPos[i] }));
-    const trainRows = data.training_records.map(t => [
+    const trainRows = data.training_records.map((t: any) => [
       (t.course_name || '').substring(0, 35),
       (t.category || '').substring(0, 16),
       (t.provider || '').substring(0, 24),
@@ -5958,7 +5951,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     { let cx = lx; for (const w of timeColW) { timeColPos.push(cx); cx += w; } }
     const timeHeaders = ['Clock In', 'Clock Out', 'Hours', 'Status']
       .map((label, i) => ({ label, x: timeColPos[i] }));
-    const timeRows = data.time_entries.map(t => [
+    const timeRows = data.time_entries.map((t: any) => [
       fmtDateTime(t.clock_in),
       t.clock_out ? fmtDateTime(t.clock_out) : 'Active',
       t.total_hours != null ? t.total_hours.toFixed(2) : '-',
@@ -6192,7 +6185,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const incRows = data.incidents.map(inc => [
+    const incRows = data.incidents.map((inc: any) => [
       inc.incident_number || 'N/A',
       formatEnumValue(inc.incident_type),
       titleCase(inc.status || ''),
@@ -6207,7 +6200,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const callRows = data.calls.map(c => [
+    const callRows = data.calls.map((c: any) => [
       c.call_number || 'N/A',
       formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
@@ -6222,7 +6215,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   if (data.trespass_orders && data.trespass_orders.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const toRows = data.trespass_orders.map(t => [
+    const toRows = data.trespass_orders.map((t: any) => [
       t.order_number || 'N/A',
       t.subject_name || '',
       titleCase(t.status || ''),
@@ -6465,7 +6458,7 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Linked Individuals', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const pRows = data.linked_persons.map(p => [
+    const pRows = data.linked_persons.map((p: any) => [
       p.name || 'N/A',
       titleCase(p.role || 'linked'),
       p.phone || '',
@@ -6479,7 +6472,7 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
   if (data.incidents && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const incRows = data.incidents.map(inc => [
+    const incRows = data.incidents.map((inc: any) => [
       inc.incident_number || 'N/A',
       formatEnumValue(inc.incident_type),
       titleCase(inc.status || ''),
@@ -6494,7 +6487,7 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
   if (data.calls && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const callRows = data.calls.map(c => [
+    const callRows = data.calls.map((c: any) => [
       c.call_number || 'N/A',
       formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
@@ -6510,7 +6503,7 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
   if (data.trespass_orders && data.trespass_orders.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const toRows = data.trespass_orders.map(t => [
+    const toRows = data.trespass_orders.map((t: any) => [
       t.order_number || 'N/A',
       t.subject_name || '',
       titleCase(t.status || ''),

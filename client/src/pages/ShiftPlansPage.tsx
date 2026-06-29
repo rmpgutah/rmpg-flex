@@ -258,24 +258,6 @@ export default function ShiftPlansPage() {
       .finally(done);
   }, [selectedDate, addToast]);
 
-  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
-  const [swapRequests, setSwapRequests] = useState<any[]>([]);
-  const [overtimeData, setOvertimeData] = useState<any>(null);
-  const [staffingLevels, setStaffingLevels] = useState<any>(null);
-  const [conflicts, setConflicts] = useState<any[]>([]);
-  const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
-
-  useEffect(() => {
-    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
-    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
-    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
-  }, [selectedDate]);
-
   // ── Computed ──
   const plansForDate = useMemo(() =>
     sp.plans.filter(p => p.date === selectedDate)

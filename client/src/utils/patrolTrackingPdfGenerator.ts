@@ -282,6 +282,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
     doc.setLineWidth(0.5);
     doc.line(marginX, y, pageW - marginX, y);
     y += 14;
+  }
 
   // ── Utility: new page with proper yPos ──────────────
   function newPage() {
@@ -726,13 +727,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   });
 
   // ── Save the PDF ─────────────────────────────────────
-  const dateStr = localToday().replace(/-/g, '');
-  const firstCallSign = data.trails[0]?.call_sign || 'ALL';
-  const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-  const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
-  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
+  try {
+    const dateStr = localToday().replace(/-/g, '');
+    const firstCallSign = data.trails[0]?.call_sign || 'ALL';
+    const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
+    const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+    doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
   } catch (err) {
     console.error('Patrol tracking PDF generation failed:', err);
     throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+  }
+  } catch (err) {
+    throw err;
   }
 }

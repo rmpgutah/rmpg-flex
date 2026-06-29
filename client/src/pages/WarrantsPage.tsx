@@ -899,52 +899,6 @@ export default function WarrantsPage() {
   // WARRANTS TAB FETCHES
   // ============================================================
 
-  const fetchDashStats = useCallback(async () => {
-    setDashStatsLoading(true);
-    try {
-      const res = await apiFetch<DashboardStats>('/warrants/dashboard/stats');
-      setDashStats(res);
-    } catch { /* silent */ }
-    finally { setDashStatsLoading(false); }
-  }, []);
-
-  const fetchFeed = useCallback(async () => {
-    setFeedLoading(true);
-    try {
-      const res = await apiFetch<{ data: FeedEntry[] }>(`/warrants/dashboard/feed?range=${FEED_RANGE_PARAMS[feedRange]}&limit=50`);
-      setFeedEntries(res.data || (Array.isArray(res) ? res : []));
-    } catch { setFeedEntries([]); }
-    finally { setFeedLoading(false); }
-  }, [feedRange]);
-
-  const fetchPriority = useCallback(async () => {
-    setPriorityLoading(true);
-    try {
-      const res = await apiFetch<{ data: PriorityWarrant[] }>('/warrants/dashboard/priority');
-      setPriorityWarrants(res.data || (Array.isArray(res) ? res : []));
-    } catch { setPriorityWarrants([]); }
-    finally { setPriorityLoading(false); }
-  }, []);
-
-  // Auto-refresh dashboard stats every 30s
-  useEffect(() => {
-    if (activeTab !== 'dashboard') return;
-    fetchDashStats();
-    fetchPriority();
-    const interval = setInterval(fetchDashStats, 30_000);
-    return () => clearInterval(interval);
-  }, [activeTab, fetchDashStats, fetchPriority]);
-
-  // Fetch feed when range changes
-  useEffect(() => {
-    if (activeTab !== 'dashboard') return;
-    fetchFeed();
-  }, [activeTab, fetchFeed]);
-
-  // ============================================================
-  // WARRANTS TAB FETCHES
-  // ============================================================
-
   // Debounce search query — 400ms delay prevents hammering API on every keystroke
   useEffect(() => {
     const timer = setTimeout(() => {

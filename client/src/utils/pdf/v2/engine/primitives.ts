@@ -204,18 +204,6 @@ export class Primitives {
     // flip painted every completed page's grid onto the *next* page: page 1
     // looked borderless, page 2 got a half-height grid, and the last page got a
     // full-height phantom box bleeding through the TOTALS block.
-    const drawFragmentBorders = (top: number, bottom: number, headerSepY: number): void => {
-      if (bottom <= top) return;
-      const h = bottom - top;
-      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
-      this.doc.setDrawColor(0, 0, 0);
-      this.doc.rect(left, top, tableWidth, h);
-      this.doc.line(left, headerSepY, left + tableWidth, headerSepY);
-      for (let i = 1; i < spec.columns.length; i++) {
-        this.doc.line(colStarts[i], top, colStarts[i], top + h);
-      }
-    };
-
     // Never orphan a header band at the very bottom of a page — keep it with
     // at least its first body row.
     this.layout.pageBreakIfNeeded(headerH + rowH);
@@ -224,7 +212,6 @@ export class Primitives {
     let fragTop = this.layout.cursorY;
     drawHeaderBand(fragTop);
     this.layout.advance(headerH);
-    let bodyTop = this.layout.cursorY;   // below-header separator y for this fragment
     applyBodyStyle();
 
     // ── Body rows: zebra-striped, black text ──

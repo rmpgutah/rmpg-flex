@@ -282,7 +282,7 @@ export default function DocumentIntakePage() {
             filename={state.filename}
             onReset={() => setState({ kind: 'idle' })}
           />
-        </div>
+        </>
       )}
 
       {/* ── Discard review confirm ────────────────────────────────── */}

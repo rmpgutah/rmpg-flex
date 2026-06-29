@@ -31,7 +31,28 @@ type SoundId =
   | 'boop'          // Single low de-key boop
   | 'dispatch_bell' // Gentle two-tone bell
   | 'data_chirp'    // Fast MDT data chirp
-  | 'emergency_three'; // Three-cycle emergency warble
+  | 'emergency_three' // Three-cycle emergency warble
+  // ── Voice alert / navigation tones ──
+  | 'gps_warn'
+  | 'gps_lost'
+  | 'gps_restored'
+  | 'pursuit_alert'
+  | 'beat_breach'
+  // ── Voice comm tones ──
+  | 'roger'
+  | 'backup_request'
+  // ── Status / dispatch tones ──
+  | 'ack'
+  | 'bonk'
+  | 'login_ok'
+  | 'logoff'
+  | 'all_call'
+  | 'unit_to_unit'
+  | 'priority_preempt'
+  | 'stack_pip'
+  | 'enroute_chirp'
+  | 'onscene_chirp'
+  | 'cleared_chirp';
 
 // Backward-compatible public alias used by all existing callers.
 type ToneType = SoundId;
@@ -352,6 +373,21 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     gain: 0.15,
     steps: [
       { freq: 1200, start: 0, dur: 0.06 },
+    ],
+  },
+
+  // ── Backup Request: Officer-down / assistance tone ───────────
+  // Rapid triple beep at 1000 Hz — the CAD-standard "assistance
+  // requested" urgency pattern distinct from pursuit or general alert.
+  backup_request: {
+    type: 'sine',
+    gain: 0.28,
+    steps: [
+      { freq: 1000, start: 0,    dur: 0.10 },
+      { freq: 0,    start: 0.10, dur: 0.06 },
+      { freq: 1000, start: 0.16, dur: 0.10 },
+      { freq: 0,    start: 0.26, dur: 0.06 },
+      { freq: 1000, start: 0.32, dur: 0.10 },
     ],
   },
 

@@ -19,6 +19,10 @@ import {
   RotateCcw,
   Copy,
   Map as MapIcon,
+  Wrench,
+  DollarSign,
+  FileText,
+  ClipboardCheck,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -35,7 +39,7 @@ import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
-import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';

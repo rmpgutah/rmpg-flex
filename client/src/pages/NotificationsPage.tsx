@@ -12,6 +12,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
+import { toDisplayLabel } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);

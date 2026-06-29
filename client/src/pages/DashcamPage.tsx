@@ -370,26 +370,6 @@ export default function DashcamPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((e: any) => (
-                      <tr key={e.id} className="border-b border-border-default">
-                        <td className="px-3 py-1.5 font-mono text-text-muted">{e.event_at}</td>
-                        <td className="px-3 py-1.5">
-                          <span className="text-brand-400">{e.device_id}</span>
-                          {e.device_label && <span className="text-text-muted ml-1">({e.device_label})</span>}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          {EVENT_ICONS[e.event_type] && <span className="mr-1">{EVENT_ICONS[e.event_type]}</span>}
-                          {formatEnumValue(e.event_type)}
-                        </td>
-                        <td className={`px-3 py-1.5 ${SEVERITY_COLORS[e.severity] || 'text-text-muted'}`}>
-                          {formatEnumValue(e.severity)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right text-text-muted">
-                          {e.latitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : '—'}
-                        </td>
-                      </tr>
-                    </thead>
-                    <tbody>
                       {events.map((e: any) => (
                         <tr key={e.id} className="border-b border-border-default">
                           <td className="px-3 py-1.5 font-mono text-text-muted">
@@ -420,7 +400,6 @@ export default function DashcamPage() {
                       )}
                     </tbody>
                   </table>
-                )}
               </div>
             )}
           </div>

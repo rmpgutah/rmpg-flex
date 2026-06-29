@@ -40,28 +40,6 @@ function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
   );
 }
 
-function PhoneScanQr() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    let cancelled = false;
-    import('bwip-js/browser').then(({ default: bwipjs }) => {
-      if (cancelled || !canvasRef.current) return;
-      try {
-        bwipjs.toCanvas(canvasRef.current, {
-          bcid: 'qrcode',
-          text: `${window.location.origin}/dl-search`,
-          scale: 2,
-          backgroundcolor: 'FFFFFF',
-          paddingwidth: 4,
-          paddingheight: 4,
-        });
-      } catch { /* QR render is decorative — page works without it */ }
-    }).catch(() => { /* ignore */ });
-    return () => { cancelled = true; };
-  }, []);
-  return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
-}
-
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
 function PhoneScanQr() {
@@ -572,12 +550,6 @@ export default function DlSearchPage() {
     return { dl, state, last, first, dob, person_id };
   })());
 
-  // ── DL OCR Scanner ──
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrResult, setOcrResult] = useState<any>(null);
-  const [showOcrPreview, setShowOcrPreview] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   // ── DL Verification via RapidAPI ──
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
@@ -630,28 +602,6 @@ export default function DlSearchPage() {
       addToast(err.message || 'Failed to create person record', 'error');
     }
   }, [verifyResult, addToast]);
-
-  // ── Feature 42: Registration Alerts ──
-  const [regAlerts, setRegAlerts] = useState<any>(null);
-  const handleCheckRegistration = async () => {
-    try {
-      const data = await apiFetch<any>('/records/vehicles/alerts/expired-registration');
-      setRegAlerts(data?.data || data);
-    } catch { addToast('Failed to check registration alerts', 'error'); }
-  };
-
-  // ── Feature 44: Stolen Vehicle Check ──
-  const [stolenResult, setStolenResult] = useState<any>(null);
-  const [stolenPlate, setStolenPlate] = useState('');
-  const handleStolenCheck = async () => {
-    if (!stolenPlate.trim()) return;
-    try {
-      const data = await apiFetch<any>('/records/vehicles/stolen-check', {
-        method: 'POST', body: JSON.stringify({ plate_number: stolenPlate.trim() }),
-      });
-      setStolenResult(data?.data || data);
-    } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
-  };
 
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;

@@ -73,8 +73,32 @@ function formatDistance(meters: number): string {
 /** Build a call marker DOM element with priority-colored badge */
 function buildCallMarker(label: string, priority?: string): HTMLElement {
   const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
-  const isP1 = priority === 'P1';
-  const isP2 = priority === 'P2';
+  const el = document.createElement('div');
+  el.style.cssText = `
+    display:flex;flex-direction:column;align-items:center;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));cursor:pointer;
+  `;
+
+  const tag = document.createElement('div');
+  tag.style.cssText = `
+    background:${color};color:#fff;font-size:7px;font-weight:900;
+    padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
+    white-space:nowrap;font-family:'JetBrains Mono',monospace;
+    letter-spacing:0.03em;border-radius:1px;
+    box-shadow:0 0 8px ${color}50;
+  `;
+  tag.textContent = label;
+
+  const caret = document.createElement('div');
+  caret.style.cssText = `
+    width:0;height:0;border-left:5px solid transparent;
+    border-right:5px solid transparent;border-top:7px solid ${color};
+  `;
+
+  el.appendChild(tag);
+  el.appendChild(caret);
+  return el;
+}
 
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();

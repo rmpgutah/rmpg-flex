@@ -150,10 +150,6 @@ const AuditLogPage: React.FC = () => {
   const [complianceReport, setComplianceReport] = useState<any>(null);
   const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
 
-  // ═══ NEW: Compliance report + index stats ═══
-  const [complianceReport, setComplianceReport] = useState<any>(null);
-  const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
-
   // Memoized filter dropdown values — derived from logs, recalculated only when logs change
   const uniqueActions = useMemo(() => {
     const actions = new Set<string>();

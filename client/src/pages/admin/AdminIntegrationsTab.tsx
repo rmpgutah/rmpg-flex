@@ -49,18 +49,6 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Third-Party API Keys Panel ──────────────────────────────
-// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
-const THIRD_PARTY_KEYS = [
-  {
-    key: 'google_maps_platform_api_key',
-    label: 'Google Maps Platform',
-    desc: 'Used for all enabled Google Maps Platform services, including Maps, Places, Routes, Geocoding, Weather, and related APIs',
-  },
-  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
-  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
-] as const;
-
 function validateKey(value: string, config: ApiKeyConfig): string | null {
   if (!value.trim()) return null;
   if (config.pattern && !config.pattern.test(value.trim())) {

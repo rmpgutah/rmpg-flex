@@ -5,11 +5,11 @@
 // field operations. Mirrors the Spillman Flex MDT interface.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
-  MessageSquare, Shield, FileText, Loader2, ChevronRight,
+  MessageSquare, Shield, FileText, Loader2, ChevronRight, Hash, Search, X, Radio, History,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
@@ -29,6 +29,8 @@ import NcicQueryPanel from '../components/NcicQueryPanel';
 import PremiseAlertModal from '../components/PremiseAlertModal';
 import WelfareCheckModal from '../components/WelfareCheckModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import IconButton from '../components/IconButton';
+import { playTone } from '../utils/dispatchTones';
 import { Volume2, VolumeX, Vibrate } from 'lucide-react';
 import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
@@ -289,6 +291,15 @@ export default function MdtPage() {
   // Role gates — destructive duty/call actions gated to admin/manager/supervisor
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
+  const [showCodes, setShowCodes] = useState(false);
+  const [codeFilter, setCodeFilter] = useState('');
+  const [codes, setCodes] = useState<DispatchCode[]>([]);
+  const [noteText, setNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+  const [bolos, setBolos] = useState<BoloEntry[]>([]);
+  const [boloIndex, setBoloIndex] = useState(0);
+  const [historyCalls, setHistoryCalls] = useState<CallForService[]>([]);
+  const lastWarnedCallRef = useRef<number | string | null>(null);
   // DI-5: per-unit audio mode (silent dispatch). Source of truth = server,
   // localStorage mirror keeps the voice hook gate latency-free.
   const [audioMode, setAudioMode] = useState<AudioMode>(getLocalAudioMode());
@@ -499,6 +510,14 @@ export default function MdtPage() {
     next.delete('call_id');
     setSearchParams(next, { replace: true });
   }, [myCalls, pendingCalls, loading, searchParams, setSearchParams, addToast]);
+
+  // ── BOLO Fetching ──
+  const fetchBolos = useCallback(async () => {
+    try {
+      const raw = await apiFetch<BoloEntry[]>('/comms/bolos/active');
+      if (Array.isArray(raw)) setBolos(raw.filter((b) => b.status === 'active'));
+    } catch { /* best-effort */ }
+  }, []);
 
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();

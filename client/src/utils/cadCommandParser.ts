@@ -1047,7 +1047,13 @@ export async function executeCommand(
           message: 'Showing dispatcher workload overview',
           action: { type: 'show_workload' },
         };
+      } catch {
+        return { success: false, message: 'Failed to fetch premise alerts', action: { type: 'none' } };
       }
+    }
+
+    // ── Workload (unit-specific) ──
+    {
       const unit = fuzzyFindUnit(args[0], ctx.units);
       if (!unit) {
         return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };

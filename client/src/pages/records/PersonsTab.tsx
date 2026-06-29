@@ -192,40 +192,6 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     incident_ids: [],
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
-
-    // ── Extended LE / medical / military / marks / jail-intake ──
-    // These were previously DROPPED on load (audit 2026-05-04). Every
-    // field in this block is typed on the Person interface and persisted
-    // by the records.ts INSERT + UPDATE field-map, but if mapDbPerson
-    // doesn't read them out of the DB row, the form re-opens blank and
-    // the PDF renders N/A. Each is a `row.X ? String(row.X) : undefined`
-    // pass-through with no silent filtering.
-    ncic_number:           row.ncic_number ? String(row.ncic_number) : undefined,
-    sor_number:            row.sor_number ? String(row.sor_number) : undefined,
-    fbi_number:            row.fbi_number ? String(row.fbi_number) : undefined,
-    state_id_number:       row.state_id_number ? String(row.state_id_number) : undefined,
-    passport_number:       row.passport_number ? String(row.passport_number) : undefined,
-    passport_country:      row.passport_country ? String(row.passport_country) : undefined,
-    immigration_status:    row.immigration_status ? String(row.immigration_status) : undefined,
-    disability_flags:      row.disability_flags ? String(row.disability_flags) : undefined,
-    mental_health_flags:   row.mental_health_flags ? String(row.mental_health_flags) : undefined,
-    substance_abuse:       row.substance_abuse ? String(row.substance_abuse) : undefined,
-    medication_notes:      row.medication_notes ? String(row.medication_notes) : undefined,
-    education_level:       row.education_level ? String(row.education_level) : undefined,
-    military_branch:       row.military_branch ? String(row.military_branch) : undefined,
-    military_status:       row.military_status ? String(row.military_status) : undefined,
-    tribal_affiliation:    row.tribal_affiliation ? String(row.tribal_affiliation) : undefined,
-    tattoo_description:    row.tattoo_description ? String(row.tattoo_description) : undefined,
-    scar_description:      row.scar_description ? String(row.scar_description) : undefined,
-    piercing_description:  row.piercing_description ? String(row.piercing_description) : undefined,
-    distinguishing_features: row.distinguishing_features ? String(row.distinguishing_features) : undefined,
-    identifying_marks_location: row.identifying_marks_location ? String(row.identifying_marks_location) : undefined,
-    email_secondary:       row.email_secondary ? String(row.email_secondary) : undefined,
-    date_last_seen:        row.date_last_seen ? String(row.date_last_seen) : undefined,
-    location_last_seen:    row.location_last_seen ? String(row.location_last_seen) : undefined,
-    alias_dob:             row.alias_dob ? String(row.alias_dob) : undefined,
-    home_phone:            row.home_phone ? String(row.home_phone) : undefined,
-    work_phone:            row.work_phone ? String(row.work_phone) : undefined,
     // F3 jail-intake additions (2026-05-04)
     voice_description:     row.voice_description ? String(row.voice_description) : undefined,
     religion:              row.religion ? String(row.religion) : undefined,
@@ -916,8 +882,8 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               </div>
             </div>
           </div>
-        );
-        })}
+        ))}
+
       </div>
 
       {/* Person Form Modal (portals to body) */}

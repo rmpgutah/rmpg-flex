@@ -224,9 +224,6 @@ export default function LoginPage() {
     }
   }, [loginStep]);
 
-  // Last login display
-  const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
-
   // Check for last login info stored during login flow
   useEffect(() => {
     if (loginStep === 'complete') {
@@ -552,25 +549,6 @@ export default function LoginPage() {
       // Error handled by context
     }
   };
-
-  const status = stepStatus[loginStep] || stepStatus.username;
-  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
-
-  // ── Info row item ──────────────────────────────
-  const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #050505' }}>
-      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
-      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
-    </div>
-  );
-
-  // ── Info row item ──────────────────────────────
-  const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-      <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">{label}</span>
-      <span className="text-[9px] font-mono text-rmpg-400">{value}</span>
-    </div>
-  );
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, var(--surface-base) 0%, var(--surface-sunken) 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
