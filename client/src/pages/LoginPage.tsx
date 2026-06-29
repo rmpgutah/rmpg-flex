@@ -84,6 +84,15 @@ const stepStatus: Record<LoginStep, { text: string; color: string }> = {
   complete:           { text: 'AUTHENTICATED',         color: '#22c55e' },
 };
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-[3px]">
+      <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">{label}</span>
+      <span className="text-[9px] font-mono text-rmpg-200">{value}</span>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const {
     login,
@@ -1432,10 +1441,10 @@ export default function LoginPage() {
           </div>
 
           {/* Status bar */}
-          <div className="status-bar" role="status" aria-label={`Login status: ${status.text}`}>
+          <div className="status-bar" role="status" aria-label={`Login status: ${stepStatus[loginStep].text}`}>
             <div className="status-bar-section">
-              <span className="led-dot" style={{ background: status.color, boxShadow: `0 0 4px ${status.color}` }} aria-hidden="true" />
-              <span>{status.text}</span>
+              <span className="led-dot" style={{ background: stepStatus[loginStep].color, boxShadow: `0 0 4px ${stepStatus[loginStep].color}` }} aria-hidden="true" />
+              <span>{stepStatus[loginStep].text}</span>
             </div>
             <div className="status-bar-section" aria-label="Connection encrypted">
               <span className="text-rmpg-500">ENCRYPTED</span>
