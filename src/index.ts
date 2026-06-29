@@ -156,7 +156,7 @@ export default {
   // Cron schedule (UTC):
   //   "0 */4 * * *"   every 4 h at :00         → warrant scan, dispatch anomalies, nudge sweep
   //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
-  //   "*/30 * * * *"  every 30 min              → fleet.io reconciliation
+  //   "*/30 * * * *"  every 30 min              → ServeManager job poller
   //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──

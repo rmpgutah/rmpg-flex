@@ -775,9 +775,11 @@ export async function getInvoiceSummary(
   };
 }
 
-// ── 8. notifyServeCompletion ─────────────────────────────────
-
-export async function notifyServeCompletion(
+// ── 8. notifyServeCompletion (DEPRECATED — use serveCompletionNotify.ts instead) ──
+// This 5-param version is superseded by the simpler version in serveCompletionNotify.ts.
+// Kept here only for internal billing tests; external callers should import from
+// serveCompletionNotify.ts which has the canonical notifyServeCompletion(db, queueId, status).
+async function _deprecatedNotifyServeCompletion(
   db: D1Database,
   queueId: number,
   attemptId: number,
