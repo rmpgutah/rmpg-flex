@@ -1307,6 +1307,20 @@ export default function ServePage() {
       ...(job.attempt_count > 0 && job.status !== 'served' ? [
         m.action('Affidavit of Non-Service', () => handleAffidavitOfNonService(job.id), { icon: <ScrollText size={12} /> }),
       ] : []),
+      // Manage Attempts submenu — edit or delete individual attempts
+      ...(job.attempt_count > 0 && Array.isArray(job.attempts) ? [{
+        label: 'Manage Attempts', icon: <ClipboardCheck size={12} />,
+        submenu: [
+          ...(job.attempts as ServeAttempt[]).map((attempt, i) => [
+            m.action(`Edit Attempt #${attempt.attempt_number || i + 1}`, () => setEditAttempt({ jobId: job.id, attempt }), { icon: <Pencil size={11} /> }),
+            ...(canManage ? [
+              m.action(`Delete Attempt #${attempt.attempt_number || i + 1}`, () => handleDeleteAttempt(job.id, attempt), {
+                icon: <Trash2 size={11} />, danger: true,
+              }),
+            ] : []),
+          ]).flat(),
+        ].filter(Boolean),
+      } as ContextMenuItem] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
       moveSubmenu.length > 0
         ? { label: 'Move to…', icon: <FolderOpen size={12} />, submenu: moveSubmenu }
