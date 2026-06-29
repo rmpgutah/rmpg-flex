@@ -948,4 +948,41 @@ calls.post('/:id/dispatch', async (c) => {
   } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
 });
 
+// POST /dispatch/calls/:id/split — split a call into multiple child CFS records
+calls.post('/:id/split', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const parent = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!parent) return c.json({ error: 'Parent call not found' }, 404);
+    const { splits } = await c.req.json<{ splits: Array<{ incident_type: string; description?: string; location_address?: string }> }>();
+    if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
+    const userId = c.get('userId') as number | undefined;
+    const created: number[] = [];
+    for (const s of splits) {
+      const result = await execute(db,
+        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, split_from_id, created_at, updated_at)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, id);
+      created.push(Number(result.meta.last_row_id));
+    }
+    await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
+    if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
+    return c.json({ success: true, parent_id: id, child_ids: created });
+  } catch (err) { return c.json({ error: 'Call split failed' }, 500); }
+});
+
+// GET /dispatch/calls/:id/evidence-prompt — check if evidence should be collected before clearing
+calls.get('/:id/evidence-prompt', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    const call = await queryFirst<{ photos_taken: number | null }>(db,
+      'SELECT (SELECT COUNT(*) FROM field_photos WHERE call_id = ?) AS photos_taken', id);
+    const notes = (await queryFirst<{ n: number }>(db,
+      'SELECT COUNT(*) AS n FROM call_notes WHERE call_id = ?', id))?.n ?? 0;
+    return c.json({ prompt_evidence: !call?.photos_taken || call.photos_taken === 0, photos_count: call?.photos_taken ?? 0, notes_count: notes });
+  } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
+});
+
 export default calls;

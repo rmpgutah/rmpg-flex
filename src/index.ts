@@ -181,6 +181,21 @@ export default {
       );
     }
 
+    // ── Every 30 minutes ──
+    if (event.cron === '*/30 * * * *') {
+      // ServeManager job poller — syncs jobs from ServeManager into CFS dispatch
+      ctx.waitUntil(
+        import('./utils/serveManagerPoller').then((m) =>
+          m.pollServeManagerJobs(env).then((r) => {
+            if (r.synced > 0 || r.callsCreated > 0) {
+              console.log(`[sm-poller] synced ${r.synced} jobs, created ${r.callsCreated} calls`);
+            }
+            if (r.error) console.error('[sm-poller]', r.error);
+          }).catch((err) => console.error('[sm-poller] failed:', err)),
+        ).catch(() => {}),
+      );
+    }
+
     // ── Every minute ──
     if (event.cron === '* * * * *') {
       // Serve attempt notifications: fires pre-event dispatch reminders
