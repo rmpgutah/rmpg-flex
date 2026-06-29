@@ -43,6 +43,7 @@ import CompetitorMonitorPanel from '../components/crm/CompetitorMonitorPanel';
 import FirecrawlTab from '../components/crm/FirecrawlTab';
 import DeepResearchTab from '../components/crm/DeepResearchTab';
 import { apiFetch } from '../hooks/useApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
@@ -203,15 +204,18 @@ export default function CrmPage() {
 
   // Properties
   const [properties, setProperties] = useState<(Property & { client_name?: string })[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
 
   // Contacts
   const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [contactRelationship, setContactRelationship] = useState('');
 
   // Invoices
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoiceFilter, setInvoiceFilter] = useState('');
 
   // Tasks
@@ -609,6 +613,18 @@ export default function CrmPage() {
       </div>
     );
   }
+
+  const buildContactMenu = (c: any): ContextMenuItem[] => {
+    return [
+      m.copy('Copy name', `${c.first_name} ${c.last_name}`),
+      m.copy('Copy email', c.email || ''),
+      m.copy('Copy phone', c.phone || ''),
+    ];
+  };
+
+  const deleteContact = async (c: any) => {
+    try { await apiFetch(`/crm/contacts/${c.id}`, { method: 'DELETE' }); setContacts((prev) => prev.filter((x) => x.id !== c.id)); addToast('Contact deleted', 'success'); } catch { addToast('Failed to delete contact', 'error'); }
+  };
 
 
   return (

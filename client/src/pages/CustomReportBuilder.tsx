@@ -4,7 +4,7 @@
 // select columns, set filters, preview results, and export CSV.
 // ============================================================
 
-import React, {useState, useCallback, useEffect} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
@@ -70,8 +70,10 @@ type Step = 'source' | 'columns' | 'filters' | 'preview';
 export default function CustomReportBuilder() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user?.role ?? '');
 
   // ?type=<source_key> deep-link: pre-select the data source and advance to
   // the columns step so a cross-page link (e.g. from the Reports dashboard)

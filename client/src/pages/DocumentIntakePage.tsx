@@ -19,7 +19,7 @@
 // packet before it landed in records).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, FileText } from 'lucide-react';
+import { Upload, Loader2, FileText, AlertTriangle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -42,10 +42,12 @@ const UPLOAD_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher']
 
 export default function DocumentIntakePage() {
   const { user } = useAuth();
+  const canUpload = UPLOAD_ROLES.includes(user?.role ?? '');
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [dragActive, setDragActive] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const deepLinkHandled = useRef(false);
 

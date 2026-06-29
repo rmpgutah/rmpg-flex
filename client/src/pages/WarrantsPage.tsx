@@ -267,10 +267,15 @@ interface ScraperSource {
   source_url: string;
   enabled: boolean | number;
   last_run_at: string | null;
+  last_scraped_at: string | null;
   last_error: string | null;
   active_count: number;
+  active_warrants: number;
+  consecutive_failures: number;
   total_count: number;
   status?: string;
+  county?: string;
+  state?: string;
 }
 
 interface WatchRun {
@@ -429,6 +434,7 @@ function relativeTime(dt: string): string {
 // ============================================================
 
 function CoverageSourceCard({ source }: { source: ScraperSource }) {
+  const hasError = !!source.last_error;
   const isRecent = source.last_scraped_at &&
     (Date.now() - parseTimestamp(source.last_scraped_at).getTime()) < 3 * 60 * 60 * 1000;
   return (
@@ -3599,6 +3605,11 @@ export default function WarrantsPage() {
                 const ago = Date.now() - parseTimestamp(s.last_scraped_at).getTime();
                 return ago < 3 * 60 * 60 * 1000;
               }).length;
+              const stateCodes = [...new Set(coverageSources.map(s => s.state).filter(Boolean))].sort();
+              const byState = new Map(stateCodes.map(code => [
+                code,
+                coverageSources.filter(s => s.state === code),
+              ]));
 
               return (
                 <>
@@ -3625,11 +3636,11 @@ export default function WarrantsPage() {
                       All Sources ({totalSources})
                     </h3>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
-                      {stateCodes.map(state => {
-                        const sources = byState.get(state) || [];
-                        const active = sources.reduce((sum, s) => sum + s.active_warrants, 0);
+                      {stateCodes.map((state: string) => {
+                        const sources: ScraperSource[] = byState.get(state) || [];
+                        const active = sources.reduce((sum: number, s) => sum + (s.active_warrants || 0), 0);
                         const enabled = sources.filter(s => s.enabled).length;
-                        const hasErrors = sources.some(s => s.consecutive_failures > 0);
+                        const hasErrors = sources.some(s => (s.consecutive_failures || 0) > 0);
                         const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
                         const isRecent = lastScraped && (Date.now() - parseTimestamp(lastScraped).getTime()) < 3 * 60 * 60 * 1000;
 
