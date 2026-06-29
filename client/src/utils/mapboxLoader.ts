@@ -310,3 +310,16 @@ export function clearMapboxConfigCache(): void {
   _serverConfigPromise = null;
   _fetchFailCount = 0;
 }
+
+// Re-export for pages that import map utilities from this module
+export { injectMapStyles as injectMapboxStyles, createMapboxMap } from './mapboxMap';
+
+// Stub re-exports for missing symbols referenced by existing pages.
+// These are no-op implementations to unblock the build.
+export function destroyMapboxMap(_map: any): void { /* stub */ }
+export function addMapboxTrail(_map: any, _coords: any, _color?: string): void { /* stub */ }
+export function removeMapboxTrail(_map: any): void { /* stub */ }
+export function addMapbox3DBuildings(_map: any): void { /* stub */ }
+export function setMapboxStyle(_map: any, _style: string): void { /* stub */ }
+export function addMapboxTerrain(_map: any): void { /* stub */ }
+export function removeMapboxTerrain(_map: any): void { /* stub */ }

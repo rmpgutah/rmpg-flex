@@ -33,3 +33,18 @@ export async function getMapboxAccessToken(forceRefresh = false): Promise<string
   if (!token) throw new Error(MISSING_TOKEN_MESSAGE);
   return token;
 }
+
+export const getMapboxToken = getMapboxAccessToken;
+
+export function hasMapboxToken(): boolean {
+  return !!getCachedMapboxAccessToken();
+}
+
+export function getMapboxTokenStatus(): { configured: boolean; source: string } {
+  const token = getCachedMapboxAccessToken();
+  return { configured: !!token, source: token ? 'build_env' : 'none' };
+}
+
+export function getCachedMapboxStyleUrl(): string {
+  return 'mapbox://styles/mapbox/dark-v11';
+}
