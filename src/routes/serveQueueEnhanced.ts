@@ -35,6 +35,13 @@ const sqe = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
 
+function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
+  const user = c.get('user');
+  if (!user) return 'Unauthorized — user not found on context';
+  if (!roles.includes(user.role)) return `Role '${user.role}' not authorized`;
+  return null;
+}
+
 const SERVICE_METHODS = new Set(['personal', 'substitute', 'posting']);
 
 // ── 1. GET /api/serve-queue/enhanced ────────────────────────
@@ -902,6 +909,36 @@ sqe.post('/intake-scan', async (c) => {
       chargeCount: body.charges?.length || 0,
     },
   });
+});
+
+// ── GET /cross-reference/dispatch — find PSO calls without serve_queue entries ─
+// Scans calls_for_service for pso_client_request calls that have no matching
+// serve_queue row. Useful for diagnosing gaps where the forward cross-link
+// missed a call (e.g., calls created before the crosslink was wired).
+sqe.get('/cross-reference/dispatch', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<{
+    id: number; call_number: string | null; priority: string;
+    status: string; location_address: string | null;
+    jurisdiction: string | null; created_at: string;
+    incident_type: string;
+  }>(
+    db,
+    `SELECT c.id, c.call_number, c.priority, c.status,
+            c.location_address, c.jurisdiction, c.created_at,
+            c.incident_type
+       FROM calls_for_service c
+      WHERE c.incident_type = 'pso_client_request'
+        AND c.status NOT IN ('cancelled', 'archived')
+        AND NOT EXISTS (
+          SELECT 1 FROM serve_queue q WHERE q.call_id = c.id
+        )
+      ORDER BY c.created_at DESC
+      LIMIT 50`,
+  );
+  return c.json({ unmatched: rows, count: rows.length });
 });
 
 export default sqe;

@@ -342,6 +342,28 @@ export default function PdfEditorPage() {
     })();
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-load pending PDF from sessionStorage when ?from=serve is in the URL.
+  // The Process Server page stores the generated Notice of Attempt PDF bytes
+  // in sessionStorage before navigating here so the user can annotate, sign,
+  // and add stamps before printing.
+  useEffect(() => {
+    const from = searchParams.get('from');
+    const nameParam = searchParams.get('name');
+    if (from !== 'serve' || bytes) return;
+    try {
+      const raw = sessionStorage.getItem('rmpg-pdf-editor-pending');
+      if (!raw) return;
+      sessionStorage.removeItem('rmpg-pdf-editor-pending');
+      const { bytes: base64, filename } = JSON.parse(raw);
+      const binary = atob(base64);
+      const arr = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+      openBytes(arr, nameParam || filename || 'Notice of Attempt.pdf');
+    } catch {
+      // sessionStorage may be empty or corrupted — just show the empty editor.
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // File pickers.
   const onPickFile = () => fileInputRef.current?.click();
   const onPickMerge = () => mergeInputRef.current?.click();
@@ -1927,7 +1949,11 @@ export default function PdfEditorPage() {
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-sm mb-2 flex items-start gap-2">
           <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> <div>{savedNotice}</div>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
+          {searchParams.get('from') === 'serve' ? (
+            <button type="button" onClick={() => navigate('/serve')} className="ml-auto text-amber-300 hover:text-rmpg-100 text-[10px]">← Back to Process Server</button>
+          ) : (
+            <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-rmpg-100 text-[10px]">Open Documents →</button>
+          )}
         </div>
       )}
 

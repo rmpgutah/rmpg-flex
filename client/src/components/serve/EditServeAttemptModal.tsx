@@ -11,8 +11,8 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool } from 'lucide-react';
+import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import type { ServeAttempt } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import {
@@ -217,13 +217,58 @@ export default function EditServeAttemptModal({
             />
           </div>
 
-          {/* Immutable evidence reminder */}
-          <div className="flex items-start gap-1.5 text-[10px] text-rmpg-400">
+          {/* Immutable evidence reminder + thumbnails */}
+          <div className="flex items-start gap-1.5 text-[10px] text-rmpg-400 mb-1">
             <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
             <span>
               GPS coordinates, photos, signature, and the officer who logged the attempt are immutable — they're evidence.
             </span>
           </div>
+
+          {/* Photo thumbnails */}
+          {attempt.photo_ids && attempt.photo_ids.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 text-[10px] text-amber-400 mb-1">
+                <Camera className="w-3 h-3" />
+                <span>Field Photos ({attempt.photo_ids.length})</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {attempt.photo_ids.map((photoId) => (
+                  <a
+                    key={photoId}
+                    href={authedImageUrl(`/api/uploads/${encodeURIComponent(photoId)}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-16 h-16 border border-rmpg-700 rounded-[2px] overflow-hidden hover:border-brand-400/50 transition-colors"
+                  >
+                    <img
+                      src={authedImageUrl(`/api/uploads/${encodeURIComponent(photoId)}`)}
+                      alt={`Attempt photo ${photoId}`}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Signature preview */}
+          {attempt.signature_data && (
+            <div>
+              <div className="flex items-center gap-1 text-[10px] text-amber-400 mb-1">
+                <PenTool className="w-3 h-3" />
+                <span>Signature on File</span>
+              </div>
+              <div className="inline-block border border-rmpg-700 rounded-[2px] p-2 bg-surface-sunken">
+                <img
+                  src={`data:image/png;base64,${attempt.signature_data}`}
+                  alt="Officer signature"
+                  className="max-h-16 max-w-full"
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="text-[11px] text-red-400 bg-red-900/30 border border-red-700/40 px-2 py-1 rounded-[2px]">

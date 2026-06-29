@@ -21,7 +21,7 @@ import type { AttemptWindow } from './serveDiligencePlanner';
 const TZ = 'America/Denver';
 
 // Convert America/Denver local "YYYY-MM-DD HH:MM" to UTC epoch ms.
-// Tries MDT (UTC-7) then MST (UTC-6) and verifies via Intl round-trip
+// Tries MST (UTC-7) then MDT (UTC-6) and verifies via Intl round-trip
 // so DST transitions are handled without hardcoding switch dates.
 function localDenverToEpoch(date: string, hhmm: string): number {
   const fmt = new Intl.DateTimeFormat('sv-SE', {

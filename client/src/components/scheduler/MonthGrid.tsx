@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { groupByDay, type ScheduleSlot } from '../../utils/schedulerView';
+import { type DragPayload } from './dnd';
 
 interface Props {
   anchorYmd: string;             // any date in the month to display
   slots: ScheduleSlot[];
   todayYmd: string;
   onDayClick?: (ymd: string) => void;
+  onSlotDrop?: (slot: ScheduleSlot, target: { date: string; window_start: string; window_end: string }) => void;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -34,9 +36,35 @@ const TIER_DOT: Record<string, string> = {
   standard: 'bg-blue-400',
 };
 
-export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick }: Props) {
+export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSlotDrop }: Props) {
   const cells = useMemo(() => monthCells(anchorYmd), [anchorYmd]);
   const grouped = useMemo(() => groupByDay(slots), [slots]);
+  const [dragOverYmd, setDragOverYmd] = useState<string | null>(null);
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (ymd: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOverYmd(null);
+    if (!onSlotDrop) return;
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const payload = JSON.parse(raw) as DragPayload;
+      if (payload.originating_date === ymd) return; // no-op: same day
+      const slot = slots.find((s) => s.id === payload.slot_id);
+      if (!slot) return;
+      // Drop onto a month day: keep existing window times, only change date
+      onSlotDrop(slot, {
+        date: ymd,
+        window_start: slot.window_start,
+        window_end: slot.window_end,
+      });
+    } catch { /* ignore malformed drag payload */ }
+  };
 
   return (
     <div>
@@ -70,8 +98,14 @@ export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick }: Pr
               key={cell.ymd}
               type="button"
               onClick={() => onDayClick?.(cell.ymd!)}
+              onDragOver={handleDragOver}
+              onDragEnter={() => { if (onSlotDrop) setDragOverYmd(cell.ymd); }}
+              onDragLeave={() => setDragOverYmd(null)}
+              onDrop={handleDrop(cell.ymd!)}
               className={`aspect-square border-r border-t border-rmpg-700 p-1 text-left hover:bg-brand-400/5 ${
                 isToday ? 'ring-1 ring-inset ring-brand-400 bg-brand-500/10' : ''
+              } ${
+                dragOverYmd === cell.ymd ? 'ring-1 ring-inset ring-amber-400 bg-amber-400/5' : ''
               }`}
             >
               <div className="text-[10px] font-semibold text-rmpg-200">

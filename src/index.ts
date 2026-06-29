@@ -147,25 +147,68 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  // Cron-triggered Utah warrant scan. Schedule defined in
-  // wrangler.toml [[triggers]] crons. waitUntil ensures the scan
-  // finishes even though the scheduled handler returns immediately.
-  // Errors are swallowed inside runUtahWarrantScan so one bad run
-  // can't crash the cron loop.
+  // Cron-triggered tasks. Schedules defined in wrangler.toml [[triggers]] crons.
+  // Workers cron uses UTC; handlers requiring Denver-local hour boundaries
+  // must convert via Intl.DateTimeFormat (America/Denver). waitUntil ensures
+  // async work completes; each task catches its own errors so one failure
+  // cannot abort the cron loop.
+  //
+  // Cron schedule (UTC):
+  //   "0 */4 * * *"   every 4 h at :00         → warrant scan, dispatch anomalies, nudge sweep
+  //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
+  //   "*/30 * * * *"  every 30 min              → fleet.io reconciliation
+  //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      runUtahWarrantScan(env.DB).catch((err) => {
-        console.error('Utah warrant scheduled scan failed:', err);
-      }),
-    );
-    // Dispatch anomaly detection — populates anomaly_alerts for the
-    // AnomalyAlertBanner. Independent of the warrant scan; its own
-    // catch so a failure here can't abort the warrant scan or crash
-    // the cron loop.
-    ctx.waitUntil(
-      detectDispatchAnomalies(env.DB)
-        .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
-        .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
-    );
+    // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
+    if (event.cron === '0 */4 * * *') {
+      ctx.waitUntil(
+        runUtahWarrantScan(env.DB).catch((err) => {
+          console.error('Utah warrant scheduled scan failed:', err);
+        }),
+      );
+      ctx.waitUntil(
+        detectDispatchAnomalies(env.DB)
+          .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
+          .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
+      );
+      // Serve nudge sweep — 4-hourly supervisor digest + officer notifications
+      ctx.waitUntil(
+        import('./utils/serveNudgeSweep').then((m) =>
+          m.sweepServeNudges(env.DB, env).catch((err) =>
+            console.error('Serve nudge sweep failed:', err),
+          ),
+        ).catch(() => {}),
+      );
+    }
+
+    // ── Every minute ──
+    if (event.cron === '* * * * *') {
+      // Serve attempt notifications: fires pre-event dispatch reminders
+      ctx.waitUntil(
+        import('./utils/serveAttemptScheduler').then((m) =>
+          m.sweepAttemptNotifications(env.DB, env).catch((err) =>
+            console.error('Serve attempt notification sweep failed:', err),
+          ),
+        ).catch(() => {}),
+      );
+      // Daily rebalance at 04:00 America/Denver. The cron fires every minute;
+      // we gate on Denver hour == 4 and run at most once (rebalance is idempotent
+      // so a double-fire is harmless; the hour gate keeps it to ~60 runs/day).
+      const denverHour = parseInt(
+        new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false })
+          .format(new Date()),
+        10,
+      );
+      if (denverHour === 4) {
+        ctx.waitUntil(
+          import('./utils/serveRebalance').then((m) => {
+            const nowIso = new Date().toISOString();
+            return m.runDailyRebalance(env.DB, nowIso).then((r) =>
+              console.log(`[rebalance] tiers=${r.tiers_recomputed} critical=${r.tiers_promoted_critical} escalated=${r.priority_escalated}`),
+            ).catch((err) => console.error('Daily rebalance failed:', err));
+          }).catch(() => {}),
+        );
+      }
+    }
   },
 };

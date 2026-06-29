@@ -997,8 +997,8 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
 
-    const call = await queryFirst<{ id: number; status: string; call_number: string; assigned_unit_ids: string | null }>(
-      db, 'SELECT id, status, call_number, assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<{ id: number; status: string; call_number: string; incident_type: string; assigned_unit_ids: string | null }>(
+      db, 'SELECT id, status, call_number, incident_type, assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
     const statusChain: Record<string, string> = {
@@ -1039,6 +1039,35 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
          VALUES (?, 'status_reverted', 'call', ?, ?, ?)`,
         userId, id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
         c.req.header('CF-Connecting-IP') || 'unknown');
+    }
+
+    // ── PSO reverse crosslink: when reverting a PSO call from cleared/closed,
+    // reopen its linked serve_queue job (set status back to pending/attempted).
+    // The crossLinkPsoCloseToServe set the serve job to terminal; reverting the
+    // CFS means service isn't actually complete — the serve job must reflect that.
+    if ((call.status === 'cleared' || call.status === 'closed')
+        && call.incident_type === 'pso_client_request') {
+      import('../../utils/psoServeCrosslink').then(async (m) => {
+        try {
+          const q = await queryFirst<{ id: number; status: string }>(
+            db, 'SELECT id, status FROM serve_queue WHERE call_id = ?', id,
+          );
+          if (q && (q.status === 'served' || q.status === 'failed')) {
+            const openStatus = q.status === 'served' ? 'attempted' : 'pending';
+            await execute(db,
+              `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime'), closed_at = NULL WHERE id = ?`,
+              openStatus, q.id);
+            await execute(db,
+              `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
+               VALUES (?, 'reopen', 'serve_queue', ?, ?)`,
+              userId ?? null, q.id,
+              `CFS ${call.call_number} reverted from ${call.status} — serve job reopened as ${openStatus}`);
+            try {
+              broadcastAll('data_changed', { module: 'process-server', entity: 'queue', action: 'reopened', queue_id: q.id, call_id: id });
+            } catch { /* best-effort */ }
+          }
+        } catch (err) { console.error('[pso-crosslink] revert reopen failed:', err); }
+      }).catch(() => {});
     }
 
     const updated = await fetchCallRow(db, id);

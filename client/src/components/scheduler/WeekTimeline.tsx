@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import AttemptChip from './AttemptChip';
 import {
   dayRangeFromAnchor,
@@ -24,6 +24,7 @@ export default function WeekTimeline({
 }: Props) {
   const days = useMemo(() => dayRangeFromAnchor(anchorYmd, 7), [anchorYmd]);
   const grouped = useMemo(() => groupByDay(slots), [slots]);
+  const [dragOverCell, setDragOverCell] = useState<string | null>(null);
 
   const handleDragStart = (slot: ScheduleSlot) => (e: React.DragEvent<HTMLDivElement>) => {
     const payload: DragPayload = {
@@ -33,15 +34,23 @@ export default function WeekTimeline({
     };
     e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
+    // Reduce opacity of the dragged element so the user can see through it
+    (e.currentTarget as HTMLElement).style.opacity = '0.4';
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (cellKey: string) => (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDragOverCell(cellKey);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCell(null);
   };
 
   const handleDrop = (date: string, row: number) => (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    setDragOverCell(null);
     if (!onSlotDrop) return;
     try {
       const raw = e.dataTransfer.getData('application/json');
@@ -87,8 +96,11 @@ export default function WeekTimeline({
             {days.map((d) => (
               <div
                 key={`${d}-${idx}`}
-                className="border-r border-t border-rmpg-700 relative hover:bg-brand-400/5"
-                onDragOver={handleDragOver}
+                className={`border-r border-t border-rmpg-700 relative transition-colors ${
+                  dragOverCell === `${d}-${idx}` ? 'bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'hover:bg-brand-400/5'
+                }`}
+                onDragOver={handleDragOver(`${d}-${idx}`)}
+                onDragLeave={handleDragLeave}
                 onDrop={handleDrop(d, idx + 1)}
               />
             ))}

@@ -216,7 +216,7 @@ export default function ServePage() {
   // Builds the professional notice from the job's real serve_attempts and opens
   // the rendered PDF. Distinct from the Affidavit of Non-Service: this is an
   // unsworn notice to leave at the address / send to the recipient or client.
-  const handleNoticeOfAttempt = async (jobId: number) => {
+  const handleNoticeOfAttempt = async (jobId: number, editBeforePrint?: boolean) => {
     try {
       // GET /:id returns the job row + its serve_attempts (joined w/ officer).
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
@@ -236,28 +236,17 @@ export default function ServePage() {
           return true;
         })
         .map((a, i) => {
-          // Soft-recovery: prefer attempt_at, fall back to created_at. Legacy
-          // and auto-logged attempts sometimes have a null attempt_at but
-          // always have a created_at — without this the table renders blank.
-          // parseTimestamp() handles naive UTC server strings ("YYYY-MM-DD HH:MM:SS").
           const ts = a.attempt_at || a.created_at || null;
           const at = ts ? parseTimestamp(ts) : null;
-          // Structured code wins over the legacy enum — the generator's
-          // serveResultLabel() prints the full PS/XX.XX — Label.
           const resultText = (a as any).disposition_code || a.result || 'other';
           return {
             number: a.attempt_number ?? i + 1,
-            // MM/DD/YYYY zero-padded — toLocaleDateString() default is
-            // M/D/YYYY which made the column visibly ragged when
-            // adjacent rows had single vs double-digit months/days.
             date: at && !isNaN(at.getTime())
               ? (() => {
                   const p = (n: number) => String(n).padStart(2, '0');
                   return `${p(at.getMonth() + 1)}/${p(at.getDate())}/${at.getFullYear()}`;
                 })()
               : '',
-            // 24-hour HH:MM — police-form convention. hour12:false makes
-            // sure environments with am/pm locales don't sneak in.
             time: at && !isNaN(at.getTime())
               ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
               : '',
@@ -271,41 +260,25 @@ export default function ServePage() {
         setFetchError('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
         return;
       }
-      // The latest attempt carries the freshest signature; use it as the
-      // server's mark on the notice. (The Notice of Attempt is an unsworn
-      // notice, but a visible signature improves recipient trust.)
       const latestAttempt = (job.attempts || [])[(job.attempts || []).length - 1] || {};
-      // Operator-set next-attempt note lives on the queue row — set by the
-      // attempt modal when a failed attempt is logged. Falls back to the
-      // generic boilerplate when nothing is scheduled and the job is still
-      // active; suppressed entirely when the queue is in failed terminal state.
       const nextAttemptNote = (job as any).next_attempt_note
         || (job.status === 'failed'
               ? undefined
               : 'A further attempt may be made; contact our office to arrange service.');
       const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
       const pdf = await generateNoticeOfAttempt({
-        // MM/DD/YYYY zero-padded so it matches the attempt dates in the
-        // table below. toLocaleDateString() returns M/D/YYYY (no leading
-        // zeros) which made columns visibly uneven.
         noticeDate: (() => {
           const d = new Date();
           const p = (n: number) => String(n).padStart(2, '0');
           return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`;
         })(),
         caseNumber: job.case_number || '',
-        // Internal serve-queue reference for the AGENCY REF # header slot.
-        // When a case number exists, this still surfaces so a recipient
-        // knows our internal tracking ID without confusing it with the
-        // court's case number.
         agencyRefNumber: `JOB-${job.id}`,
         courtName: job.court_name || 'N/A',
         jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
         serverName: user?.full_name || user?.username || 'Process Server',
         serverBadge: user?.badge_number || '',
         serverCompany: 'Rocky Mountain Protective Group',
-        // RMPG Dispatch direct line — surfaces in the PDF's "To arrange
-        // delivery, contact ..." call-to-action below the signature.
         serverPhone: '(385) 436-3370',
         signature: latestAttempt.signature_data || undefined,
         recipientName: job.recipient_name,
@@ -316,12 +289,19 @@ export default function ServePage() {
         attempts,
         nextAttemptNote,
       });
-      // Open the REAL PDF bytes in a new tab so the server can print/leave the
-      // notice immediately. (dataurlnewwindow opened an HTML wrapper around a
-      // session-bound blob URL — saving that wrapper produced a blank
-      // "PDF"; see openPdfDocument.ts.)
-      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
-      openPdfDocument(pdf, `Notice-of-Attempt-${job.case_number || job.id}.pdf`);
+      const filename = `Notice-of-Attempt-${job.case_number || job.id}.pdf`;
+
+      if (editBeforePrint) {
+        const { storePdfForEditor } = await importWithRetry(() => import('../utils/openPdfDocument'));
+        const bytes = new Uint8Array(pdf.output('arraybuffer'));
+        storePdfForEditor(bytes, filename);
+        // Navigate to the PDF editor in the same tab; the user can annotate,
+        // sign, add stamps, and save/print from there.
+        window.location.href = `/pdf-editor?from=serve&name=${encodeURIComponent(filename)}`;
+      } else {
+        const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
+        openPdfDocument(pdf, filename);
+      }
     } catch (err) {
       console.error('[serve] Notice of Attempt generation failed:', err);
       setFetchError('Could not generate the Notice of Attempt — please try again.');
@@ -1156,7 +1136,10 @@ export default function ServePage() {
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       m.action('Print Job Sheet', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
-      ...(job.attempt_count > 0 ? [m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> })] : []),
+      ...(job.attempt_count > 0 ? [
+        m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> }),
+        m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
+      ] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
       moveSubmenu.length > 0
         ? { label: 'Move to…', icon: <FolderOpen size={12} />, submenu: moveSubmenu }
