@@ -33,7 +33,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.105.0",
+    "@anthropic-ai/sdk": "^0.106.0",
     "@cloudflare/vitest-pool-workers": "^0.16.20",
     "@cloudflare/workers-types": "^4.20260621.1",
     "@types/bcryptjs": "^2.4.6",
