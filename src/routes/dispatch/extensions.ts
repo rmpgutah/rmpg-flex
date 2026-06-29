@@ -1365,6 +1365,28 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
       return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
     }
 
+    // Mandatory fields validation before incident generation
+    const missingFields: string[] = [];
+    if (!call.disposition || (typeof call.disposition === 'string' && call.disposition.trim() === '')) {
+      missingFields.push('disposition');
+    }
+    const narrativeLength = (call.description || '').length + (call.notes || '').length;
+    if (narrativeLength < 50) {
+      missingFields.push('narrative (min 50 characters)');
+    }
+    const personCount = (await queryFirst<{ n: number }>(db,
+      'SELECT COUNT(*) AS n FROM call_persons WHERE call_id = ?', id))?.n ?? 0;
+    if (personCount === 0) {
+      missingFields.push('at_least_one_linked_person');
+    }
+    if (missingFields.length > 0) {
+      return c.json({
+        error: 'Required fields missing before incident generation',
+        code: 'MISSING_FIELDS',
+        missing_fields: missingFields,
+      }, 400);
+    }
+
     const existing = await queryFirst<{ id: number; incident_number: string }>(db, 'SELECT id, incident_number FROM incidents WHERE call_id = ?', id);
     if (existing) {
       return c.json({ error: 'An incident report already exists for this call', incident_id: existing.id, incident_number: existing.incident_number }, 409);
@@ -1540,6 +1562,47 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
     return c.json({ success: true, id, pinned: Boolean(pinned) });
   } catch (err) {
     console.error('[dispatch] pin error', err);
-    return c.json({ error: 'Failed to toggle pin', code: 'PIN_ERR' }, 500);
+    return c.json({ error: 'Failed to update pin status', code: 'PIN_ERROR' }, 500);
+  }
+});
+
+// ── POST /:id/promote-to-case — promote an incident to a full case file ──
+callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
+
+    const incident = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM incidents WHERE call_id = ?', id);
+    if (!incident) return c.json({ error: 'No incident exists for this call — generate one first' }, 404);
+    if (!incident.incident_number) return c.json({ error: 'Incident has no number' }, 400);
+
+    const existingCase = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE incident_id = ?', incident.id);
+    if (existingCase) return c.json({ error: 'A case already exists for this incident', case_id: existingCase.id }, 409);
+
+    const caseNumber = `CASE-${incident.incident_number}`;
+    const result = await execute(db,
+      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, officer_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+      caseNumber, incident.id, (incident.incident_type as string) || 'general',
+      (incident.priority as string) || 'P3', incident.officer_id ?? userId ?? null);
+    const caseId = Number(result.meta.last_row_id);
+
+    // Copy incident persons to case
+    await execute(db,
+      `INSERT INTO case_persons (case_id, person_id, role)
+       SELECT ?, person_id, COALESCE(role, 'involved') FROM incident_persons WHERE incident_id = ?`,
+      caseId, incident.id).catch(() => {});
+
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
+       VALUES (?,'case_created','case',?,?)`,
+      userId, caseId, `Promoted from incident ${incident.incident_number} (call ${id})`);
+
+    return c.json({ success: true, case_id: caseId, case_number: caseNumber, incident_id: incident.id }, 201);
+  } catch (err) {
+    console.error('[dispatch] promote-to-case error', err);
+    return c.json({ error: 'Failed to promote to case' }, 500);
   }
 });

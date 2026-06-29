@@ -49,6 +49,7 @@ import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 import { toDenverWallClock } from '../utils/denverTime';
+import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { broadcastAll } from './ws';
 
 const sv = new Hono<Env>();
@@ -713,8 +714,8 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     await generateServeCharges(db, id).catch((err) => {
       console.error('[serve] billing generation failed for queue', id, err);
     });
-    // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
+    notifyServeCompletion(db, id, newStatus as 'served' | 'failed').catch(() => {});
   }
   // Broadcast so connected clients (serve page, dispatch page via liveSync) refetch.
   try {
@@ -768,6 +769,7 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await generateServeCharges(db, id);
   syncServeCompletionToCfs(db, id).catch(() => {});
+  notifyServeCompletion(db, id, 'served').catch(() => {});
   try {
     broadcastAll('data_changed', { module: 'process-server', entity: 'attempt', action: 'substitute', queue_id: id, queue_status: 'served' });
   } catch { /* best-effort */ }
@@ -908,6 +910,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
         recomputed = { status: nextStatus };
         if (nextStatus === 'served' || nextStatus === 'failed') {
           syncServeCompletionToCfs(db, queueId).catch(() => {});
+          notifyServeCompletion(db, queueId, nextStatus as 'served' | 'failed').catch(() => {});
         }
       }
     }
@@ -1163,6 +1166,7 @@ sv.get('/:id/gps-trail', async (c) => {
       );
       for (const q of affected) {
         syncServeCompletionToCfs(db, q.id).catch(() => {});
+        notifyServeCompletion(db, q.id, status as 'served' | 'failed').catch(() => {});
       }
     }
 
