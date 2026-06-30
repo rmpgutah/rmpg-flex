@@ -430,7 +430,6 @@ function AppRoutes() {
 
   return (
     <>
-      {isAuthenticated && <DispatchVoiceMount />}
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
