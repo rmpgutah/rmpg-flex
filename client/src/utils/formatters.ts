@@ -498,16 +498,17 @@ export function maskValue(value: string, showLast = 4, maskChar = '*'): string {
  * blocks become real tags and are removed by the tag-strip pass.  `&amp;`
  * is decoded last so that `&amp;lt;` stays as the literal text `&lt;`.
  *
- * A final `[<>]` pass catches any residual angle brackets that survive
- * the main strip (e.g. unclosed tags), which is safe because the output
- * is plain text inside a PDF — angle brackets have no special meaning.
+ * Tag stripping runs in a do-while loop so that tags that reform after
+ * entity decoding (e.g. `<scr&lt;ipt>` → `<script>`) are caught on the
+ * next pass.  A final `[<>]` cleanup catches any residual angle brackets.
  *
  * NOT a security boundary — the input has already been sanitized before
  * reaching this function.
  */
 export function stripHtmlForPdf(input: string | undefined | null): string {
   if (!input) return '';
-  return String(input)
+  // Phase 1: entity-decode so encoded tags become real tags.
+  let result = String(input)
     .replace(/&nbsp;/gi, ' ')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
@@ -515,8 +516,19 @@ export function stripHtmlForPdf(input: string | undefined | null): string {
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/(div|li|tr|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
+    .replace(/<\/(div|li|tr|h[1-6])>/gi, '\n');
+
+  // Phase 2: strip tags in a loop — repeated passes catch tags that reform
+  // after entity decoding (e.g. <scr&lt;ipt> → <script> after decode).
+  let prev: string;
+  do {
+    prev = result;
+    result = result.replace(/<[^>]+>/g, '');
+  } while (result !== prev);
+
+  // Phase 3: final cleanup — decode &amp; last, remove residual brackets,
+  // collapse whitespace.
+  return result
     .replace(/&amp;/g, '&')
     .replace(/[<>]/g, '')
     .replace(/[ \t]+/g, ' ')
