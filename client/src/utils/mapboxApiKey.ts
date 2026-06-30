@@ -40,9 +40,28 @@ export function hasMapboxToken(): boolean {
   return !!getCachedMapboxAccessToken();
 }
 
-export function getMapboxTokenStatus(): { configured: boolean; source: string } {
-  const token = getCachedMapboxAccessToken();
-  return { configured: !!token, source: token ? 'build_env' : 'none' };
+export async function getMapboxTokenStatus(forceRefresh?: boolean): Promise<{
+  configured: boolean;
+  source: string;
+  token?: string;
+  errorKind?: string;
+  errorMessage?: string;
+}> {
+  if (forceRefresh) clearMapboxConfigCache();
+  const cached = getCachedMapboxAccessToken();
+  if (cached) return { configured: true, source: 'build_env', token: cached, errorKind: undefined, errorMessage: undefined };
+  try {
+    const resolved = await resolveMapboxAccessToken();
+    if (resolved) return { configured: true, source: 'server', token: resolved, errorKind: undefined, errorMessage: undefined };
+    return { configured: false, source: 'none', errorKind: 'unconfigured', errorMessage: 'Mapbox access token not configured' };
+  } catch (err) {
+    return {
+      configured: false,
+      source: 'error',
+      errorKind: 'server',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error fetching token',
+    };
+  }
 }
 
 export function getCachedMapboxStyleUrl(): string {

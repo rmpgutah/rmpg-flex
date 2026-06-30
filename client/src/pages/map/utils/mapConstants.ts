@@ -41,6 +41,15 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  cross_street?: string | null;
+  beat_name?: string | null;
+  officer_safety_caution?: boolean;
+  weapons_involved?: boolean;
+  felony_in_progress?: boolean;
+  domestic_violence?: boolean;
+  hazmat?: boolean;
+  mental_health_crisis?: boolean;
+  gang_related?: boolean;
   created_at?: string | null;
 }
 

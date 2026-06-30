@@ -11,7 +11,7 @@ interface Props {
   onStrokeWidth: (n: number) => void;
 }
 
-const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
+const TOOLS: { id: Tool; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { id: 'select', icon: MousePointer2, label: 'Select' },
   { id: 'hand', icon: Hand, label: 'Pan' },
   { id: 'text', icon: Type, label: 'Text' },

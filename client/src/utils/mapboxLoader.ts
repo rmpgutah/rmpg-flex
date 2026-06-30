@@ -324,7 +324,7 @@ export { injectMapStyles as injectMapboxStyles, createMapboxMap } from './mapbox
 
 // Stub re-exports for missing symbols referenced by existing pages.
 // These are no-op implementations to unblock the build.
-export function destroyMapboxMap(_map: any): void { /* stub */ }
+export function destroyMapboxMap(_map?: any): void { /* stub */ }
 export function addMapboxTrail(_map: any, _coords: any, _color?: string): void { /* stub */ }
 export function removeMapboxTrail(_map: any): void { /* stub */ }
 export function addMapbox3DBuildings(_map: any): void { /* stub */ }

@@ -82,8 +82,10 @@ import { useMapSnapshot } from '../../hooks/useMapSnapshot';
 import { useMapOptimization } from '../../hooks/useMapOptimization';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
+import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
 import MapOverlaysPanel from './components/MapOverlaysPanel';
-import type { LayerGroup } from './components/MapOverlaysPanel';
+import type { OverlayToggle } from './components/MapOverlaysPanel';
+interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
@@ -91,7 +93,7 @@ const DEFAULT_ZOOM = 12;
 const REFRESH_INTERVAL_MS = 30_000;
 const DARK_STYLES: MapStyleId[] = ['dark', 'night_nav'];
 
-const HAZARD_FLAGS: { key: keyof ActiveCall; label: string; color: string }[] = [
+const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
   { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
   { key: 'weapons_involved',       label: 'WEAPONS',        color: '#ef4444' },
   { key: 'felony_in_progress',     label: 'FELONY',         color: '#f97316' },
@@ -267,7 +269,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
-  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current });
+  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
   const projection = useMapProjection(mapRef.current, mapLoaded);
@@ -334,7 +336,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           position: [c.longitude!, c.latitude!] as [number, number],
           priority: c.priority,
           weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
-        }));
+          type: c.incident_type,
+          timestamp: Date.now(),
+        })) as IncidentPoint[];
 
       const unitPositions = units
         .filter(u => u.latitude != null && u.longitude != null)
@@ -342,8 +346,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           id: u.id,
           position: [u.longitude!, u.latitude!] as [number, number],
           status: u.status,
-          callSign: u.call_sign,
-        }));
+          callsign: u.call_sign,
+        })) as UnitPosition[];
 
       const arcs = units
         .filter(u => u.latitude != null && u.longitude != null && u.current_call_type)
@@ -412,7 +416,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       try {
         // Timeout token fetch to avoid infinite hang if server is unreachable
         const tokenStatusPromise = getMapboxTokenStatus(retryNonce > 0);
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+        const timeoutPromise = new Promise<null>((_resolve) => setTimeout(() => _resolve(null), 10_000));
         const tokenStatus = await Promise.race([tokenStatusPromise, timeoutPromise]);
         if (cancelled) return;
         if (!tokenStatus?.token) {
@@ -447,14 +451,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           }
         }
 
-        const map = createMapboxMap({
-          container: mapContainerRef.current,
-          accessToken: tokenStatus.token,
-          style: mapStyle,
-          customStyleUrl: getCachedMapboxStyleUrl() || undefined,
-          center: SLC_CENTER,
-          zoom: DEFAULT_ZOOM,
-        });
+        const map = createMapboxMap(
+          mapContainerRef.current!,
+          tokenRef.current!,
+          mapStyle,
+        );
         mapRef.current = map;
 
         // Track whether the map has successfully loaded at least once.

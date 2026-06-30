@@ -209,7 +209,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (!mapRef.current) {
       recoverCamRef.current = null;
       const map = new mapboxgl.Map({
-        container: mapContainerRef.current,
+        container: mapContainerRef.current!,
         style: MAPBOX_STYLE_DARK,
         center,
         zoom,
@@ -265,7 +265,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         const label = callMarkerRef.current.getElement()?.querySelector('span');
         if (label) label.textContent = call!.call_number || 'CALL';
       } else {
-        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
+        const el = buildCallMarker(call!.call_number || 'CALL', call!.priority);
         callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([call!.longitude!, call!.latitude!])
           .addTo(mapRef.current);

@@ -455,7 +455,7 @@ export default React.memo(function ServeJobCard({
                       {formatEnumValue(attempt.attempt_type)}
                     </span>
                     <span className={`text-[10px] font-mono flex-shrink-0 ${
-                      attempt.result === 'served' || attempt.result === 'sub_served' ? 'text-green-400' : 'text-red-400'
+                      attempt.result === 'served' ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {ATTEMPT_RESULT_LABELS[attempt.result] || attempt.result}
                     </span>

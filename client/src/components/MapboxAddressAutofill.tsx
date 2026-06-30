@@ -72,9 +72,9 @@ export default function MapboxAddressAutofill({
   // Resolve Mapbox token
   useEffect(() => {
     let cancelled = false;
-    getMapboxTokenStatus().then(status => {
+    getMapboxTokenStatus().then((status) => {
       if (!cancelled) {
-        setToken(status.configured ? status.token ?? null : null);
+        setToken(status.configured ? (status.token ?? null) : null);
         setTokenChecked(true);
       }
     }).catch(() => {

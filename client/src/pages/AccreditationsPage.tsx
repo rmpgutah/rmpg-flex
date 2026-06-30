@@ -279,7 +279,7 @@ export default function AccreditationsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Shield} message="No accreditations found" />
+        <EmptyState icon={Shield} title="No accreditations found" />
       ) : (
         <div className="overflow-x-auto border border-[#222] rounded-sm">
           <table className="w-full text-[11px]">

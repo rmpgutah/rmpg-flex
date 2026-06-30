@@ -7,16 +7,26 @@ import IconButton from '../../../components/IconButton';
 export interface OverlayToggle {
   id: string;
   label: string;
-  icon: React.ElementType;
-  description: string;
+  icon?: React.ElementType;
+  description?: string;
   active: boolean;
   onToggle: () => void;
   loading?: boolean;
   group?: string;
+  color?: string;
+}
+
+export interface LayerGroup {
+  id: string;
+  label: string;
+  layers: OverlayToggle[];
 }
 
 interface MapOverlaysPanelProps {
-  overlays: OverlayToggle[];
+  overlays?: OverlayToggle[];
+  groups?: LayerGroup[];
+  open?: boolean;
+  onClose?: () => void;
   className?: string;
 }
 
@@ -27,7 +37,7 @@ const GROUPS: Record<string, { label: string; color: string }> = {
   history: { label: 'Historical & Data', color: '#64d264' },
 };
 
-export default function MapOverlaysPanel({ overlays, className = '' }: MapOverlaysPanelProps) {
+export default function MapOverlaysPanel({ overlays, groups, open, onClose, className = '' }: MapOverlaysPanelProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = useCallback((group: string) => {
@@ -39,13 +49,29 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
     });
   }, []);
 
-  // Group overlays
-  const grouped = new Map<string, OverlayToggle[]>();
-  overlays.forEach((o) => {
-    const g = o.group || 'other';
-    if (!grouped.has(g)) grouped.set(g, []);
-    grouped.get(g)!.push(o);
-  });
+  // If groups prop is provided, use it directly
+  const displayGroups = groups?.map(g => ({
+    key: g.id,
+    label: g.label,
+    color: '#d4a017',
+    items: g.layers,
+  })) ?? (() => {
+    // Group flat overlays by their group property
+    const grouped = new Map<string, OverlayToggle[]>();
+    (overlays ?? []).forEach((o) => {
+      const g = o.group || 'other';
+      if (!grouped.has(g)) grouped.set(g, []);
+      grouped.get(g)!.push(o);
+    });
+    return Array.from(grouped.entries()).map(([key, items]) => ({
+      key,
+      label: GROUPS[key]?.label ?? key,
+      color: GROUPS[key]?.color ?? '#888888',
+      items,
+    }));
+  })();
+
+  if (open === false) return null;
 
   return (
     <div
@@ -55,26 +81,25 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
       <PanelTitleBar title="MAP OVERLAYS" icon={Layers} statusLed="amber" />
 
       <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 350px)' }}>
-        {Array.from(grouped.entries()).map(([group, items]) => {
-          const gInfo = GROUPS[group] || { label: group, color: '#888888' };
-          const collapsed = collapsedGroups.has(group);
+        {displayGroups.map(({ key: gKey, label, color, items }) => {
+          const collapsed = collapsedGroups.has(gKey);
 
           return (
-            <div key={group} className="border-b border-border-default last:border-b-0">
+            <div key={gKey} className="border-b border-border-default last:border-b-0">
               {/* Group header */}
               <button
                 type="button"
-                onClick={() => toggleGroup(group)}
+                onClick={() => toggleGroup(gKey)}
                 aria-expanded={!collapsed}
-                aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${gInfo.label}`}
+                aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider hover:brightness-110 transition-all"
                 style={{
                   background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-                  color: gInfo.color,
+                  color,
                 }}
               >
                 {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                {gInfo.label}
+                {label}
                 <span className="ml-auto text-[9px] text-rmpg-500">
                   {items.filter((i) => i.active).length}/{items.length}
                 </span>
@@ -109,14 +134,18 @@ export default function MapOverlaysPanel({ overlays, className = '' }: MapOverla
                           }}
                         />
                       </div>
-                      <item.icon
-                        className="w-3.5 h-3.5 shrink-0"
-                        style={{ color: item.active ? '#cccccc' : '#555555' }}
-                        aria-hidden="true"
-                      />
+                      {item.icon && (
+                        <item.icon
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: item.active ? '#cccccc' : '#555555' }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <div className="flex-1 min-w-0 text-left">
                         <div className="truncate text-[11px]">{item.label}</div>
-                        <div className="text-[9px] text-rmpg-500 truncate">{item.description}</div>
+                        {item.description && (
+                          <div className="text-[9px] text-rmpg-500 truncate">{item.description}</div>
+                        )}
                       </div>
                       {item.loading && (
                         <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#d4a017' }} />

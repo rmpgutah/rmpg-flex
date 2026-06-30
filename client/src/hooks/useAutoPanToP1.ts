@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Map } from 'mapbox-gl';
-import type { ActiveCall } from './useLiveSync';
+import type { ActiveCall } from '../pages/map/utils/mapConstants';
 
 export function useAutoPanToP1(
   map: Map | null | undefined,

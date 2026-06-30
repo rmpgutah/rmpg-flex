@@ -31,15 +31,6 @@ export interface ParsedAddress {
   longitude: number | null;
 }
 
-// ── Mapbox Geocoding API response types ──────────────────────
-interface MapboxFeature {
-  place_name: string;
-  center: [number, number]; // [lng, lat]
-  text: string;
-  address?: string;
-  context?: Array<{ id: string; text: string; short_code?: string }>;
-}
-
 // ── Component Props ──────────────────────────────────────────
 interface AddressAutocompleteProps {
   /** Current input value (controlled) */

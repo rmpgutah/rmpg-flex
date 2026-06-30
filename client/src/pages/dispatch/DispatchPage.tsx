@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
@@ -1927,7 +1927,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: payloadValue }),
+        body: JSON.stringify({ [field]: value }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
@@ -1937,6 +1937,7 @@ export default function DispatchPage() {
       // real one from the UI ("editing time destructs the call"). When the
       // response isn't a full row, patch just the edited field locally —
       // the DB write already succeeded (or the catch below fires).
+      const looksLikeFullRow = result && typeof result === 'object' && 'id' in result;
       const apply = (c: typeof selectedCall) =>
         looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));

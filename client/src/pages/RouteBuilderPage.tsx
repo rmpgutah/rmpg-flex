@@ -160,12 +160,7 @@ export default function RouteBuilderPage() {
         mapboxTokenRef.current = token;
         injectMapboxStyles();
 
-        const map = createMapboxMap({
-          container: mapContainerRef.current,
-          center: [-111.891, 40.7608],
-          zoom: 12,
-          accessToken: token,
-        });
+        const map = createMapboxMap(mapContainerRef.current!, token);
         mapRef.current = map;
         map.on('load', () => {
           if (!cancelled) setMapReady(true);
@@ -273,8 +268,7 @@ export default function RouteBuilderPage() {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       originMarkerRef.current?.remove();
-      removeMapboxTrail(map, 'route-line');
-      removeMapboxTrail(map, 'directions-route');
+      removeMapboxTrail(map);
 
       // Fit bounds
       const bounds = new mapboxgl.LngLatBounds();
@@ -324,8 +318,8 @@ export default function RouteBuilderPage() {
           const coords = route.geometry.coordinates as [number, number][];
 
           // Draw route polyline
-          removeMapboxTrail(map, 'directions-route');
-          addMapboxTrail(map, 'directions-route', coords, '#d4a017', 4);
+          removeMapboxTrail(map);
+          addMapboxTrail(map, coords, '#d4a017');
 
           // Calculate distance/duration
           const distMiles = (route.distance / 1609.344).toFixed(1);
@@ -352,8 +346,8 @@ export default function RouteBuilderPage() {
         [routeOrigin.lng, routeOrigin.lat],
         ...stops.map((s) => [s.longitude, s.latitude] as [number, number]),
       ];
-      removeMapboxTrail(map, 'route-line');
-      addMapboxTrail(map, 'route-line', coords, '#d4a017', 3);
+      removeMapboxTrail(map);
+      addMapboxTrail(map, coords, '#d4a017');
 
       addStopMarkers(map, stops);
       setDirectionsDistance(null);
@@ -620,8 +614,7 @@ export default function RouteBuilderPage() {
                 markersRef.current = [];
                 originMarkerRef.current?.remove();
                 if (mapRef.current) {
-                  removeMapboxTrail(mapRef.current, 'route-line');
-                  removeMapboxTrail(mapRef.current, 'directions-route');
+                  removeMapboxTrail(mapRef.current);
                 }
               }}
               aria-label="Clear route"

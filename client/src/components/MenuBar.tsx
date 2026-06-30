@@ -1027,7 +1027,7 @@ export default function MenuBar({
     if ('adminOnly' in item && item.adminOnly && !isAdmin) return null;
 
     const Icon = item.icon;
-    const isDisabled = item.disabled;
+    const isDisabled = 'disabled' in item ? item.disabled : false;
 
     if (item.type === 'submenu') {
       const submenuId = `${depth}-${index}-${item.label}`;

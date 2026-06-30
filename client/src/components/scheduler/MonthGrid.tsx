@@ -41,12 +41,12 @@ export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSl
   const grouped = useMemo(() => groupByDay(slots), [slots]);
   const [dragOverYmd, setDragOverYmd] = useState<string | null>(null);
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (ymd: string) => (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (ymd: string) => (e: React.DragEvent) => {
     e.preventDefault();
     setDragOverYmd(null);
     if (!onSlotDrop) return;

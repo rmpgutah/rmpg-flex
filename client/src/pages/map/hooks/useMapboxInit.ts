@@ -14,9 +14,9 @@ import {
   setMapboxStyle,
   injectMapboxStyles,
   addMapbox3DBuildings,
-  type MapboxStyleId,
 } from '../../../utils/mapboxLoader';
 import { getMapboxToken } from '../../../utils/mapboxApiKey';
+import { type MapStyleId as MapboxStyleId } from '../utils/mapConstants';
 import { devLog, devWarn } from '../../../utils/devLog';
 
 export interface UseMapboxInitResult {

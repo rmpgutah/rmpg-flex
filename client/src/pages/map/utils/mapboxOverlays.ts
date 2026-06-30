@@ -199,7 +199,7 @@ export function makeMarker(element: HTMLElement, lngLat: [number, number], optio
     draggable: options?.draggable,
   })
     .setLngLat(lngLat)
-    .addTo(window.mapInstance || ({} as any));
+    .addTo((window as any).mapInstance || ({} as any));
 }
 
 export const circlePaint = (color: string, opacity: number, strokeColor?: string, strokeWeight?: number): any => ({

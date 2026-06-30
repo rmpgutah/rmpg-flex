@@ -210,7 +210,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
   '/microbilt': 'MicroBilt',
-  '/navigation': 'Module Navigation',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar

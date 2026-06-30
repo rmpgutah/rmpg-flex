@@ -60,7 +60,7 @@ export function useMapboxSearchBox(options?: {
   // Check if Mapbox is configured (server-side proxy handles the token)
   useEffect(() => {
     let cancelled = false;
-    getMapboxTokenStatus().then(status => {
+    getMapboxTokenStatus().then((status) => {
       if (!cancelled && status.configured) {
         setAvailable(true);
       }
