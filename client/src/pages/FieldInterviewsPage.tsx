@@ -103,6 +103,7 @@ export default function FieldInterviewsPage() {
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const canManage = isAdmin || user?.role === 'manager' || user?.role === 'supervisor';
+  const canManageRef = useRef(canManage);
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   useDistrictIdentify(); // keep hook mounted for side-effects; identify not used on this page

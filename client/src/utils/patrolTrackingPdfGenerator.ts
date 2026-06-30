@@ -161,6 +161,27 @@ function abbrevSource(src: string | undefined | null): string {
   return map[key] || src.slice(0, 8).toUpperCase();
 }
 
+// ── Helpers used by the generator ────────────────────────────
+
+function asciify(s: string): string {
+  return s.replace(/→/g, ' to ').replace(/—/g, ' - ').replace(/–/g, ' - ');
+}
+
+function formatDayOnly(isoStr: string): string {
+  try {
+    const d = parseTimestamp(isoStr);
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  } catch { return isoStr; }
+}
+
+function formatPointTime(isoStr: string): string {
+  try {
+    const d = parseTimestamp(isoStr);
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
+      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return isoStr; }
+}
+
 // ── Generator ────────────────────────────────────────────────
 
 export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
@@ -176,6 +197,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const marginX = margin;
+  const contentW = pageW - margin * 2;
+  const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
+  const reportDate = new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
 
   let yPos: number = topMarginY(doc);
 
@@ -300,6 +329,26 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
     }
   }
 
+  // ── Utility: draw table column headers ────────────────
+  function drawColumnHeaders(cols: { label: string; w: number }[]) {
+    yPos -= SPACING.SECTION_CONTENT_PAD;
+    const hdrH = 5;
+    doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
+    doc.rect(margin, yPos, contentW, hdrH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.rect(margin, yPos, contentW, hdrH);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+    doc.setFont('helvetica', 'bold');
+    let xOff = margin;
+    for (const c of cols) {
+      doc.text(c.label, xOff + 1, yPos + hdrH / 2 + 1);
+      xOff += c.w;
+    }
+    yPos += hdrH + SPACING.SECTION_CONTENT_PAD;
+  }
+
   // ════════════════════════════════════════════════════════
   // Cover Page — Professional centered logo + bold title
   // ════════════════════════════════════════════════════════
@@ -413,18 +462,20 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
 
     const stats = trail.stats;
     const zonesCount = trail.zone_coverage ? Object.keys(trail.zone_coverage).length : 0;
-    const movingPct = s.total_points > 0 ? Math.round((s.moving_points / s.total_points) * 100) : 0;
+    const movingPct = stats.total_points > 0 ? Math.round((stats.moving_points / stats.total_points) * 100) : 0;
 
     const cells: [string, string][] = [
-      ['Total Points',     String(s.total_points)],
-      ['Total Miles',      fmtNum(s.total_distance_miles, 2)],
-      ['Duration',         formatDuration(s.duration_minutes)],
-      ['Max Speed',        `${fmtNum(s.max_speed_mph, 1)} mph`],
-      ['Avg Speed',        `${fmtNum(s.avg_speed_mph, 1)} mph`],
+      ['Total Points',     String(stats.total_points)],
+      ['Total Miles',      fmtNum(stats.total_distance_miles, 2)],
+      ['Duration',         formatDuration(stats.duration_minutes)],
+      ['Max Speed',        `${fmtNum(stats.max_speed_mph, 1)} mph`],
+      ['Avg Speed',        `${fmtNum(stats.avg_speed_mph, 1)} mph`],
       ['Moving %',         `${movingPct}%`],
       ['Calls Responded',  String(trail.response_segments.length)],
       ['Zones Covered',    String(zonesCount)],
     ];
+
+    const statItems = cells.map(([l, v]) => `${l}: ${v}`);
 
     // 4 items per row
     const colW = contentW / 4;
@@ -596,6 +647,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
       }
     }
 
+    const cells: [string, string][] = [
+      ['Total Points',    String(trail.stats.total_points)],
+      ['Total Miles',     fmtNum(trail.stats.total_distance_miles, 2)],
+      ['Duration',        formatDuration(trail.stats.duration_minutes)],
+      ['Max Speed',       `${fmtNum(trail.stats.max_speed_mph, 1)} mph`],
+      ['Avg Speed',       `${fmtNum(trail.stats.avg_speed_mph, 1)} mph`],
+      ['Calls Responded', String(trail.response_segments.length)],
+    ];
     doc.setFontSize(10);
     const colW = (pageW - marginX * 2) / 2;
     for (let i = 0; i < cells.length; i++) {

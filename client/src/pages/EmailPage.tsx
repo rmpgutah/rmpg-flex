@@ -24,6 +24,7 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
+import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
 // The Email page used to write every preference and the compose-draft cache
@@ -1198,6 +1199,35 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      clearDraft(userId);
+      onSent();
+      onClose();
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    finally { setSending(false); }
+  };
+
+  const handleRedactionConfirm = async (redactedBody: string) => {
+    setRedactionPreview(null);
+    if (!to.trim()) { setError('Recipient is required'); return; }
+    if (!subject.trim()) { setError('Subject is required'); return; }
+    setSending(true);
+    setError('');
+    try {
+      let endpoint = '/email/send';
+      let payload: any = {
+        to: to.split(',').map(s => s.trim()),
+        subject,
+        body: redactedBody,
+        attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
+        importance: importance !== 'normal' ? importance : undefined,
+        requestReadReceipt: readReceipt || undefined,
+      };
+      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body: redactedBody }; }
+      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body: redactedBody }; }
+      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body: redactedBody }; }
+      if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
+      if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
       await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       clearDraft(userId);
       onSent();

@@ -30,6 +30,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {

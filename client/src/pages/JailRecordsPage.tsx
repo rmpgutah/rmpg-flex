@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, Search, X, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
@@ -63,6 +64,8 @@ export default function JailRecordsPage() {
 
   // Role gate: only supervisor+ can ingest roster data
   const canIngest = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const [showIngestConfirm, setShowIngestConfirm] = useState(false);
+  const lineCount = text.trim().split('\n').filter(Boolean).length;
 
   const loadSources = useCallback(() =>
     apiFetch<Source[]>('/intel/jail/sources')
@@ -150,6 +153,11 @@ export default function JailRecordsPage() {
     }
   };
 
+  const doIngest = useCallback(async () => {
+    setShowIngestConfirm(false);
+    await ingest();
+  }, [text, busy, canIngest, county, format, addToast, loadBookings]);
+
   const active = sources.filter((s) => s.status === 'active');
   const pending = sources.filter((s) => s.status !== 'active');
 
@@ -216,7 +224,7 @@ export default function JailRecordsPage() {
               className="w-full input-dark text-[11px] font-mono resize-y"
             />
             <button
-              onClick={ingest}
+              onClick={() => setShowIngestConfirm(true)}
               disabled={busy || !text.trim()}
               className="w-full py-1.5 text-[11px] font-semibold border border-brand-400 text-brand-400 hover:bg-surface-raised disabled:opacity-40"
             >

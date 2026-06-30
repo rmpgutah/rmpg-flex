@@ -381,6 +381,8 @@ export default function HelpPage() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(initialFaq);
   const [search, setSearch] = useState(searchParam);
   const [healthData, setHealthData] = useState<HealthData | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch server health info for System section

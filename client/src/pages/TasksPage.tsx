@@ -142,6 +142,7 @@ export default function TasksPage() {
   // Mirror these client-side so a dispatcher/viewer doesn't see actions
   // that will 403 on the server.
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const canAssign = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
   // ── State ──────────────────────────────────────────────────────

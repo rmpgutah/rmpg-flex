@@ -26,6 +26,8 @@ export const COLOR = {
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
   TEXT_SUBHEAD_INVERTED: [184, 184, 184] as const,  // #b8b8b8 light-medium grey — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
+  TEXT_CAPTION:    [120, 120, 120]  as const,  // Image captions, provenance labels
+  TEXT_PLACEHOLDER: [180, 180, 180] as const,  // Empty state, placeholder text
 
   // Borders — clean, professional lines
   // Border palette — darkened 2026-05-05 design-definition pass.
@@ -45,6 +47,7 @@ export const COLOR = {
   BORDER_OUTER:    [44, 44, 44]     as const,  // Table outer border
   BORDER_SECTION:  [55, 55, 55]     as const,  // Section outline
   BORDER_FIELD_RULE: [148, 148, 148] as const, // Field underline rule
+  BORDER_DOUBLE_RULE: [80, 80, 80]   as const,  // Double-rule divider lines
 
   // Backgrounds — page stays white; structural elements (headers,
   // banners) deepen to true charcoal for strong contrast against
@@ -115,6 +118,8 @@ export const COLOR = {
   CERT_BG:             [248, 248, 248]  as const,  // Light gray cert bg (was ivory; neutralized 2026-05-30)
   CERT_RULE:           [130, 130, 130]  as const,  // Neutral gray cert rule (was olive; neutralized 2026-05-30)
   MUGSHOT_RULE:        [60, 60, 60]     as const,  // Dark frame around arrest photo
+  DIVIDER_RULE:        [200, 200, 200]  as const,  // Subtle divider rule above provenance
+  STAMP_BG:            [248, 248, 248]  as const,  // Seal/stamp area background tint
 
   // Priority bar palette (separate from PRIORITY_COLORS in pdfGenerator.ts —
   // these are the tokenized fills used by drawPriorityBar helper)

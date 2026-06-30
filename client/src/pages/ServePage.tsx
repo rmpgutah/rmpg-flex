@@ -1293,6 +1293,14 @@ export default function ServePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Build a Move-to-Folder submenu for a job ──
+  const buildMoveSubmenu = (job: ServeJob): ContextMenuItem[] => {
+    const currentFolder = deriveServeFolder(job);
+    return (['in_progress', 'pending', 'served', 'failed', 'archived'] as ServeFolder[])
+      .filter(f => f !== currentFolder)
+      .map(f => m.action(`Move to ${SERVE_FOLDER_CONFIG[f].label}`, () => handleMoveToFolder(job, f), { icon: <FolderOpen size={11} /> }));
+  };
+
   // ── Build a serve-job row context menu ──
   const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -1328,9 +1336,10 @@ export default function ServePage() {
         ].filter(Boolean),
       } as ContextMenuItem] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
-      moveSubmenu.length > 0
-        ? { label: 'Move to…', icon: <FolderOpen size={12} />, submenu: moveSubmenu }
-        : null,
+      // Build a Move-to-Folder submenu for this job.
+      ...(buildMoveSubmenu(job).length > 0
+        ? [{ label: 'Move to…', icon: <FolderOpen size={12} />, submenu: buildMoveSubmenu(job) } as ContextMenuItem]
+        : []),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),

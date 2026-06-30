@@ -114,6 +114,7 @@ export default function TrainingDocsPage() {
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const validCategory: CompanyDocCategory | 'all' = (searchParams.get('category') as CompanyDocCategory | 'all') || 'all';
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

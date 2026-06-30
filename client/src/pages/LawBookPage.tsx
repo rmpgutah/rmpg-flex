@@ -183,6 +183,7 @@ export default function LawBookPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<StatuteResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [clearRecentConfirm, setClearRecentConfirm] = useState(false);
 
   const [chapter, setChapter] = useState<{ title: number; code: string; name: string } | null>(null);
   const [sections, setSections] = useState<StatuteResult[]>([]);
