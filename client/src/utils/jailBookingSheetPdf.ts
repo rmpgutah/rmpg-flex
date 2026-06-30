@@ -23,6 +23,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 
+import { stripHtmlForPdf } from './formatters';
+
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
@@ -333,15 +335,7 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
   if (inmate.notes && inmate.notes.trim()) {
     newPageIfNeeded(40);
     sectionHeader('NOTES');
-    const plain = inmate.notes
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&#39;|&apos;/gi, "'")
-      .replace(/<\/?(p|div|br)[^>]*>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .trim();
+    const plain = stripHtmlForPdf(inmate.notes);
     const lines = doc.splitTextToSize(plain, W - 2 * M);
     doc.setTextColor(TEXT_DARK);
     doc.text(lines, M, y);

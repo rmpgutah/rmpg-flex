@@ -15,7 +15,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import type { OfficerEquipment } from '../types';
-import { toDisplayLabel } from './formatters';
+import { toDisplayLabel, stripHtmlForPdf } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -193,15 +193,7 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
     // Strip rich-text-ish HTML the RichTextArea may have written —
     // the on-screen render strips <p> tags but a PDF doesn't have
     // a DOM to inherit that behavior.
-    const plain = item.notes
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&#39;|&apos;/gi, "'")
-      .replace(/<\/?(p|div|br)[^>]*>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .trim();
+    const plain = stripHtmlForPdf(item.notes);
     const lines = doc.splitTextToSize(plain, W - 2 * M);
     doc.text(lines, M, y);
     y += lines.length * 11 + 6;

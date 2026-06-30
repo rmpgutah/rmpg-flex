@@ -490,3 +490,37 @@ export function maskValue(value: string, showLast = 4, maskChar = '*'): string {
   if (value.length <= showLast) return value;
   return maskChar.repeat(value.length - showLast) + value.slice(-showLast);
 }
+
+/**
+ * Strip HTML tags and decode entities for PDF plain-text rendering.
+ *
+ * Decodes HTML entities first (`&lt;` → `<`) so that encoded script/style
+ * blocks become real tags and are removed by the tag-strip pass.  `&amp;`
+ * is decoded last so that `&amp;lt;` stays as the literal text `&lt;`.
+ *
+ * A final `[<>]` pass catches any residual angle brackets that survive
+ * the main strip (e.g. unclosed tags), which is safe because the output
+ * is plain text inside a PDF — angle brackets have no special meaning.
+ *
+ * NOT a security boundary — the input has already been sanitized before
+ * reaching this function.
+ */
+export function stripHtmlForPdf(input: string | undefined | null): string {
+  if (!input) return '';
+  return String(input)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/[<>]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
