@@ -1,0 +1,1213 @@
+﻿
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.9 [39m[90mC:/Users/ChristopherZamora/Downloads/rmpg-flex/rmpg-flex/client[39m
+
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mdoes nothing until the grace delay elapses[32m 20[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mrecovers and notifies only when a trap is actually found[32m 6[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mstays silent when no overlay is trapped (routine API error)[32m 4[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mcoalesces a burst of rejections into a single check[32m 2[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mthrottles a second recovery within the throttle window[32m 3[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mcreateTrapWatchdog[2m > [22mdispose() cancels a pending check[32m 3[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mflags an orphaned full-screen fixed overlay with no dialog semantics[33m 603[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mignores a legitimate dialog (aria-modal / role=dialog / aria-label)[32m 186[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mignores the app shell root[32m 49[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mignores a backdrop that hosts a real dialog[32m 171[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mrecoverIfTrapped neutralizes the orphan and reports the action[32m 125[2mms[22m[39m
+ [31m├ù[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mrecoverIfTrapped is a no-op when nothing is trapped (zero DOM mutation)[32m 147[2mms[22m[39m
+[31m   ΓåÆ expected [ 'reset body overflow lock' ] to deeply equal [][39m
+ [32mΓ£ô[39m src/utils/__tests__/uiTrapWatchdog.test.ts[2m > [22mfindBlockingOverlays / recoverIfTrapped (DOM)[2m > [22mattemptTrapRecovery (manual path) also releases a standalone overflow lock[32m 90[2mms[22m[39m
+ [31m├ù[39m src/utils/pdf/v2/forms/__tests__/tripLogMultipage.test.ts[2m > [22mtrip_log (FORM PS-211) ΓÇö multi-page[2m > [22mrenders to stable bytes (3-page baseline)[33m 434[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot trip_log.multipage. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '0d1b6850a8a4eddd922dbf74651d5c413a025ΓÇª' to be 'd59118e51a827519d4e295a77ef385c200f9eΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/forms/__tests__/tripLogMultipage.test.ts[2m > [22mtrip_log (FORM PS-211) ΓÇö multi-page[2m > [22mrepeats the column header band on every page and keeps TOTALS off the grid[32m 258[2mms[22m[39m
+[31m   ΓåÆ expected 1 to be 3 // Object.is equality[39m
+ [31m├ù[39m src/pages/__tests__/JailRecordsPage.test.tsx[2m > [22mJailRecordsPage[2m > [22mrenders sources, bookings, and ingests a roster with cross-hit result[33m 1936[2mms[22m[39m
+[31m   ΓåÆ Unable to find an element with the text: /1 FLAGGED HIT/. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body[31m
+  [33mstyle[31m=[32m"overflow: hidden; position: fixed; width: 100%; top: 0px;"[31m
+[36m>[31m
+  [36m<div>[31m
+    [36m<div[31m
+      [33mclass[31m=[32m"p-4 space-y-4"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33maria-level[31m=[32m"3"[31m
+        [33mclass[31m=[32m"panel-title-bar "[31m
+        [33mrole[31m=[32m"heading"[31m
+      [36m>[31m
+        [36m<svg[31m
+          [33maria-hidden[31m=[32m"true"[31m
+          [33mclass[31m=[32m"lucide lucide-building2 lucide-building-2 title-icon"[31m
+          [33mfill[31m=[32m"none"[31m
+          [33mheight[31m=[32m"24"[31m
+          [33mstroke[31m=[32m"currentColor"[31m
+          [33mstroke-linecap[31m=[32m"round"[31m
+          [33mstroke-linejoin[31m=[32m"round"[31m
+          [33mstroke-width[31m=[32m"2"[31m
+          [33mviewBox[31m=[32m"0 0 24 24"[31m
+          [33mwidth[31m=[32m"24"[31m
+          [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+        [36m>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M10 12h4"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M10 8h4"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M14 21v-3a2 2 0 0 0-4 0v3"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"[31m
+          [36m/>[31m
+        [36m</svg>[31m
+        [36m<span[31m
+          [33mclass[31m=[32m"select-none whitespace-nowrap shrink-0 "[31m
+        [36m>[31m
+          [0mJAIL / BOOKING RECORDS[0m
+        [36m</span>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto scrollbar-dark whitespace-nowrap"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"toolbar-btn flex items-center gap-1.5"[31m
+            [33mstyle[31m=[32m"height: 28px; padding: 0px 10px;"[31m
+            [33mtitle[31m=[32m"Refresh sources and bookings"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [36m<svg[31m
+              [33maria-hidden[31m=[32m"true"[31m
+              [33mclass[31m=[32m"lucide lucide-refresh-cw"[31m
+              [33mfill[31m=[32m"none"[31m
+              [33mheight[31m=[32m"13"[31m
+              [33mstroke[31m=[32m"currentColor"[31m
+              [33mstroke-linecap[31m=[32m"round"[31m
+              [33mstroke-linejoin[31m=[32m"round"[31m
+              [33mstroke-width[31m=[32m"2"[31m
+              [33mviewBox[31m=[32m"0 0 24 24"[31m
+              [33mwidth[31m=[32m"13"[31m
+              [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+            [36m>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"[31m
+              [36m/>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M21 3v5h-5"[31m
+              [36m/>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"[31m
+              [36m/>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M8 16H3v5"[31m
+              [36m/>[31m
+            [36m</svg>[31m
+            [0m Refresh[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"bg-surface-raised border border-rmpg-700 p-3 space-y-2"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"text-[9px] font-semibold text-brand-400"[31m
+        [36m>[31m
+          [0mMANUAL ROSTER INGEST[0m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"flex gap-2"[31m
+        [36m>[31m
+          [36m<input[31m
+            [33mclass[31m=[32m"flex-1 input-dark text-[11px]"[31m
+            [33mid[31m=[32m"jail-records-county-input"[31m
+            [33mplaceholder[31m=[32m"County (e.g. Salt Lake)"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+          [36m<select[31m
+            [33mclass[31m=[32m"select-dark text-[11px]"[31m
+          [36m>[31m
+            [36m<option[31m
+              [33mvalue[31m=[32m"lines"[31m
+            [36m>[31m
+              [0mLines (Name - charges)[0m
+            [36m</option>[31m
+            [36m<option[31m
+              [33mvalue[31m=[32m"csv"[31m
+            [36m>[31m
+              [0mCSV (name,dob,booking_date,charges)[0m
+            [36m</option>[31m
+          [36m</select>[31m
+        [36m</div>[31m
+        [36m<textarea[31m
+          [33mclass[31m=[32m"w-full input-dark text-[11px] font-mono resize-y"[31m
+          [33mplaceholder[31m=[32m"John Smith - Theft, Trespass
+Jane Doe - DUI"[31m
+          [33mrows[31m=[32m"4"[31m
+        [36m>[31m
+          [0mJane Doe - DUI[0m
+        [36m</textarea>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"w-full py-1.5 text-[11px] font-semibold border border-brand-400 text-brand-400 hover:bg-surface-raised disabled:opacity-40"[31m
+        [36m>[31m
+          [0mINGEST + CROSS-HIT[0m
+        [36m</button>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"bg-surface-raised border border-rmpg-700"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"px-2 py-[3px] border-b border-border-subtle flex items-center gap-2"[31m
+        [36m>[31m
+          [36m<span[31m
+            [33mclass[31m=[32m"text-[9px] font-semibold text-brand-400 flex-1"[31m
+          [36m>[31m
+            [0mRECENT BOOKINGS[0m
+          [36m</span>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"relative"[31m
+          [36m>[31m
+            [36m<svg[31m
+              [33maria-hidden[31m=[32m"true"[31m
+              [33mclass[31m=[32m"lucide lucide-search absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none"[31m
+              [33mfill[31m=[32m"none"[31m
+              [33mheight[31m=[32m"10"[31m
+              [33mstroke[31m=[32m"currentColor"[31m
+              [33mstroke-linecap[31m=[32m"round"[31m
+              [33mstroke-linejoin[31m=[32m"round"[31m
+              [33mstroke-width[31m=[32m"2"[31m
+              [33mviewBox[31m=[32m"0 0 24 24"[31m
+              [33mwidth[31m=[32m"10"[31m
+              [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+            [36m>[31m
+              [36m<path[31m
+                [33md[31m=[32m"m21 21-4.34-4.34"[31m
+              [36m/>[31m
+              [36m<circle[31m
+                [33mcx[31m=[32m"11"[31m
+                [33mcy[31m=[32m"11"[31m
+             ...
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body[31m
+    [33mstyle[31m=[32m"overflow: hidden; position: fixed; width: 100%; top: 0px;"[31m
+  [36m>[31m
+    [36m<div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"p-4 space-y-4"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33maria-level[31m=[32m"3"[31m
+          [33mclass[31m=[32m"panel-title-bar "[31m
+          [33mrole[31m=[32m"heading"[31m
+        [36m>[31m
+          [36m<svg[31m
+            [33maria-hidden[31m=[32m"true"[31m
+            [33mclass[31m=[32m"lucide lucide-building2 lucide-building-2 title-icon"[31m
+            [33mfill[31m=[32m"none"[31m
+            [33mheight[31m=[32m"24"[31m
+            [33mstroke[31m=[32m"currentColor"[31m
+            [33mstroke-linecap[31m=[32m"round"[31m
+            [33mstroke-linejoin[31m=[32m"round"[31m
+            [33mstroke-width[31m=[32m"2"[31m
+            [33mviewBox[31m=[32m"0 0 24 24"[31m
+            [33mwidth[31m=[32m"24"[31m
+            [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+          [36m>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M10 12h4"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M10 8h4"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M14 21v-3a2 2 0 0 0-4 0v3"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"[31m
+            [36m/>[31m
+          [36m</svg>[31m
+          [36m<span[31m
+            [33mclass[31m=[32m"select-none whitespace-nowrap shrink-0 "[31m
+          [36m>[31m
+            [0mJAIL / BOOKING RECORDS[0m
+          [36m</span>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto scrollbar-dark whitespace-nowrap"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33mclass[31m=[32m"toolbar-btn flex items-center gap-1.5"[31m
+              [33mstyle[31m=[32m"height: 28px; padding: 0px 10px;"[31m
+              [33mtitle[31m=[32m"Refresh sources and bookings"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<svg[31m
+                [33maria-hidden[31m=[32m"true"[31m
+                [33mclass[31m=[32m"lucide lucide-refresh-cw"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"13"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"13"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"[31m
+                [36m/>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M21 3v5h-5"[31m
+                [36m/>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"[31m
+                [36m/>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M8 16H3v5"[31m
+                [36m/>[31m
+              [36m</svg>[31m
+              [0m Refresh[0m
+            [36m</button>[31m
+          [36m</div>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"bg-surface-raised border border-rmpg-700 p-3 space-y-2"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"text-[9px] font-semibold text-brand-400"[31m
+          [36m>[31m
+            [0mMANUAL ROSTER INGEST[0m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"flex gap-2"[31m
+          [36m>[31m
+            [36m<input[31m
+              [33mclass[31m=[32m"flex-1 input-dark text-[11px]"[31m
+              [33mid[31m=[32m"jail-records-county-input"[31m
+              [33mplaceholder[31m=[32m"County (e.g. Salt Lake)"[31m
+              [33mvalue[31m=[32m""[31m
+            [36m/>[31m
+            [36m<select[31m
+              [33mclass[31m=[32m"select-dark text-[11px]"[31m
+            [36m>[31m
+              [36m<option[31m
+                [33mvalue[31m=[32m"lines"[31m
+              [36m>[31m
+                [0mLines (Name - charges)[0m
+              [36m</option>[31m
+              [36m<option[31m
+                [33mvalue[31m=[32m"csv"[31m
+              [36m>[31m
+                [0mCSV (name,dob,booking_date,charges)[0m
+              [36m</option>[31m
+            [36m</select>[31m
+          [36m</div>[31m
+          [36m<textarea[31m
+            [33mclass[31m=[32m"w-full input-dark text-[11px] font-mono resize-y"[31m
+            [33mplaceholder[31m=[32m"John Smith - Theft, Trespass
+Jane Doe - DUI"[31m
+            [33mrows[31m=[32m"4"[31m
+          [36m>[31m
+            [0mJane Doe - DUI[0m
+          [36m</textarea>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"w-full py-1.5 text-[11px] font-semibold border border-brand-400 text-brand-400 hover:bg-surface-raised disabled:opacity-40"[31m
+          [36m>[31m
+            [0mINGEST + CROSS-HIT[0m
+          [36m</button>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"bg-surface-raised border border-rmpg-700"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"px-2 py-[3px] border-b border-border-subtle flex items-center gap-2"[31m
+          [36m>[31m
+            [36m<span[31m
+              [33mclass[31m=[32m"text-[9px] font-semibold text-brand-400 flex-1"[31m
+            [36m>[31m
+              [0mRECENT BOOKINGS[0m
+            [36m</span>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"relative"[31m
+            [36m>[31m
+              [36m<svg[31m
+                [33maria-hidden[31m=[32m"true"[31m
+                [33mclass[31m=[32m"lucide lucide-search absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"10"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"1...[39m
+ [32mΓ£ô[39m src/pages/document-writer/__tests__/wave5Actions.test.ts[2m > [22mWave-5 actions[2m > [22madds exactly 100 actions and the new groups[32m 192[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m<VehicleDetailRoute>[2m > [22mrenders sticky header with vehicle name + plate + status[33m 595[2mms[22m[39m
+ [31m├ù[39m src/pages/document-writer/__tests__/wave5Actions.test.ts[2m > [22mWave-5 actions[2m > [22mruns every action without throwing[33m 6456[2mms[22m[39m
+[31m   ΓåÆ Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32mΓ£ô[39m src/pages/document-writer/__tests__/wave5Actions.test.ts[2m > [22mWave-5 actions[2m > [22minsert-type actions actually change the document[33m 615[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m<VehicleDetailRoute>[2m > [22mrenders all 13 tab names in the tab bar[33m 1843[2mms[22m[39m
+node : [90mstderr[2m | src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > 
+[22m[2m<VehicleDetailRoute>[2m > [22m[2mclicking Service tab swaps to the ServiceTab content (no empty-state)
+At line:1 char:1
++ node "C:\Users\ChristopherZamora\Downloads\rmpg-flex\rmpg-flex\client ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...no empty-state):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39mAn update to ServiceTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at 
+https://react.dev/link/wrap-tests-with-act
+
+ [32mΓ£ô[39m src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m<VehicleDetailRoute>[2m > [22mOverview tab is active by default and renders content[33m 510[2mms[22m[39m
+[90mstderr[2m | src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m[2m<VehicleDetailRoute>[2m > 
+[22m[2mclicking Service tab swaps to the ServiceTab content (no empty-state)
+[22m[39mAn update to ServiceTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at 
+https://react.dev/link/wrap-tests-with-act
+
+ [32mΓ£ô[39m src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m<VehicleDetailRoute>[2m > [22mclicking Service tab swaps to the ServiceTab content (no empty-state)[33m 376[2mms[22m[39m
+[90mstderr[2m | src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m[2m<VehicleDetailRoute>[2m > 
+[22m[2mclicking Work Orders tab still shows the EmptyStateCard (deferred to PR 5)
+[22m[39mAn update to WorkOrdersTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at 
+https://react.dev/link/wrap-tests-with-act
+An update to WorkOrdersTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at 
+https://react.dev/link/wrap-tests-with-act
+
+ [31m├ù[39m src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx[2m > [22m<VehicleDetailRoute>[2m > [22mclicking Work Orders tab still shows the EmptyStateCard (deferred to PR 5)[33m 361[2mms[22m[39m
+[31m   ΓåÆ Unable to find an element with the text: /coming in pr 5/i. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<div[31m
+      [33mclass[31m=[32m"h-full flex flex-col"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"sticky top-0 z-10 bg-surface-base border-b border-rmpg-700 px-4 py-3"[31m
+      [36m>[31m
+        [36m<a[31m
+          [33mclass[31m=[32m"text-xs text-rmpg-400 hover:text-brand-400 inline-flex items-center gap-1 mb-2"[31m
+          [33mdata-discover[31m=[32m"true"[31m
+          [33mhref[31m=[32m"/fleet/v2/vehicles"[31m
+        [36m>[31m
+          [36m<svg[31m
+            [33maria-hidden[31m=[32m"true"[31m
+            [33mclass[31m=[32m"lucide lucide-arrow-left w-3 h-3"[31m
+            [33mfill[31m=[32m"none"[31m
+            [33mheight[31m=[32m"24"[31m
+            [33mstroke[31m=[32m"currentColor"[31m
+            [33mstroke-linecap[31m=[32m"round"[31m
+            [33mstroke-linejoin[31m=[32m"round"[31m
+            [33mstroke-width[31m=[32m"2"[31m
+            [33mviewBox[31m=[32m"0 0 24 24"[31m
+            [33mwidth[31m=[32m"24"[31m
+            [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+          [36m>[31m
+            [36m<path[31m
+              [33md[31m=[32m"m12 19-7-7 7-7"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M19 12H5"[31m
+            [36m/>[31m
+          [36m</svg>[31m
+          [0m Back to Vehicles[0m
+        [36m</a>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"flex items-baseline justify-between"[31m
+        [36m>[31m
+          [36m<div>[31m
+            [36m<h1[31m
+              [33mclass[31m=[32m"text-lg font-semibold text-rmpg-100"[31m
+            [36m>[31m
+              [0mUnit 12[0m
+              [36m<span[31m
+                [33mclass[31m=[32m"ml-2 text-sm text-rmpg-400"[31m
+              [36m>[31m
+                [0mABC123[0m
+                [0m ([0m
+                [0mUT[0m
+                [0m)[0m
+              [36m</span>[31m
+            [36m</h1>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"text-[11px] text-rmpg-400 mt-0.5"[31m
+            [36m>[31m
+              [0m2022[0m
+              [0m [0m
+              [0mFord[0m
+              [0m [0m
+              [0mExplorer[0m
+              [0m ┬╖ VIN [0m
+              [0m1HGBH41JXMN109186[0m
+              [0m ┬╖ [0m
+              [0m47,283[0m
+              [0m mi[0m
+            [36m</div>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"px-2 py-1 text-[10px] rounded-sm bg-rmpg-700 text-rmpg-50"[31m
+          [36m>[31m
+            [0mIN SERVICE[0m
+          [36m</div>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33maria-label[31m=[32m"Vehicle tabs"[31m
+          [33mclass[31m=[32m"mt-3 flex gap-1 overflow-x-auto"[31m
+          [33mrole[31m=[32m"tablist"[31m
+        [36m>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mOverview[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mService[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mInspections[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mFuel[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mIssues[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"true"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm bg-rmpg-700 text-rmpg-50"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mWork Orders[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mDocuments[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mCosts[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mRecalls[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mDamage[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mTires[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mAssignments[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-selected[31m=[32m"false"[31m
+            [33mclass[31m=[32m"px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm text-rmpg-400 hover:text-rmpg-100"[31m
+            [33mrole[31m=[32m"tab"[31m
+          [36m>[31m
+            [0mActivity[0m
+          [36m</button>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"flex-1 overflow-y-auto"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"p-4 text-xs text-rmpg-400"[31m
+        [36m>[31m
+          [0mLoading work ordersΓÇª[0m
+        [36m</div>[31m
+      [36m</div>[31m
+    [36m</div>[31m
+  [36m</div>[31m
+[36m</body>[31m[39m
+[90mstderr[2m | src/pages/__tests__/DashboardPage.test.tsx[2m > [22m[2mDashboardPage[2m > [22m[2mrenders the 
+dashboard title after loading
+[22m[39museContextMenu used outside a ContextMenuProvider ΓÇö right-click menus are inert here.
+
+ [31m├ù[39m src/pages/__tests__/QuickCapturePage.test.tsx[2m > [22mQuickCapturePage[2m > [22mcaptures a contact and shows the hit banner + dossier link[33m 1402[2mms[22m[39m
+[31m   ΓåÆ Found multiple elements with the text: /Active warrant W-4/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span>[31m
+  [0mActive warrant W-4 ΓÇö FTA[0m
+[36m</span>[31m
+
+Ignored nodes: comments, script, style
+[36m<p[31m
+  [33mclass[31m=[32m"flex-1 text-[11px] leading-relaxed font-medium"[31m
+[36m>[31m
+  [0mRecords HIT: Active warrant W-4 ΓÇö FTA[0m
+[36m</p>[31m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<div[31m
+      [33mclass[31m=[32m"p-4 space-y-3 max-w-xl mx-auto"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33maria-level[31m=[32m"3"[31m
+        [33mclass[31m=[32m"panel-title-bar "[31m
+        [33mrole[31m=[32m"heading"[31m
+      [36m>[31m
+        [36m<svg[31m
+          [33maria-hidden[31m=[32m"true"[31m
+          [33mclass[31m=[32m"lucide lucide-clipboard-pen title-icon"[31m
+          [33mfill[31m=[32m"none"[31m
+          [33mheight[31m=[32m"24"[31m
+          [33mstroke[31m=[32m"currentColor"[31m
+          [33mstroke-linecap[31m=[32m"round"[31m
+          [33mstroke-linejoin[31m=[32m"round"[31m
+          [33mstroke-width[31m=[32m"2"[31m
+          [33mviewBox[31m=[32m"0 0 24 24"[31m
+          [33mwidth[31m=[32m"24"[31m
+          [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+        [36m>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M16 4h2a2 2 0 0 1 2 2v2"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M21.34 15.664a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M8 22H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"[31m
+          [36m/>[31m
+          [36m<rect[31m
+            [33mheight[31m=[32m"4"[31m
+            [33mrx[31m=[32m"1"[31m
+            [33mwidth[31m=[32m"8"[31m
+            [33mx[31m=[32m"8"[31m
+            [33my[31m=[32m"2"[31m
+          [36m/>[31m
+        [36m</svg>[31m
+        [36m<span[31m
+          [33mclass[31m=[32m"select-none whitespace-nowrap shrink-0 "[31m
+        [36m>[31m
+          [0mQUICK CAPTURE[0m
+        [36m</span>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2 flex items-center gap-2"[31m
+        [33mrole[31m=[32m"alert"[31m
+      [36m>[31m
+        [36m<svg[31m
+          [33maria-hidden[31m=[32m"true"[31m
+          [33mclass[31m=[32m"lucide lucide-triangle-alert w-4 h-4 shrink-0"[31m
+          [33mfill[31m=[32m"none"[31m
+          [33mheight[31m=[32m"24"[31m
+          [33mstroke[31m=[32m"currentColor"[31m
+          [33mstroke-linecap[31m=[32m"round"[31m
+          [33mstroke-linejoin[31m=[32m"round"[31m
+          [33mstroke-width[31m=[32m"2"[31m
+          [33mviewBox[31m=[32m"0 0 24 24"[31m
+          [33mwidth[31m=[32m"24"[31m
+          [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+        [36m>[31m
+          [36m<path[31m
+            [33md[31m=[32m"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M12 9v4"[31m
+          [36m/>[31m
+          [36m<path[31m
+            [33md[31m=[32m"M12 17h.01"[31m
+          [36m/>[31m
+        [36m</svg>[31m
+        [36m<span>[31m
+          [0mActive warrant W-4 ΓÇö FTA[0m
+        [36m</span>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"border border-border-default text-[11px] text-rmpg-400 px-3 py-1 flex flex-wrap items-center gap-3"[31m
+      [36m>[31m
+        [36m<span>[31m
+          [0mFI logged[0m
+          [0m ┬╖ FI #9[0m
+        [36m</span>[31m
+        [36m<a[31m
+          [33mclass[31m=[32m"text-brand-400 hover:underline inline-flex items-center gap-1"[31m
+          [33mdata-discover[31m=[32m"true"[31m
+          [33mhref[31m=[32m"/intel/person/12"[31m
+        [36m>[31m
+          [0mOpen dossier [0m
+          [36m<svg[31m
+            [33maria-hidden[31m=[32m"true"[31m
+            [33mclass[31m=[32m"lucide lucide-arrow-right w-3 h-3"[31m
+            [33mfill[31m=[32m"none"[31m
+            [33mheight[31m=[32m"24"[31m
+            [33mstroke[31m=[32m"currentColor"[31m
+            [33mstroke-linecap[31m=[32m"round"[31m
+            [33mstroke-linejoin[31m=[32m"round"[31m
+            [33mstroke-width[31m=[32m"2"[31m
+            [33mviewBox[31m=[32m"0 0 24 24"[31m
+            [33mwidth[31m=[32m"24"[31m
+            [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+          [36m>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M5 12h14"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"m12 5 7 7-7 7"[31m
+            [36m/>[31m
+          [36m</svg>[31m
+        [36m</a>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"inline-flex items-center gap-1 text-brand-400 hover:underline disabled:opacity-50"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mPrint FI[0m
+        [36m</button>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"grid grid-cols-2 gap-2"[31m
+      [36m>[31m
+        [36m<input[31m
+          [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none"[31m
+          [33mplaceholder[31m=[32m"First name"[31m
+          [33mvalue[31m=[32m""[31m
+        [36m/>[31m
+        [36m<input[31m
+          [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none"[31m
+          [33mplaceholder[31m=[32m"Last name"[31m
+          [33mvalue[31m=[32m""[31m
+        [36m/>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"grid grid-cols-2 gap-2"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"relative"[31m
+        [36m>[31m
+          [36m<input[31m
+            [33mautocomplete[31m=[32m"off"[31m
+            [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none pr-8"[31m
+            [33mplaceholder[31m=[32m"DOB (YYYY-MM-DD)"[31m
+            [33mspellcheck[31m=[32m"false"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</div>[31m
+        [36m<input[31m
+          [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none uppercase"[31m
+          [33mplaceholder[31m=[32m"Plate"[31m
+          [33mvalue[31m=[32m""[31m
+        [36m/>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"flex items-center gap-2"[31m
+      [36m>[31m
+        [36m<svg[31m
+          [33maria-hidden[31m=[32m"true"[31m
+          [33mclass[31m=[32m"lucide lucide-map-pin w-4 h-4 text-rmpg-500 shrink-0"[31m
+          [33mfill[31m=[32...
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body>[31m
+    [36m<div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"p-4 space-y-3 max-w-xl mx-auto"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33maria-level[31m=[32m"3"[31m
+          [33mclass[31m=[32m"panel-title-bar "[31m
+          [33mrole[31m=[32m"heading"[31m
+        [36m>[31m
+          [36m<svg[31m
+            [33maria-hidden[31m=[32m"true"[31m
+            [33mclass[31m=[32m"lucide lucide-clipboard-pen title-icon"[31m
+            [33mfill[31m=[32m"none"[31m
+            [33mheight[31m=[32m"24"[31m
+            [33mstroke[31m=[32m"currentColor"[31m
+            [33mstroke-linecap[31m=[32m"round"[31m
+            [33mstroke-linejoin[31m=[32m"round"[31m
+            [33mstroke-width[31m=[32m"2"[31m
+            [33mviewBox[31m=[32m"0 0 24 24"[31m
+            [33mwidth[31m=[32m"24"[31m
+            [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+          [36m>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M16 4h2a2 2 0 0 1 2 2v2"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M21.34 15.664a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M8 22H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"[31m
+            [36m/>[31m
+            [36m<rect[31m
+              [33mheight[31m=[32m"4"[31m
+              [33mrx[31m=[32m"1"[31m
+              [33mwidth[31m=[32m"8"[31m
+              [33mx[31m=[32m"8"[31m
+              [33my[31m=[32m"2"[31m
+            [36m/>[31m
+          [36m</svg>[31m
+          [36m<span[31m
+            [33mclass[31m=[32m"select-none whitespace-nowrap shrink-0 "[31m
+          [36m>[31m
+            [0mQUICK CAPTURE[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2 flex items-center gap-2"[31m
+          [33mrole[31m=[32m"alert"[31m
+        [36m>[31m
+          [36m<svg[31m
+            [33maria-hidden[31m=[32m"true"[31m
+            [33mclass[31m=[32m"lucide lucide-triangle-alert w-4 h-4 shrink-0"[31m
+            [33mfill[31m=[32m"none"[31m
+            [33mheight[31m=[32m"24"[31m
+            [33mstroke[31m=[32m"currentColor"[31m
+            [33mstroke-linecap[31m=[32m"round"[31m
+            [33mstroke-linejoin[31m=[32m"round"[31m
+            [33mstroke-width[31m=[32m"2"[31m
+            [33mviewBox[31m=[32m"0 0 24 24"[31m
+            [33mwidth[31m=[32m"24"[31m
+            [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+          [36m>[31m
+            [36m<path[31m
+              [33md[31m=[32m"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M12 9v4"[31m
+            [36m/>[31m
+            [36m<path[31m
+              [33md[31m=[32m"M12 17h.01"[31m
+            [36m/>[31m
+          [36m</svg>[31m
+          [36m<span>[31m
+            [0mActive warrant W-4 ΓÇö FTA[0m
+          [36m</span>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"border border-border-default text-[11px] text-rmpg-400 px-3 py-1 flex flex-wrap items-center gap-3"[31m
+        [36m>[31m
+          [36m<span>[31m
+            [0mFI logged[0m
+            [0m ┬╖ FI #9[0m
+          [36m</span>[31m
+          [36m<a[31m
+            [33mclass[31m=[32m"text-brand-400 hover:underline inline-flex items-center gap-1"[31m
+            [33mdata-discover[31m=[32m"true"[31m
+            [33mhref[31m=[32m"/intel/person/12"[31m
+          [36m>[31m
+            [0mOpen dossier [0m
+            [36m<svg[31m
+              [33maria-hidden[31m=[32m"true"[31m
+              [33mclass[31m=[32m"lucide lucide-arrow-right w-3 h-3"[31m
+              [33mfill[31m=[32m"none"[31m
+              [33mheight[31m=[32m"24"[31m
+              [33mstroke[31m=[32m"currentColor"[31m
+              [33mstroke-linecap[31m=[32m"round"[31m
+              [33mstroke-linejoin[31m=[32m"round"[31m
+              [33mstroke-width[31m=[32m"2"[31m
+              [33mviewBox[31m=[32m"0 0 24 24"[31m
+              [33mwidth[31m=[32m"24"[31m
+              [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+            [36m>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M5 12h14"[31m
+              [36m/>[31m
+              [36m<path[31m
+                [33md[31m=[32m"m12 5 7 7-7 7"[31m
+              [36m/>[31m
+            [36m</svg>[31m
+          [36m</a>[31m
+          [36m<button[31m
+            [33mclass[31m=[32m"inline-flex items-center gap-1 text-brand-400 hover:underline disabled:opacity-50"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mPrint FI[0m
+          [36m</button>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"grid grid-cols-2 gap-2"[31m
+        [36m>[31m
+          [36m<input[31m
+            [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none"[31m
+            [33mplaceholder[31m=[32m"First name"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+          [36m<input[31m
+            [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none"[31m
+            [33mplaceholder[31m=[32m"Last name"[31m
+            [33mvalue[31m=[32m""[31m
+          [36m/>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"grid grid-cols-2 gap-2"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"relative"[31m
+          [36m>[31m
+            [36m<input[31m
+              [33mautocomplete[31m=[32m"off"[31m
+              [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none pr-8"[31m
+              [33mplaceholder[31m=[32m"DOB (YYYY-MM-DD)"[31m
+              [33mspellcheck[31m=[32m"false"[31m
+              [33mvalue[31m=[32m""[31m
+            [36m/>[31m
+          [36m</div>[31m
+          [36m<input[31m
+            [33mclass[31m=[32m"w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 placeholder:text-rmpg-500 focus:border-brand-400 outline-none uppercase"[31m
+            [33mplaceholder[31m=[32m"Plate"[31m
+            [33mvalue[31m=[32m""[3...[39m
+[90mstderr[2m | src/pages/__tests__/DashboardPage.test.tsx[2m > [22m[2mDashboardPage[2m > [22m[2mrenders the 
+dashboard title after loading
+[22m[39mThe tag <stop> is unrecognized in this browser. If you meant to render a React component, start its name 
+with an uppercase letter.
+<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML elements.
+The tag <linearGradient> is unrecognized in this browser. If you meant to render a React component, start its name 
+with an uppercase letter.
+The tag <defs> is unrecognized in this browser. If you meant to render a React component, start its name with an 
+uppercase letter.
+<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML elements.
+
+ [32mΓ£ô[39m src/pages/__tests__/QuickCapturePage.test.tsx[2m > [22mQuickCapturePage[2m > [22mrenders the linked-context chip when ?call_id= is in the URL[32m 110[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/__tests__/QuickCapturePage.test.tsx[2m > [22mQuickCapturePage[2m > [22mhandles ?incident_id= deep-link[32m 73[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/__tests__/QuickCapturePage.test.tsx[2m > [22mQuickCapturePage[2m > [22mN shortcut focuses first name when not typing[32m 119[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/__tests__/QuickCapturePage.test.tsx[2m > [22mQuickCapturePage[2m > [22mEsc clears typed-but-unsaved form[32m 67[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/DashboardPage.test.tsx[2m > [22m[2mDashboardPage[2m > [22m[2mrenders stat 
+cards with API data
+[22m[39m<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML 
+elements.
+<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML elements.
+
+ [32mΓ£ô[39m src/pages/__tests__/DashboardPage.test.tsx[2m > [22mDashboardPage[2m > [22mrenders the dashboard title after loading[33m 1636[2mms[22m[39m
+[90mstderr[2m | src/pages/__tests__/DashboardPage.test.tsx[2m > [22m[2mDashboardPage[2m > [22m[2mrenders the 
+Status Summary row with secondary metrics
+[22m[39m<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML 
+elements.
+<linearGradient /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML elements.
+
+ [31m├ù[39m src/pages/__tests__/DashboardPage.test.tsx[2m > [22mDashboardPage[2m > [22mrenders stat cards with API data[33m 992[2mms[22m[39m
+[31m   ΓåÆ Found multiple elements with the text: 5
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<p[31m
+  [33mclass[31m=[32m"text-2xl font-black font-mono tabular-nums text-red-400"[31m
+  [33mstyle[31m=[32m"text-shadow: 0 0 12px color-mix(in srgb, var(--stat-accent-red) 25%, transparent), 0 1px 2px rgba(0,0,0,0.5); line-height: 1;"[31m
+[36m>[31m
+  [0m5[0m
+[36m</p>[31m
+
+Ignored nodes: comments, script, style
+[36m<span[31m
+  [33mclass[31m=[32m"text-[9px] font-mono font-bold text-rmpg-200 ml-auto tabular-nums"[31m
+[36m>[31m
+  [0m5[0m
+[36m</span>[31m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<div[31m
+      [33maria-label[31m=[32m"Command and Control Dashboard"[31m
+      [33mclass[31m=[32m"dashboard-page p-4 space-y-4 animate-fade-in"[31m
+      [33mrole[31m=[32m"main"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"spm-screen-title"[31m
+      [36m>[31m
+        [36m<span[31m
+          [33maria-hidden[31m=[32m"true"[31m
+          [33mclass[31m=[32m"led-dot led-green"[31m
+        [36m/>[31m
+        [0mCommand & Control ΓÇö [0m
+        [0mOperational[0m
+        [36m<span[31m
+          [33mclass[31m=[32m"ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums"[31m
+          [33mtitle[31m=[32m"6/29/2026, 11:39:40 PM"[31m
+        [36m>[31m
+          [0mSynced 11:39 PM[0m
+        [36m</span>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33maria-label[31m=[32m"Dashboard actions"[31m
+        [33mclass[31m=[32m"spm-screen-toolbar"[31m
+        [33mrole[31m=[32m"toolbar"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33maria-label[31m=[32m"Dashboard view"[31m
+          [33mclass[31m=[32m"spm-view-seg"[31m
+          [33mrole[31m=[32m"group"[31m
+        [36m>[31m
+          [36m<span[31m
+            [33mclass[31m=[32m"spm-view-seg-label"[31m
+          [36m>[31m
+            [0mView:[0m
+          [36m</span>[31m
+          [36m<button[31m
+            [33maria-pressed[31m=[32m"false"[31m
+            [33mclass[31m=[32m"spm-view-seg-btn"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mDispatch[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-pressed[31m=[32m"false"[31m
+            [33mclass[31m=[32m"spm-view-seg-btn"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mPatrol[0m
+          [36m</button>[31m
+          [36m<button[31m
+            [33maria-pressed[31m=[32m"true"[31m
+            [33mclass[31m=[32m"spm-view-seg-btn on"[31m
+            [33mtype[31m=[32m"button"[31m
+          [36m>[31m
+            [0mAdmin[0m
+          [36m</button>[31m
+        [36m</div>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mNew Call[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mNew Incident[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mNew Citation[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mStart Patrol[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mProcess Server[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mQuick Capture[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mField Camera[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mTasks[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn spacer"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mPrint[0m
+        [36m</button>[31m
+        [36m<button[31m
+          [33mclass[31m=[32m"spm-toolbtn"[31m
+          [33mtype[31m=[32m"button"[31m
+        [36m>[31m
+          [0mRefresh[0m
+        [36m</button>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"flex items-center gap-4 px-4 py-3 relative"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"absolute top-0 left-0 right-0 h-[2px]"[31m
+            [33mstyle[31m=[32m"background: linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border));"[31m
+          [36m/>[31m
+          [36m<img[31m
+            [33malt[31m=[32m"Rocky Mountain Protective Group ΓÇö RMPG Flex"[31m
+            [33mclass[31m=[32m"flex-shrink-0 "[31m
+            [33mdraggable[31m=[32m"false"[31m
+            [33msrc[31m=[32m"/rmpg flex.png"[31m
+            [33mstyle[31m=[32m"height: 68px; object-fit: contain;"[31m
+          [36m/>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"flex-1 min-w-0"[31m
+          [36m>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"flex items-center gap-3"[31m
+            [36m>[31m
+              [36m<h1[31m
+                [33mclass[31m=[32m"text-sm font-bold tracking-wider uppercase text-rmpg-200 select-none"[31m
+              [36m>[31m
+                [0mCommand & Control Dashboard[0m
+              [36m</h1>[31m
+              [36m<div[31m
+                [33maria-label[31m=[32m"System status: operational"[31m
+                [33mclass[31m=[32m"hidden sm:flex items-center gap-1.5"[31m
+                [33mrole[31m=[32m"status"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33maria-hidden[31m=[32m"true"[31m
+                  [33mclass[31m=[32m"led-dot led-green animate-led-pulse"[31m
+                [36m/>[31m
+                [36m<span[31m
+                  [33mclass[31m=[32m"text-[9px] font-mono font-bold text-green-500 tracking-wider select-none"[31m
+                [36m>[31m
+                  [0mOPERATIONAL[0m
+                [36m</span>[31m
+              [36m</div>[31m
+            [36m</div>[31m
+            [36m<p[31m
+              [33mclass[31m=[32m"text-[9px] tracking-wide mt-0.5 text-rmpg-600 truncate"[31m
+            [36m>[31m
+              [0mRocky Mountain Protective Group, LLC ΓÇö Resolving todayΓÇÖs concerns, to ensure tomorrowΓÇÖs solutions.[0m
+            [36m</p>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33mclass[31m=[32m"toolbar-btn "[31m
+              [33mtitle[31m=[32m"Print...[39m
+ [32mΓ£ô[39m src/pages/__tests__/DashboardPage.test.tsx[2m > [22mDashboardPage[2m > [22mrenders the Status Summary row with secondary metrics[33m 852[2mms[22m[39m
+ [32mΓ£ô[39m src/pages/__tests__/DashboardPage.test.tsx[2m > [22mDashboardPage[2m > [22mshows loading skeleton initially[32m 116[2mms[22m[39m
+ [31m├ù[39m src/utils/pdf/v2/__tests__/citation3Copy.snapshot.test.ts[2m > [22mcitation 3-copy snapshots[2m > [22mempty record[32m 251[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot citation_3copy.empty. Re-run with UPDATE_SNAPSHOTS=1 if intentional.: expected '894cf980033a967d676c26e84154ceb5f354dΓÇª' to be '834d331b971c629a958676f7eff68836b0efdΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/__tests__/citation3Copy.snapshot.test.ts[2m > [22mcitation 3-copy snapshots[2m > [22mtwo violations (compact layout)[32m 134[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot citation_3copy.two_violations. Re-run with UPDATE_SNAPSHOTS=1 if intentional.: expected '5e10fed88b4fbce93936e28badb1bc24bda0eΓÇª' to be '9e08651a10b6c23a06d905e991eea43c2c67cΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/__tests__/citation3Copy.snapshot.test.ts[2m > [22mcitation 3-copy snapshots[2m > [22mfive violations (stacked layout)[32m 127[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot citation_3copy.five_violations. Re-run with UPDATE_SNAPSHOTS=1 if intentional.: expected '77372205e01acc82732044fa27cdc58d09cbcΓÇª' to be '4806ddb2de0c011e762c4ffff87bb87896f56ΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/forms/__tests__/tripLog.test.ts[2m > [22mtrip_log (FORM PS-211)[2m > [22mrenders to stable bytes (baseline)[32m 297[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot trip_log.populated. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '804c0da0d6b3cc949e162c9c871eff5e4f1e0ΓÇª' to be '75704fce797e363967ebf69cb834b16eca615ΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/citationBlank.test.ts[2m > [22mcitation_blank[2m > [22mrenders to stable bytes (baseline)[32m 205[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot citation_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '183ae74cca7136dd1fa0e3ce277633421c6c9ΓÇª' to be 'b273038ab358e1ecf58095d2bd03eb71bae9bΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/personBlank.test.ts[2m > [22mperson_blank[2m > [22mrenders to stable bytes (baseline)[32m 182[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot person_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '3e1de6a3540eefe1d9fd88ef81b8d07d7a418ΓÇª' to be '494826423869738ed2da59c29a963479e8bf9ΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/incidentBlank.test.ts[2m > [22mincident_blank[2m > [22mrenders to stable bytes (baseline)[32m 177[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot incident_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected 'a2b6074af835b270b934338607becd10f1840ΓÇª' to be '4c3a7010ee37c551fa95ff697e76a5204ea67ΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/propertyBlank.test.ts[2m > [22mproperty_blank[2m > [22mrenders to stable bytes (baseline)[32m 180[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot property_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '6232875584599f2053cae6a2c4e562404d940ΓÇª' to be '659fa43eea4a7acdbd06f3c971afce3df5a0eΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/fieldInterviewBlank.test.ts[2m > [22mfield_interview_blank[2m > [22mrenders to stable bytes (baseline)[32m 197[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot field_interview_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected '89e803e756f6da3563cdf609b99b0f89fab52ΓÇª' to be '0e11243e85c643746deaf4d020a9c61becbd3ΓÇª' // Object.is equality[39m
+ [31m├ù[39m src/utils/pdf/v2/blankForms/__tests__/vehicleBlank.test.ts[2m > [22mvehicle_blank[2m > [22mrenders to stable bytes (baseline)[32m 291[2mms[22m[39m
+[31m   ΓåÆ PDF bytes changed for snapshot vehicle_blank.empty. If intentional, re-run with UPDATE_SNAPSHOTS=1.: expected 'da4a15ce6790d5b4024f034e630adbf4f4563ΓÇª' to be '75c74a4bbbd03dd52a0693bfab88db9755d41ΓÇª' // Object.is equality[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mprefers entity_type+entity_id over type when both are present[32m 7[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /dispatch?call_id= for call entity_type[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /warrants?warrant_id= for warrant entity_type[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /serve?job_id= for serve_job entity_type[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /communications?tab=bolos&bolo_id= for bolo entity_type[32m 1[2mms[22m[39m
+ [31m├ù[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /arrest-records?arrest_id= for arrest_record entity_type[32m 29[2mms[22m[39m
+[31m   ΓåÆ expected '/' to be '/arrest-records?arrest_id=250' // Object.is equality[39m
+ [31m├ù[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /web-research?research_id= for research_result entity_type[32m 9[2mms[22m[39m
+[31m   ΓåÆ expected '/' to be '/web-research?research_id=17' // Object.is equality[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mfalls back to type-default when entity_type is unknown[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mfalls back to type-default when entity_id is missing[32m 5[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mreturns null for an unknown type with no entity[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mroutes message ΓåÆ /communications?tab=messages[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mroutes credential_expiry ΓåÆ /personnel[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mroutes patrol_missed ΓåÆ /patrol[32m 0[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /affairs?complaint_id= for ia_complaint entity_type[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22mbuilds /affairs?investigation_id= for ia_investigation entity_type[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mrouteForEntity[2m > [22murl-encodes the entity id (guards against an id like "1/2")[32m 0[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mhasDeepLink[2m > [22mreturns true when an entity route is known[32m 1[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mhasDeepLink[2m > [22mreturns true when only the type route is known[32m 0[2mms[22m[39m
+ [32mΓ£ô[39m src/utils/__tests__/notificationRouting.test.ts[2m > [22mnotificationRouting[2m > [22mhasDeepLink[2m > [22mreturns false when nothing is known[32m 0[2mms[22m[39m
