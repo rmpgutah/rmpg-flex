@@ -209,7 +209,8 @@ export class Primitives {
     this.layout.pageBreakIfNeeded(headerH + rowH);
 
     // ── First fragment: header band on the current page ──
-    let fragTop = this.layout.cursorY;
+    const tableTop = this.layout.cursorY;
+    let fragTop = tableTop;
     drawHeaderBand(fragTop);
     this.layout.advance(headerH);
     applyBodyStyle();

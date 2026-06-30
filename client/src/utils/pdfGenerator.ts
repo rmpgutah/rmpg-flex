@@ -35,6 +35,9 @@ import {
   getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
   applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
 } from './pdfTokens';
+import { brandingFromSystemSettings } from './brandConfig';
+
+const safeStr = (v: any): string => v == null ? '' : String(v);
 
 /** Public PDF generation options. Threading `printTarget` to the
  *  big v1 incident-report generator engages the +6mm Brother PJ-700

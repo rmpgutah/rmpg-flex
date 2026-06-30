@@ -7,7 +7,7 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText } from './pdfGenerator';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
@@ -735,6 +735,7 @@ export function drawNibrsHeader(
 
   if (config.caseNumber) {
     const caseBoxH = headerH - 6;
+    const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;
     doc.setDrawColor(...headTextColor);

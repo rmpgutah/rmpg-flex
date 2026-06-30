@@ -78,6 +78,8 @@ export default function AlertsPage() {
   const [filterChannel, setFilterChannel] = useState<string>(initialChannelParam);
   const [filterCategory, setFilterCategory] = useState<string>(initialCategoryParam);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const { user } = useAuth();
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const { addToast } = useToast();
   const m = useMenuActions();
 

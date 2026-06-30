@@ -110,6 +110,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
   // Monotonic click id — guards against an older nearest-address response
   // resolving after a newer click and overwriting the newer popup.
   const seqRef = useRef(0);
+  const streetAbortRef = useRef<AbortController | null>(null);
 
   // Warm the polygon datasets + imagery token the first time the tool is on.
   useEffect(() => {

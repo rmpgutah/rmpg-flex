@@ -10,6 +10,7 @@ import { asArray } from '../../utils/asArray';
 import { safeDateStr } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { getMapboxToken } from '../../utils/mapboxApiKey';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -47,6 +48,16 @@ function timeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return new Date(dateStr).toLocaleDateString();
+}
+
+interface ApiKeyConfig {
+  key: string;
+  label: string;
+  desc: string;
+  pattern?: RegExp;
+  formatHint?: string;
+  secret?: boolean;
+  testable?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {

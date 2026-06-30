@@ -8,7 +8,7 @@
 
 import {useState, useCallback, useEffect, useRef} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History, Camera } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
@@ -535,6 +535,7 @@ export default function DlSearchPage() {
   // Pre-fills inputs + auto-runs the search; params are stripped after
   // applying so a refresh doesn't loop.
   const [searchParams, setSearchParams] = useSearchParams();
+  const fromDeepLinkRef = useRef(false);
   const pendingDeepLinkRef = useRef<{
     dl: string | null; state: string | null;
     last: string | null; first: string | null; dob: string | null;

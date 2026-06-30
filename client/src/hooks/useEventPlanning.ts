@@ -81,6 +81,8 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
   const [planVisible, setPlanVisible] = useState(true);
 
   // Map overlay tracking
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const layerIdsRef = useRef<string[]>([]);
   const overlayMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const overlaySourceIdsRef = useRef<string[]>([]);
   const drawPointsRef = useRef<[number, number][]>([]);

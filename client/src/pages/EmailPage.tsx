@@ -1043,6 +1043,12 @@ interface ComposeModalProps {
 }
 
 function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeModalProps) {
+  const prefill = replyMessage ? {
+    subject: mode === 'forward'
+      ? `Fwd: ${(replyMessage.subject || '').replace(/^Fwd:\s*/i, '')}`
+      : `Re: ${(replyMessage.subject || '').replace(/^Re:\s*/i, '')}`,
+    body: (replyMessage as any).body || '',
+  } : null;
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');

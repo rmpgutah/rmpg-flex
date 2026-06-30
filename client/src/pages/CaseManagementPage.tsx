@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { formatEnumValue } from '../utils/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RichTextArea from '../components/RichTextArea';

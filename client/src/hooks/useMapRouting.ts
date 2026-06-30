@@ -457,9 +457,31 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           };
         });
 
+        const leg = route.legs?.[0] || {};
         const durationSec = leg.duration || 0;
         const distanceMeters = leg.distance || 0;
 
+        const ensureRouteLayer = () => {
+          if (!map) return;
+          if (!map.getSource(SOURCE_ID)) {
+            try {
+              map.addSource(SOURCE_ID, {
+                type: 'geojson',
+                data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
+              });
+            } catch { /* ignore */ }
+          }
+          if (!map.getLayer(LAYER_ID)) {
+            try {
+              map.addLayer({
+                id: LAYER_ID,
+                type: 'line',
+                source: SOURCE_ID,
+                paint: { 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.7 },
+              });
+            } catch { /* ignore */ }
+          }
+        };
         ensureRouteLayer();
 
         const geojsonSource = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;

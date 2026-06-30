@@ -43,6 +43,9 @@ const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const canExport = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const filterRef = useRef<HTMLSelectElement>(null);
   const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any>(null);

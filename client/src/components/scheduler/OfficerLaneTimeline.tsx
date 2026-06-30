@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, Pin } from 'lucide-react';
+import { AlertTriangle, Pin, UserMinus, X } from 'lucide-react';
 import {
   type ScheduleSlot,
 } from '../../utils/schedulerView';
@@ -25,6 +25,8 @@ interface Props {
   onSlotDismiss?: (slot: ScheduleSlot) => void;
   /** admin/manager only — gate unassign (PATCH officer→null) icon on chip */
   onSlotUnassign?: (slot: ScheduleSlot) => void;
+  /** Highlight lane for a given officer id */
+  highlightOfficerId?: number;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -43,7 +45,8 @@ function formatHeader(ymd: string): string {
 
 export default function OfficerLaneTimeline({
   anchorYmd, mode, slots, officers, todayYmd,
-  highlightSlotId, onSlotClick, onSlotDrop, onQueueDrop,
+  highlightSlotId, highlightOfficerId, onSlotClick, onSlotDrop, onQueueDrop,
+  onSlotDismiss, onSlotUnassign,
 }: Props) {
   const days = useMemo(() => extendRange(anchorYmd, mode), [anchorYmd, mode]);
   const grouped = useMemo(() => groupByOfficerLane(slots), [slots]);

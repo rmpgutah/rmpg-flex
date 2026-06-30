@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { FeatureCollection } from 'geojson';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';

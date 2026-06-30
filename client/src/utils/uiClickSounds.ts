@@ -112,7 +112,7 @@ export function playUiNavigate(): void {
  * tick fires even when a handler stops propagation; pointerdown so
  * feedback is instant, matching hardware-console feel.
  */
-export function initUiClickSounds(): void {
+export const initUiClickSounds = (): void => {
   if (installed || typeof document === 'undefined') return;
   installed = true;
   document.addEventListener(
@@ -161,4 +161,4 @@ export function initUiClickSounds(): void {
     });
     observer.observe(document.body, { childList: true, subtree: true });
   } catch { /* observer unavailable — opens stay silent */ }
-}
+};
