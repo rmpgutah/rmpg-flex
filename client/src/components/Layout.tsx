@@ -123,6 +123,7 @@ import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
+import { playUiNavigate } from '../utils/uiClickSounds';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',

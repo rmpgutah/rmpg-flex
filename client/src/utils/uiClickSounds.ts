@@ -110,18 +110,6 @@ export function initUiClickSounds(): void {
     'keydown',
     (e) => {
       if (e.key !== 'Escape' || e.repeat) return;
-      if (document.querySelector('[role="dialog"], [data-modal], .modal-overlay')) playUiClose();
-    },
-    { capture: true, passive: true }
-  );
-
-  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
-  // only when something dismissable is actually open (a dialog or a
-  // full-screen overlay), so bare Escape presses in a grid stay silent.
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.key !== 'Escape' || e.repeat) return;
       if (document.querySelector(DIALOG_SELECTOR)) playUiClose();
     },
     { capture: true, passive: true }

@@ -261,17 +261,7 @@ export default function MenuBar({
   }, [openMenu]);
 
   // Zoom keyboard shortcuts — Ctrl+= / Ctrl+- / Ctrl+0
-  useEffect(() => {
-    const onZoomKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
-        else if (e.key === '-') { e.preventDefault(); zoomOut(); }
-        else if (e.key === '0') { e.preventDefault(); zoomReset(); }
-      }
-    };
-    window.addEventListener('keydown', onZoomKey);
-    return () => window.removeEventListener('keydown', onZoomKey);
-  }, [zoomIn, zoomOut, zoomReset]);
+  // Declared after zoomIn/zoomOut/zoomReset to avoid TDZ in dependency array
 
   const closeMenus = useCallback(() => {
     setOpenMenu(null);
@@ -475,6 +465,19 @@ export default function MenuBar({
   const zoomIn = useCallback(() => setAppZoom(z => Math.min(200, z + 10)), []);
   const zoomOut = useCallback(() => setAppZoom(z => Math.max(50, z - 10)), []);
   const zoomReset = useCallback(() => setAppZoom(100), []);
+
+  // Zoom keyboard shortcuts — Ctrl+= / Ctrl+- / Ctrl+0
+  useEffect(() => {
+    const onZoomKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
+        else if (e.key === '-') { e.preventDefault(); zoomOut(); }
+        else if (e.key === '0') { e.preventDefault(); zoomReset(); }
+      }
+    };
+    window.addEventListener('keydown', onZoomKey);
+    return () => window.removeEventListener('keydown', onZoomKey);
+  }, [zoomIn, zoomOut, zoomReset]);
 
   const currentPage = location.pathname;
 
