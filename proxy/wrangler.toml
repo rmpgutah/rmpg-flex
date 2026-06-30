@@ -24,6 +24,16 @@ service = "rmpg-flex"
 # Workers Logs — required for the cutover inventory (Phase 0 of
 # docs/superpowers/plans/2026-06-12-worker-cutover.md). Captures the
 # [legacy-fallthrough] lines for the route-migration batches.
+# ─── Durable Object migration ──────────────────────────
+# The deployed rmgp-api-proxy previously had AlertHubDO registered (it
+# lives in the main rmgp-flex-api worker, not the proxy). This migration
+# tells Cloudflare the class is intentionally removed — without it, the
+# deploy fails with "New version of script does not export class
+# 'AlertHubDO' which is depended on by existing Durable Objects."
+[[migrations]]
+tag = "v1-proxy-cleanup"
+deleted_classes = ["AlertHubDO"]
+
 [observability]
 enabled = true
 head_sampling_rate = 1

@@ -22,6 +22,11 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { VoiceHubDO } from './durable-objects/VoiceHubDO';
+import { AlertHubDO } from './durable-objects/AlertHubDO';
+import { DeepResearchDO } from './durable-objects/DeepResearchDO';
+import { PersonIntelDO } from './durable-objects/PersonIntelDO';
+import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
@@ -31,7 +36,7 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, FlexCamRemuxDO, PdfToolsContainer };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
