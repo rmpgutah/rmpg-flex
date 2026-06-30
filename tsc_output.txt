@@ -1,0 +1,681 @@
+src/App.tsx(433,28): error TS2304: Cannot find name 'DispatchVoiceMount'.
+src/components/__tests__/AllPickers.shared.test.tsx(16,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/AllPickers.shared.test.tsx(16,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/CitationPdfPreview.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/CitationPdfPreview.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/Combobox.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/Combobox.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/Combobox.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/CommitDropdown.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/ConnectionsGraphPanel.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/ConnectionsGraphPanel.test.tsx(2,27): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/InstallCoachingModal.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/InstallCoachingModal.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/MapToolbar.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/MapToolbar.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/OnFootBadge.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/PdfReviewModal.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/PdfReviewModal.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/PersonPicker.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/PersonPicker.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/PersonPicker.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/ResolutionReviewPanel.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/ResolutionReviewPanel.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/SuggestedLinksPanel.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/SuggestedLinksPanel.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/__tests__/ViolationStack.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/__tests__/ViolationStack.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/__tests__/ViolationStack.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/components/AddressAutocomplete.tsx(37,3): error TS2687: All declarations of 'center' must have identical modifiers.
+src/components/AddressAutocomplete.tsx(38,3): error TS2687: All declarations of 'text' must have identical modifiers.
+src/components/AddressAutocomplete.tsx(96,3): error TS2687: All declarations of 'center' must have identical modifiers.
+src/components/AddressAutocomplete.tsx(96,3): error TS2717: Subsequent property declarations must have the same type.  Property 'center' must be of type '[number, number]', but here has type '[number, number] | undefined'.
+src/components/AddressAutocomplete.tsx(99,3): error TS2687: All declarations of 'text' must have identical modifiers.
+src/components/AddressAutocomplete.tsx(99,3): error TS2717: Subsequent property declarations must have the same type.  Property 'text' must be of type 'string', but here has type 'string | undefined'.
+src/components/AssessorSuggestionPanel.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/AssessorSuggestionPanel.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/dashboard/ForecastChart.tsx(38,13): error TS2322: Type '(value: number, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: number, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/components/DispatchMiniMap.tsx(212,9): error TS2322: Type 'HTMLDivElement | null' is not assignable to type 'string | HTMLElement'.
+  Type 'null' is not assignable to type 'string | HTMLElement'.
+src/components/DispatchMiniMap.tsx(268,36): error TS2345: Argument of type '{ priority: CallPriority; label: string; }' is not assignable to parameter of type 'string'.
+src/components/flexcam/FlexCamTripPlayer.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/flexcam/FlexCamTripPlayer.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/flexcam/TripTimeline.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/Layout.tsx(212,3): error TS1117: An object literal cannot have multiple properties with the same name.
+src/components/Layout.tsx(571,44): error TS2304: Cannot find name 'playUiNavigate'.
+src/components/MapboxAddressAutofill.tsx(12,41): error TS2307: Cannot find module '@mapbox/search-js-react' or its corresponding type declarations.
+src/components/MapboxAddressAutofill.tsx(75,28): error TS2339: Property 'then' does not exist on type '{ configured: boolean; source: string; }'.
+src/components/MapboxAddressAutofill.tsx(75,33): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/components/MenuBar.tsx(274,7): error TS2448: Block-scoped variable 'zoomIn' used before its declaration.
+src/components/MenuBar.tsx(274,7): error TS2454: Variable 'zoomIn' is used before being assigned.
+src/components/MenuBar.tsx(274,15): error TS2448: Block-scoped variable 'zoomOut' used before its declaration.
+src/components/MenuBar.tsx(274,15): error TS2454: Variable 'zoomOut' is used before being assigned.
+src/components/MenuBar.tsx(274,24): error TS2448: Block-scoped variable 'zoomReset' used before its declaration.
+src/components/MenuBar.tsx(274,24): error TS2454: Variable 'zoomReset' is used before being assigned.
+src/components/MenuBar.tsx(1027,29): error TS2339: Property 'disabled' does not exist on type 'MenuAction | MenuToggle | MenuSubmenu | MenuInfo'.
+  Property 'disabled' does not exist on type 'MenuInfo'.
+src/components/PropertyFormModal.tsx(798,13): error TS2322: Type '{ name: string; rows: number; className: string; placeholder: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, Element>) => void; pattern: string; maxLength: number; }' is not assignable to type 'IntrinsicAttributes & TextareaHTMLAttributes<HTMLTextAreaElement> & { hideToolbar?: boolean | undefined; } & RefAttributes<...>'.
+  Property 'pattern' does not exist on type 'IntrinsicAttributes & TextareaHTMLAttributes<HTMLTextAreaElement> & { hideToolbar?: boolean | undefined; } & RefAttributes<...>'.
+src/components/PropertyFormModal.tsx(800,13): error TS17001: JSX elements cannot have multiple attributes with the same name.
+src/components/scheduler/MonthGrid.tsx(101,15): error TS2322: Type '(e: React.DragEvent<HTMLDivElement>) => void' is not assignable to type 'DragEventHandler<HTMLButtonElement>'.
+  Types of parameters 'e' and 'event' are incompatible.
+    Type 'DragEvent<HTMLButtonElement>' is not assignable to type 'DragEvent<HTMLDivElement>'.
+      Property 'align' is missing in type 'HTMLButtonElement' but required in type 'HTMLDivElement'.
+src/components/scheduler/MonthGrid.tsx(104,15): error TS2322: Type '(e: React.DragEvent<HTMLDivElement>) => void' is not assignable to type 'DragEventHandler<HTMLButtonElement>'.
+  Types of parameters 'e' and 'event' are incompatible.
+    Type 'DragEvent<HTMLButtonElement>' is not assignable to type 'DragEvent<HTMLDivElement>'.
+      Property 'align' is missing in type 'HTMLButtonElement' but required in type 'HTMLDivElement'.
+src/components/scheduler/OfficerLaneTimeline.tsx(100,30): error TS2304: Cannot find name 'onSlotDismiss'.
+src/components/scheduler/OfficerLaneTimeline.tsx(100,47): error TS2304: Cannot find name 'onSlotUnassign'.
+src/components/scheduler/OfficerLaneTimeline.tsx(130,17): error TS2304: Cannot find name 'highlightOfficerId'.
+src/components/scheduler/OfficerLaneTimeline.tsx(130,51): error TS2304: Cannot find name 'highlightOfficerId'.
+src/components/scheduler/OfficerLaneTimeline.tsx(165,34): error TS2304: Cannot find name 'onSlotUnassign'.
+src/components/scheduler/OfficerLaneTimeline.tsx(169,76): error TS2304: Cannot find name 'onSlotUnassign'.
+src/components/scheduler/OfficerLaneTimeline.tsx(173,38): error TS2304: Cannot find name 'UserMinus'.
+src/components/scheduler/OfficerLaneTimeline.tsx(176,34): error TS2304: Cannot find name 'onSlotDismiss'.
+src/components/scheduler/OfficerLaneTimeline.tsx(180,76): error TS2304: Cannot find name 'onSlotDismiss'.
+src/components/scheduler/OfficerLaneTimeline.tsx(184,38): error TS2304: Cannot find name 'X'.
+src/components/serve-intake/__tests__/DefendantsPicker.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/serve-intake/__tests__/DefendantsPicker.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/serve-intake/__tests__/JudgeFlagChip.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/serve/ServeJobCard.tsx(458,54): error TS2367: This comparison appears to be unintentional because the types '"other" | "no_answer" | "refused" | "wrong_address" | "moved"' and '"sub_served"' have no overlap.
+src/components/spillman/__tests__/SpillmanGroupBox.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/spillman/__tests__/SpillmanMenuBar.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/spillman/__tests__/SpillmanMenuBar.test.tsx(4,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/spillman/__tests__/SpillmanStatusGrid.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/spillman/__tests__/SpillmanStatusGrid.test.tsx(4,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/spillman/__tests__/SpillmanStatusGrid.test.tsx(67,52): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/components/spillman/__tests__/SpillmanStatusGrid.test.tsx(69,60): error TS7006: Parameter 'tr' implicitly has an 'any' type.
+src/components/spillman/__tests__/SpillmanToolbar.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/spillman/__tests__/SpillmanToolbar.test.tsx(4,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/components/spillman/__tests__/SpillmanWindow.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/components/spillman/__tests__/SpillmanWindow.test.tsx(4,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/context/__tests__/FeatureFlagsContext.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/context/__tests__/FeatureFlagsContext.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/__tests__/useCitationPreview.test.ts(1,27): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/__tests__/useNavGuidanceEngine.test.ts(6,27): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/__tests__/useSpeedLimit.test.ts(1,22): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/__tests__/useVoicePersona.test.ts(2,27): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/useAutoPanToP1.ts(3,15): error TS2614: Module '"./useLiveSync"' has no exported member 'ActiveCall'. Did you mean to use 'import ActiveCall from "./useLiveSync"' instead?
+src/hooks/useEventPlanning.ts(312,21): error TS2304: Cannot find name 'markersRef'.
+src/hooks/useEventPlanning.ts(313,5): error TS2304: Cannot find name 'markersRef'.
+src/hooks/useEventPlanning.ts(315,25): error TS2304: Cannot find name 'layerIdsRef'.
+src/hooks/useEventPlanning.ts(322,5): error TS2304: Cannot find name 'layerIdsRef'.
+src/hooks/useGeoJsonLayers.ts(393,42): error TS2304: Cannot find name 'FeatureCollection'.
+src/hooks/useLinkOptions.test.ts(2,22): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/hooks/useMapboxSearchBox.ts(63,28): error TS2339: Property 'then' does not exist on type '{ configured: boolean; source: string; }'.
+src/hooks/useMapboxSearchBox.ts(63,33): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/hooks/useMapRouting.ts(460,29): error TS2304: Cannot find name 'leg'.
+src/hooks/useMapRouting.ts(461,32): error TS2304: Cannot find name 'leg'.
+src/hooks/useMapRouting.ts(463,9): error TS2304: Cannot find name 'ensureRouteLayer'.
+src/hooks/useMultiUnitRouting.ts(5,28): error TS2315: Type 'Map$1' is not generic.
+src/hooks/useMultiUnitRouting.ts(5,50): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useMultiUnitRouting.ts(5,54): error TS1361: 'Map' cannot be used as a value because it was imported using 'import type'.
+src/hooks/useWhatsHere.ts(321,7): error TS2554: Expected 4-5 arguments, but got 3.
+src/hooks/useWhatsHere.ts(326,11): error TS2554: Expected 4-5 arguments, but got 3.
+src/hooks/useWhatsHere.ts(328,53): error TS2554: Expected 4-5 arguments, but got 3.
+src/hooks/useWhatsHere.ts(331,47): error TS2304: Cannot find name 'streetAbortRef'.
+src/integrations/collaboration.ts(9,20): error TS2307: Cannot find module 'yjs' or its corresponding type declarations.
+src/integrations/deckLayers.ts(13,35): error TS2307: Cannot find module '@deck.gl/google-maps' or its corresponding type declarations.
+src/integrations/documentHistory.ts(10,23): error TS2307: Cannot find module 'automerge' or its corresponding type declarations.
+src/integrations/networkGraph.ts(11,19): error TS2307: Cannot find module 'graphology' or its corresponding type declarations.
+src/integrations/networkGraph.ts(12,19): error TS2307: Cannot find module 'sigma' or its corresponding type declarations.
+src/integrations/networkGraph.ts(133,30): error TS7031: Binding element 'node' implicitly has an 'any' type.
+src/integrations/observablePlot.ts(9,23): error TS2307: Cannot find module '@observablehq/plot' or its corresponding type declarations.
+src/integrations/ocrEngine.ts(9,23): error TS2307: Cannot find module 'tesseract.js' or its corresponding type declarations.
+src/integrations/peerConnection.ts(10,18): error TS2307: Cannot find module 'peerjs' or its corresponding type declarations.
+src/integrations/peerConnection.ts(11,54): error TS2307: Cannot find module 'peerjs' or its corresponding type declarations.
+src/integrations/peerConnection.ts(65,26): error TS7006: Parameter 'conn' implicitly has an 'any' type.
+src/integrations/peerConnection.ts(67,22): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/integrations/peerConnection.ts(76,20): error TS7006: Parameter 'call' implicitly has an 'any' type.
+src/integrations/peerConnection.ts(148,26): error TS7006: Parameter 'remoteStream' implicitly has an 'any' type.
+src/integrations/sessionRecording.ts(9,39): error TS2307: Cannot find module 'rrweb' or its corresponding type declarations.
+src/integrations/sessionRecording.ts(10,36): error TS2307: Cannot find module '@rrweb/types' or its corresponding type declarations.
+src/integrations/sessionRecording.ts(48,10): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/integrations/tacticalWhiteboard.ts(18,10): error TS2307: Cannot find module '@excalidraw/excalidraw' or its corresponding type declarations.
+src/integrations/tacticalWhiteboard.ts(138,43): error TS2307: Cannot find module '@excalidraw/excalidraw' or its corresponding type declarations.
+src/integrations/turfGeo.ts(12,23): error TS2307: Cannot find module '@turf/turf' or its corresponding type declarations.
+src/integrations/visTimeline.ts(12,26): error TS2307: Cannot find module 'vis-timeline/standalone' or its corresponding type declarations.
+src/integrations/visTimeline.ts(13,25): error TS2307: Cannot find module 'vis-data/standalone' or its corresponding type declarations.
+src/main.tsx(82,20): error TS2322: Type '{ children: Element; future: { v7_startTransition: boolean; v7_relativeSplatPath: boolean; }; }' is not assignable to type 'IntrinsicAttributes & BrowserRouterProps'.
+  Property 'future' does not exist on type 'IntrinsicAttributes & BrowserRouterProps'.
+src/pages/__tests__/ConnectionsPage.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/ConnectionsPage.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/ConnectionsPage.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/ConnectionsPage.test.tsx(431,36): error TS7006: Parameter 'el' implicitly has an 'any' type.
+src/pages/__tests__/ConnectionsPage.test.tsx(469,36): error TS7006: Parameter 'el' implicitly has an 'any' type.
+src/pages/__tests__/ConnectionsPage.test.tsx(674,24): error TS18046: 'g' is of type 'unknown'.
+src/pages/__tests__/ConnectionsPage.test.tsx(762,56): error TS7006: Parameter 'el' implicitly has an 'any' type.
+src/pages/__tests__/DashboardPage.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/DashboardPage.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/IntelSearchPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/IntelSearchPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/IntelSearchPage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/InteractionRecorderPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/InteractionRecorderPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/InteractionRecorderPage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/JailRecordsPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/JailRecordsPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/JailRecordsPage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/MdtPage.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/MdtPage.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/MdtPage.test.tsx(2,44): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/PersonDossierPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/PersonDossierPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/PersonDossierPage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/PlateLogPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/PlateLogPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/PlateLogPage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/QuickCapturePage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/QuickCapturePage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/__tests__/QuickCapturePage.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/SettingsPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/__tests__/SettingsPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/__tests__/SettingsPage.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/AccreditationsPage.tsx(282,35): error TS2322: Type '{ icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; message: string; }' is not assignable to type 'IntrinsicAttributes & EmptyStateProps'.
+  Property 'message' does not exist on type 'IntrinsicAttributes & EmptyStateProps'.
+src/pages/admin/__tests__/AdminDevSettingsTab.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/admin/__tests__/AdminDevSettingsTab.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/admin/__tests__/AdminDevSettingsTab.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/admin/__tests__/AdminGodModeTab.bulkReassign.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/admin/__tests__/AdminGodModeTab.bulkReassign.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/admin/__tests__/AdminGodModeTab.bulkReassign.test.tsx(3,35): error TS2305: Module '"@testing-library/react"' has no exported member 'within'.
+src/pages/admin/__tests__/AdminGodModeTab.forceClose.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/admin/__tests__/AdminGodModeTab.forceClose.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/admin/__tests__/AdminInspectionTemplatesTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/admin/__tests__/AdminInspectionTemplatesTab.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/admin/__tests__/AdminInspectionTemplatesTab.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/admin/__tests__/AdminRadioSettings.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/admin/__tests__/AdminRadioSettings.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/admin/AdminIntegrationsTab.tsx(52,45): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(60,20): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(72,26): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(79,19): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(88,27): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(98,25): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(107,29): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(121,25): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(126,23): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(144,26): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(155,26): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(255,103): error TS2304: Cannot find name 'ApiKeyConfig'.
+src/pages/admin/AdminIntegrationsTab.tsx(298,9): error TS2304: Cannot find name 'getMapboxToken'.
+src/pages/AdminPage.tsx(1105,10): error TS2367: This comparison appears to be unintentional because the types 'TabId' and '"alert_sounds"' have no overlap.
+src/pages/AdminPage.tsx(1113,10): error TS2367: This comparison appears to be unintentional because the types 'TabId' and '"gps_health"' have no overlap.
+src/pages/AdminPage.tsx(1275,10): error TS2367: This comparison appears to be unintentional because the types 'TabId' and '"court_lookups"' have no overlap.
+src/pages/AdminPage.tsx(1276,12): error TS2304: Cannot find name 'AdminCourtLookupsTab'.
+src/pages/AlertsPage.tsx(337,15): error TS2304: Cannot find name 'canManage'.
+src/pages/CaseManagementPage.tsx(400,20): error TS2304: Cannot find name 'useNavigate'.
+src/pages/CitationsPage.tsx(382,112): error TS2304: Cannot find name 'useDistrictOptions'.
+src/pages/CitationsPage.tsx(383,42): error TS2304: Cannot find name 'useDistrictIdentify'.
+src/pages/CitationsPage.tsx(1845,39): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/pages/CitationsPage.tsx(1853,57): error TS7006: Parameter 'z' implicitly has an 'any' type.
+src/pages/CitationsPage.tsx(1861,51): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/CommunityPage.tsx(248,44): error TS2448: Block-scoped variable 'openEdit' used before its declaration.
+src/pages/CommunityPage.tsx(248,44): error TS2454: Variable 'openEdit' is used before being assigned.
+src/pages/CommunityPortalPage.tsx(224,34): error TS2322: Type '{ icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; message: string; }' is not assignable to type 'IntrinsicAttributes & EmptyStateProps'.
+  Property 'message' does not exist on type 'IntrinsicAttributes & EmptyStateProps'.
+src/pages/CourtRecordsPage.tsx(149,59): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/CrimeAnalysisPage.tsx(207,18): error TS2304: Cannot find name 'filterRef'.
+src/pages/CrimeAnalysisPage.tsx(227,12): error TS2304: Cannot find name 'canExport'.
+src/pages/dashboard/__tests__/DashboardViewSelector.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/dashboard/__tests__/SpmGroup.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/DashboardPage.tsx(1838,23): error TS2322: Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/pages/DashboardPage.tsx(1988,25): error TS2322: Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/pages/DashboardPage.tsx(2122,63): error TS2322: Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: number) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/pages/DashboardPage.tsx(3138,21): error TS2322: Type '(value: number, _name: string, props: any) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: number, _name: string, props: any) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'ValueType | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/pages/DashCamerasPage.tsx(310,9): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashCamerasPage.tsx(332,16): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashCamerasPage.tsx(746,16): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashCamerasPage.tsx(791,47): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashCamerasPage.tsx(798,91): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashCamerasPage.tsx(901,10): error TS2304: Cannot find name 'isAdminOrManager'.
+src/pages/DashcamPage.tsx(187,8): error TS2304: Cannot find name 'ConfirmDialog'.
+src/pages/DashcamPage.tsx(426,22): error TS2304: Cannot find name 'canEdit'.
+src/pages/DashcamPage.tsx(439,22): error TS2304: Cannot find name 'canEdit'.
+src/pages/dispatch/DispatchPage.tsx(1930,41): error TS2304: Cannot find name 'payloadValue'.
+src/pages/dispatch/DispatchPage.tsx(1941,9): error TS2304: Cannot find name 'looksLikeFullRow'.
+src/pages/dispatch/DispatchPage.tsx(4048,26): error TS2304: Cannot find name 'Route'.
+src/pages/DispatchPage.tsx(127,5): error TS2561: Object literal may only specify known properties, but 'section_id' does not exist in type 'CallForService'. Did you mean to write 'sector_id'?
+src/pages/DispatchPage.tsx(1143,32): error TS2551: Property 'section_id' does not exist on type 'CallForService'. Did you mean 'sector_id'?
+src/pages/DispatchPage.tsx(2256,169): error TS2551: Property 'section_id' does not exist on type 'CallForService'. Did you mean 'sector_id'?
+src/pages/DispatchPage.tsx(2277,39): error TS2551: Property 'section_id' does not exist on type 'CallForService'. Did you mean 'sector_id'?
+src/pages/DispatchPage.tsx(2277,143): error TS2551: Property 'section_id' does not exist on type 'CallForService'. Did you mean 'sector_id'?
+src/pages/DlSearchPage.tsx(629,32): error TS2304: Cannot find name 'fromDeepLinkRef'.
+src/pages/DlSearchPage.tsx(632,7): error TS2304: Cannot find name 'fromDeepLinkRef'.
+src/pages/DlSearchPage.tsx(639,7): error TS2304: Cannot find name 'fromDeepLinkRef'.
+src/pages/DlSearchPage.tsx(665,5): error TS2304: Cannot find name 'fromDeepLinkRef'.
+src/pages/DlSearchPage.tsx(1154,85): error TS2304: Cannot find name 'Camera'.
+src/pages/EmailPage.tsx(1049,42): error TS2304: Cannot find name 'prefill'.
+src/pages/EmailPage.tsx(1050,36): error TS2304: Cannot find name 'prefill'.
+src/pages/EmailPage.tsx(1457,8): error TS2304: Cannot find name 'ForwardRedactionModal'.
+src/pages/EmailPage.tsx(1460,20): error TS2304: Cannot find name 'handleRedactionConfirm'.
+src/pages/EvidencePropertyPage.tsx(1167,89): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/EvidencePropertyPage.tsx(1168,83): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/EvidencePropertyPage.tsx(1179,75): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/EvidencePropertyPage.tsx(1179,114): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/FieldInterviewsPage.tsx(409,14): error TS2304: Cannot find name 'canManageRef'.
+src/pages/fleet/FleetDetailPanel.tsx(78,5): error TS2322: Type '"gps"' is not assignable to type 'DetailTab'.
+src/pages/fleet/FleetDetailPanel.tsx(79,46): error TS2304: Cannot find name 'Camera'.
+src/pages/fleet/FleetDetailPanel.tsx(212,32): error TS2304: Cannot find name 'apiFetch'.
+src/pages/fleet/FleetDetailPanel.tsx(567,10): error TS2367: This comparison appears to be unintentional because the types 'DetailTab' and '"expenses"' have no overlap.
+src/pages/fleet/FleetDetailPanel.tsx(567,39): error TS2304: Cannot find name 'FleetExpensesTab'.
+src/pages/fleet/FleetDetailPanel.tsx(568,10): error TS2367: This comparison appears to be unintentional because the types 'DetailTab' and '"gps"' have no overlap.
+src/pages/fleet/FleetDetailPanel.tsx(568,34): error TS2304: Cannot find name 'FleetGpsTab'.
+src/pages/fleet/tabs/FleetAnalyticsTab.tsx(724,19): error TS2322: Type '(value: any, name: string) => [any, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: any, name: string) => [any, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'name' and 'name' are incompatible.
+      Type 'NameType | undefined' is not assignable to type 'string'.
+        Type 'undefined' is not assignable to type 'string'.
+src/pages/fleet/tabs/FleetAnalyticsTab.tsx(881,17): error TS2322: Type '(value: any, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: any, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'name' and 'name' are incompatible.
+      Type 'NameType | undefined' is not assignable to type 'string'.
+        Type 'undefined' is not assignable to type 'string'.
+src/pages/fleet/tabs/FleetAnalyticsTab.tsx(919,17): error TS2322: Type '(value: any, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType> & ((value: ValueType, name: NameType, item: TooltipPayloadEntry, index: number, payload: TooltipPayload) => ReactNode | [...])'.
+  Type '(value: any, name: string) => [string, string]' is not assignable to type 'Formatter<ValueType, NameType>'.
+    Types of parameters 'name' and 'name' are incompatible.
+      Type 'NameType | undefined' is not assignable to type 'string'.
+        Type 'undefined' is not assignable to type 'string'.
+src/pages/fleet/v2/__tests__/AnalysisFormsRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/DashboardRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/DashboardRoute.test.tsx(42,23): error TS7006: Parameter 'l' implicitly has an 'any' type.
+src/pages/fleet/v2/__tests__/DashCamerasRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/FleetShell.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/FuelEntriesRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/GpsTrackingRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/InsightsRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/InsightsRoute.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/fleet/v2/__tests__/InspectionsRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/PersonnelRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/ReportsRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/ServiceRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/Sidebar.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/VehicleDetailRoute.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/fleet/v2/__tests__/VehiclesListRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/VehiclesListRoute.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/fleet/v2/__tests__/VendorsRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/VendorsRoute.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/fleet/v2/__tests__/WorkOrdersRoute.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/__tests__/WorkOrdersRoute.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/fleet/v2/__tests__/WorkOrdersRoute.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/fleet/v2/hooks/__tests__/useFleetV2Audit.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/fleet/v2/shell/__tests__/EmptyStateCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/shell/__tests__/FleetListShell.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/shell/__tests__/FleetListShell.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/fleet/v2/shell/__tests__/KpiRibbon.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/shell/__tests__/KpiRibbon.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/fleet/v2/shell/__tests__/LegacyActionLink.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/shell/__tests__/SectionHeader.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/ActivityTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/AssignmentsTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/CostsTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/DamageTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/FuelTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/InspectionsTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/RecallsTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/ServiceTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/fleet/v2/vehicleDetail/__tests__/TiresTab.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/ForensicLabPage.tsx(1155,18): error TS2304: Cannot find name 'canDelete'.
+src/pages/GangIntelPage.tsx(98,7): error TS2304: Cannot find name 'setGangs'.
+src/pages/HelpPage.tsx(388,5): error TS2304: Cannot find name 'setHealthLoading'.
+src/pages/HelpPage.tsx(392,22): error TS2304: Cannot find name 'setHealthLoading'.
+src/pages/HelpPage.tsx(511,17): error TS2304: Cannot find name 'pdfError'.
+src/pages/HelpPage.tsx(512,24): error TS2304: Cannot find name 'setPdfError'.
+src/pages/HelpPage.tsx(513,26): error TS2304: Cannot find name 'setPdfError'.
+src/pages/HelpPage.tsx(515,18): error TS2304: Cannot find name 'pdfError'.
+src/pages/hr/tabs/PayrollTab.tsx(613,29): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/hr/tabs/PayrollTab.tsx(849,31): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/hr/tabs/PayrollTab.tsx(964,30): error TS2304: Cannot find name 'toDisplayLabel'.
+src/pages/IncidentsPage.tsx(258,20): error TS2304: Cannot find name 'useLocation'.
+src/pages/intel/__tests__/BoloBoard.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/BoloBoard.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/BoloBoard.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelContext.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelContext.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelContextPanel.aisummary.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelContextPanel.aisummary.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelContextPanel.aisummary.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelContextPanel.associates.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelContextPanel.associates.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelContextPanel.associates.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelContextPanel.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelContextPanel.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelContextPanel.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelDashboard.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelDashboard.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelPortalLayout.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelPortalLayout.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelRail.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelSearch.chips.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelSearch.chips.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/IntelSearch.chips.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelSearch.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/IntelSearch.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/IntelSearch.test.tsx(1,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/NewIntelReportPage.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/NewIntelReportPage.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/__tests__/NewIntelReportPage.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/ResultCard.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/ResultGroup.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/ReviewQueues.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/useBolos.test.tsx(1,22): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/useIntelOverview.test.tsx(1,22): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/__tests__/WatchlistSection.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/__tests__/WatchlistSection.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/intel/bolo/__tests__/BoloCard.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/bolo/__tests__/BoloCard.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/bolo/__tests__/BoloCreateModal.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/bolo/__tests__/BoloCreateModal.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/search/__tests__/searchBar.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/search/__tests__/searchBar.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/search/__tests__/searchUi.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/search/__tests__/searchUi.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/intel/widgets/__tests__/widgets.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/intel/widgets/__tests__/widgets.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/JailPage.tsx(328,12): error TS2304: Cannot find name 'canCreate'.
+src/pages/JailPage.tsx(334,27): error TS2304: Cannot find name 'canCreate'.
+src/pages/JailPage.tsx(398,9): error TS2304: Cannot find name 'canCreate'.
+src/pages/JailPage.tsx(421,10): error TS2304: Cannot find name 'canCreate'.
+src/pages/JailRecordsPage.tsx(326,8): error TS2304: Cannot find name 'ConfirmDialog'.
+src/pages/JailRecordsPage.tsx(327,17): error TS2304: Cannot find name 'showIngestConfirm'.
+src/pages/JailRecordsPage.tsx(328,24): error TS2304: Cannot find name 'setShowIngestConfirm'.
+src/pages/JailRecordsPage.tsx(329,20): error TS2304: Cannot find name 'doIngest'.
+src/pages/JailRecordsPage.tsx(331,28): error TS2304: Cannot find name 'lineCount'.
+src/pages/JailRecordsPage.tsx(331,45): error TS2304: Cannot find name 'lineCount'.
+src/pages/LawBookPage.tsx(381,7): error TS2304: Cannot find name 'clearRecentConfirm'.
+src/pages/LawBookPage.tsx(405,17): error TS2304: Cannot find name 'clearRecentConfirm'.
+src/pages/LawBookPage.tsx(406,24): error TS2304: Cannot find name 'setClearRecentConfirm'.
+src/pages/LawBookPage.tsx(410,11): error TS2304: Cannot find name 'setClearRecentConfirm'.
+src/pages/map/components/__tests__/AnnotationTool.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/AnnotationTool.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/__tests__/AnnotationTool.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/map/components/__tests__/BufferRingTool.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/BufferRingTool.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/__tests__/DrawGeofenceTool.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/DrawGeofenceTool.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/__tests__/DrawGeofenceTool.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/map/components/__tests__/GpsReplayTool.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/GpsReplayTool.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/__tests__/GpsReplayTool.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/map/components/__tests__/MapDiagnosticsOverlay.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/NavOverlayTool.test.tsx(1,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/NavOverlayTool.test.tsx(1,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/__tests__/NavOverlayTool.test.tsx(1,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/map/components/__tests__/RulerTool.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/map/components/__tests__/RulerTool.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/map/components/MapboxDispatchConnections.tsx(13,40): error TS2307: Cannot find module '../hooks/useClosestUnit' or its corresponding type declarations.
+src/pages/map/hooks/useMapboxInit.ts(17,8): error TS2724: '"../../../utils/mapboxLoader"' has no exported member named 'MapboxStyleId'. Did you mean 'setMapboxStyle'?
+src/pages/map/hooks/useMapboxInit.ts(98,11): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/hooks/useMapboxInit.ts(105,21): error TS2554: Expected 2-3 arguments, but got 1.
+src/pages/map/hooks/useMapboxInit.ts(160,13): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/hooks/useMapboxInit.ts(176,11): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/hooks/useMapboxInit.ts(236,7): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/MapboxMapPage.tsx(86,15): error TS2614: Module '"./components/MapOverlaysPanel"' has no exported member 'LayerGroup'. Did you mean to use 'import LayerGroup from "./components/MapOverlaysPanel"' instead?
+src/pages/map/MapboxMapPage.tsx(95,5): error TS2322: Type '"officer_safety_caution"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(96,5): error TS2322: Type '"weapons_involved"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(97,5): error TS2322: Type '"felony_in_progress"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(98,5): error TS2322: Type '"domestic_violence"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(99,5): error TS2322: Type '"hazmat"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(100,5): error TS2322: Type '"mental_health_crisis"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(101,5): error TS2322: Type '"gang_related"' is not assignable to type 'keyof ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(188,14): error TS2339: Property 'cross_street' does not exist on type 'ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(188,91): error TS2339: Property 'cross_street' does not exist on type 'ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(189,14): error TS2339: Property 'beat_name' does not exist on type 'ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(189,91): error TS2339: Property 'beat_name' does not exist on type 'ActiveCall'.
+src/pages/map/MapboxMapPage.tsx(270,42): error TS2345: Argument of type '{ map: Map$1 | null; }' is not assignable to parameter of type 'UseGeoJsonLayersOptions'.
+  Property 'popup' is missing in type '{ map: Map$1 | null; }' but required in type 'UseGeoJsonLayersOptions'.
+src/pages/map/MapboxMapPage.tsx(361,35): error TS2345: Argument of type '{ id: string; position: [number, number]; priority: string; weight: number; }[]' is not assignable to parameter of type 'IncidentPoint[]'.
+  Type '{ id: string; position: [number, number]; priority: string; weight: number; }' is missing the following properties from type 'IncidentPoint': type, timestamp
+src/pages/map/MapboxMapPage.tsx(362,31): error TS2345: Argument of type '{ id: string; position: [number, number]; status: UnitStatus; callSign: string; }[]' is not assignable to parameter of type 'UnitPosition[]'.
+  Property 'callsign' is missing in type '{ id: string; position: [number, number]; status: UnitStatus; callSign: string; }' but required in type 'UnitPosition'.
+src/pages/map/MapboxMapPage.tsx(414,57): error TS2554: Expected 0 arguments, but got 1.
+src/pages/map/MapboxMapPage.tsx(418,27): error TS2339: Property 'token' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(419,28): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(421,35): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(423,35): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(424,82): error TS2339: Property 'errorMessage' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(425,35): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(426,82): error TS2339: Property 'errorMessage' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(427,35): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(427,72): error TS2339: Property 'errorKind' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(437,40): error TS2339: Property 'token' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(450,21): error TS2554: Expected 2-3 arguments, but got 1.
+src/pages/map/MapboxMapPage.tsx(452,36): error TS2339: Property 'token' does not exist on type '{ configured: boolean; source: string; }'.
+src/pages/map/MapboxMapPage.tsx(532,15): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/MapboxMapPage.tsx(546,32): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/MapboxMapPage.tsx(565,30): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/MapboxMapPage.tsx(585,7): error TS2554: Expected 1 arguments, but got 0.
+src/pages/map/MapboxMapPage.tsx(1927,9): error TS2322: Type '{ open: boolean; onClose: () => void; groups: LayerGroup[]; }' is not assignable to type 'IntrinsicAttributes & MapOverlaysPanelProps'.
+  Property 'open' does not exist on type 'IntrinsicAttributes & MapOverlaysPanelProps'.
+src/pages/map/utils/mapboxOverlays.ts(202,19): error TS2339: Property 'mapInstance' does not exist on type 'Window & typeof globalThis'.
+src/pages/mobile/cards/__tests__/ActiveCallsCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/ActiveCallsCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/BolosCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/BolosCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/MapSnippetCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/MessagesCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/MessagesCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/QuickActionsCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/QuickActionsCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/mobile/cards/__tests__/QuickSearchCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/QuickSearchCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/mobile/cards/__tests__/QuickSearchCard.test.tsx(2,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/ShiftCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/ShiftCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/ShiftCard.test.tsx(2,44): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/mobile/cards/__tests__/UnitStatusCard.test.tsx(2,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/mobile/cards/__tests__/UnitStatusCard.test.tsx(2,26): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/mobile/cards/__tests__/UnitStatusCard.test.tsx(2,35): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/pdf-editor/components/ToolPalette.tsx(20,26): error TS2741: Property '$$typeof' is missing in type '() => JSX.Element' but required in type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>'.
+src/pages/radio/tabs/__tests__/SettingsTab.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/records/spillman/__tests__/SpillmanFormTabs.test.tsx(4,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/records/spillman/__tests__/SpillmanMenuBar.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/records/spillman/__tests__/SpillmanMenuBar.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/records/spillman/__tests__/SpillmanRecordTabs.test.tsx(3,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/records/spillman/__tests__/SpillmanRecordTabs.test.tsx(3,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/RouteBuilderPage.tsx(163,21): error TS2554: Expected 2-3 arguments, but got 1.
+src/pages/RouteBuilderPage.tsx(276,30): error TS2554: Expected 1 arguments, but got 2.
+src/pages/RouteBuilderPage.tsx(277,30): error TS2554: Expected 1 arguments, but got 2.
+src/pages/RouteBuilderPage.tsx(327,34): error TS2554: Expected 1 arguments, but got 2.
+src/pages/RouteBuilderPage.tsx(328,59): error TS2554: Expected 2-3 arguments, but got 5.
+src/pages/RouteBuilderPage.tsx(355,30): error TS2554: Expected 1 arguments, but got 2.
+src/pages/RouteBuilderPage.tsx(356,49): error TS2554: Expected 2-3 arguments, but got 5.
+src/pages/RouteBuilderPage.tsx(623,53): error TS2554: Expected 1 arguments, but got 2.
+src/pages/RouteBuilderPage.tsx(624,53): error TS2554: Expected 1 arguments, but got 2.
+src/pages/SecurityDashboardPage.tsx(271,36): error TS2304: Cannot find name 'ipRowRefs'.
+src/pages/serve/__tests__/serveFolder.test.tsx(10,18): error TS2305: Module '"@testing-library/react"' has no exported member 'screen'.
+src/pages/serve/__tests__/serveFolder.test.tsx(10,26): error TS2305: Module '"@testing-library/react"' has no exported member 'fireEvent'.
+src/pages/serve/__tests__/serveFolder.test.tsx(10,37): error TS2305: Module '"@testing-library/react"' has no exported member 'waitFor'.
+src/pages/serve/__tests__/serveFolder.test.tsx(769,33): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/serve/__tests__/serveFolder.test.tsx(859,37): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/serve/__tests__/serveFolder.test.tsx(913,38): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/serve/__tests__/serveFolder.test.tsx(925,44): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/serve/__tests__/serveFolder.test.tsx(927,34): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/serve/__tests__/serveFolder.test.tsx(952,15): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/pages/ServePage.tsx(520,26): error TS2339: Property 'signature_data' does not exist on type 'User'.
+src/pages/ServePage.tsx(810,36): error TS2339: Property 'due_diligence_complete' does not exist on type '{ queue_status: string; attempt_number: number; }'.
+src/pages/ServePage.tsx(1169,9): error TS18047: 'mapRef.current' is possibly 'null'.
+src/pages/ServePage.tsx(1173,9): error TS18047: 'mapRef.current' is possibly 'null'.
+src/pages/ServePage.tsx(1187,7): error TS18047: 'mapRef.current' is possibly 'null'.
+src/pages/ServePage.tsx(1331,7): error TS2304: Cannot find name 'moveSubmenu'.
+src/pages/ServePage.tsx(1332,73): error TS2304: Cannot find name 'moveSubmenu'.
+src/pages/ServeSchedulerPage.tsx(310,24): error TS2607: JSX element class does not support attributes because it does not have a 'props' property.
+src/pages/ServeSchedulerPage.tsx(310,25): error TS2786: 'Navigation' cannot be used as a JSX component.
+  Its type '{ new (): Navigation; prototype: Navigation; }' is not a valid JSX element type.
+    Type '{ new (): Navigation; prototype: Navigation; }' is not assignable to type 'new (props: any, context: any) => Component<any, any, any>'.
+      Type 'Navigation' is missing the following properties from type 'Component<any, any, any>': context, setState, forceUpdate, render, and 2 more.
+src/pages/ShiftPlansPage.tsx(197,7): error TS2304: Cannot find name 'pendingDeepLinkPlanRef'.
+src/pages/ShiftPlansPage.tsx(215,21): error TS2304: Cannot find name 'pendingDeepLinkPlanRef'.
+src/pages/ShiftPlansPage.tsx(223,5): error TS2304: Cannot find name 'pendingDeepLinkPlanRef'.
+src/pages/TasksPage.tsx(326,12): error TS2304: Cannot find name 'canCreate'.
+src/pages/TasksPage.tsx(337,7): error TS2304: Cannot find name 'canCreate'.
+src/pages/TasksPage.tsx(559,10): error TS2304: Cannot find name 'canCreate'.
+src/pages/TasksPage.tsx(680,13): error TS2304: Cannot find name 'canCreate'.
+src/pages/TrainingDocsPage.tsx(66,66): error TS2339: Property 'arrayBuffer' does not exist on type 'jsPDF'.
+src/pages/TrainingDocsPage.tsx(120,72): error TS2304: Cannot find name 'validCategory'.
+src/pages/TrainingManagementPage.tsx(50,22): error TS2304: Cannot find name 'searchParams'.
+src/pages/TrainingManagementPage.tsx(54,5): error TS2304: Cannot find name 'setSearchParams'.
+src/pages/TrainingManagementPage.tsx(56,16): error TS2304: Cannot find name 'searchParams'.
+src/pages/WarrantsPage.tsx(3639,39): error TS2345: Argument of type '(state: string) => React.JSX.Element' is not assignable to parameter of type '(value: string | undefined, index: number, array: (string | undefined)[]) => Element'.
+  Types of parameters 'state' and 'value' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+src/utils/blankFormPdfGenerator.ts(1080,7): error TS2739: Type '{ incident: (doc: jsPDF) => void; person: (doc: jsPDF) => void; vehicle: (doc: jsPDF) => void; property: (doc: jsPDF) => void; citation: (doc: jsPDF) => void; ... 6 more ...; fleet_expense: (doc: jsPDF) => void; }' is missing the following properties from type 'Record<BlankFormType, (doc: jsPDF) => void>': use_of_force, supplemental_report, proof_of_service, evidence_chain, arrest_report
+src/utils/cadCommandParser.ts(1063,42): error TS18047: 'unit' is possibly 'null'.
+src/utils/cadCommandParser.ts(1064,52): error TS18047: 'unit' is possibly 'null'.
+src/utils/patrolTrackingPdfGenerator.ts(169,22): error TS2304: Cannot find name 'hexToRgb'.
+src/utils/patrolTrackingPdfGenerator.ts(170,21): error TS2304: Cannot find name 'hexToRgb'.
+src/utils/patrolTrackingPdfGenerator.ts(171,23): error TS2304: Cannot find name 'hexToRgb'.
+src/utils/patrolTrackingPdfGenerator.ts(205,40): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(209,31): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(209,45): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(218,46): error TS2304: Cannot find name 'formNum'.
+src/utils/patrolTrackingPdfGenerator.ts(218,86): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(221,24): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(223,24): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(242,33): error TS2304: Cannot find name 'formNum'.
+src/utils/patrolTrackingPdfGenerator.ts(242,104): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(243,44): error TS2304: Cannot find name 'reportDate'.
+src/utils/patrolTrackingPdfGenerator.ts(243,81): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(254,14): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(254,28): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(259,14): error TS2304: Cannot find name 'asciify'.
+src/utils/patrolTrackingPdfGenerator.ts(259,61): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(265,36): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(269,9): error TS2304: Cannot find name 'formatDayOnly'.
+src/utils/patrolTrackingPdfGenerator.ts(271,43): error TS2304: Cannot find name 'formatDayOnly'.
+src/utils/patrolTrackingPdfGenerator.ts(272,54): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(274,59): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(280,25): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(283,14): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(283,34): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(310,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(337,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(343,15): error TS2304: Cannot find name 'formNum'.
+src/utils/patrolTrackingPdfGenerator.ts(347,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(348,12): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(348,28): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(349,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(350,12): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(350,21): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(350,43): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(373,20): error TS2304: Cannot find name 'reportDate'.
+src/utils/patrolTrackingPdfGenerator.ts(380,21): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(384,38): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(396,22): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/patrolTrackingPdfGenerator.ts(397,14): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(399,14): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(399,32): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(402,14): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(402,32): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(402,41): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(406,135): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(416,23): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(416,56): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(416,74): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(419,35): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(420,35): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(421,43): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(422,38): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(423,38): error TS2304: Cannot find name 's'.
+src/utils/patrolTrackingPdfGenerator.ts(430,18): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(431,32): error TS2304: Cannot find name 'statItems'.
+src/utils/patrolTrackingPdfGenerator.ts(432,25): error TS2304: Cannot find name 'statItems'.
+src/utils/patrolTrackingPdfGenerator.ts(435,32): error TS2304: Cannot find name 'statItems'.
+src/utils/patrolTrackingPdfGenerator.ts(435,47): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(470,19): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(474,7): error TS2304: Cannot find name 'drawColumnHeaders'.
+src/utils/patrolTrackingPdfGenerator.ts(491,20): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(500,18): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(500,32): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(504,18): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(541,157): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(562,22): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(565,7): error TS2304: Cannot find name 'drawColumnHeaders'.
+src/utils/patrolTrackingPdfGenerator.ts(576,20): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(576,34): error TS2304: Cannot find name 'contentW'.
+src/utils/patrolTrackingPdfGenerator.ts(579,21): error TS2304: Cannot find name 'margin'.
+src/utils/patrolTrackingPdfGenerator.ts(600,27): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(601,25): error TS2304: Cannot find name 'cells'.
+src/utils/patrolTrackingPdfGenerator.ts(604,17): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(607,16): error TS2304: Cannot find name 'cells'.
+src/utils/patrolTrackingPdfGenerator.ts(609,16): error TS2304: Cannot find name 'cells'.
+src/utils/patrolTrackingPdfGenerator.ts(611,20): error TS2304: Cannot find name 'cells'.
+src/utils/patrolTrackingPdfGenerator.ts(616,54): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(618,14): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(618,34): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(634,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(635,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(636,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(637,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(638,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(639,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(640,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(641,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(642,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(643,21): error TS2304: Cannot find name 'marginX'.
+src/utils/patrolTrackingPdfGenerator.ts(679,16): error TS2304: Cannot find name 'formatPointTime'.
+src/utils/patrolTrackingPdfGenerator.ts(711,29): error TS2304: Cannot find name 'marginX'.
+src/utils/pdf/v2/engine/primitives.ts(246,27): error TS2304: Cannot find name 'tableTop'.
+src/utils/pdf/v2/engine/primitives.ts(248,21): error TS2304: Cannot find name 'tableTop'.
+src/utils/pdfDetailHelpers.ts(451,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(451,29): error TS2339: Property 'TEXT_PLACEHOLDER' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(488,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(488,29): error TS2339: Property 'DIVIDER_RULE' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(494,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(494,29): error TS2339: Property 'TEXT_CAPTION' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(576,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(576,29): error TS2339: Property 'BORDER_DOUBLE_RULE' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(585,22): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(585,31): error TS2339: Property 'TEXT_CAPTION' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(722,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(722,29): error TS2339: Property 'TEXT_PLACEHOLDER' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfDetailHelpers.ts(813,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfDetailHelpers.ts(813,29): error TS2339: Property 'TEXT_CAPTION' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfFormHelpers.ts(160,14): error TS2304: Cannot find name 'fitPdfText'.
+src/utils/pdfFormHelpers.ts(193,16): error TS2304: Cannot find name 'fitPdfText'.
+src/utils/pdfFormHelpers.ts(738,42): error TS2552: Cannot find name 'caseBoxW'. Did you mean 'caseBoxH'?
+src/utils/pdfFormHelpers.ts(742,34): error TS2552: Cannot find name 'caseBoxW'. Did you mean 'caseBoxH'?
+src/utils/pdfFormHelpers.ts(746,66): error TS2552: Cannot find name 'caseBoxW'. Did you mean 'caseBoxH'?
+src/utils/pdfFormHelpers.ts(749,20): error TS2552: Cannot find name 'caseBoxW'. Did you mean 'caseBoxH'?
+src/utils/pdfFormHelpers.ts(758,41): error TS2304: Cannot find name 'caseBoxW'.
+src/utils/pdfGenerator.ts(162,22): error TS2304: Cannot find name 'brandingFromSystemSettings'.
+src/utils/pdfGenerator.ts(1383,20): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfGenerator.ts(1383,29): error TS2339: Property 'STAMP_BG' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfGenerator.ts(2153,22): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+src/utils/pdfGenerator.ts(2153,31): error TS2339: Property 'TEXT_PLACEHOLDER' does not exist on type '{ readonly TEXT_PRIMARY: readonly [0, 0, 0]; readonly TEXT_SECONDARY: readonly [84, 84, 84]; readonly TEXT_TERTIARY: readonly [100, 100, 100]; readonly TEXT_INVERTED: readonly [255, 255, 255]; readonly TEXT_SUBHEAD_INVERTED: readonly [...]; ... 44 more ...; readonly PRIO_FG: readonly [...]; }'.
+src/utils/pdfGenerator.ts(4101,38): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4109,54): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4110,55): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4112,55): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4113,52): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4140,55): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4142,46): error TS2304: Cannot find name 'safeStr'.
+src/utils/pdfGenerator.ts(4144,49): error TS2304: Cannot find name 'safeStr'.
+src/utils/uiClickSounds.ts(125,34): error TS2304: Cannot find name 'DIALOG_SELECTOR'.
+src/utils/uiClickSounds.ts(138,28): error TS2304: Cannot find name 'DIALOG_SELECTOR'.
+src/utils/uiClickSounds.ts(138,53): error TS2339: Property 'querySelector' does not exist on type 'never'.
+src/utils/uiClickSounds.ts(138,67): error TS2304: Cannot find name 'DIALOG_SELECTOR'.
+src/utils/uiClickSounds.ts(139,13): error TS2304: Cannot find name 'playUiOpen'.
