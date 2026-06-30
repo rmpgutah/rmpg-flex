@@ -2565,6 +2565,19 @@ export default function IncidentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents, loading]);
 
+  // Open new-incident form on mount if ?newIncident=1 is present
+  useEffect(() => {
+    if (searchParams.get('newIncident') === '1') {
+      setEditingIncident(undefined);
+      setFormDefaultType('');
+      setShowFormModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('newIncident');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Keyboard shortcuts. Escape uses smallest-open-first cascade so a
   // confirm dialog inside the page doesn't compete with the form modal
   // \u2014 pressing Esc closes only the topmost open modal, not all of them.

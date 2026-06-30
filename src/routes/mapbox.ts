@@ -24,9 +24,14 @@ const MB = 'https://api.mapbox.com';
 const TIMEOUT_MS = 12_000;
 
 function token(c: any): string | null {
-  return (c.env?.MAPBOX_ACCESS_TOKEN as string)
+  const t = (c.env?.MAPBOX_ACCESS_TOKEN as string)
     || (c.env?.VITE_MAPBOX_ACCESS_TOKEN as string)
     || null;
+  if (t && t.startsWith('sk.')) {
+    console.warn('[mapbox] Rejected sk.* secret token in server-side proxy');
+    return null;
+  }
+  return t;
 }
 
 function notConfigured(c: any) {

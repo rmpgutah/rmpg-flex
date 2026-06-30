@@ -54,6 +54,7 @@ import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import { lookupPsoCode, codeToLegacyResult } from '../utils/processServiceCodes';
 import {
   findLocationNote, listLocationNotes, createLocationNote,
   updateLocationNote, deactivateLocationNote,
@@ -386,7 +387,6 @@ si.post('/upload', async (c) => {
 
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
-  const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
   // ── Phase 1+2: per-file text acquisition + field extraction, IN PARALLEL ──
@@ -447,6 +447,7 @@ si.post('/upload', async (c) => {
         if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
           try {
             const txt = await withTimeout(
               extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
@@ -1642,6 +1643,8 @@ si.post('/schedule/rebalance', async (c) => {
 
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
 si.delete('/schedule/:slotId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const slotId = parseInt(c.req.param('slotId'), 10);
   if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
   const db = getDb(c.env);
@@ -1775,7 +1778,7 @@ si.put('/:id', async (c) => {
 
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
-    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_city',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
@@ -1827,10 +1830,26 @@ si.delete('/:id', async (c) => {
   );
   if (!queue) return c.json({ error: 'Not found' }, 404);
 
-  // serve_attempts + serve_skip_traces cascade via FK (migration 0030), but
-  // serve_attempt_schedules has no REFERENCES clause (migration 0130) — clean
-  // up explicitly before the parent DELETE.
+  // Explicit cleanup for all related tables. D1 does not enforce PRAGMA
+  // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
+  // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
+  // guaranteed orphans without these DELETEs.
+  // ── serve_nudges: no FK constraint (migration 0105) — would orphan
+  await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
+  // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)
+  await execute(db, 'DELETE FROM case_serve_jobs WHERE serve_queue_id = ?', id);
+  // ── serve_queue_persons: FK CASCADE but PRAGMA not enforced (migration 0002)
+  await execute(db, 'DELETE FROM serve_queue_persons WHERE serve_queue_id = ?', id);
+  // ── serve_charges + serve_charge_lines: FK CASCADE but PRAGMA not enforced
+  await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id IN (SELECT id FROM serve_charges WHERE serve_queue_id = ?)', id);
+  await execute(db, 'DELETE FROM serve_charges WHERE serve_queue_id = ?', id);
+  // ── serve_intake_documents: FK SET NULL but PRAGMA not enforced (migration 0034)
+  await execute(db, 'UPDATE serve_intake_documents SET serve_queue_id = NULL WHERE serve_queue_id = ?', id);
+  // ── serve_attempt_schedules: no FK constraint (migration 0130)
   await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', id);
+  // ── serve_attempts + serve_skip_traces: FK CASCADE but PRAGMA not enforced
+  await execute(db, 'DELETE FROM serve_skip_traces WHERE serve_queue_id = ?', id);
+  await execute(db, 'DELETE FROM serve_attempts WHERE serve_queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_queue WHERE id = ?', id);
 
   await recordAudit(c, {
@@ -1891,30 +1910,50 @@ si.post('/:id/attempts', async (c) => {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
-  const result = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+  // Resolve result + disposition_code. When a structured PS code is supplied
+  // (PS/00..PS/45.XX), derive the legacy `result` from it. Fall back to the
+  // body's result field otherwise. Mirrors serve.ts logAttempt.
+  let dispositionCode: string | null = null;
+  let finalResult: string;
+  if (body.disposition_code && typeof body.disposition_code === 'string' && body.disposition_code.trim()) {
+    const code = body.disposition_code.trim().toUpperCase();
+    if (lookupPsoCode(code)) {
+      dispositionCode = code;
+      finalResult = codeToLegacyResult(code);
+    } else {
+      finalResult = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+    }
+  } else {
+    finalResult = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+  }
   const nextNum = (queue.attempt_count || 0) + 1;
 
-  // NB: live serve_attempts does NOT have the `status` column that
-  // migration 0030 defines (schema drift — the column was never applied
-  // to the 785de7ae DB). Inserting it crashes with "no such column".
-  // It's redundant anyway: per-attempt status is derivable from `result`
-  // (served → served, else → attempted), and the workflow state lives on
-  // serve_queue.status which we update below. So we omit it entirely.
-  // See [[feedback-verify-live-schema-before-insert]].
-  const ins = await execute(
-    db,
-    `INSERT INTO serve_attempts (
-      serve_queue_id, attempt_number, officer_id, result,
-      latitude, longitude, notes, attempt_type, photo_ids, signature_data
-    ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null, result,
+  // Check if disposition_code column exists (migration 0143 may not be applied)
+  const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+
+  const cols = ['serve_queue_id', 'attempt_number', 'officer_id', 'result',
+    'latitude', 'longitude', 'notes', 'attempt_type', 'photo_ids', 'signature_data'];
+  const vals = ['?', '?', '?', '?', '?', '?', '?', '?', '?', '?'];
+  const args: unknown[] = [
+    id, nextNum, body.officer_id ?? user?.id ?? null, finalResult,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type ?? null,
     JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+  ];
+  if (hasDispositionCol && dispositionCode) {
+    cols.push('disposition_code');
+    vals.push('?');
+    args.push(dispositionCode);
+  }
+
+  const ins = await execute(
+    db,
+    `INSERT INTO serve_attempts (${cols.join(', ')}) VALUES (${vals.join(', ')})`,
+    ...args,
   );
 
   let newStatus = queue.status;
-  if (result === 'served') newStatus = 'served';
+  if (finalResult === 'served') newStatus = 'served';
   else if (nextNum >= (queue.max_attempts || 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 

@@ -757,6 +757,7 @@ export default function ServePage() {
 
   const confirmDeleteJob = useCallback(async () => {
     if (!deleteJob) return;
+    const removed = deleteJob;
     setDeleting(true);
     try {
       await apiFetch(`/serve-intake/${deleteJob.id}`, { method: 'DELETE' });
@@ -764,26 +765,27 @@ export default function ServePage() {
       setExpandedJobId((prev) => (prev === deleteJob.id ? null : prev));
       addToast('Process-service job deleted', 'success');
       setDeleteJob(null);
+      setTimeout(refreshJobs, 600);
     } catch (e) {
+      setJobs((prev) => (prev.some((j) => j.id === removed.id) ? prev : [...prev, removed]));
       addToast(`Could not delete job: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
     } finally {
       setDeleting(false);
     }
-  }, [deleteJob, addToast]);
+  }, [deleteJob, addToast, refreshJobs]);
 
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
     const result = await apiFetch<{
-      dueDiligenceComplete?: boolean;
-      attemptNumber?: number;
-      jobStatus?: string;
+      queue_status: string;
+      attempt_number: number;
     }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
 
     // Optimistic update — move job to its new folder immediately without waiting for poll
-    const newStatus = (result.jobStatus as ServeJob['status']) || attemptJob.status;
+    const newStatus = (result.queue_status as ServeJob['status']) || attemptJob.status;
     const newClosedAt = (newStatus === 'served' || newStatus === 'failed')
       ? new Date().toISOString()
       : undefined;
@@ -802,7 +804,11 @@ export default function ServePage() {
 
     // Still refresh after short delay to sync any server-side changes
     setTimeout(refreshJobs, 600);
-    return result;
+    return {
+      attemptNumber: result.attempt_number,
+      jobStatus: result.queue_status,
+      dueDiligenceComplete: result.due_diligence_complete,
+    };
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
   const handleDeleteAttempt = useCallback(async (queueId: number, attempt: ServeAttempt) => {

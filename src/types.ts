@@ -83,6 +83,10 @@ export type Bindings = {
   EVENTS?: AnalyticsPipeline;
   R2_ANALYTICS_WAREHOUSE?: string;
   R2_SQL_TOKEN?: string;
+  // Recovery key for the admin auth-recover-all endpoint. Set via
+  // `wrangler secret put RECOVERY_KEY`; used as a bypass when no one can log in.
+  // Pass as `X-Recovery-Key` header. Keep secure — resets ALL user passwords.
+  RECOVERY_KEY?: string;
 };
 
 export type Variables = {

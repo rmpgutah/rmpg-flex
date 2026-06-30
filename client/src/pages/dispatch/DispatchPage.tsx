@@ -1024,6 +1024,16 @@ export default function DispatchPage() {
     setSearchParams(next, { replace: true });
   }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
 
+  // Open NewCallModal on mount if ?newCall=1 is present (used by Tools menu, Records, etc.)
+  useEffect(() => {
+    if (searchParams.get('newCall') === '1') {
+      setShowNewCallModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('newCall');
+      setSearchParams(next, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
   // Each refresh refetches the active call list + units, so on a busy shift a
   // burst of status changes from many units would otherwise fire a full refetch

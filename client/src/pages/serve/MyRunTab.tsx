@@ -60,7 +60,7 @@ function priorityColor(p: string): string {
 /** POST a quick served/failed status update. Returns the new status string. */
 async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Promise<string> {
   const attemptType = result === 'served' ? 'personal' : 'failed';
-  const res = await apiFetch<{ jobStatus?: string }>(`/process-server/${jobId}/attempt`, {
+  const res = await apiFetch<{ queue_status: string }>(`/process-server/${jobId}/attempt`, {
     method: 'POST',
     body: JSON.stringify({
       attempt_type: attemptType,
@@ -68,7 +68,7 @@ async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Pr
       address_verified: false,
     }),
   });
-  return res?.jobStatus ?? result;
+  return res?.queue_status ?? result;
 }
 
 // ─── Navigate helper ──────────────────────────────────────────────────────────
@@ -227,10 +227,11 @@ function RunJobRow({ job, isNext, onOptimisticUpdate }: RunJobRowProps) {
 
 function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
+  const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
 
   const handleQuick = useCallback(async (result: 'served' | 'failed') => {
-    if (actioning) return;
+    if (isClosed || actioning) return;
     setActioning(result);
     try {
       const newStatus = (await quickStatusUpdate(job.id, result)) as ServeJob['status'];

@@ -1511,3 +1511,11 @@ admin.post('/system/lockdown', async (c) => {
     return c.json({ success: true, lockdown: enabled });
   } catch { return c.json({ error: 'Failed' }, 500); }
 });
+
+// ── Auth recovery ───────────────────────────────────────────
+// POST /admin/auth/recover-all — moved to src/routes/auth.ts to bypass the
+// auth middleware loop (no JWT needed when login is broken). Kept the mount
+// signature here for any future admin-only recovery that assumes a valid
+// session. The canonical endpoint lives on the auth router under
+// POST /auth/recover-all (public at registry level, secured by RECOVERY_KEY
+// env secret + X-Recovery-Key header).

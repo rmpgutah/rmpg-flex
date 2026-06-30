@@ -180,6 +180,12 @@ auth.post('/login', async (c) => {
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
+    if (!user.password_hash || !user.password_hash.startsWith('$2')) {
+      console.error(`[auth] User "${username}" has an invalid password_hash (not a bcrypt hash). Use /api/auth/recover-all to reset.`);
+      await recordLoginAttempt(db, username, ip, false, 'invalid_hash');
+      return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
     if (!compareSync(password, user.password_hash)) {
       await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
@@ -244,7 +250,8 @@ auth.post('/login', async (c) => {
       user: userPayload(user),
     });
   } catch (err: any) {
-    console.error('Login error:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('Login error:', msg);
     return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR' }, 500);
   }
 });
@@ -1517,6 +1524,57 @@ auth.post('/security/unblock-ip', authMiddleware, async (c) => {
       `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
     return c.json({ success: true, cleared: r.meta.changes ?? 0 });
   } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+});
+
+// ── Account recovery (no JWT required — secured by RECOVERY_KEY env secret) ──
+// POST /auth/recover-all — reset every active user's password to a known
+// temporary password. Use when login is broken for everyone. Authenticated via
+// X-Recovery-Key header matching the RECOVERY_KEY secret (set via
+// `wrangler secret put RECOVERY_KEY`). Every user gets must_change_password=1
+// so they are forced to rotate on next login.
+auth.post('/recover-all', async (c) => {
+  try {
+    const recoveryKey = c.req.header('X-Recovery-Key');
+    const storedKey = c.env.RECOVERY_KEY;
+    if (!storedKey) {
+      return c.json({ error: 'RECOVERY_KEY secret not set. Run: wrangler secret put RECOVERY_KEY' }, 503);
+    }
+    if (!recoveryKey || recoveryKey !== storedKey) {
+      return c.json({ error: 'Invalid or missing X-Recovery-Key header' }, 401);
+    }
+
+    const TEMP_PASSWORD = 'TempPass123!';
+    const hash = hashSync(TEMP_PASSWORD, 12);
+
+    const db = getDb(c.env);
+    const users = await query<{ id: number; username: string }>(
+      db,
+      "SELECT id, username FROM users WHERE status = 'active'"
+    );
+
+    if (!users.length) {
+      return c.json({ error: 'No active users found' }, 404);
+    }
+
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, must_change_password = 1,
+       password_changed_at = datetime('now'), updated_at = datetime('now')
+       WHERE status = 'active'`,
+      hash
+    );
+
+    return c.json({
+      success: true,
+      message: `Recovered ${users.length} active account(s)`,
+      tempPassword: TEMP_PASSWORD,
+      mustChangePassword: true,
+      users: users.map((u) => ({ id: u.id, username: u.username })),
+    });
+  } catch (err) {
+    console.error('POST /auth/recover-all failed:', err);
+    return c.json({ error: 'Failed to recover accounts', detail: (err as Error)?.message }, 500);
+  }
 });
 
 export default auth;

@@ -1,0 +1,369 @@
+/* ============================================================
+   DASHBOARD ENHANCEMENTS — 75+ UI upgrades
+   Glass morphism, staggered entrance, tooltips, micro-interactions
+   ============================================================ */
+
+/* ── Glass Morphism Panels ───────────────────────────── */
+.glass-panel {
+  background: rgb(var(--surface-raised-rgb) / 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(var(--rmpg-500-rgb) / 0.15);
+  border-top-color: rgb(var(--rmpg-400-rgb) / 0.12);
+  border-left-color: rgb(var(--rmpg-400-rgb) / 0.12);
+  border-bottom-color: rgb(var(--surface-base-rgb) / 0.4);
+  border-right-color: rgb(var(--surface-base-rgb) / 0.4);
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.15), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+}
+
+.glass-panel:hover {
+  background: rgb(var(--surface-raised-rgb) / 0.72);
+  border-color: rgb(var(--rmpg-400-rgb) / 0.25);
+  box-shadow: 0 6px 32px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.glass-panel-inset {
+  background: rgb(var(--surface-sunken-rgb) / 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgb(var(--rmpg-600-rgb) / 0.15);
+}
+
+/* ── Staggered Entrance Animations ───────────────────── */
+@keyframes stagger-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes stagger-slide-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes stagger-slide-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes stagger-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-stagger {
+  opacity: 0;
+  animation: stagger-fade-in 0.4s ease-out forwards;
+}
+
+.animate-stagger-slide-left {
+  opacity: 0;
+  animation: stagger-slide-left 0.35s ease-out forwards;
+}
+
+.animate-stagger-slide-right {
+  opacity: 0;
+  animation: stagger-slide-right 0.35s ease-out forwards;
+}
+
+.animate-stagger-scale {
+  opacity: 0;
+  animation: stagger-scale-in 0.3s ease-out forwards;
+}
+
+/* Stagger delay utilities — .delay-1 through .delay-20 */
+.delay-1 { animation-delay: 40ms; }
+.delay-2 { animation-delay: 80ms; }
+.delay-3 { animation-delay: 120ms; }
+.delay-4 { animation-delay: 160ms; }
+.delay-5 { animation-delay: 200ms; }
+.delay-6 { animation-delay: 240ms; }
+.delay-7 { animation-delay: 280ms; }
+.delay-8 { animation-delay: 320ms; }
+.delay-9 { animation-delay: 360ms; }
+.delay-10 { animation-delay: 400ms; }
+.delay-11 { animation-delay: 440ms; }
+.delay-12 { animation-delay: 480ms; }
+.delay-13 { animation-delay: 520ms; }
+.delay-14 { animation-delay: 560ms; }
+.delay-15 { animation-delay: 600ms; }
+.delay-16 { animation-delay: 640ms; }
+.delay-17 { animation-delay: 680ms; }
+.delay-18 { animation-delay: 720ms; }
+.delay-19 { animation-delay: 760ms; }
+.delay-20 { animation-delay: 800ms; }
+
+/* ── Enhanced Tooltip ───────────────────────────────── */
+.dash-tooltip {
+  position: relative;
+}
+
+.dash-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  color: rgb(255 255 255 / 0.9);
+  background: rgb(var(--rmpg-700-rgb) / 0.95);
+  border: 1px solid rgb(var(--rmpg-500-rgb) / 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 50;
+}
+
+.dash-tooltip:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* ── Badge Animations ───────────────────────────────── */
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--sev-ok-rgb) / 0.4); }
+  50% { box-shadow: 0 0 0 4px rgb(var(--sev-ok-rgb) / 0); }
+}
+
+@keyframes badge-bounce {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-3px); }
+  60% { transform: translateY(-1px); }
+}
+
+.badge-animate-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.badge-animate-bounce {
+  animation: badge-bounce 0.5s ease-out;
+}
+
+/* Glow ring for critical stats */
+.glow-ring {
+  position: relative;
+}
+
+.glow-ring::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent, rgb(var(--brand-gold-rgb) / 0.3), transparent 60%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px), #000 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px), #000 100%);
+  animation: glow-ring-rotate 3s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes glow-ring-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Micro-interactions ─────────────────────────────── */
+.hover-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.hover-lift:active {
+  transform: translateY(0);
+}
+
+.hover-glow {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 0 1px rgb(var(--brand-gold-rgb) / 0.2), 0 0 16px rgb(var(--brand-gold-rgb) / 0.08);
+  border-color: rgb(var(--brand-gold-rgb) / 0.3);
+}
+
+/* ── Stat Card Sparkline Container ──────────────────── */
+.sparkline-container {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 60px;
+  height: 32px;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* ── Gauge / Ring Chart ─────────────────────────────── */
+.gauge-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-ring svg {
+  transform: rotate(-90deg);
+}
+
+.gauge-ring .gauge-bg {
+  fill: none;
+  stroke: rgb(var(--rmpg-700-rgb) / 0.4);
+}
+
+.gauge-ring .gauge-fill {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s ease-out, stroke 0.5s ease;
+}
+
+.gauge-ring .gauge-center {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Priority Heatmap ───────────────────────────────── */
+.heatmap-cell {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+
+.heatmap-cell:hover {
+  opacity: 0.8;
+  transform: scale(1.15);
+}
+
+/* ── Skeleton shimmer variants ──────────────────────── */
+.skeleton-enhanced {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--rmpg-700-rgb) / 0.3) 25%,
+    rgb(var(--rmpg-600-rgb) / 0.4) 50%,
+    rgb(var(--rmpg-700-rpg) / 0.3) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-enhanced-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes skeleton-enhanced-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Forecast projection line style ─────────────────── */
+.forecast-line {
+  stroke-dasharray: 6 3;
+  opacity: 0.5;
+}
+
+.forecast-area {
+  opacity: 0.15;
+}
+
+/* ── Chart animated mount ───────────────────────────── */
+@keyframes chart-grow {
+  from { transform: scaleY(0); transform-origin: bottom; }
+  to { transform: scaleY(1); transform-origin: bottom; }
+}
+
+.chart-animate-grow {
+  animation: chart-grow 0.6s ease-out;
+}
+
+/* ── Status pulse LED variants ──────────────────────── */
+@keyframes led-pulse-green {
+  0%, 100% { box-shadow: 0 0 4px #22c55e, 0 0 8px rgb(34 197 94 / 0.3); }
+  50% { box-shadow: 0 0 8px #22c55e, 0 0 16px rgb(34 197 94 / 0.5); }
+}
+
+@keyframes led-pulse-amber {
+  0%, 100% { box-shadow: 0 0 4px #f59e0b, 0 0 8px rgb(245 158 11 / 0.3); }
+  50% { box-shadow: 0 0 8px #f59e0b, 0 0 16px rgb(245 158 11 / 0.5); }
+}
+
+@keyframes led-pulse-red {
+  0%, 100% { box-shadow: 0 0 4px #ef4444, 0 0 8px rgb(239 68 68 / 0.3); }
+  50% { box-shadow: 0 0 8px #ef4444, 0 0 16px rgb(239 68 68 / 0.5); }
+}
+
+.led-pulse-green { animation: led-pulse-green 1.5s ease-in-out infinite; }
+.led-pulse-amber { animation: led-pulse-amber 1.5s ease-in-out infinite; }
+.led-pulse-red { animation: led-pulse-red 1.5s ease-in-out infinite; }
+
+/* ── Weather widget ─────────────────────────────────── */
+.weather-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(var(--brand-gold-rgb) / 0.1);
+  border: 1px solid rgb(var(--brand-gold-rgb) / 0.2);
+}
+
+.weather-temp {
+  font-size: 28px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* ── Countdown timer ─────────────────────────────────- */
+.countdown-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 36px;
+}
+
+.countdown-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.countdown-label {
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Scrollbar (dashboard panels) ───────────────────── */
+.dash-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.dash-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dash-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(var(--rmpg-600-rgb) / 0.5);
+  border-radius: 2px;
+}
+
+.dash-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--rmpg-500-rgb) / 0.6);
+}
+
+.dash-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--rmpg-600-rgb) / 0.5) transparent;
+}

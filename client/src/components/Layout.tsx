@@ -1302,10 +1302,10 @@ export default function Layout() {
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
-                      <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
-                      <span className="menu-item-label">System Settings</span>
-                    </button>
+<button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin?tab=settings'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
+                        <Settings style={{ width: 11, height: 11 }} />
+                        <span className="menu-item-label">System Settings</span>
+                      </button>
                   )}
 
                   <div className="menu-separator" />

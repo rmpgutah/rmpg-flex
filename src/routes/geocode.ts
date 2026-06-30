@@ -207,12 +207,17 @@ geocode.get('/geocode/reverse', async (c) => {
 // Returns { configured: bool, accessToken?: string }. Client uses it
 // as the primary geocoder when present. Empty response makes the
 // client silently fall back to /api/geocode/search.
+// ⚠️  Rejects secret (sk.*) tokens — Mapbox GL JS only works with
+// public (pk.*) tokens server-side. If the env var holds an sk.* token
+// this returns configured: false so the client falls back gracefully.
 geocode.get('/integrations/mapbox/client-token', (c) => {
-  // Env can be typed loosely — secret may not be set yet.
   const token = (c.env as any).MAPBOX_ACCESS_TOKEN
     || (c.env as any).VITE_MAPBOX_ACCESS_TOKEN
     || '';
-  if (!token) return c.json({ configured: false });
+  if (!token || token.startsWith('sk.')) {
+    if (token) console.warn('[mapbox] Rejected sk.* token in MAPBOX_ACCESS_TOKEN / VITE_MAPBOX_ACCESS_TOKEN');
+    return c.json({ configured: false });
+  }
   return c.json({ configured: true, accessToken: token });
 });
 

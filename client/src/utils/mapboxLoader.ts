@@ -15,6 +15,14 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 mapboxgl.accessToken =
   (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
 
+// Prevent accidental use of a secret (sk.*) Mapbox token — only public
+// (pk.*) tokens work with Mapbox GL JS. If the build env var holds an
+// sk.* token, clear it so the client falls back to the server endpoint.
+if (mapboxgl.accessToken.startsWith('sk.')) {
+  console.warn('[mapbox] Build-time VITE_MAPBOX_ACCESS_TOKEN is an sk.* secret token. Clearing — client will fetch pk.* token from server.');
+  mapboxgl.accessToken = '';
+}
+
 // Redirect Mapbox SDK telemetry POSTs (turnstile/map.load/style.load/etc.) away
 // from events.mapbox.com to a same-origin sink that returns 204. Some operator
 // networks block events.mapbox.com (DNS sinkhole / ad blocker / corporate

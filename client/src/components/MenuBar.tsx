@@ -10,7 +10,7 @@ import { APP_VERSION } from '../utils/version';
 import {
   Radio, FileText, Database, Users, MessageSquare, BarChart3, Map,
   LayoutDashboard, QrCode, ScrollText, Settings, LogOut, Search, Printer,
-  Maximize2, Minimize2, Monitor, RefreshCw, Eye, Clock, Phone, AlertTriangle, Plus,
+  Maximize2, Minimize2, Monitor, RefreshCw, Eye, Clock, Phone, AlertTriangle, Plus, Minus,
   Download, Upload, Keyboard, Info, Shield, ChevronRight, Zap, Bell, BellOff,
   Volume2, VolumeX, ClipboardList, Activity, Wifi, WifiOff, Globe, Hash, Car,
   FileWarning, Terminal, Briefcase, Scale, Gavel, BookOpen, Microscope,
@@ -60,7 +60,13 @@ interface MenuSubmenu extends MenuItemBase {
   items: MenuItem[];
 }
 
-type MenuItem = MenuAction | MenuSeparator | MenuToggle | MenuSubmenu;
+interface MenuInfo {
+  type: 'info';
+  label: string;
+  icon?: React.ElementType;
+}
+
+type MenuItem = MenuAction | MenuSeparator | MenuToggle | MenuSubmenu | MenuInfo;
 
 interface MenuDefinition {
   label: string;
@@ -254,6 +260,19 @@ export default function MenuBar({
     return () => window.removeEventListener('keydown', handleEscape);
   }, [openMenu]);
 
+  // Zoom keyboard shortcuts — Ctrl+= / Ctrl+- / Ctrl+0
+  useEffect(() => {
+    const onZoomKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
+        else if (e.key === '-') { e.preventDefault(); zoomOut(); }
+        else if (e.key === '0') { e.preventDefault(); zoomReset(); }
+      }
+    };
+    window.addEventListener('keydown', onZoomKey);
+    return () => window.removeEventListener('keydown', onZoomKey);
+  }, [zoomIn, zoomOut, zoomReset]);
+
   const closeMenus = useCallback(() => {
     setOpenMenu(null);
     setActiveSubmenu(null);
@@ -445,6 +464,18 @@ export default function MenuBar({
     }
   }, []);
 
+  // ── App Zoom ──────────────────────────────────────────────────
+  const [appZoom, setAppZoom] = useState(() => {
+    try { return parseInt(localStorage.getItem('rmpg-app-zoom') || '100', 10); } catch { return 100; }
+  });
+  useEffect(() => {
+    document.body.style.zoom = `${appZoom}%`;
+    try { localStorage.setItem('rmpg-app-zoom', String(appZoom)); } catch { /* quota */ }
+  }, [appZoom]);
+  const zoomIn = useCallback(() => setAppZoom(z => Math.min(200, z + 10)), []);
+  const zoomOut = useCallback(() => setAppZoom(z => Math.max(50, z - 10)), []);
+  const zoomReset = useCallback(() => setAppZoom(100), []);
+
   const currentPage = location.pathname;
 
   // ============================================================
@@ -460,8 +491,8 @@ export default function MenuBar({
         label: 'New',
         icon: Plus,
         items: [
-          { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
-          { type: 'action', label: 'Incident Report', icon: FileText, action: () => { navigate('/incidents'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
+          { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => navigate('/dispatch?newCall=1') },
+          { type: 'action', label: 'Incident Report', icon: FileText, action: () => navigate('/incidents?newIncident=1') },
           { type: 'action', label: 'Arrest Report', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'separator' },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
@@ -670,14 +701,18 @@ export default function MenuBar({
       { type: 'action', label: timerEndTime ? `Timer: ${timerRemaining}` : 'Quick Timer', icon: Clock, action: () => {
         if (timerEndTime) { cancelQuickTimer(); } else { setTimerPromptOpen(true); }
       }},
-      { type: 'action', label: 'Fullscreen Toggle', icon: Monitor, action: toggleFullscreen },
+      { type: 'toggle', label: 'Fullscreen Mode', icon: isFullscreen ? Minimize2 : Maximize2, shortcut: 'F11', checked: isFullscreen, action: toggleFullscreen },
+      { type: 'separator' },
+      { type: 'action', label: 'Zoom In', icon: Plus, shortcut: 'Ctrl+=', action: zoomIn },
+      { type: 'action', label: 'Zoom Out', icon: Minus, shortcut: 'Ctrl+-', action: zoomOut },
+      { type: 'action', label: `Reset View — ${appZoom}%`, icon: Monitor, shortcut: 'Ctrl+0', action: zoomReset },
       { type: 'separator' },
       {
         type: 'submenu',
         label: 'Dispatch & Field',
         icon: Radio,
         items: [
-          { type: 'action', label: 'New Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
+          { type: 'action', label: 'New Call for Service', icon: Phone, shortcut: 'N', action: () => navigate('/dispatch?newCall=1') },
           { type: 'action', label: 'Active Calls Board', icon: ClipboardList, action: () => navigate('/dispatch') },
           { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
@@ -825,10 +860,10 @@ export default function MenuBar({
         icon: Settings,
         adminOnly: true,
         items: [
-          { type: 'action', label: 'User Management', icon: Users, action: () => navigate('/admin') },
-          { type: 'action', label: 'System Configuration', icon: Settings, action: () => navigate('/admin') },
-          { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin') },
-          { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
+          { type: 'action', label: 'User Management', icon: Users, action: () => navigate('/admin?tab=users') },
+          { type: 'action', label: 'System Configuration', icon: Settings, action: () => navigate('/admin?tab=system') },
+          { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin?tab=settings') },
+          { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin?tab=settings') },
           { type: 'separator' },
           { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/security-dashboard') },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
@@ -852,9 +887,9 @@ export default function MenuBar({
         icon: ClipboardList,
         items: [
           { type: 'action', label: '10-Codes Reference', icon: Radio, action: () => { setShow10Codes(true); } },
-          { type: 'action', label: 'Priority Levels', icon: Zap, action: () => { navigate('/admin'); } },
-          { type: 'action', label: 'Disposition Codes', icon: Hash, action: () => { navigate('/admin'); } },
-          { type: 'action', label: 'Incident Types', icon: FileText, action: () => { navigate('/admin'); } },
+          { type: 'action', label: 'Priority Levels', icon: Zap, action: () => navigate('/admin?tab=system') },
+          { type: 'action', label: 'Disposition Codes', icon: Hash, action: () => navigate('/admin?tab=system') },
+          { type: 'action', label: 'Incident Types', icon: FileText, action: () => navigate('/admin?tab=system') },
           { type: 'separator' },
           { type: 'action', label: 'Law Book', icon: Scale, action: () => { navigate('/law-book'); } },
         ],
@@ -908,13 +943,13 @@ export default function MenuBar({
         label: 'System Status',
         icon: isConnected ? Wifi : WifiOff,
         items: [
-          { type: 'action', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
-          { type: 'action', label: `Users Online: ${onlineCount}`, icon: Users, disabled: true, action: () => {} },
-          { type: 'action', label: 'Server: RMPG-FLEX-01', icon: Server, disabled: true, action: () => {} },
-          { type: 'action', label: `Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
+          { type: 'info', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`, icon: isConnected ? Wifi : WifiOff },
+          { type: 'info', label: `Users Online: ${onlineCount}`, icon: Users },
+          { type: 'info', label: 'Server: RMPG-FLEX-01', icon: Server },
+          { type: 'info', label: `Page: ${currentPage}`, icon: Globe },
           { type: 'separator' },
           { type: 'action', label: 'Reconnect', icon: RefreshCw, action: () => window.location.reload() },
-          { type: 'action', label: 'System Health', icon: HeartPulse, action: () => navigate('/admin'), adminOnly: true },
+          { type: 'action', label: 'System Health', icon: HeartPulse, action: () => navigate('/admin?tab=health'), adminOnly: true },
         ],
       },
       { type: 'separator' },
@@ -953,12 +988,12 @@ export default function MenuBar({
         },
       },
       { type: 'separator' },
-      { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
+      { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin?tab=system') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       { type: 'separator' },
       { type: 'action', label: 'Download Desktop App', icon: Download, action: () => navigate('/downloads') },
       // Version string with monospace for alignment
-      { type: 'action', label: `Version ${APP_VERSION}`, icon: Shield, disabled: true, action: () => {} },
+      { type: 'info', label: `Version ${APP_VERSION}`, icon: Shield },
     ],
   };
 
@@ -1033,6 +1068,16 @@ export default function MenuBar({
           <span className={`menu-item-check ${item.checked ? 'text-brand-400' : ''}`} style={{ fontWeight: item.checked ? 700 : 400 }}>{item.checked ? '✓' : ''}</span>
           {item.shortcut && <span className="menu-item-shortcut">{item.shortcut}</span>}
         </button>
+      );
+    }
+
+    // Info-only row (non-interactive, no onClick / role / disabled)
+    if (item.type === 'info') {
+      return (
+        <div key={`info-${index}`} className="menu-item menu-item-info" aria-disabled="true">
+          <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
+          <span className="menu-item-label">{item.label}</span>
+        </div>
       );
     }
 
