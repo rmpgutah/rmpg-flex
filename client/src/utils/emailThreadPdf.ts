@@ -22,6 +22,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { EmailMessage, EmailAttachment } from '../types';
+import { stripHtmlForPdf } from './formatters';
 import { parseTimestamp } from './dateUtils';
 
 const RMPG_GOLD = '#d4a017';
@@ -79,26 +80,7 @@ export function wrapText(input: string, maxChars: number): string[] {
  *  PDF instead of dumping raw markup. NOT a security boundary — the body has
  *  already been sanitized in `EmailBodyFrame`; this is purely formatting. */
 export function stripHtmlForText(input: string | undefined | null): string {
-  if (!input) return '';
-  return String(input)
-    // Entity-decode BEFORE tag stripping so HTML-encoded script/style blocks
-    // (e.g. &lt;script&gt;) become real tags and are removed in the strip pass.
-    // &amp; goes last so &amp;lt; stays as the text "&lt;", not "<".
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    // Strip all tags (includes any decoded from above)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/(div|li|tr|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return stripHtmlForPdf(input);
 }
 
 /** Public for testing. The highest importance flag across a set of messages
