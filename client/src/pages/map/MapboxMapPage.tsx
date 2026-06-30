@@ -177,7 +177,7 @@ function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
 function buildCallPopupHtml(call: ActiveCall): string {
   const color = PRIORITY_COLORS[call.priority] || '#888888';
   const flags = HAZARD_FLAGS
-    .filter(f => call[f.key])
+    .filter(f => (call as any)[f.key])
     .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
     .join('');
   return `
@@ -338,7 +338,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
           type: c.incident_type,
           timestamp: Date.now(),
-        })) as IncidentPoint[];
+        })) as unknown as IncidentPoint[];
 
       const unitPositions = units
         .filter(u => u.latitude != null && u.longitude != null)
@@ -347,7 +347,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           position: [u.longitude!, u.latitude!] as [number, number],
           status: u.status,
           callsign: u.call_sign,
-        })) as UnitPosition[];
+        })) as unknown as UnitPosition[];
 
       const arcs = units
         .filter(u => u.latitude != null && u.longitude != null && u.current_call_type)
@@ -1078,6 +1078,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       }
 
       const colors = ['#22c55e', '#f59e0b', '#ef4444']; // 5min=green, 10min=yellow, 15min=red
+      if (!data?.features) { console.error('Isochrone response missing features'); return; }
       data.features.forEach((_, idx) => {
         const fillId = `isochrone-fill-${idx}`;
         const borderId = `isochrone-border-${idx}`;
@@ -1115,19 +1116,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       id: 'operational',
       label: 'Operational Overlays',
       layers: [
-        { id: 'heatmap', label: 'Crime Heatmap', enabled: heatmap.enabled, onToggle: heatmap.toggle, color: '#ef4444', description: 'Incident density (H)' },
-        { id: 'traffic', label: 'Live Traffic', enabled: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
-        { id: 'breadcrumbs', label: 'Unit Trails', enabled: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
-        { id: 'clustering', label: 'Call Clusters', enabled: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
-        { id: 'daylight', label: 'Day/Night', enabled: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
-        { id: 'geofences', label: 'Geofence Zones', enabled: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
-        { id: 'isochrone', label: 'Response Zones', enabled: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
-        { id: 'weather', label: 'Weather Radar', enabled: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
-        { id: 'grid', label: 'Coordinate Grid', enabled: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
-        { id: 'deck', label: 'GPU Overlay', enabled: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
-        { id: 'streetview', label: 'Street View', enabled: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
-        { id: 'inspect', label: 'Feature Inspector', enabled: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
-        { id: 'mapmatch', label: 'Map Match Trace', enabled: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
+        { id: 'heatmap', label: 'Crime Heatmap', active: heatmap.enabled, onToggle: heatmap.toggle, color: '#ef4444', description: 'Incident density (H)' },
+        { id: 'traffic', label: 'Live Traffic', active: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
+        { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
+        { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
+        { id: 'daylight', label: 'Day/Night', active: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
+        { id: 'geofences', label: 'Geofence Zones', active: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
+        { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
+        { id: 'weather', label: 'Weather Radar', active: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
+        { id: 'grid', label: 'Coordinate Grid', active: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
+        { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
+        { id: 'streetview', label: 'Street View', active: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
+        { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
+        { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
       ],
     },
     {
@@ -1136,7 +1137,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       layers: geoJsonLayers.configs.map(cfg => ({
         id: `geo-${cfg.id}`,
         label: cfg.label,
-        enabled: geoJsonLayers.layerStates[cfg.id]?.visible ?? false,
+        active: geoJsonLayers.layerStates[cfg.id]?.visible ?? false,
         onToggle: () => geoJsonLayers.toggleGeoLayer(cfg.id),
         color: cfg.style.strokeColor || cfg.style.fillColor,
         description: cfg.file.replace('.geojson', ''),
@@ -1146,38 +1147,38 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       id: 'base',
       label: 'Base Layers',
       layers: [
-        { id: 'beats', label: 'Beat Boundaries', enabled: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
-        { id: 'terrain', label: '3D Terrain', enabled: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
-        { id: 'buildings', label: '3D Buildings', enabled: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
-        { id: 'selfpos', label: 'My Position', enabled: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
-        { id: 'projection', label: `Projection: ${projection.projection}`, enabled: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
-        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, enabled: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
+        { id: 'beats', label: 'Beat Boundaries', active: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
+        { id: 'terrain', label: '3D Terrain', active: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
+        { id: 'buildings', label: '3D Buildings', active: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
+        { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
+        { id: 'projection', label: `Projection: ${projection.projection}`, active: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
+        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, active: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
       ],
     },
     {
       id: 'dispatch',
       label: 'Dispatch Automation',
       layers: [
-        { id: 'autopan', label: 'Auto-Pan P1', enabled: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
-        { id: 'p1audio', label: 'P1 Audio Alert', enabled: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
+        { id: 'autopan', label: 'Auto-Pan P1', active: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
+        { id: 'p1audio', label: 'P1 Audio Alert', active: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
       ],
     },
     {
       id: 'camera',
       label: 'Camera & Export',
       layers: [
-        { id: 'orbit', label: 'Orbit Animation', enabled: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
-        { id: 'snapshot', label: 'Capture Snapshot', enabled: snapshot.snapshots.length > 0, onToggle: () => { const c = mapRef.current?.getCenter(); if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 }); }, color: '#06b6d4', description: 'Save map viewport as image' },
+        { id: 'orbit', label: 'Orbit Animation', active: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
+        { id: 'snapshot', label: 'Capture Snapshot', active: snapshot.snapshots.length > 0, onToggle: () => { const c = mapRef.current?.getCenter(); if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 }); }, color: '#06b6d4', description: 'Save map viewport as image' },
       ],
     },
     {
       id: 'tools',
       label: 'Tools & Search',
       layers: [
-        { id: 'places', label: 'Places Search', enabled: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
-        { id: 'directions', label: 'Directions', enabled: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
-        { id: 'bookmarks', label: 'Bookmarks', enabled: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
-        { id: 'optimize', label: 'Route Optimizer', enabled: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
+        { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
+        { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
+        { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
+        { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
       ],
     },
   ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization]);
@@ -1463,7 +1464,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 {calls.map(call => {
                   const color = PRIORITY_COLORS[call.priority] || '#888888';
                   const hasGps = call.latitude != null && call.longitude != null;
-                  const hasFlags = HAZARD_FLAGS.some(f => call[f.key]);
+                  const hasFlags = HAZARD_FLAGS.some(f => (call as any)[f.key]);
                   return (
                     <button
                       key={call.id}
@@ -1488,7 +1489,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       <div className="ml-4 text-[10px] text-rmpg-500 truncate">{call.location_address}</div>
                       {hasFlags && (
                         <div className="ml-4 mt-0.5 flex flex-wrap gap-0.5">
-                          {HAZARD_FLAGS.filter(f => call[f.key]).map(f => (
+                          {HAZARD_FLAGS.filter(f => (call as any)[f.key]).map(f => (
                             <span
                               key={f.key}
                               className="text-[7px] font-bold px-1 py-px"

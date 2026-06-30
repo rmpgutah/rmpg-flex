@@ -319,14 +319,14 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       };
 
       const myId = ++seqRef.current;
-      render(null, null, true);
+      render(null, null, null, true);
       apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
         .then((d) => {
           if (myId !== seqRef.current) return; // a newer click superseded this
           const r = d?.results?.[0];
-          render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
+          render(r, null, null, false);
         })
-        .catch(() => { if (myId === seqRef.current) render(null, null, false); });
+        .catch(() => { if (myId === seqRef.current) render(null, null, null, false); });
     };
     map.on('click', handler);
     return () => { map.off('click', handler); streetAbortRef.current?.abort(); };

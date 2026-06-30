@@ -721,7 +721,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 />
                 <Tooltip
                   {...CHART_TOOLTIP_STYLE}
-                  formatter={(value: any, name: string) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
+                  formatter={(value: any, name: any) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
                   labelFormatter={(label) => {
                     const d = parseTimestamp(label);
                     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -878,7 +878,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
-                formatter={(value: any, name: string) => {
+                formatter={(value: any, name: any) => {
                   const label = name === 'maintenance_cost' ? 'Maintenance' : name === 'fuel_cost' ? 'Fuel' : name;
                   return [`$${Number(value).toFixed(0)}`, label];
                 }}
@@ -916,7 +916,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
-                formatter={(value: any, name: string) => {
+                formatter={(value: any, name: any) => {
                   const labels: Record<string, string> = { fuel_cost: 'Fuel', maintenance_cost: 'Maintenance', other_costs: 'Other', loan_payments: 'Loans' };
                   return [`$${Number(value).toFixed(0)}`, labels[name] || name];
                 }}

@@ -1058,12 +1058,12 @@ export async function executeCommand(
       if (!unit) {
         return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
       }
-      if (!unit) return;
+      const cs = unit!.call_sign;
 
       return {
         success: true,
-        message: `Showing workload for ${unit.call_sign}`,
-        action: { type: 'show_workload', callSign: unit.call_sign },
+        message: `Showing workload for ${cs}`,
+        action: { type: 'show_workload', callSign: cs },
       };
     }
 

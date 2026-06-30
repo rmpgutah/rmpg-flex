@@ -130,7 +130,7 @@ export function createNetworkGraph(config: NetworkConfig): {
 
   // Event handlers
   if (config.onNodeClick) {
-    sigma.on('clickNode', ({ node }) => {
+    sigma.on('clickNode', ({ node }: any) => {
       const attrs = graph.getNodeAttributes(node);
       config.onNodeClick?.(node, attrs);
     });

@@ -63,7 +63,7 @@ const V2_BLANK_FORMS: { id: string; name: string; formNumber: string; descriptio
 async function downloadV2BlankForm(form: typeof V2_BLANK_FORMS[number]) {
   try {
     const pdf = await renderPdfV2(form.schema, {} as any);
-    const blob = pdf instanceof Blob ? pdf : new Blob([await pdf.arrayBuffer()], { type: 'application/pdf' });
+    const blob = pdf instanceof Blob ? pdf : new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

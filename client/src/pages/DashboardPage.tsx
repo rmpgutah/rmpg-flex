@@ -1835,7 +1835,7 @@ export default function DashboardPage() {
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         padding: '8px 12px',
                       }}
-                      formatter={(value: number) => [`${value} calls`, '']}
+                      formatter={(value: any) => [`${value} calls`, '']}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -1985,7 +1985,7 @@ export default function DashboardPage() {
                       <Tooltip
                         contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #3a3a3a', borderRadius: '2px', color: '#cccccc', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
                         labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
-                        formatter={(value: number) => [`${value} calls`, '']}
+                        formatter={(value: any) => [`${value} calls`, '']}
                         cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
                       />
                       <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: '#f0c040', r: 5, strokeWidth: 2, stroke: '#ffffff' }} animationDuration={700} />
@@ -2119,7 +2119,7 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#181818" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="type" width={100} tick={{ fill: '#aaaaaa', fontSize: 9 }} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
                   <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
                     {callsByType.slice(0, 8).map((_, i) => (
                       <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? '#b8860b' : '#888888'} />
@@ -3135,7 +3135,7 @@ export default function DashboardPage() {
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                       padding: '8px 12px',
                     }}
-                    formatter={(value: number, _name: string, props: any) => [
+                    formatter={(value: any, _name: any, props: any) => [
                       `${value} actions`,
                       `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
                     ]}

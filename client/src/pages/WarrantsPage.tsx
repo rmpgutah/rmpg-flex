@@ -3636,7 +3636,7 @@ export default function WarrantsPage() {
                       All Sources ({totalSources})
                     </h3>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
-                      {stateCodes.map((state: string) => {
+                      {stateCodes.map((state: any) => {
                         const sources: ScraperSource[] = byState.get(state) || [];
                         const active = sources.reduce((sum: number, s) => sum + (s.active_warrants || 0), 0);
                         const enabled = sources.filter(s => s.enabled).length;

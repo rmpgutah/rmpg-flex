@@ -62,9 +62,9 @@ export function initPeer(config: PeerConfig): Peer {
   });
 
   // Handle incoming data connections
-  peer.on('connection', (conn) => {
+  peer.on('connection', (conn: any) => {
     dataConnections.set(conn.peer, conn);
-    conn.on('data', (data) => {
+    conn.on('data', (data: any) => {
       config.onDataReceived?.(conn.peer, data);
     });
     conn.on('close', () => {
@@ -73,7 +73,7 @@ export function initPeer(config: PeerConfig): Peer {
   });
 
   // Handle incoming calls
-  peer.on('call', (call) => {
+  peer.on('call', (call: any) => {
     config.onCallReceived?.(call, call.peer);
   });
 
@@ -145,7 +145,7 @@ export async function answerCall(
     call.answer(stream);
 
     return new Promise((resolve) => {
-      call.on('stream', (remoteStream) => {
+      call.on('stream', (remoteStream: any) => {
         resolve(remoteStream);
       });
       call.on('error', () => resolve(null));

@@ -80,6 +80,7 @@ import AdminReanalysisTab from './admin/AdminReanalysisTab';
 import AdminDevSettingsTab from './admin/AdminDevSettingsTab';
 import { Book } from 'lucide-react';
 import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
+import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
 import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
 
 // ============================================================
@@ -245,7 +246,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 

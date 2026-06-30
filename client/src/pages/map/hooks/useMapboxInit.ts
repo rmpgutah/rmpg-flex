@@ -102,13 +102,11 @@ export function useMapboxInit(initialStyle: MapboxStyleId = 'dark'): UseMapboxIn
         devLog('[Mapbox] Initializing map with style:', currentStyle);
 
         // Create the map
-        const map = createMapboxMap({
-          container: mapRef.current!,
-          accessToken: token,
-          style: currentStyle,
-          center: [-111.891, 40.7608], // SLC
-          zoom: 12,
-        });
+        const map = createMapboxMap(
+          mapRef.current!,
+          token,
+          currentStyle,
+        );
 
         mapInstanceRef.current = map;
 

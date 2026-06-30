@@ -35,7 +35,7 @@ export default function ForecastChart({ data, className = '' }: ForecastChartPro
               padding: '6px 10px',
             }}
             cursor={{ fill: 'rgb(var(--spm-text-muted-rgb) / 0.08)' }}
-            formatter={(value: number, name: string) => [
+            formatter={(value: any, name: any) => [
               `${value} calls`,
               name === 'actual' ? 'Actual' : 'Forecast',
             ]}

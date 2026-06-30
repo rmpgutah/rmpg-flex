@@ -279,7 +279,7 @@ export default function DispatchPage() {
         location_floor: ed.location_floor,
         location_room: ed.location_room,
         zone_beat: ed.zone_beat,
-        section_id: ed.section_id,
+        sector_id: ed.sector_id,
         zone_id: ed.zone_id,
         beat_id: ed.beat_id,
         weapons_involved: ed.weapons_involved,
@@ -813,7 +813,7 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
-        section_id: callData.section_id ?? null,
+        sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
         weapons_involved: callData.weapons_involved || null,
@@ -1201,7 +1201,7 @@ export default function DispatchPage() {
         location_floor: editData.location_floor,
         location_room: editData.location_room,
         zone_beat: editData.zone_beat,
-        section_id: editData.section_id,
+        sector_id: editData.sector_id,
         zone_id: editData.zone_id,
         beat_id: editData.beat_id,
         weapons_involved: editData.weapons_involved,
@@ -2264,7 +2264,7 @@ export default function DispatchPage() {
                         <div><label className="text-[9px] text-rmpg-400">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
-                        <div><label className="text-[9px] text-rmpg-400">Section ID</label><input type="text" className="input-dark text-xs" value={editData.section_id} onChange={(e) => updateEditField('section_id', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-rmpg-400">Section ID</label><input type="text" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => updateEditField('sector_id', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Zone ID</label><input type="text" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => updateEditField('zone_id', e.target.value)} /></div>
                         <div><label className="text-[9px] text-rmpg-400">Beat ID</label><input type="text" className="input-dark text-xs" value={editData.beat_id} onChange={(e) => updateEditField('beat_id', e.target.value)} /></div>
                       </div>

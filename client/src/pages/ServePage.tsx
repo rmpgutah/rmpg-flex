@@ -517,7 +517,7 @@ export default function ServePage() {
         documentType: job.document_type || 'Legal Documents',
         attempts,
         skipTraces: skipTraces.length > 0 ? skipTraces : undefined,
-        signature: user?.signature_data || undefined,
+        signature: (user as any)?.signature_data || undefined,
       });
 
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -807,7 +807,7 @@ export default function ServePage() {
     return {
       attemptNumber: result.attempt_number,
       jobStatus: result.queue_status,
-      dueDiligenceComplete: result.due_diligence_complete,
+      dueDiligenceComplete: (result as any).due_diligence_complete,
     };
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
@@ -1163,7 +1163,7 @@ export default function ServePage() {
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
         .map(j => [j.recipient_lng!, j.recipient_lat!]);
 
-      if (coords.length > 1) {
+      if (coords.length > 1 && mapRef.current) {
         const sourceId = 'serve-route-line';
         routeSourceRef.current = sourceId;
         mapRef.current.addSource(sourceId, {
@@ -1183,7 +1183,7 @@ export default function ServePage() {
       }
     }
 
-    if (hasMarkers) {
+    if (hasMarkers && mapRef.current) {
       mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
