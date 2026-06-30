@@ -1,6 +1,18 @@
 // ============================================================
 // RMPG Flex — API Routing Proxy (rmpg-api-proxy)
 // ============================================================
+// Inert Durable Object stubs — the rmgp-api-proxy previously had orphan
+// DO namespaces (AlertHubDO, WelfareWatchDO, VoiceHubDO, PdfToolsContainer)
+// left by a name-collision incident (deploy.yml:119-129). These stubs keep
+// the deploy from failing with "New version of script does not export class
+// 'X' which is depended on by existing Durable Objects" [code 10064].
+// The proxy uses NONE of these — they exist purely to satisfy Cloudflare's
+// DO-class-consistency check at deploy time.
+import { DurableObject } from 'cloudflare:workers';
+export class AlertHubDO extends DurableObject {}
+export class WelfareWatchDO extends DurableObject {}
+export class VoiceHubDO extends DurableObject {}
+export class PdfToolsContainer extends DurableObject {}
 // Sits in front of rmpgutah.us/api/* at the zone level (see proxy/wrangler.toml).
 // Dispatches each request to one of two backends:
 //
