@@ -112,13 +112,14 @@ interface ToneProfile {
 const PROFILES: Record<ToneType, ToneProfile> = {
 
   // ── Info: MDT keystroke acknowledgment pip ───────────────────
-  // Single 1000 Hz sine pip, 50ms — the classic Spillman Flex
+  // Single 1000 Hz triangle pip, 55ms — the classic Spillman Flex
   // "command accepted" beep heard on every successful MDT action.
+  // Triangle wave for a warmer, console-like timbre.
   info: {
-    type: 'sine',
-    gain: 0.18,
+    type: 'triangle',
+    gain: 0.20,
     steps: [
-      { freq: 1000, start: 0, dur: 0.05 },
+      { freq: 1000, start: 0, dur: 0.055 },
     ],
   },
 
@@ -155,15 +156,16 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   },
 
   // ── Error: Descending minor third (negative acknowledgment) ─
-  // 440 Hz → 349 Hz (A4 → F4), each 120ms with square wave for
-  // that classic "error buzz" feel. Universally recognized as a
-  // failure/rejection tone. Used for command errors, API failures.
+  // 480 Hz → 380 Hz sawtooth buzz, each 100ms — the Spillman Flex
+  // console NACK tone heard on command failures and API errors.
+  // Sawtooth wave gives it a harsher, more immediate "rejected"
+  // character than the sine-based chimes.
   error: {
-    type: 'square',
-    gain: 0.12,
+    type: 'sawtooth',
+    gain: 0.10,
     steps: [
-      { freq: 440, start: 0,    dur: 0.12 },
-      { freq: 349, start: 0.15, dur: 0.12 },
+      { freq: 480, start: 0,    dur: 0.10 },
+      { freq: 380, start: 0.12, dur: 0.10 },
     ],
   },
 
@@ -676,13 +678,18 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Dispatch Bell — gentle two-tone bell (E6 → B5) ──────────
+  // ── Dispatch Bell — Spillman Flex Premier CAD two-tone chime ─
+  // 1060 → 880 Hz descending triangle chime, the signature Motorola/
+  // Spillman Premier CAD announcer "ding-bong" that precedes every
+  // terminal readback. Triangle wave for the slightly metallic
+  // plastic-speaker timbre. Second tone held longer for a deliberate,
+  // pronounced "bong" cadence.
   dispatch_bell: {
-    type: 'sine',
-    gain: 0.2,
+    type: 'triangle',
+    gain: 0.22,
     steps: [
-      { freq: 1318, start: 0,    dur: 0.16 },
-      { freq: 988,  start: 0.14, dur: 0.22 },
+      { freq: 1060, start: 0,    dur: 0.14 },
+      { freq: 880,  start: 0.17, dur: 0.20 },
     ],
   },
 
