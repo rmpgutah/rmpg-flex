@@ -233,7 +233,7 @@ export class Primitives {
       this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
       this.doc.setDrawColor(0, 0, 0);
       this.doc.rect(left, top, tableWidth, h);
-      if (withHeaderSep) this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      if (withHeaderSep) this.doc.line(left, top + headerH, left + tableWidth, top + headerH);
       for (let i = 1; i < spec.columns.length; i++) {
         this.doc.line(colStarts[i], top, colStarts[i], top + h);
       }
@@ -254,10 +254,12 @@ export class Primitives {
         if (this.layout.cursorY < yBefore) {
           // Page break: close the fragment on the page just left (from fragTop
           // down to the last row's bottom), then start fresh on the new page
-          // top (continuation fragments carry no below-header separator).
+          // top with a repeated header band so columns stay identifiable.
           drawFragmentBorders(fragTop, yBefore, fragHasHeader);
           fragTop = this.layout.cursorY;
-          fragHasHeader = false;
+          drawHeaderBand(fragTop);
+          this.layout.advance(headerH);
+          applyBodyStyle();
         }
         const row = rows[r];
         const yRow = this.layout.cursorY;

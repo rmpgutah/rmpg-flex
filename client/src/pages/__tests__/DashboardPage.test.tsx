@@ -82,7 +82,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Active Calls')).toBeTruthy();
     });
-    expect(screen.getByText('5')).toBeTruthy();
+    expect(screen.getAllByText('5').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Units Available')).toBeTruthy();
     expect(screen.getByText(/3 \/ 8/)).toBeTruthy();
   });

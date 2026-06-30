@@ -8,6 +8,7 @@
 
 import { lazy, Suspense } from 'react';
 import { useMapProvider } from './hooks/useMapProvider';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 const MapboxMapPage = lazy(() => import('./MapboxMapPage'));
 
@@ -24,8 +25,10 @@ export default function MapPageRouter() {
   const { engine, detecting } = useMapProvider();
 
   return (
-    <Suspense fallback={LOADING_FALLBACK}>
-      {detecting || !engine ? LOADING_FALLBACK : <MapboxMapPage preferredEngine={engine} />}
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={LOADING_FALLBACK}>
+        {detecting || !engine ? LOADING_FALLBACK : <MapboxMapPage preferredEngine={engine} />}
+      </Suspense>
+    </ErrorBoundary>
   );
 }

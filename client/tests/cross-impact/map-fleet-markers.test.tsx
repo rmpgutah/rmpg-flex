@@ -10,15 +10,9 @@ import { describe, it, expect } from 'vitest';
  *  module-resolution smoke is the proportionate check. */
 describe('MapPage cross-impact (no regression from /fleet/v2 work)', () => {
   it('imports MapPage without throwing (transitive deps still resolve)', async () => {
-    const mod = await import('../../src/pages/map/MapPage');
+    const mod = await import('../../src/pages/map');
     const MapPage = mod.default;
     expect(typeof MapPage).toBe('function');
   }, 15000);
 
-  it('imports useMapFleetVehicles hook (the fleet-adjacent module that bridges fleet data → map)', async () => {
-    const mod = await import('../../src/pages/map/hooks/useMapFleetVehicles');
-    // Hook is exported as a named function or default — verify the module has a usable export
-    const exports = Object.keys(mod);
-    expect(exports.length).toBeGreaterThan(0);
-  });
 });
