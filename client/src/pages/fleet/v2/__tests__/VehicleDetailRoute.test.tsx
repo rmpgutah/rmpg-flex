@@ -65,10 +65,10 @@ describe('<VehicleDetailRoute>', () => {
     expect(screen.queryByText(/coming in pr 7'b\.2/i)).toBeNull();
   });
 
-  it("clicking Work Orders tab still shows the EmptyStateCard (deferred to PR 5)", async () => {
+  it("clicking Work Orders tab renders the WorkOrdersTab (empty state with no rows)", async () => {
     renderAt('/fleet/v2/vehicles/1');
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
     fireEvent.click(screen.getByRole('tab', { name: /^work orders/i }));
-    expect(screen.getByText(/coming in pr 5/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no work orders for this vehicle/i, {}, { timeout: 3000 })).toBeInTheDocument();
   });
 });
