@@ -6,21 +6,17 @@
 # dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
 # every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
 # reverted by #945 and this one). See [[project-auth-login-500-incident]].
-name = "rmpg-flex"
+# ALSO do not rename to "rmpg-flex" — that is the LEGACY worker (login hot
+# path via the proxy) and shares its name with the Pages project. A
+# git-connected Workers Build on the `rmpg-flex` worker kept auto-committing
+# that rename (bot commits #2495–#2511, 2026-06-30/07-01) and deploying this
+# rewrite OVER the legacy worker. Fix the build integration in the Cloudflare
+# dashboard (disconnect the repo from the `rmpg-flex` worker); never "fix"
+# the name here to match the bot.
+name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
-[build]
-import_map = "./import_map.json"
-pages_build_output_dir = "dist"
-
-[alias]
-"@simplewebauthn/server" = "node_modules/@simplewebauthn/server/dist/server.esm.js"
-"@simplewebauthn/server/helpers" = "node_modules/@simplewebauthn/server/helpers.js"
-"@hono/zod-validator" = "node_modules/@hono/zod-validator/dist/index.js"
-"pmtiles" = "node_modules/pmtiles/dist/pmtiles.js"
-"mp4box" = "node_modules/mp4box/dist/mp4box.all.js"
-
 
 # ─── Smart Placement (enabled 2026-06-12, monitor) ─────────
 # This worker is D1-heavy (most CAD endpoints make several sequential
@@ -136,10 +132,6 @@ bucket_name = "rmpg-flex-uploads"
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
-# Tiles bucket for map assets
-[[r2_buckets]]
-binding = "TILES"
-bucket_name = "rmpg-r2-tiles-upload"
 
 # ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
 # OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
@@ -315,9 +307,6 @@ NSOPW_ENABLED = "1"
 # wires the trigger with a stub handler; the real bulk-import lands in PR 2b.
 [triggers]
 crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *"]
-
-# Pages deployment configuration – tells Pages where the static build output lives.
-pages_build_output_dir = "dist"
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/
