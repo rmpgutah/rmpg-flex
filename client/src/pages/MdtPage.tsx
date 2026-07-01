@@ -412,8 +412,12 @@ export default function MdtPage() {
   // ── Data Fetching ──
   const fetchData = useCallback(async () => {
     try {
-      const [callsRaw, unitsRaw, msgResult] = await Promise.all([
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const [callsRaw, historyRaw, unitsRaw, msgResult] = await Promise.all([
         apiFetch<any>('/dispatch/calls?limit=100'),
+        apiFetch<any>(`/dispatch/calls?startDate=${encodeURIComponent(startOfMonth.toISOString())}&limit=500`),
         apiFetch<any[]>('/dispatch/units'),
         apiFetch<{ unreadCount: number }>('/comms/messages?limit=1'),
       ]);
@@ -423,6 +427,8 @@ export default function MdtPage() {
       // API returns { data: [...], pagination: {} } envelope
       const callRows: any[] = Array.isArray(callsRaw?.data) ? callsRaw.data : Array.isArray(callsRaw) ? callsRaw : [];
       const allCalls: CallForService[] = callRows.map(mapDbCall);
+      const historyRows: any[] = Array.isArray(historyRaw?.data) ? historyRaw.data : Array.isArray(historyRaw) ? historyRaw : [];
+      const allHistory: CallForService[] = historyRows.map(mapDbCall);
       const allUnits = Array.isArray(unitsRaw) ? unitsRaw : [];
 
       // Find my unit via GPS hook's unit ID
@@ -436,8 +442,13 @@ export default function MdtPage() {
         setMyCalls(allCalls.filter(c =>
           isActiveStatus(c.status) && c.assigned_units?.includes(myUnitIdStr)
         ));
+        // History calls: this unit's cleared/closed calls since start of month
+        setHistoryCalls(allHistory.filter(c =>
+          !isActiveStatus(c.status) && c.assigned_units?.includes(myUnitIdStr)
+        ));
       } else {
         setMyCalls([]);
+        setHistoryCalls([]);
       }
 
       // Pending calls (available for self-dispatch)
@@ -450,8 +461,8 @@ export default function MdtPage() {
       // behavior was nulling the open call any time it slipped past
       // ?limit=100 — disorienting for the officer mid-view.
       setSelectedCall(prev => {
-        if (!prev) return null;
-        const fresh = allCalls.find(c => c.id === prev.id);
+        if (!prev) return prev;
+        const fresh = allCalls.find(c => c.id === prev.id) || allHistory.find(c => c.id === prev.id);
         if (fresh) return fresh;
         // Fire-and-forget refetch; clear on 404, keep on success.
         // We return prev to avoid a flash of empty state during the
