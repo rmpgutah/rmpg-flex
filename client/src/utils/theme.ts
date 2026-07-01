@@ -103,8 +103,9 @@ export function applyThemePreference(
   const body = document.body;
 
   const legacy = isLegacyBlackForced();
-  html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black');
+  html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'dark');
   html.classList.add(`theme-${theme}`);
+  if (theme === 'dark' || legacy) html.classList.add('dark');
   if (legacy) html.classList.add('theme-legacy-black');
 
   // Day (light) is a genuinely light surface → native controls/status bar use

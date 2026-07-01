@@ -4,12 +4,11 @@ import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
 
 interface RadialMenuProps {
   onStatusChange?: () => void;
   onPanic?: () => void;
-  onAddNote?: () => void;
+  onAddNote?: (text: string) => void;
 }
 
 interface MenuSegment {
@@ -105,11 +104,9 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
   const submitNote = async () => {
     if (!noteText.trim()) return;
     try {
-      await apiFetch('/reports/shift-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: noteText.trim(), category: 'general' }),
-      });
+      if (onAddNote) {
+        await onAddNote(noteText.trim());
+      }
       setNoteText('');
       setShowNote(false);
       showFeedback('NOTE SAVED');

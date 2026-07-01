@@ -38,6 +38,7 @@ html.theme-dark,
   /* Priority neutrals: P3 routine uses --spm-text-muted; P4 scheduled is a
      dimmer step so the two read distinctly (esp. as adjacent pie slices). */
   --pri-scheduled: #5c6672;
+  /* SEPARATOR: NIGHT-specific tokens above, shared structure below */
 
   /* ── Semantic severity palette (THEMED — bright on dark night, darker on
      light day; see day/legacy blocks). Map status/severity hues onto these by
@@ -110,6 +111,7 @@ html.theme-light {
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
   --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
+  --pri-scheduled: #8a929b;
   /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
   --record-tile-bg: #dceaf7; --record-tile-border: #5b86b6; --record-tile-fg: #2c659f;
   --record-tile-bg-muted: #e7e4d9; --record-tile-border-muted: #9a958a; --record-tile-fg-muted: #6f7b8a;
@@ -179,6 +181,7 @@ html.theme-legacy-black {
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
   --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
+  --pri-scheduled: #4a4a4a;
   /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
   --record-tile-bg: #14202c; --record-tile-border: #2f5070; --record-tile-fg: #6f9fce;
   --record-tile-bg-muted: #141414; --record-tile-border-muted: #2d2d2d; --record-tile-fg-muted: #8a8a8a;

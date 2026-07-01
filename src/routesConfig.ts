@@ -224,6 +224,12 @@ import mapbox from './routes/mapbox';
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
 import mapboxTelemetry from './routes/mapboxTelemetry';
+// Driving events — powers the Dashcam AI Console. Was never mounted, causing
+// every /api/driving-events/* call to 404 (ForensicDashcamPlayer, etc.).
+import drivingEvents from './routes/drivingEvents';
+// Admin database repair — rebuild corrupt FTS tables (persons_fts, cases_fts)
+// that trigger SQLITE_CORRUPT_VTAB on every person/case write.
+import adminRepair from './routes/admin/repair';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -314,7 +320,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
   { prefix: '/api/dispatch/welfare', router: welfare, auth: 'required' },
 
+  // ── Driving events (dashcam AI console) ────────────────────
+  // Mounted but never registered — ForensicDashcamPlayer and DashcamAiPage
+  // had been 404ing on every /api/driving-events/* call since the VPS teardown.
+  // See src/routes/drivingEvents.ts for the full handler implementation.
+  { prefix: '/api/driving-events', router: drivingEvents, auth: 'required',
+    note: 'Dashcam AI console: events list, fleet-health, plate-history, audit-log, detail + media + stream. Ported from legacy; unblocks the live dashcam page.' },
+
   // ── Admin / personnel / presence ───────────────────────────
+  { prefix: '/api/admin/database', router: adminRepair, auth: 'required',
+    note: 'Database repair: POST /repair-fts rebuilds corrupt persons_fts/cases_fts tables. Admin/manager only.' },
   { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
     note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
   { prefix: '/api/admin/dev', router: adminDev, auth: 'required',

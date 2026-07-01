@@ -196,6 +196,13 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
+// CrashReportsPage existed on disk but had no route in App.tsx — sidebar link
+// hit the 404 catch-all. No backend route exists yet either; the page is a
+// self-contained wizard that fetches from (non-existent) /api/crash-reports.
+// Adding the route so the sidebar link renders the page stub instead of 404.
+const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
+// ImpoundPage existed on disk but had no route — sidebar /impound link 404'd.
+const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -598,6 +605,8 @@ function AppRoutes() {
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
             <Route path="/court-records" element={<RouteErrorBoundary><CourtRecordsPage /></RouteErrorBoundary>} />
+            <Route path="/crash-reports" element={<RouteErrorBoundary><CrashReportsPage /></RouteErrorBoundary>} />
+            <Route path="/impound" element={<RouteErrorBoundary><ImpoundPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras/:id" element={<RouteErrorBoundary><DashCamDetailPage /></RouteErrorBoundary>} />
             <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
             <Route path="/document-intake" element={<RouteErrorBoundary><DocumentIntakePage /></RouteErrorBoundary>} />

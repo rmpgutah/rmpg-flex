@@ -32,6 +32,7 @@ import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { log } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
@@ -78,14 +79,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const isCorrupt = detail.includes('SQLITE_CORRUPT') || detail.includes('malformed');
+  const statusCode = isCorrupt ? 503 : 500;
+
+  log.error('Unhandled route error', { route, userId, isCorrupt }, err);
+
+  if (isCorrupt) {
+    log.warn('[corrupt] Database corruption detected', { route, table: detail.includes('VTAB') ? 'FTS_virtual_table' : 'unknown' });
+  }
+
   return c.json({
-    error: 'Internal server error',
-    code: 'UNHANDLED',
+    error: isCorrupt ? 'Database error — try again or contact admin' : 'Internal server error',
+    code: isCorrupt ? 'DATABASE_CORRUPT' : 'UNHANDLED',
     route,
-    detail,
     auth: userId == null ? 'NO_AUTH' : `userId=${userId}`,
-  }, 500);
+  }, statusCode);
 });
 
 // ─── Apply route registry ────────────────────────────────────

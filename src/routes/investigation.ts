@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import type { D1Database } from '@cloudflare/workers-types';
+import { log } from '../utils/logger';
 
 const app = new Hono<{ Bindings: { DB: D1Database }; Variables: { user: any } }>();
 
@@ -22,44 +23,87 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
 
   const ftsQuery = sanitized.split(/\s+/).map(t => `"${t}"`).join(' OR ');
 
-  const [casesRes, casesTotal] = await Promise.all([
-    db.prepare(
-      `SELECT c.id, c.case_number, c.title, c.status, c.case_type, c.priority,
-              c.solvability_score, c.created_at, c.updated_at,
-              rank(matchinfo(cases_fts)) as fts_rank
-       FROM cases_fts JOIN cases c ON cases_fts.rowid = c.id
-       WHERE cases_fts MATCH ?
-       ORDER BY fts_rank DESC
-       LIMIT ? OFFSET ?`
-    ).bind(ftsQuery, limit, offset).all(),
-    db.prepare(
-      `SELECT COUNT(*) as total FROM cases_fts WHERE cases_fts MATCH ?`
-    ).bind(ftsQuery).first<{ total: number }>(),
-  ]);
+  let casesResult = { results: [] as any[], total: 0 };
+  let personsResult = { results: [] as any[], total: 0 };
 
-  const [personsRes, personsTotal] = await Promise.all([
-    db.prepare(
-      `SELECT p.id, p.first_name, p.last_name, p.dob, p.phone,
-              p.created_at,
-              rank(matchinfo(persons_fts)) as fts_rank
-       FROM persons_fts JOIN persons p ON persons_fts.rowid = p.id
-       WHERE persons_fts MATCH ?
-       ORDER BY fts_rank DESC
-       LIMIT ? OFFSET ?`
-    ).bind(ftsQuery, limit, offset).all(),
-    db.prepare(
-      `SELECT COUNT(*) as total FROM persons_fts WHERE persons_fts MATCH ?`
-    ).bind(ftsQuery).first<{ total: number }>(),
-  ]);
+  try {
+    const [casesRes, casesTotal] = await Promise.all([
+      db.prepare(
+        `SELECT c.id, c.case_number, c.title, c.status, c.case_type, c.priority,
+                c.solvability_score, c.created_at, c.updated_at,
+                rank(matchinfo(cases_fts)) as fts_rank
+         FROM cases_fts JOIN cases c ON cases_fts.rowid = c.id
+         WHERE cases_fts MATCH ?
+         ORDER BY fts_rank DESC
+         LIMIT ? OFFSET ?`
+      ).bind(ftsQuery, limit, offset).all(),
+      db.prepare(
+        `SELECT COUNT(*) as total FROM cases_fts WHERE cases_fts MATCH ?`
+      ).bind(ftsQuery).first<{ total: number }>(),
+    ]);
+    casesResult = { results: casesRes.results || [], total: casesTotal?.total || 0 };
+  } catch (err: any) {
+    log.warn('[investigation] FTS cases query failed, trying LIKE fallback', { error: err.message });
+    try {
+      const likeQuery = `%${sanitized}%`;
+      const likeRes = await db.prepare(
+        `SELECT c.id, c.case_number, c.title, c.status, c.case_type, c.priority,
+                c.solvability_score, c.created_at, c.updated_at, 0 as fts_rank
+         FROM cases c
+         WHERE c.title LIKE ? OR c.case_number LIKE ? OR c.description LIKE ?
+         LIMIT ? OFFSET ?`
+      ).bind(likeQuery, likeQuery, likeQuery, limit, offset).all();
+      const countRes = await db.prepare(
+        `SELECT COUNT(*) as total FROM cases c
+         WHERE c.title LIKE ? OR c.case_number LIKE ? OR c.description LIKE ?`
+      ).bind(likeQuery, likeQuery, likeQuery).first<{ total: number }>();
+      casesResult = { results: likeRes.results || [], total: countRes?.total || 0 };
+    } catch { /* both paths failed — return empty */ }
+  }
+
+  try {
+    const [personsRes, personsTotal] = await Promise.all([
+      db.prepare(
+        `SELECT p.id, p.first_name, p.last_name, p.dob, p.phone,
+                p.created_at,
+                rank(matchinfo(persons_fts)) as fts_rank
+         FROM persons_fts JOIN persons p ON persons_fts.rowid = p.id
+         WHERE persons_fts MATCH ?
+         ORDER BY fts_rank DESC
+         LIMIT ? OFFSET ?`
+      ).bind(ftsQuery, limit, offset).all(),
+      db.prepare(
+        `SELECT COUNT(*) as total FROM persons_fts WHERE persons_fts MATCH ?`
+      ).bind(ftsQuery).first<{ total: number }>(),
+    ]);
+    personsResult = { results: personsRes.results || [], total: personsTotal?.total || 0 };
+  } catch (err: any) {
+    log.warn('[investigation] FTS persons query failed, trying LIKE fallback', { error: err.message });
+    try {
+      const likeQuery = `%${sanitized}%`;
+      const likeRes = await db.prepare(
+        `SELECT p.id, p.first_name, p.last_name, p.dob, p.phone,
+                p.created_at, 0 as fts_rank
+         FROM persons p
+         WHERE p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ?
+         LIMIT ? OFFSET ?`
+      ).bind(likeQuery, likeQuery, likeQuery, limit, offset).all();
+      const countRes = await db.prepare(
+        `SELECT COUNT(*) as total FROM persons p
+         WHERE p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ?`
+      ).bind(likeQuery, likeQuery, likeQuery).first<{ total: number }>();
+      personsResult = { results: likeRes.results || [], total: countRes?.total || 0 };
+    } catch { /* both paths failed — return empty */ }
+  }
 
   return c.json({
     data: {
-      cases: casesRes.results || [],
-      persons: personsRes.results || [],
+      cases: casesResult.results,
+      persons: personsResult.results,
     },
     pagination: {
-      cases_total: casesTotal?.total || 0,
-      persons_total: personsTotal?.total || 0,
+      cases_total: casesResult.total,
+      persons_total: personsResult.total,
       limit,
       offset,
     },

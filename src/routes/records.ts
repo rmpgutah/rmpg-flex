@@ -6,6 +6,8 @@ import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
+import { log } from '../utils/logger';
+import { tryRepairAndRetry } from '../utils/repairFts';
 
 const records = new Hono<Env>();
 
@@ -655,6 +657,8 @@ records.put('/persons/:id', async (c) => {
 // DELETE /records/persons/:id — hard-delete a person.
 // The client also supports archiving (POST /.../archive) as a softer
 // alternative; this path is the explicit "delete" button in the UI.
+// If persons_fts is corrupt (SQLITE_CORRUPT_VTAB), the persons_ad trigger
+// fails — we detect that and rebuild the FTS table before retrying.
 records.delete('/persons/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -682,10 +686,13 @@ records.delete('/persons/:id', async (c) => {
     try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE warrants SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
-    await execute(db, 'DELETE FROM persons WHERE id = ?', id);
+    await tryRepairAndRetry(db,
+      () => execute(db, 'DELETE FROM persons WHERE id = ?', id),
+      'persons_fts',
+    );
     return c.json({ success: true });
   } catch (err) {
-    console.error('DELETE /records/persons/:id failed:', err);
+    log.error('DELETE /records/persons/:id failed', {}, err);
     return c.json({ error: 'Failed to delete person', detail: (err as Error)?.message }, 500);
   }
 });
