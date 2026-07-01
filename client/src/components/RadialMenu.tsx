@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import RichTextArea from './RichTextArea';
+import { apiFetch } from '../hooks/useApi';
 import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
@@ -85,7 +86,6 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
           break;
         case 'note':
           setShowNote(true);
-          if (onAddNote) onAddNote();
           return;
         case 'supervisor':
           showFeedback('SUPERVISOR NOTIFIED');
