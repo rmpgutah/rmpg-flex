@@ -1089,7 +1089,7 @@ export default function AdminSystemTab({
   };
 
   // Dispatch Unit CRUD handlers
-  const activeOfficers = users.filter((u) => u.is_active && !u.termination_date);
+  const activeOfficers = (Array.isArray(users) ? users : []).filter((u) => u.is_active && !u.termination_date);
 
   const handleCreateUnit = async () => {
     const cs = newUnitCallSign.trim();

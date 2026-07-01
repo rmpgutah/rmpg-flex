@@ -453,7 +453,7 @@ export default function AdminGodModeTab() {
             className="flex-1 bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100"
           >
             <option value="">Select user...</option>
-            {users.filter((u: any) => u.role !== 'admin').map((u: any) => (
+            {(Array.isArray(users) ? users : []).filter((u: any) => u.role !== 'admin').map((u: any) => (
               <option key={u.id} value={u.id}>{u.full_name || u.username} ({u.role}) — {u.call_sign || u.badge_number || 'N/A'}</option>
             ))}
           </select>

@@ -182,7 +182,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     }
   };
 
-  const filtered = rules.filter((r) =>
+  const filtered = (Array.isArray(rules) ? rules : []).filter((r) =>
     !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.trigger_event.includes(search.toLowerCase())
   );
 
@@ -230,7 +230,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
           </div>
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
-            <span className="text-[9px] text-rmpg-500">{rules.filter((r) => r.is_active).length} active</span>
+            <span className="text-[9px] text-rmpg-500">{(Array.isArray(rules) ? rules : []).filter((r) => r.is_active).length} active</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

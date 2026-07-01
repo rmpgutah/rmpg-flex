@@ -201,7 +201,7 @@ export default function AdminRadioTab() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return channels;
-    return channels.filter(ch =>
+    return (Array.isArray(channels) ? channels : []).filter(ch =>
       ch.name.toLowerCase().includes(q) ||
       (ch.description || '').toLowerCase().includes(q) ||
       (ch.frequency || '').toLowerCase().includes(q) ||
@@ -218,8 +218,8 @@ export default function AdminRadioTab() {
     return [...active, ...archived];
   }, [filtered]);
 
-  const activeCount = channels.filter(c => !c.archived_at).length;
-  const totalTx = channels.reduce((sum, c) => sum + (Number(c.tx_count) || 0), 0);
+  const activeCount = (Array.isArray(channels) ? channels : []).filter(c => !c.archived_at).length;
+  const totalTx = (Array.isArray(channels) ? channels : []).reduce((sum, c) => sum + (Number(c.tx_count) || 0), 0);
 
   // Sub-tab bar: Channels (CRUD) vs Settings (org-wide AI/recording/audio).
   const subTabs = (

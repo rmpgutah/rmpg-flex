@@ -74,7 +74,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
 
   const filtered = useMemo(() => {
     if (stateFilter === 'all') return sources;
-    return sources.filter((s) => s.state === stateFilter);
+    return (Array.isArray(sources) ? sources : []).filter((s) => s.state === stateFilter);
   }, [sources, stateFilter]);
 
   const toggleOne = (key: string) => {

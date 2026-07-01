@@ -63,12 +63,12 @@ export function AdminVmrsBrowser() {
       const q = search.toLowerCase();
       list = list.filter((s) => {
         if (s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)) return true;
-        const asms = assemblies.filter((a) => a.system_code === s.code);
+        const asms = (Array.isArray(assemblies) ? assemblies : []).filter((a) => a.system_code === s.code);
         const matchAsm = asms.some(
           (a) => a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q),
         );
         if (matchAsm) return true;
-        const cmps = components.filter((c) => c.system_code === s.code);
+        const cmps = (Array.isArray(components) ? components : []).filter((c) => c.system_code === s.code);
         const matchCmp = cmps.some(
           (c) => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q),
         );
@@ -131,7 +131,7 @@ export function AdminVmrsBrowser() {
         ) : (
           <div className="p-2 space-y-0.5">
             {filteredSystems.map((sys) => {
-              const asms = assemblies.filter((a) => a.system_code === sys.code);
+              const asms = (Array.isArray(assemblies) ? assemblies : []).filter((a) => a.system_code === sys.code);
               const isExpanded = expanded[sys.code];
               const dot = sys.active ? 'bg-emerald-500' : 'bg-rmpg-600';
               return (
@@ -166,7 +166,7 @@ export function AdminVmrsBrowser() {
                         </div>
                       ) : (
                         asms.map((asm) => {
-                          const cmps = components.filter(
+                          const cmps = (Array.isArray(components) ? components : []).filter(
                             (c) => c.system_code === sys.code && c.assembly_code === asm.code,
                           );
                           const asmKey = `${sys.code}-${asm.code}`;

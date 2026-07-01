@@ -299,7 +299,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
 
   // Units that are not already mapped
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
-  const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
+  const availableUnits = (Array.isArray(units) ? units : []).filter(u => !mappedUnitIds.has(u.id));
 
   return (
     <div className="p-4 space-y-4">

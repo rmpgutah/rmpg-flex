@@ -665,7 +665,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
   // Units that are not already mapped (exclude null unit_id from the blocked set)
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id).filter((id): id is number => id != null));
-  const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
+  const availableUnits = (Array.isArray(units) ? units : []).filter(u => !mappedUnitIds.has(u.id));
 
   if (loading) return <LoadingSpinner />;
 

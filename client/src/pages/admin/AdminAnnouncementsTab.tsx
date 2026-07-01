@@ -177,7 +177,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     m.action('Delete announcement', () => setDeleteId(a.id), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
-  const filtered = announcements.filter((a) =>
+  const filtered = (Array.isArray(announcements) ? announcements : []).filter((a) =>
     !search || a.title.toLowerCase().includes(search.toLowerCase()) || a.body.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -214,7 +214,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
           </div>
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">System Announcements</h2>
-            <span className="text-[9px] text-rmpg-500">{announcements.filter((a) => a.is_active).length} active</span>
+            <span className="text-[9px] text-rmpg-500">{(Array.isArray(announcements) ? announcements : []).filter((a) => a.is_active).length} active</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

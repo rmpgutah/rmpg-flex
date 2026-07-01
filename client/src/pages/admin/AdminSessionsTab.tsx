@@ -102,8 +102,8 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
 
   if (loading) return <LoadingSpinner />;
 
-  const activeSessions = sessions.filter(s => s.is_active && !isExpired(s.expires_at));
-  const inactiveSessions = sessions.filter(s => !s.is_active || isExpired(s.expires_at));
+  const activeSessions = (Array.isArray(sessions) ? sessions : []).filter(s => s.is_active && !isExpired(s.expires_at));
+  const inactiveSessions = (Array.isArray(sessions) ? sessions : []).filter(s => !s.is_active || isExpired(s.expires_at));
 
   return (
     <div className="p-4 space-y-4">
