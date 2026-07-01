@@ -505,6 +505,17 @@ calls.post('/archive-bulk', async (c) => {
   }
 });
 
+// ── Call Templates (CRUD for reusable dispatch patterns) ─────
+calls.get('/templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM call_templates WHERE (owner_user_id = ? OR is_shared = 1) AND active = 1 ORDER BY use_count DESC, name`, userId ?? 0);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
 // GET /dispatch/calls/:id - Single call
 // Split into multiple narrow queries instead of one wide JOIN because D1
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
@@ -1017,17 +1028,6 @@ calls.get('/:id/evidence-prompt', async (c) => {
       'SELECT COUNT(*) AS n FROM call_notes WHERE call_id = ?', id))?.n ?? 0;
     return c.json({ prompt_evidence: !call?.photos_taken || call.photos_taken === 0, photos_count: call?.photos_taken ?? 0, notes_count: notes });
   } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
-});
-
-// ── Call Templates (CRUD for reusable dispatch patterns) ─────
-calls.get('/templates', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM call_templates WHERE (owner_user_id = ? OR is_shared = 1) AND active = 1 ORDER BY use_count DESC, name`, userId ?? 0);
-    return c.json(rows);
-  } catch { return c.json([]); }
 });
 
 calls.post('/templates', async (c) => {
