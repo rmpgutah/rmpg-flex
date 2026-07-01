@@ -7,10 +7,51 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query } from '../utils/db';
+import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 
 const warrants = new Hono<Env>();
+
+// GET / — list warrants with pagination + status filter
+// Used by DashboardPage (per_page=1 for count) and WarrantsPage (full list).
+// Query: ?status=active&per_page=1&page=1&sort=created_at&order=desc
+warrants.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const status = c.req.query('status');
+    const page = Math.max(parseInt(c.req.query('page') || '1', 10) || 1, 1);
+    const perPage = Math.min(Math.max(parseInt(c.req.query('per_page') || '25', 10) || 25, 1), 100);
+    const sort = c.req.query('sort') || 'created_at';
+    const order = c.req.query('order')?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const allowedSort = ['created_at', 'updated_at', 'warrant_number', 'type', 'status', 'subject_name', 'issued_date', 'priority'];
+    const sortCol = allowedSort.includes(sort) ? sort : 'created_at';
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (status) { where.push('status = ?'); params.push(status); }
+
+    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const count = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params);
+    const total = count?.n ?? 0;
+    const offset = (page - 1) * perPage;
+
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM warrants ${whereClause} ORDER BY ${sortCol} ${order} LIMIT ? OFFSET ?`,
+      ...params, perPage, offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        total,
+        page,
+        perPage,
+        totalPages: Math.ceil(total / perPage) || 1,
+      },
+    });
+  } catch (err) {
+    return c.json({ data: [], pagination: { total: 0, page: 1, perPage: 25, totalPages: 1 } });
+  }
+});
 
 // GET /warrants/watch/runs?limit=N — recent warrant watch runs
 // Used by:

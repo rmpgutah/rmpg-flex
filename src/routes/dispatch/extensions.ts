@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
 
@@ -535,6 +536,20 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] bolos list error', err);
     return c.json({ error: 'Failed to list BOLOs', code: 'BOLO_LIST_ERR' }, 500);
+  }
+});
+
+bolos.get('/active', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT b.*, u.full_name AS issued_by_name
+      FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
+      WHERE b.status = 'active' ORDER BY b.priority = 'P1' DESC, b.priority = 'P2' DESC, b.created_at DESC`);
+    return c.json(rows);
+  } catch (err) {
+    log.error('GET /bolos/active failed', {}, err);
+    return c.json({ error: 'Failed to fetch active BOLOs', code: 'BOLO_ACTIVE_ERR' }, 500);
   }
 });
 
