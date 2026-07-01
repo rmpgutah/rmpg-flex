@@ -52,13 +52,37 @@ panic.post('/panic', async (c) => {
   const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
     db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
   );
+  
+  // Dedupe: check for recent panic CAD call
+  const recentCalls = await query<{ id: number }>(
+    db,
+    'SELECT id FROM calls_for_service WHERE source = \'panic\' AND dispatcher_id = ? ORDER BY created_at DESC LIMIT 1',
+    userId,
+  );
+  
+  let targetCallId = body.call_id ?? unit?.current_call_id ?? null;
+  if (!targetCallId && recentCalls.length > 0) {
+    targetCallId = recentCalls[0].id;
+  } else if (!targetCallId) {
+    // Create new CAD call if none exists
+    const ins = await execute(
+      db,
+      `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
+         description, source, officer_safety_alert, created_at, updated_at)
+       VALUES ('panic_alarm', 'P1', 'active', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+      body.location_address ?? 'Panic location',
+      body.latitude ?? null, body.longitude ?? null,
+      'Officer Panic Activation'
+    );
+    targetCallId = Number(ins.meta.last_row_id);
+  }
 
   const result = await execute(
     db,
-    // created_at / updated_at explicit overrides — schema DEFAULT is UTC.
     `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    userId, unit?.id ?? null, body.call_id ?? unit?.current_call_id ?? null,
+    userId, unit?.id ?? null,
+    targetCallId,
     body.latitude ?? null, body.longitude ?? null, body.location_address ?? null,
     body.source ?? 'manual',
   );
@@ -72,6 +96,15 @@ panic.post('/panic', async (c) => {
      WHERE p.id = ?`,
     panicId,
   );
+
+  // Record audit log for panic activation
+  try {
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+      userId, 'panic_activated', 'panic_alert', panicId, `Panic activated`, c.req.header('cf-connecting-ip') || 'unknown'
+    );
+  } catch { /* audit non-fatal */ }
 
   // Distinctive panic channel — client wires the continuous tone here.
   // broadcastAll fans to every connected client; the panic_alert type
@@ -100,15 +133,7 @@ panic.post('/panic', async (c) => {
       body.latitude ?? 0, body.latitude ?? 0, body.longitude ?? 0, body.longitude ?? 0,
     );
     if (available.length > 0) {
-      const ins = await execute(db,
-        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
-           description, source, officer_safety_alert, created_at, updated_at)
-         VALUES ('officer_assist', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
-        body.location_address ?? 'Panic activation location',
-        body.latitude ?? null, body.longitude ?? null,
-        `OFFICER NEEDS ASSISTANCE — Panic activated by Officer ${created?.user_name || 'Unknown'} (Badge ${created?.badge_number || '?'})`,
-      );
-      const backupCallId = Number(ins.meta.last_row_id);
+      const backupCallId = targetCallId;
       for (const unit of available) {
         await execute(db,
           `UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?`,

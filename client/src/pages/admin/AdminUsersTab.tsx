@@ -315,8 +315,7 @@ export default function AdminUsersTab({
           <LoadingSpinner />
         ) : (
           <div className="flex-1 overflow-auto scrollbar-dark">
-            {users
-              .filter((u) => {
+            {(Array.isArray(users) ? users : []).filter((u) => {
                 if (!searchQuery) return true;
                 const q = searchQuery.toLowerCase();
                 return (

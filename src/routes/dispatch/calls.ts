@@ -6,6 +6,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 
 const calls = new Hono<Env>();
 
@@ -757,8 +758,11 @@ calls.post('/:id/merge', async (c) => {
 calls.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const idStr = c.req.param('id');
+    const id = Number(idStr);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+    // Emit alert for deletion
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id } });
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     return c.json({ error: 'Failed to delete call' }, 500);
@@ -833,10 +837,20 @@ calls.post('/:id/archive', async (c) => {
 calls.post('/:id/unarchive', async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const idStr = c.req.param('id');
+    const id = Number(idStr);
     await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    // Fetch the updated call and ext rows
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
+    if (merged) {
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    }
     return c.json({ message: 'Unarchived' });
-  } catch (err) { return c.json({ error: 'Unarchive failed' }, 500); }
+  } catch (err) {
+    return c.json({ error: 'Unarchive failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/hold
