@@ -14,6 +14,7 @@
  *   npx ts-node src/scripts/fix-ui-issues.ts
  */
 
+/// <reference types="node" />
 import * as fs from "fs";
 import * as path from "path";
 
