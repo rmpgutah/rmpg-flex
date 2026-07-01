@@ -81,23 +81,22 @@ describe('DashboardPage', () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
     await waitFor(() => {
       expect(screen.getByText('Active Calls')).toBeTruthy();
+      expect(screen.getAllByText('5').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Units Available')).toBeTruthy();
+      expect(screen.getByText(/3 \/ 8/)).toBeTruthy();
     });
-    expect(screen.getAllByText('5').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Units Available')).toBeTruthy();
-    expect(screen.getByText(/3 \/ 8/)).toBeTruthy();
   });
 
   it('renders the Status Summary row with secondary metrics', async () => {
     render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    // "Active Warrants" appears both in Status Summary and Active Units panels
     await waitFor(() => {
       expect(screen.getByText('Status Summary')).toBeTruthy();
+      expect(screen.getAllByText('Active Warrants').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Pending Serve')).toBeTruthy();
+      expect(screen.getByText('Open Cases')).toBeTruthy();
+      expect(screen.getByText('Total Persons')).toBeTruthy();
     });
-    // "Active Warrants" appears both in Status Summary and Active Units panels
-    const warrantsLabels = screen.getAllByText('Active Warrants');
-    expect(warrantsLabels.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Pending Serve')).toBeTruthy();
-    expect(screen.getByText('Open Cases')).toBeTruthy();
-    expect(screen.getByText('Total Persons')).toBeTruthy();
   });
 
   it('shows loading skeleton initially', () => {
