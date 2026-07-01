@@ -50,7 +50,8 @@ export function useMapboxInit(initialStyle: MapboxStyleId = 'dark'): UseMapboxIn
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [currentStyle, setCurrentStyle] = useState<MapboxStyleId>(initialStyle);
-  const [mapLibreFallback, setMapLibreFallback] = useState(false);
+  const mapLibreFallback = false;
+  const setMapLibreFallback = (_val: boolean) => {};
   const [retryNonce, setRetryNonce] = useState(0);
 
   const isAuthError = mapError !== null && (

@@ -12,7 +12,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import type maplibregl from 'maplibre-gl';
 import {
   Shield, AlertTriangle, Layers, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
@@ -30,7 +29,6 @@ import {
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
 import { getMapboxTokenStatus, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
-import { createMap as createMapLibreMap } from '../../integrations/maplibreMap';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -207,7 +205,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [loading, setLoading]       = useState(true);
   const [mapError, setMapError]     = useState<string | null>(null);
   const [mapLoaded, setMapLoaded]   = useState(false);
-  const [mapLibreFallback, setMapLibreFallback] = useState(preferredEngine === 'maplibre');
+  const mapLibreFallback = false;
+  const setMapLibreFallback = (_val: boolean) => {};
   const [retryNonce, setRetryNonce] = useState(0);
 
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
@@ -228,7 +227,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Refs ───────────────────────────────────────────────────────────────────
   const mapContainerRef  = useRef<HTMLDivElement>(null);
   const mapRef           = useRef<mapboxgl.Map | null>(null);
-  const mapLibreRef      = useRef<maplibregl.Map | null>(null);
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
@@ -595,145 +593,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
    // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
 
-  // ── MapLibre GL Fallback ──────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!mapLibreFallback || !mapContainerRef.current) return;
-
-    // Clean stale Mapbox DOM from the container before MapLibre init.
-    // mapboxgl.Map.remove() can leave residual child nodes/classes that
-    // prevent MapLibre from properly attaching its canvas.
-    const container = mapContainerRef.current;
-    while (container.firstChild) container.removeChild(container.firstChild);
-    container.className = container.className
-      .replace(/mapboxgl-[\w-]+/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    // Re-apply the required positioning class stripped above
-    if (!container.classList.contains('absolute')) container.classList.add('absolute');
-
-    // Small delay to let any deferred Mapbox cleanup settle
-    const initDelay = setTimeout(() => {
-      if (!mapContainerRef.current) return;
-
-      devLog('[MapLibreFallback] Initializing MapLibre GL fallback map');
-      const map = createMapLibreMap({ container: mapContainerRef.current });
-      mapLibreRef.current = map;
-
-      let tilesLoaded = false;
-
-      // Tile load timeout — if CartoDB tiles don't load in 12s,
-      // the user likely has no internet. Show a meaningful message.
-      const tileTimeout = setTimeout(() => {
-        if (!tilesLoaded) {
-          devWarn('[MapLibreFallback] Tile load timed out (12s)');
-          // Still set mapLoaded so the sidebar/controls are usable
-          setMapLoaded(true);
-        }
-      }, 12_000);
-
-      map.on('load', () => {
-        tilesLoaded = true;
-        clearTimeout(tileTimeout);
-        devLog('[MapLibreFallback] MapLibre map loaded');
-        setMapLoaded(true);
-
-        // Load beat overlay on MapLibre map
-        fetch('/beats.geojson')
-          .then(r => r.ok ? r.json() : null)
-          .then(geojson => {
-            if (!geojson || !map.getStyle()) return;
-            try {
-              map.addSource('beats', { type: 'geojson', data: geojson });
-              map.addLayer({
-                id: 'beats-fill', type: 'fill', source: 'beats',
-                paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.05 },
-              });
-              map.addLayer({
-                id: 'beats-border', type: 'line', source: 'beats',
-                paint: { 'line-color': '#d4a017', 'line-width': 1, 'line-opacity': 0.4 },
-              });
-            } catch { /* beats layer optional */ }
-          })
-          .catch(() => { /* beats layer optional */ });
-      });
-
-      // Detect CartoDB tile failures
-      map.on('error', (e) => {
-        devWarn('[MapLibreFallback] MapLibre error:', e.error?.message || e);
-      });
-    }, 50);
-
-    return () => {
-      clearTimeout(initDelay);
-      if (mapLibreRef.current) {
-        try { mapLibreRef.current.remove(); } catch { /* safe */ }
-        mapLibreRef.current = null;
-      }
-    };
-  }, [mapLibreFallback]);
-
-  // ── MapLibre Fallback: Unit & Call Markers ─────────────────────────────────
-
-  const mapLibreMarkersRef = useRef<maplibregl.Marker[]>([]);
-
-  useEffect(() => {
-    if (!mapLibreFallback || !mapLibreRef.current) return;
-    // Dynamic import for MapLibre marker support
-    import('maplibre-gl').then(({ Marker, Popup }) => {
-      // Clear old markers
-      mapLibreMarkersRef.current.forEach(m => m.remove());
-      mapLibreMarkersRef.current = [];
-
-      const map = mapLibreRef.current;
-      if (!map) return;
-
-      // Unit markers
-      for (const u of units) {
-        if (u.latitude == null || u.longitude == null) continue;
-        const statusColor = UNIT_STATUS_COLORS[u.status] || '#888';
-        const marker = new Marker({ color: statusColor })
-          .setLngLat([u.longitude, u.latitude])
-          .setPopup(new Popup({ offset: 12 }).setHTML(
-            `<div style="color:#000;font-size:12px;"><strong>${escapeHtml(u.call_sign)}</strong><br>${escapeHtml(u.status)}</div>`
-          ))
-          .addTo(map);
-        mapLibreMarkersRef.current.push(marker);
-      }
-
-      // Call markers
-      for (const c of calls) {
-        if (c.latitude == null || c.longitude == null) continue;
-        const prioColor = PRIORITY_COLORS[c.priority] || '#888';
-        const marker = new Marker({ color: prioColor, scale: 0.7 })
-          .setLngLat([c.longitude, c.latitude])
-          .setPopup(new Popup({ offset: 12 }).setHTML(
-            `<div style="color:#000;font-size:12px;"><strong>${escapeHtml(c.incident_type || 'Unknown')}</strong><br>P${escapeHtml(String(c.priority))}</div>`
-          ))
-          .addTo(map);
-        mapLibreMarkersRef.current.push(marker);
-      }
-    }).catch(() => { /* MapLibre markers are optional */ });
-
-    return () => {
-      mapLibreMarkersRef.current.forEach(m => m.remove());
-      mapLibreMarkersRef.current = [];
-    };
-  }, [mapLibreFallback, units, calls]);
-
   // ── Retry Mapbox handler ──────────────────────────────────────────────────
 
   const retryMapbox = useCallback(() => {
-    // Clean up MapLibre fallback
-    if (mapLibreRef.current) {
-      try { mapLibreRef.current.remove(); } catch { /* map may not have fully initialized */ }
-      mapLibreRef.current = null;
-    }
-    mapLibreMarkersRef.current.forEach(m => m.remove());
-    mapLibreMarkersRef.current = [];
-
     // Reset state to trigger Mapbox re-init
-    setMapLibreFallback(false);
     setMapError(null);
     setMapLoaded(false);
     setLoading(true);
@@ -1235,7 +1098,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // ── Error State ────────────────────────────────────────────────────────────
 
-  if (mapError && !mapLibreFallback) {
+  if (mapError) {
     return (
       <div className="flex items-center justify-center bg-surface-base" style={{ position: 'absolute', inset: 0 }}>
         <div className="bg-surface-raised border border-[#222222] p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
@@ -1265,12 +1128,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
              >
                ↻ Retry Mapbox
              </button>
-             <button
-               onClick={() => { setMapLibreFallback(true); }}
-               className="text-rmpg-400 text-xs hover:text-rmpg-200 transition-colors"
-             >
-               Use MapLibre fallback →
-             </button>
            </div>
         </div>
       </div>
@@ -1294,26 +1151,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Map Container — explicit w/h ensures Mapbox GL gets a sized element */}
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
 
-      {/* MapLibre Fallback Banner */}
-      {mapLibreFallback && (
-        <div
-          className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 py-1.5 bg-[#1a1a00]/90 border-b border-[#d4a017]/30 backdrop-blur-sm"
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-3.5 h-3.5 text-[#d4a017] shrink-0" />
-            <span className="text-[#d4a017] text-[11px] font-mono">
-              MAPBOX UNAVAILABLE — Using MapLibre GL fallback (CartoDB tiles)
-            </span>
-          </div>
-          <button
-            onClick={retryMapbox}
-            className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-[#d4a017] font-mono transition-colors"
-          >
-            <RefreshCw className="w-3 h-3" />
-            RETRY
-          </button>
-        </div>
-      )}
 
       {/* Geocoder styling override for RMPG dark theme */}
       <style>{`

@@ -28,33 +28,15 @@ export interface UseMapProviderResult {
 }
 
 export function useMapProvider(): UseMapProviderResult {
-  const [engine, setEngine] = useState<MapEngine | null>(null);
-  const [detecting, setDetecting] = useState(true);
-  const [availableEngines, setAvailableEngines] = useState<MapEngine[]>([]);
+  const [engine, setEngine] = useState<MapEngine | null>('mapbox');
+  const [detecting, setDetecting] = useState(false);
+  const [availableEngines, setAvailableEngines] = useState<MapEngine[]>(['mapbox']);
   const [error, setError] = useState<string | null>(null);
 
   const detect = useCallback(async () => {
-    setDetecting(true);
-    setError(null);
-
-    try {
-      const [detected, available] = await Promise.all([
-        detectMapEngine(),
-        getAvailableEngines(),
-      ]);
-
-      devLog('[MapProvider] Detected engine:', detected, '| Available:', available);
-      setEngine(detected);
-      setAvailableEngines(available);
-    } catch (err: any) {
-      devLog('[MapProvider] Detection failed:', err);
-      setError(err?.message || 'Failed to detect map engine');
-      // Always fall back to maplibre
-      setEngine('maplibre');
-      setAvailableEngines(['maplibre']);
-    } finally {
-      setDetecting(false);
-    }
+    setDetecting(false);
+    setEngine('mapbox');
+    setAvailableEngines(['mapbox']);
   }, []);
 
   useEffect(() => {
