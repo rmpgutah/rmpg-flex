@@ -8,6 +8,11 @@ export interface HeaderContext {
   caseLabel?: string;
   pageNumber?: number;
   totalPages?: number;
+  /** Dark-colored emblem (RMPG Logo Dark, composited onto white) — the
+   *  header renders on white paper, so only the dark variant applies here.
+   *  A light/white emblem variant exists in pdfAssets.ts for future
+   *  dark-filled surfaces, but has no header placement. */
+  logoBase64?: string;
 }
 
 const PAGE_WIDTH = 215.9;  // letter, mm
@@ -43,6 +48,18 @@ export function drawDefaultHeader(
   doc.setLineWidth(RULE_WEIGHTS.headerThick);
   doc.line(left, TOP, right, TOP);
   doc.setDrawColor(0, 0, 0); // reset for the bottom rule + everything downstream
+
+  // 1b) Emblem — dark-colored logo, top-left of the header block (white
+  // paper background). 12mm square, doesn't collide with the centered
+  // agency name/title text below.
+  if (ctx.logoBase64) {
+    const logoSize = 12;
+    try {
+      doc.addImage(ctx.logoBase64, 'PNG', left, TOP + 1, logoSize, logoSize);
+    } catch {
+      /* ignore malformed image, header renders without it */
+    }
+  }
 
   // 2) Agency name
   doc.setFont('helvetica', TYPOGRAPHY.agencyName.weight);

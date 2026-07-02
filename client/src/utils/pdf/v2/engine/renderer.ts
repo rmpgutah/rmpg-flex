@@ -4,6 +4,7 @@ import { LayoutEngine } from './layout';
 import { Primitives } from './primitives';
 import { SPACING } from './style';
 import { drawDefaultHeader } from './header';
+import { loadLogoDarkBase64 } from '../../../pdfAssets';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection, resetSectionCounter } from './context';
 import { drawBlankFormWatermark, drawDraftWatermark } from './watermark';
@@ -46,9 +47,11 @@ export async function renderPdfV2<T>(
   // Watermark is drawn BEFORE the header so header text sits on top of it.
   if (schema.watermark) drawWatermarkIfAny(doc, schema.watermark);
 
+  const logoBase64 = (await loadLogoDarkBase64().catch(() => null)) ?? undefined;
   const headerBottomY = drawDefaultHeader(doc, schema.meta, {
     caseNumber: schema.header.caseNumberAccessor?.(data),
     caseLabel: schema.header.caseLabel,
+    logoBase64,
   });
 
   const layout = new LayoutEngine(doc, {

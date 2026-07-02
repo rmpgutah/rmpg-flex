@@ -16,6 +16,7 @@ import sealUrl from '../assets/rmpg-seal.png?url';
 let sealBase64: string | null = null;
 let logoBase64: string | null = null;
 let logoDarkBase64: string | null = null;
+let logoLightBase64: string | null = null;
 
 /**
  * Fetch the RMPG seal PNG, downscale to 128x128 for PDF embedding,
@@ -130,11 +131,58 @@ export async function loadLogoDarkBase64(): Promise<string | null> {
   }
 }
 
+/**
+ * Fetch the RMPG Logo Dark PNG and recolor every opaque pixel to white,
+ * preserving the original silhouette's alpha shape — produces a
+ * light/white emblem suitable for dark-filled surfaces (the steel-blue
+ * table header band, classification banner fills, dark-themed print
+ * preview chrome). No separate light-colored source asset exists; this
+ * is generated from the same file `loadLogoDarkBase64` uses.
+ */
+export async function loadLogoLightBase64(): Promise<string | null> {
+  if (logoLightBase64) return logoLightBase64;
+  try {
+    const res = await fetch('/RMPG Logo Dark.png');
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+
+    const size = 192;
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Draw the logo first (establishes the alpha silhouette), then flood
+    // every opaque pixel white via source-in compositing — this recolors
+    // without altering the shape's edges/antialiasing.
+    ctx.drawImage(bmp, 0, 0, size, size);
+    bmp.close();
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(outBlob);
+    });
+
+    logoLightBase64 = dataUrl;
+    return logoLightBase64;
+  } catch {
+    return null;
+  }
+}
+
 /** Clear cached images (for testing) */
 export function clearImageCache(): void {
   sealBase64 = null;
   logoBase64 = null;
   logoDarkBase64 = null;
+  logoLightBase64 = null;
 }
 
 // ── Form Number Constants ───────────────────────────────────
