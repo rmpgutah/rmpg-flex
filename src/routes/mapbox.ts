@@ -17,6 +17,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { notConfigured as notConfiguredSkip } from '../utils/notConfigured';
 
 const mapbox = new Hono<Env>();
 
@@ -210,6 +211,44 @@ mapbox.get('/tilequery', async (c) => {
     const data = await mbFetch(`${MB}/v4/${tileset}/tilequery/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
     return c.json(data);
   } catch (err) { return fail(c, err, 'tilequery'); }
+});
+
+// ── Boundaries ─────────────────────────────────────────────
+// GET /api/mapbox/boundaries?lng=&lat=  → { county, municipality, place, source }
+// Resolves administrative jurisdiction for a point via the Mapbox Boundaries
+// API. This is a paid Mapbox add-on — access is not guaranteed on every
+// token. A 403/404 upstream is NOT a token-missing case (that's handled by
+// the shared `token()`/`notConfigured()` pair above); it means the account
+// lacks the Boundaries entitlement, so we return the 200 skip shape instead
+// of a hard error — the client shows an "unavailable" badge, not a crash.
+mapbox.get('/boundaries', async (c) => {
+  const tk = token(c);
+  if (!tk) return notConfigured(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const params = new URLSearchParams({ access_token: tk });
+  // Tileset ID 'adm2' is a best-guess (Mapbox's admin-2 = county-equivalent
+  // level in the US). Confirm the exact tileset ID this account is
+  // provisioned for once a live token is available — adjust this literal
+  // if the real ID differs (Mapbox docs: Boundaries v4 tilesets).
+  try {
+    const data = await mbFetch(`${MB}/boundaries/v4/adm2/tilequery/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
+    const feature = (data?.features ?? [])[0];
+    if (!feature) {
+      return c.json({ county: null, municipality: null, place: null, source: 'mapbox-boundaries' });
+    }
+    return c.json({
+      county: feature.properties?.name ?? null,
+      municipality: null,
+      place: null,
+      source: 'mapbox-boundaries',
+    });
+  } catch (err: any) {
+    if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+      return notConfiguredSkip(c, 'Mapbox Boundaries API not enabled on this account token');
+    }
+    return fail(c, err, 'boundaries');
+  }
 });
 
 // ── Static map ─────────────────────────────────────────────
