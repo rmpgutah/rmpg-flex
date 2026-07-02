@@ -1678,7 +1678,7 @@ export default function DashboardPage() {
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
       {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
-        <SpmGroup title="Alerts & Reminders" tone="gold" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+        <SpmGroup title="Alerts & Reminders" tone="blue" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
           {shiftStats && (
             <div className="panel-beveled bg-surface-base p-3">
