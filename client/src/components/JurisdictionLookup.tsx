@@ -1,7 +1,7 @@
 // Jurisdiction lookup — resolves county/municipality for an address via
 // Mapbox Geocoding + Boundaries. Used on Warrants/Properties detail panels
 // for cross-jurisdiction handoffs. Not related to beat/zone/sector.
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { MapPin, Loader2 } from 'lucide-react';
 import { forwardGeocode } from '../utils/mapboxServices';
 import { useMapboxBoundaries } from '../hooks/useMapboxBoundaries';
@@ -9,6 +9,12 @@ import { useMapboxBoundaries } from '../hooks/useMapboxBoundaries';
 export default function JurisdictionLookup({ address }: { address: string }) {
   const [error, setError] = useState<string | null>(null);
   const { result, loading, available, lookup } = useMapboxBoundaries();
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => { cancelledRef.current = true; };
+  }, []);
 
   const run = useCallback(async () => {
     setError(null);
@@ -16,13 +22,13 @@ export default function JurisdictionLookup({ address }: { address: string }) {
       const features = await forwardGeocode(address, 1);
       const first = features[0];
       if (!first) {
-        setError('Could not geocode this address');
+        if (!cancelledRef.current) setError('Could not geocode this address');
         return;
       }
       const [lng, lat] = first.center;
       await lookup(lng, lat);
-    } catch {
-      setError('Lookup failed');
+    } catch (err: any) {
+      if (!cancelledRef.current) setError(err?.message || 'Lookup failed');
     }
   }, [address, lookup]);
 
