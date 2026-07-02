@@ -92,5 +92,6 @@ export function makeRenderContext<T>(
     pageBreakIfNeeded: (h) => layout.pageBreakIfNeeded(h),
     get primitives() { return prims; },
     get layout() { return layout; },
+    get doc() { return doc; },
   };
 }
