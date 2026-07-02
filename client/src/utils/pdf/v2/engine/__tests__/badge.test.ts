@@ -36,7 +36,7 @@ describe('drawBadge', () => {
       topMargin: 20, bottomMargin: 18, leftMargin: 10, rightMargin: 10,
     });
     drawBadge(doc, layout, { label: 'verified' });
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     // neutral = rgb(90,90,90). Use whatever 2-decimal precision jsPDF
     // actually emits for fill-color ops in this project (verified in
     // prior tasks to be 2 decimals, lowercase "rg" for fill vs "RG" for
@@ -63,7 +63,7 @@ describe('drawBadge', () => {
     // parse the moveto/lineto x-coordinates emitted for the rect path and
     // take the max x, comparing it against leftX + maxWidth (in points,
     // since content-stream units are pt while layout units are mm).
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     const ptPerMm = 72 / 25.4;
     const leftXPt = layout.leftX * ptPerMm;
     const maxXPt = (layout.leftX + maxWidth) * ptPerMm;

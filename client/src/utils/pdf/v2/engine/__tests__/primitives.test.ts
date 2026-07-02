@@ -279,7 +279,7 @@ describe('table (Spillman black-header zebra style)', () => {
       },
       {},
     );
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     // Fill color uses lowercase "rg" (vs. draw color's uppercase "RG").
     expect(ops).toContain('0.17 0.26 0.34 rg');
   });

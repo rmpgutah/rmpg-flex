@@ -20,7 +20,7 @@ describe('drawSeverityMeter', () => {
       topMargin: 20, bottomMargin: 18, leftMargin: 10, rightMargin: 10,
     });
     drawSeverityMeter(doc, layout, { level: 2, max: 4 });
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     // jsPDF emits one "re" (rect path) operator per rect(...,'F') call.
     expect((ops.match(/ re$/gm) ?? []).length).toBe(4);
   });
@@ -31,7 +31,7 @@ describe('drawSeverityMeter', () => {
       topMargin: 20, bottomMargin: 18, leftMargin: 10, rightMargin: 10,
     });
     drawSeverityMeter(doc, layout, { level: 3, max: 3 });
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     // Escalated red = rgb(212,30,30). 212/255=0.831373, 30/255=0.117647.
     // Precision note: prior tasks (2-5) established jsPDF emits 2-decimal
     // RGB values in this project's config (e.g. "0.17 0.26 0.34"), and

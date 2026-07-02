@@ -42,7 +42,7 @@ describe('drawSectionHeader accent color', () => {
     });
     resetSectionCounter();
     drawSectionHeader(doc, layout, 'Identity');
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     expect(ops).toContain('0.17 0.26 0.34 RG');
   });
 });

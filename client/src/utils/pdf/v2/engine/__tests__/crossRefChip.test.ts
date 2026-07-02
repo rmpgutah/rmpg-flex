@@ -46,7 +46,7 @@ describe('drawCrossRefChip', () => {
     // Content width is layout.rightX - layout.leftX; parse the outline
     // rect's x-coordinates from the raw content stream to confirm the
     // chip's right edge doesn't exceed the content area's right margin.
-    const ops = doc.internal.pages[1].join('\n');
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
     const coords: number[] = [];
     // jsPDF's roundedRect (stroke-only, no fill) emits a series of m/l/c
     // path-construction operators before the final S (stroke) operator.
