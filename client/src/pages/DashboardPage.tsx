@@ -500,7 +500,7 @@ function unitStatusColor(status: string | undefined): string {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -2519,7 +2519,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
