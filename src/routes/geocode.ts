@@ -210,12 +210,28 @@ geocode.get('/geocode/reverse', async (c) => {
 // ⚠️  Rejects secret (sk.*) tokens — Mapbox GL JS only works with
 // public (pk.*) tokens server-side. If the env var holds an sk.* token
 // this returns configured: false so the client falls back gracefully.
-geocode.get('/integrations/mapbox/client-token', (c) => {
-  const token = (c.env as any).MAPBOX_ACCESS_TOKEN
+geocode.get('/integrations/mapbox/client-token', async (c) => {
+  let token = (c.env as any).MAPBOX_ACCESS_TOKEN
     || (c.env as any).VITE_MAPBOX_ACCESS_TOKEN
     || '';
+  let source = 'env';
+
+  // Fall back to the Admin → API Integrations-saved token (system_config)
+  // when no env-level secret is set. That admin-entered value was
+  // previously write-only — saved by admin.ts but never read anywhere,
+  // so pasting a token in the UI silently did nothing.
+  if (!token) {
+    const row = await c.env.DB
+      .prepare(`SELECT config_value FROM system_config WHERE config_key = 'mapbox_access_token' AND is_active = 1 LIMIT 1`)
+      .first<{ config_value: string }>();
+    if (row?.config_value) {
+      token = row.config_value;
+      source = 'system_config';
+    }
+  }
+
   if (!token || token.startsWith('sk.')) {
-    if (token) console.warn('[mapbox] Rejected sk.* token in MAPBOX_ACCESS_TOKEN / VITE_MAPBOX_ACCESS_TOKEN');
+    if (token) console.warn(`[mapbox] Rejected sk.* token from ${source} — Mapbox GL JS requires a public pk.* token`);
     return c.json({ configured: false });
   }
   return c.json({ configured: true, accessToken: token });
