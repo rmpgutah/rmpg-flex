@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add restrained steel-blue/gold accent color and 4 new visual primitives (badge, severity meter, photo grid, cross-ref chip) to the `pdf/v2` schema-driven PDF engine, then migrate the two clean, self-contained legacy report generators (`caseReportGenerator.ts`, `dossierPdfGenerator.ts`) onto it.
+**Goal:** Add restrained steel-blue/gold accent color, 4 new visual primitives (badge, severity meter, photo grid, cross-ref chip), and a dark/light company emblem to the `pdf/v2` schema-driven PDF engine, then migrate the two clean, self-contained legacy report generators (`caseReportGenerator.ts`, `dossierPdfGenerator.ts`) onto it.
 
 **Architecture:** `pdf/v2` is a schema-driven jsPDF wrapper — generators declare a `FormSchema<T>` (meta/header/sections/footer) and `engine/renderer.ts` interprets it, drawing through `engine/primitives.ts`. This plan adds new token values to `engine/style.ts`, four new primitive-drawing functions (each its own file under `engine/`, mirroring `watermark.ts`'s pattern), then two new form schemas under `pdf/v2/forms/` that replace the deleted legacy files. Legacy call sites switch from importing the old `utils/*.ts` functions to importing the new schema + `downloadPdfV2` from `pdf/v2`.
 
@@ -920,20 +920,268 @@ git add client/src/utils/pdf/v2/engine/photoGrid.ts client/src/utils/pdf/v2/engi
 git commit -m "feat(pdf-v2): add drawPhotoGrid primitive"
 ```
 
-Phase 0 is now complete: 4 recolored engine surfaces + 4 new primitives, all covered by tests, zero changes to existing `FormSchema` behavior beyond color.
+### Task 9: Add dark/light emblem loaders and embed the dark emblem in the v2 header
+
+**Files:**
+- Modify: `client/src/utils/pdfAssets.ts`
+- Test: `client/src/utils/__tests__/pdfAssets.test.ts`
+- Modify: `client/src/utils/pdf/v2/engine/header.ts`
+- Modify: `client/src/utils/pdf/v2/engine/renderer.ts:49-52`
+- Test: `client/src/utils/pdf/v2/engine/__tests__/header.test.ts`
+
+The v2 header renders on white paper, so it uses the existing dark-colored emblem (`loadLogoDarkBase64`, already in `pdfAssets.ts` — composited onto white, used by several v1 generators). No dark-on-white asset needs to be created. What's missing is a light/white-on-transparent variant for any future dark-filled surface (the new steel-blue table header band, classification banner fills, or a dark-themed in-app print-preview chrome) — generated programmatically from the same source file via a canvas alpha-mask trick (draw the existing dark logo, then flood-fill white using `globalCompositeOperation = 'source-in'`, which recolors every opaque pixel to white while preserving the original silhouette's alpha shape). This task adds both: wires the dark emblem into the v2 header now, and adds the light-emblem loader for later dark-surface use.
+
+- [ ] **Step 1: Write the failing test for the new light-logo loader**
+
+```ts
+// client/src/utils/__tests__/pdfAssets.test.ts
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { loadLogoLightBase64, clearImageCache } from '../pdfAssets';
+
+describe('loadLogoLightBase64', () => {
+  beforeEach(() => {
+    clearImageCache();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob([new Uint8Array([0, 0, 0, 0])], { type: 'image/png' }),
+    })));
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({
+      width: 4, height: 4, close: vi.fn(),
+    })));
+  });
+
+  it('returns a PNG data URL', async () => {
+    const result = await loadLogoLightBase64();
+    expect(result).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('caches the result across calls (fetch only called once)', async () => {
+    await loadLogoLightBase64();
+    await loadLogoLightBase64();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null when the fetch fails', async () => {
+    clearImageCache();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+    const result = await loadLogoLightBase64();
+    expect(result).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd client && npx vitest run src/utils/__tests__/pdfAssets.test.ts`
+Expected: FAIL — `loadLogoLightBase64` is not exported from `pdfAssets.ts`.
+
+- [ ] **Step 3: Add `loadLogoLightBase64` to `pdfAssets.ts`**
+
+Add a new module-level cache variable near the top (after line 18's `logoDarkBase64`):
+
+```ts
+let logoLightBase64: string | null = null;
+```
+
+Add the new loader function after `loadLogoDarkBase64` (after its closing brace, currently line 131):
+
+```ts
+/**
+ * Fetch the RMPG Logo Dark PNG and recolor every opaque pixel to white,
+ * preserving the original silhouette's alpha shape — produces a
+ * light/white emblem suitable for dark-filled surfaces (the steel-blue
+ * table header band, classification banner fills, dark-themed print
+ * preview chrome). No separate light-colored source asset exists; this
+ * is generated from the same file `loadLogoDarkBase64` uses.
+ */
+export async function loadLogoLightBase64(): Promise<string | null> {
+  if (logoLightBase64) return logoLightBase64;
+  try {
+    const res = await fetch('/RMPG Logo Dark.png');
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+
+    const size = 192;
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Draw the logo first (establishes the alpha silhouette), then flood
+    // every opaque pixel white via source-in compositing — this recolors
+    // without altering the shape's edges/antialiasing.
+    ctx.drawImage(bmp, 0, 0, size, size);
+    bmp.close();
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(outBlob);
+    });
+
+    logoLightBase64 = dataUrl;
+    return logoLightBase64;
+  } catch {
+    return null;
+  }
+}
+```
+
+Add `logoLightBase64 = null;` to the `clearImageCache()` function's body (after line 137's `logoDarkBase64 = null;`):
+
+```ts
+export function clearImageCache(): void {
+  sealBase64 = null;
+  logoBase64 = null;
+  logoDarkBase64 = null;
+  logoLightBase64 = null;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd client && npx vitest run src/utils/__tests__/pdfAssets.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 5: Write the failing test for the header embedding the dark emblem**
+
+Append to `client/src/utils/pdf/v2/engine/__tests__/header.test.ts` inside the existing `describe('Spillman header', ...)` block:
+
+```ts
+  it('embeds the emblem image when logoBase64 is provided', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    // 1x1 transparent PNG — valid enough for jsPDF's addImage to accept.
+    const stubLogo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    drawDefaultHeader(
+      doc,
+      { formNumber: 'PS-209', title: 'CITATION', revision: '2026-05' },
+      { logoBase64: stubLogo },
+    );
+    const ops = doc.internal.pages[1].join('\n');
+    expect(ops).toMatch(/\/I\d+ Do/); // jsPDF's image-XObject draw operator
+  });
+
+  it('omits the image draw operator when logoBase64 is not provided', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    drawDefaultHeader(
+      doc,
+      { formNumber: 'PS-209', title: 'CITATION', revision: '2026-05' },
+      {},
+    );
+    const ops = doc.internal.pages[1].join('\n');
+    expect(ops).not.toMatch(/\/I\d+ Do/);
+  });
+```
+
+- [ ] **Step 6: Run test to verify it fails**
+
+Run: `cd client && npx vitest run src/utils/pdf/v2/engine/__tests__/header.test.ts`
+Expected: FAIL — `HeaderContext` has no `logoBase64` field yet, and `drawDefaultHeader` never calls `doc.addImage`.
+
+- [ ] **Step 7: Add `logoBase64` to `HeaderContext` and embed it**
+
+In `client/src/utils/pdf/v2/engine/header.ts`, add the field to the `HeaderContext` interface (currently lines 5-11):
+
+```ts
+export interface HeaderContext {
+  caseNumber?: string;
+  /** Label for the caseNumber value (default 'CASE') — see HeaderSpec.caseLabel. */
+  caseLabel?: string;
+  pageNumber?: number;
+  totalPages?: number;
+  /** Dark-colored emblem (RMPG Logo Dark, composited onto white) — the
+   *  header renders on white paper, so only the dark variant applies here.
+   *  A light/white emblem variant exists in pdfAssets.ts for future
+   *  dark-filled surfaces, but has no header placement. */
+  logoBase64?: string;
+}
+```
+
+Inside `drawDefaultHeader`, after the "1) Top rule" block and before "2) Agency name" (i.e. right after the `doc.setDrawColor(0, 0, 0);` line added in Task 2), add:
+
+```ts
+  // 1b) Emblem — dark-colored logo, top-left of the header block (white
+  // paper background). 12mm square, doesn't collide with the centered
+  // agency name/title text below.
+  if (ctx.logoBase64) {
+    const logoSize = 12;
+    try {
+      doc.addImage(ctx.logoBase64, 'PNG', left, TOP + 1, logoSize, logoSize);
+    } catch {
+      /* ignore malformed image, header renders without it */
+    }
+  }
+```
+
+- [ ] **Step 8: Run test to verify it passes**
+
+Run: `cd client && npx vitest run src/utils/pdf/v2/engine/__tests__/header.test.ts`
+Expected: PASS (all header tests, including the 2 new ones)
+
+- [ ] **Step 9: Wire the dark emblem into the renderer**
+
+In `client/src/utils/pdf/v2/engine/renderer.ts`, add the import (near the top, alongside the other engine imports):
+
+```ts
+import { loadLogoDarkBase64 } from '../../pdfAssets';
+```
+
+Replace the header-drawing call (currently lines 49-52):
+
+```ts
+  const headerBottomY = drawDefaultHeader(doc, schema.meta, {
+    caseNumber: schema.header.caseNumberAccessor?.(data),
+    caseLabel: schema.header.caseLabel,
+  });
+```
+
+with:
+
+```ts
+  const logoBase64 = (await loadLogoDarkBase64().catch(() => null)) ?? undefined;
+  const headerBottomY = drawDefaultHeader(doc, schema.meta, {
+    caseNumber: schema.header.caseNumberAccessor?.(data),
+    caseLabel: schema.header.caseLabel,
+    logoBase64,
+  });
+```
+
+- [ ] **Step 10: Run the full v2 suite**
+
+Run: `cd client && npx vitest run src/utils/pdf/v2`
+Expected: PASS — `renderPdfV2` output now includes the emblem on every v2 form (citation, trip log, blank forms, and the two Phase 1 forms built in Tasks 10-13). No existing test asserts the header is emblem-free, so this is additive.
+
+- [ ] **Step 11: Manually verify via the preview tools**
+
+Render any v2 form (e.g. trigger a trip-log export from `MileageAuditTab.tsx`) and screenshot the output — confirm the dark emblem appears top-left of the header block without overlapping the centered agency name/title text.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add client/src/utils/pdfAssets.ts client/src/utils/__tests__/pdfAssets.test.ts client/src/utils/pdf/v2/engine/header.ts client/src/utils/pdf/v2/engine/renderer.ts client/src/utils/pdf/v2/engine/__tests__/header.test.ts
+git commit -m "feat(pdf-v2): add light-emblem loader, embed dark emblem in v2 header"
+```
+
+Phase 0 is now complete: 4 recolored engine surfaces, 4 new primitives, and the header emblem (dark-on-white embedded; light-on-dark generated and available for future dark-surface placements) — all covered by tests, zero changes to existing `FormSchema` behavior beyond color/emblem.
 
 ---
 
 ## Phase 1 — Core Records Migration
 
-### Task 9: Create the `caseReport` v2 form schema
+### Task 10: Create the `caseReport` v2 form schema
 
 **Files:**
 - Create: `client/src/utils/pdf/v2/forms/caseReport.ts`
 - Test: `client/src/utils/pdf/v2/forms/__tests__/caseReport.test.ts`
-- Reference (do not modify yet): `client/src/utils/caseReportGenerator.ts` (source of truth for section list + field ordering, deleted in Task 12)
+- Reference (do not modify yet): `client/src/utils/caseReportGenerator.ts` (source of truth for section list + field ordering, deleted in Task 13)
 
-`caseReportGenerator.ts`'s `buildCaseReportSections` is a pure function with its own passing test suite (`client/src/utils/caseReportGenerator.test.ts`) — it's the section-list logic, not the drawing logic, so it moves into the new file verbatim and its test file moves with it (Task 12). The drawing logic (the `heading`/`para`/`bullet` closures in `generateCaseReportPdf`) is replaced by a single `RenderCallback` section that walks `buildCaseReportSections()`'s output and draws each row as a bulleted narrative line via the v2 engine's primitives — same per-record-type formatting as the original `rowText` switch, redrawn through `ctx.primitives`.
+`caseReportGenerator.ts`'s `buildCaseReportSections` is a pure function with its own passing test suite (`client/src/utils/caseReportGenerator.test.ts`) — it's the section-list logic, not the drawing logic, so it moves into the new file verbatim and its test file moves with it (Task 13). The drawing logic (the `heading`/`para`/`bullet` closures in `generateCaseReportPdf`) is replaced by a single `RenderCallback` section that walks `buildCaseReportSections()`'s output and draws each row as a bulleted narrative line via the v2 engine's primitives — same per-record-type formatting as the original `rowText` switch, redrawn through `ctx.primitives`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1159,7 +1407,7 @@ git commit -m "feat(pdf-v2): expose RenderContext.doc; add caseReport v2 form sc
 
 ---
 
-### Task 10: Switch `CaseManagementPage.tsx` to the v2 case report and delete the legacy file
+### Task 11: Switch `CaseManagementPage.tsx` to the v2 case report and delete the legacy file
 
 **Files:**
 - Modify: `client/src/pages/CaseManagementPage.tsx:39,553` (and surrounding call)
@@ -1228,12 +1476,12 @@ git commit -m "refactor(pdf-v2): migrate case report export to v2 engine, delete
 
 ---
 
-### Task 11: Create the `dossier` v2 form schema
+### Task 12: Create the `dossier` v2 form schema
 
 **Files:**
 - Create: `client/src/utils/pdf/v2/forms/dossier.ts`
 - Test: `client/src/utils/pdf/v2/forms/__tests__/dossier.test.ts`
-- Reference (deleted in Task 12): `client/src/utils/dossierPdfGenerator.ts`
+- Reference (deleted in Task 13): `client/src/utils/dossierPdfGenerator.ts`
 
 The legacy generator's per-section `try/catch` degrade-gracefully pattern is preserved — each section is its own `try/catch` inside the callback so one malformed data shape can't kill the whole export, matching the original file's documented design intent (see its header comment).
 
@@ -1480,7 +1728,7 @@ git commit -m "feat(pdf-v2): add dossier v2 form schema"
 
 ---
 
-### Task 12: Switch `PersonDossierPage.tsx` to the v2 dossier and delete the legacy file
+### Task 13: Switch `PersonDossierPage.tsx` to the v2 dossier and delete the legacy file
 
 **Files:**
 - Modify: `client/src/pages/PersonDossierPage.tsx:13,142` (and surrounding call)
@@ -1550,6 +1798,6 @@ git commit -m "refactor(pdf-v2): migrate person dossier export to v2 engine, del
 
 ## Self-Review Notes
 
-- **Spec coverage:** Task 1 covers style.ts accent tokens; Tasks 2-4 cover the three recolored surfaces (header rule, section rule, table band) named in the spec; Tasks 5-8 cover all four new primitives (badge, severity meter, cross-ref chip, photo grid) named in the spec; Tasks 9-12 cover the two Phase-1 migrations approved after the recordPdfGenerator.ts scope correction. `recordPdfGenerator.ts`/`recordPdfGeneratorExt.ts`/`pdfDossierRenderer.ts` are explicitly OUT of this plan per the user's "shrink Phase 1 to the 2 clean files" decision — no task references migrating them.
-- **Type consistency:** `RenderContext.doc` (added in Task 9, Step 3a) is used identically in Task 11's dossier schema (`ctx.doc`) — same accessor name throughout.
-- **Placeholder scan:** Task 9's Step 3 intentionally shows a broken intermediate line and immediately corrects it in Step 3a/3b, per its own inline note — this is a deliberate "show the wrong thing, then fix it" pedagogical step, not a shipped placeholder; the final code in Step 3b is complete and correct.
+- **Spec coverage:** Task 1 covers style.ts accent tokens; Tasks 2-4 cover the three recolored surfaces (header rule, section rule, table band) named in the spec; Tasks 5-8 cover all four new primitives (badge, severity meter, cross-ref chip, photo grid) named in the spec; Task 9 covers the dark/light emblem addition (added after initial plan approval, per follow-up request); Tasks 10-13 cover the two Phase-1 migrations approved after the recordPdfGenerator.ts scope correction. `recordPdfGenerator.ts`/`recordPdfGeneratorExt.ts`/`pdfDossierRenderer.ts` are explicitly OUT of this plan per the user's "shrink Phase 1 to the 2 clean files" decision — no task references migrating them.
+- **Type consistency:** `RenderContext.doc` (added in Task 10, Step 3) is used identically in Task 12's dossier schema (`ctx.doc`) — same accessor name throughout. `HeaderContext.logoBase64` (Task 9) and `FormSchema.header`'s existing fields are both consumed the same way inside `drawDefaultHeader`'s single `ctx` parameter — no shape mismatch introduced.
+- **Placeholder scan:** No shipped placeholders remain — Task 10's Step 3 (expose RenderContext.doc) was reordered ahead of Step 4 (implement the schema) so the schema code is written correctly the first time. Task 9's light-emblem loader is fully implemented even though no Phase-0/1 consumer places it yet — it is not a stub, since `loadLogoLightBase64()` is complete, tested, and ready for the next dark-surface consumer to import.
