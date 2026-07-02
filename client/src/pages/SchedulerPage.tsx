@@ -1,45 +1,34 @@
 // ============================================================
-// SchedulerPage — unified agenda across every scheduled source:
-//   serve attempt windows (Serve Intake / Process Server),
-//   shift plans, court events, and custom scheduler events
-//   (Dispatch follow-ups, meetings, patrol checks, …).
+// SchedulerPage — unified drag-and-drop calendar across every
+// scheduled source: serve attempt windows (Serve Intake / Process
+// Server), shift plans, court events, and custom scheduler events
+// (Dispatch follow-ups, meetings, patrol checks, …).
 // Backend: /api/scheduler (src/routes/scheduler.ts, mig 0165).
+// Reschedule writes go straight to each source's own endpoint —
+// see agendaMutations.ts for why there's no unified write endpoint.
 // Deep links: ?event_id=<id> highlights an event; ?call_id= /
 // ?serve_queue_id= prefill the create modal (Dispatch/Serve hooks).
 // ============================================================
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import type { EventClickArg, EventDropArg } from '@fullcalendar/core';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import {
-  CalendarDays, Plus, RefreshCw, X, Check, Clock,
-  Gavel, Users, FileText, MapPin, Bell,
+  CalendarDays, Plus, RefreshCw, X, MapPin, Bell,
 } from 'lucide-react';
-
-interface AgendaItem {
-  key: string;
-  source: 'serve' | 'shift' | 'court' | 'custom';
-  id: number | string;
-  date: string;
-  start: string | null;
-  end: string | null;
-  title: string;
-  subtitle: string | null;
-  officer_id: number | null;
-  status: string | null;
-  link: string | null;
-}
+import { agendaItemToEvent, isDraggableSource, SOURCE_COLORS, type AgendaItem, type AgendaSource } from './scheduler/agendaToCalendarEvents';
+import { rescheduleAgendaItem } from './scheduler/agendaMutations';
 
 interface Officer { id: number; full_name: string; badge_number?: string }
 
-const SOURCE_META: Record<AgendaItem['source'], { label: string; icon: typeof Clock; tone: string }> = {
-  serve: { label: 'Serve', icon: FileText, tone: 'text-brand-400 border-brand-400/40' },
-  shift: { label: 'Shifts', icon: Users, tone: 'text-blue-300 border-blue-400/40' },
-  court: { label: 'Court', icon: Gavel, tone: 'text-purple-300 border-purple-400/40' },
-  custom: { label: 'Events', icon: CalendarDays, tone: 'text-emerald-300 border-emerald-400/40' },
-};
-
+const SOURCE_LABELS: Record<AgendaSource, string> = { serve: 'Serve', shift: 'Shifts', court: 'Court', custom: 'Events' };
 const CATEGORIES = ['general', 'follow_up', 'court', 'meeting', 'patrol', 'maintenance'];
 
 function denverToday(): string {
@@ -50,21 +39,14 @@ function addDays(date: string, n: number): string {
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
-function dayLabel(date: string): string {
-  const today = denverToday();
-  if (date === today) return `TODAY — ${date}`;
-  if (date === addDays(today, 1)) return `TOMORROW — ${date}`;
-  const wd = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
-  return `${wd.toUpperCase()} — ${date}`;
-}
 
 export default function SchedulerPage() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [rangeDays, setRangeDays] = useState(7);
   const [items, setItems] = useState<AgendaItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sources, setSources] = useState<Set<AgendaItem['source']>>(new Set(['serve', 'shift', 'court', 'custom']));
+  const [sources, setSources] = useState<Set<AgendaSource>>(new Set(['serve', 'shift', 'court', 'custom']));
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [officerFilter, setOfficerFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -77,13 +59,16 @@ export default function SchedulerPage() {
     serve_queue_id: searchParams.get('serve_queue_id') || '',
   });
   const highlightId = searchParams.get('event_id');
+  // Widened fetch window so month view has data to show when the user pages
+  // forward/back inside FullCalendar without us re-fetching on every click.
+  const [rangeStart, setRangeStart] = useState(addDays(denverToday(), -7));
+  const [rangeEnd, setRangeEnd] = useState(addDays(denverToday(), 45));
+  const calendarRef = useRef<FullCalendar | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const start = denverToday();
-      const end = addDays(start, rangeDays - 1);
-      const params = new URLSearchParams({ start, end });
+      const params = new URLSearchParams({ start: rangeStart, end: rangeEnd });
       if (officerFilter) params.set('officer_id', officerFilter);
       const data = await apiFetch<{ items: AgendaItem[] }>(`/scheduler/agenda?${params}`);
       setItems(data.items || []);
@@ -92,30 +77,22 @@ export default function SchedulerPage() {
     } finally {
       setLoading(false);
     }
-  }, [rangeDays, officerFilter]);
+  }, [rangeStart, rangeEnd, officerFilter]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     apiFetch<Officer[]>('/personnel?status=active').then(setOfficers).catch(() => setOfficers([]));
   }, []);
   useEffect(() => {
-    // Dispatch/Serve deep-link: arriving with ?call_id= or ?serve_queue_id=
-    // opens the create modal pre-linked.
     if (searchParams.get('call_id') || searchParams.get('serve_queue_id')) setShowCreate(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const visible = useMemo(() => items.filter((i) => sources.has(i.source)), [items, sources]);
-  const byDay = useMemo(() => {
-    const m = new Map<string, AgendaItem[]>();
-    for (const i of visible) {
-      if (!m.has(i.date)) m.set(i.date, []);
-      m.get(i.date)!.push(i);
-    }
-    return [...m.entries()];
-  }, [visible]);
+  const events = useMemo(() => visible.map(agendaItemToEvent), [visible]);
+  const linkByKey = useMemo(() => new Map(items.map((i) => [i.key, i.link])), [items]);
 
-  const toggleSource = (s: AgendaItem['source']) => {
+  const toggleSource = (s: AgendaSource) => {
     setSources((prev) => {
       const next = new Set(prev);
       if (next.has(s)) next.delete(s); else next.add(s);
@@ -152,22 +129,34 @@ export default function SchedulerPage() {
       load();
     } catch (err) {
       console.error('[scheduler] create failed', err);
+      addToast('Failed to create event', 'error');
     } finally {
       setSaving(false);
     }
   }
 
-  async function setEventStatus(id: number | string, status: 'completed' | 'cancelled') {
+  async function handleEventDrop(arg: EventDropArg) {
+    const { source, originalId, officerId } = arg.event.extendedProps as { source: AgendaSource; originalId: number | string; officerId: number | null };
+    if (!isDraggableSource(source)) {
+      arg.revert();
+      addToast('Court dates are set by the court — not editable here.', 'warning');
+      return;
+    }
+    const newDate = arg.event.startStr.slice(0, 10);
     try {
-      await apiFetch(`/scheduler/events/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
+      await rescheduleAgendaItem({ source, originalId, date: newDate, officerId });
+      addToast('Rescheduled', 'success');
       load();
     } catch (err) {
-      console.error('[scheduler] update failed', err);
+      arg.revert();
+      const message = err instanceof Error ? err.message : 'Reschedule failed';
+      addToast(message, 'error');
     }
+  }
+
+  function handleEventClick(arg: EventClickArg) {
+    const link = linkByKey.get(arg.event.id);
+    if (link) navigate(link);
   }
 
   const inputCls = 'w-full bg-surface-base border border-rmpg-700 rounded px-2 py-[3px] text-[11px] text-rmpg-100 focus:border-brand-400 focus:outline-none';
@@ -178,20 +167,13 @@ export default function SchedulerPage() {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
-        {[3, 7, 14, 31].map((d) => (
-          <button key={d} onClick={() => setRangeDays(d)}
-            className={`px-2 py-[3px] rounded border text-[10px] uppercase tracking-wide ${rangeDays === d ? 'border-brand-400 text-brand-400 bg-brand-400/10' : 'border-rmpg-700 text-rmpg-400 hover:text-rmpg-200'}`}>
-            {d === 3 ? '3 Days' : d === 7 ? 'Week' : d === 14 ? '2 Weeks' : 'Month'}
-          </button>
-        ))}
-        <div className="w-px h-4 bg-rmpg-700 mx-1" />
-        {(Object.keys(SOURCE_META) as AgendaItem['source'][]).map((s) => {
-          const meta = SOURCE_META[s];
+        {(Object.keys(SOURCE_LABELS) as AgendaSource[]).map((s) => {
           const on = sources.has(s);
           return (
             <button key={s} onClick={() => toggleSource(s)}
-              className={`px-2 py-[3px] rounded border text-[10px] uppercase tracking-wide ${on ? meta.tone + ' bg-surface-raised' : 'border-rmpg-800 text-rmpg-600'}`}>
-              {meta.label}
+              style={on ? { borderColor: SOURCE_COLORS[s], color: SOURCE_COLORS[s] } : undefined}
+              className={`px-2 py-[3px] rounded border text-[10px] uppercase tracking-wide ${on ? 'bg-surface-raised' : 'border-rmpg-800 text-rmpg-600'}`}>
+              {SOURCE_LABELS[s]}
             </button>
           );
         })}
@@ -223,54 +205,32 @@ export default function SchedulerPage() {
         </button>
       </div>
 
-      {/* Agenda */}
-      {byDay.length === 0 && !loading && (
-        <div className="text-center text-rmpg-500 text-[11px] py-12 border border-rmpg-800 rounded bg-surface-raised">
-          Nothing scheduled in this range.
-        </div>
+      {/* Calendar */}
+      <div className="border border-rmpg-800 rounded bg-surface-raised p-2 [&_.fc]:text-[11px] [&_.fc-toolbar-title]:text-rmpg-100 [&_.fc-daygrid-day-number]:text-rmpg-300 [&_.fc-col-header-cell]:text-rmpg-400 [&_.fc-theme-standard_.fc-scrollgrid]:border-rmpg-800 [&_.fc-theme-standard_td]:border-rmpg-800 [&_.fc-theme-standard_th]:border-rmpg-800">
+        <FullCalendar
+          ref={calendarRef}
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          initialView="timeGridWeek"
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }}
+          height="auto"
+          events={events}
+          editable
+          eventDrop={handleEventDrop}
+          eventClick={handleEventClick}
+          eventStartEditable
+          eventDurationEditable={false}
+          datesSet={(arg) => {
+            const start = arg.startStr.slice(0, 10);
+            const end = arg.endStr.slice(0, 10);
+            if (start !== rangeStart) setRangeStart(start);
+            if (end !== rangeEnd) setRangeEnd(end);
+          }}
+        />
+      </div>
+
+      {highlightId && (
+        <div className="text-[10px] text-brand-400">Highlighting event #{highlightId} — scroll to find it on the grid.</div>
       )}
-      {byDay.map(([date, dayItems]) => (
-        <div key={date} className="border border-rmpg-800 rounded bg-surface-raised">
-          <div className="px-3 py-[3px] border-b border-rmpg-800 text-[9px] font-semibold uppercase tracking-wider text-rmpg-400">
-            {dayLabel(date)} <span className="text-rmpg-600">· {dayItems.length}</span>
-          </div>
-          <div className="divide-y divide-rmpg-800/60">
-            {dayItems.map((i) => {
-              const meta = SOURCE_META[i.source];
-              const Icon = meta.icon;
-              const highlighted = i.source === 'custom' && String(i.id) === highlightId;
-              return (
-                <div key={i.key}
-                  className={`flex items-center gap-3 px-3 py-[5px] text-[11px] ${highlighted ? 'bg-brand-400/10' : 'hover:bg-surface-base/60'}`}>
-                  <span className={`flex items-center gap-1 w-16 shrink-0 ${meta.tone.split(' ')[0]}`}>
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="text-[9px] uppercase">{meta.label}</span>
-                  </span>
-                  <span className="w-24 shrink-0 font-mono text-rmpg-300">
-                    {i.start ?? '—'}{i.end ? `–${i.end}` : ''}
-                  </span>
-                  <button onClick={() => i.link && navigate(i.link)}
-                    className="flex-1 text-left text-rmpg-100 hover:text-brand-400 truncate">
-                    {i.title}
-                    {i.subtitle && <span className="text-rmpg-500 ml-2">{i.subtitle}</span>}
-                  </button>
-                  {i.status && <span className="text-[9px] uppercase text-rmpg-500">{i.status}</span>}
-                  {i.source === 'custom' && i.status === 'scheduled' && (
-                    <span className="flex gap-1">
-                      <IconButton aria-label="Mark completed" onClick={() => setEventStatus(i.id, 'completed')}>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      </IconButton>
-                      <IconButton aria-label="Cancel event" onClick={() => setEventStatus(i.id, 'cancelled')}>
-                        <X className="w-3.5 h-3.5 text-red-400" />
-                      </IconButton>
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
 
       {/* Create modal */}
       {showCreate && (
