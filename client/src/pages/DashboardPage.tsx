@@ -5,7 +5,7 @@ import {
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
   CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw, Droplets, Wind,
-  ArrowUpRight, ArrowDownRight, Timer, Zap, Mail, ClipboardList,
+  ArrowUpRight, ArrowDownRight, Zap, Mail, ClipboardList,
   Fingerprint, ShieldBan, Car, Layers, Map as MapIcon,
 } from 'lucide-react';
 import { useGeolocation } from './mobile/hooks/useGeolocation';
@@ -1360,130 +1360,6 @@ export default function DashboardPage() {
           </div>
         </SpmGroup>
         )}
-
-      </div>
-
-      {/* Shift Countdown + Weather + Quick Actions Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
-        {/* Shift Countdown Timer */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current shift status">
-          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
-          <div className="p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-bold text-rmpg-200 tracking-wide">{shiftInfo.name}</div>
-                <div className="text-[10px] text-rmpg-500 font-mono mt-0.5 tabular-nums">
-                  {shiftInfo.startLabel} &mdash; {shiftInfo.endLabel}
-                </div>
-              </div>
-              <div className="text-right" aria-live="polite" aria-atomic="true">
-                <div className="text-lg font-bold font-mono text-brand-400 tabular-nums tracking-tight">{formatCountdown(shiftInfo.remaining)}</div>
-                <div className="text-[9px] text-rmpg-500 uppercase tracking-widest font-semibold">Remaining</div>
-              </div>
-            </div>
-            {/* Progress Bar */}
-            <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
-                <div
-                  className="h-full transition-all duration-1000 ease-linear rounded-sm"
-                  style={{
-                    width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) ${Math.round(shiftInfo.progress * 100)}%)`,
-                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
-                  }}
-                />
-              </div>
-              <div className="flex justify-between text-[9px] font-mono text-rmpg-500 tabular-nums">
-                <span>{shiftInfo.startLabel}</span>
-                <span className="font-bold text-rmpg-400">{Math.round(shiftInfo.progress * 100)}%</span>
-                <span>{shiftInfo.endLabel}</span>
-              </div>
-            </div>
-            {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
-              {[
-                { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
-                { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
-                { label: 'Night', hours: '22-06', active: shiftInfo.name === 'Night Shift' },
-              ].map(s => (
-                <div key={s.label} className={`flex-1 text-center p-1.5 rounded-sm transition-colors duration-300 ${s.active ? 'bg-brand-500/20 border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'bg-surface-sunken border border-transparent'}`}>
-                  <div className="flex items-center justify-center gap-1">
-                    <span className={`led-dot ${s.active ? 'led-green animate-led-pulse' : 'led-off'}`} />
-                    <span className={`text-[10px] font-bold select-none ${s.active ? 'text-brand-400' : 'text-rmpg-500'}`}>{s.label}</span>
-                  </div>
-                  <div className="text-[8px] font-mono text-rmpg-600 mt-0.5 tabular-nums">{s.hours}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Weather Widget */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
-          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
-          <div className="p-3">
-            {weather ? (() => {
-              const WeatherIcon = weather.icon;
-              const isFreezing = weather.temperature < 32;
-              return (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-800 shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? 'var(--spm-text)' : weather.weatherCode === 0 || weather.weatherCode === 1 ? 'var(--stat-accent-amber-bright)' : 'var(--spm-text-muted)' }} />
-                    </div>
-                    <div>
-                      <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
-                      <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
-                    </div>
-                  </div>
-                  {/* Humidity & Wind */}
-                  {(weather.humidity != null || weather.windSpeed != null) && (
-                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
-                      {weather.humidity != null && (
-                        <span title="Relative humidity">💧 {weather.humidity}%</span>
-                      )}
-                      {weather.windSpeed != null && (
-                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
-                      )}
-                    </div>
-                  )}
-                  {/* Road Conditions Warning */}
-                  {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
-                      <div>
-                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
-                    <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
-                      Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="text-[9px] text-rmpg-600 select-none">|</span>
-                    <span className="text-[9px] text-rmpg-600 font-mono italic">Open-Meteo</span>
-                  </div>
-                </div>
-              );
-            })() : (
-              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
-                {!weatherFetched ? (
-                  <>
-                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
-                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
-                  </>
-                ) : (
-                  <>
-                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
-                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Quick Action Buttons */}
         <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
