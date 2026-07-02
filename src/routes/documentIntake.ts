@@ -16,6 +16,7 @@ import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
 import { buildDocumentExtraction } from '../utils/documentIntakeExtract';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const documentIntake = new Hono<Env>();
 
 const CONTAINER_NAME = 'shared';
@@ -66,11 +67,7 @@ documentIntake.post('/extract-text', async (c) => {
       headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/json' },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to extract text',
-      code: 'EXTRACT_TEXT_FAILED',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to extract text', 'EXTRACT_TEXT_FAILED');
   }
 });
 
@@ -109,11 +106,7 @@ documentIntake.post('/extract', async (c) => {
     });
     return c.json(extraction);
   } catch (err) {
-    return c.json({
-      error: 'Failed to extract document fields',
-      code: 'EXTRACT_FAILED',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to extract document fields', 'EXTRACT_FAILED');
   }
 });
 

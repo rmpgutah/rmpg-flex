@@ -70,6 +70,7 @@ import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttempt
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -310,10 +311,7 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
   } catch (err) {
-    return c.json({
-      error: 'Extraction failed',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Extraction failed');
   }
 
   return c.json({

@@ -25,6 +25,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const coloradoDoc = new Hono<Env>();
 
 const PORTAL_URL = 'https://www.doc.state.co.us/oss/';
@@ -84,7 +85,7 @@ coloradoDoc.get('/search', async (c) => {
       note: LIVE_NOTE,
     });
   } catch (err) {
-    return c.json({ error: 'Colorado DOC search failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Colorado DOC search failed');
   }
 });
 
@@ -103,7 +104,7 @@ coloradoDoc.get('/offender/:docNumber', async (c) => {
     }
     return c.json(row);
   } catch (err) {
-    return c.json({ error: 'Colorado DOC lookup failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Colorado DOC lookup failed');
   }
 });
 
@@ -117,7 +118,7 @@ coloradoDoc.get('/stats', async (c) => {
       "SELECT COALESCE(facility, 'Unknown') AS facility, COUNT(*) AS count FROM colorado_doc_offenders GROUP BY facility ORDER BY count DESC LIMIT 20");
     return c.json({ total: total?.count ?? 0, facilities, live_search_available: false, portal_url: PORTAL_URL });
   } catch (err) {
-    return c.json({ error: 'Colorado DOC stats failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Colorado DOC stats failed');
   }
 });
 
@@ -151,7 +152,7 @@ coloradoDoc.post('/import', async (c) => {
     }
     return c.json({ success: true, saved });
   } catch (err) {
-    return c.json({ error: 'Colorado DOC import failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Colorado DOC import failed');
   }
 });
 

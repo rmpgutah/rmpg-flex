@@ -8,6 +8,7 @@ import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -567,7 +568,7 @@ calls.get('/:id', async (c) => {
     });
   } catch (err) {
     console.error('GET /dispatch/calls/:id failed:', err);
-    return c.json({ error: 'Failed to get call', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to get call');
   }
 });
 
@@ -686,7 +687,7 @@ calls.put('/:id', async (c) => {
     return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
-    return c.json({ error: 'Failed to update call', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to update call');
   }
 });
 

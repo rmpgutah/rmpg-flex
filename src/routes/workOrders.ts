@@ -41,6 +41,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 import { log } from '../utils/logger';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   isValidStatus,
   validateTransition,
@@ -197,7 +198,7 @@ wo.get('/', async (c) => {
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
     log.error('[workOrders] GET / failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -375,7 +376,7 @@ wo.post('/', requireRole(...WRITE_ROLES), async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     log.error('[workOrders] POST / failed', {}, err);
-    return c.json({ error: 'Failed to create work order', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to create work order', 'DB_ERROR');
   }
 });
 
@@ -412,7 +413,7 @@ wo.get('/:id{[0-9]+}', async (c) => {
     return c.json({ data: { header, line_items, attachments, comments, parts, status_history: statusHistory, totals: breakdown } });
   } catch (err) {
     log.error('[workOrders] GET /:id failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -480,7 +481,7 @@ wo.put('/:id{[0-9]+}', requireRole(...WRITE_ROLES), async (c) => {
     return c.json({ data: updated });
   } catch (err) {
     log.error('[workOrders] PUT /:id failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -586,7 +587,7 @@ wo.post('/:id{[0-9]+}/close', requireRole(...WRITE_ROLES), async (c) => {
     return c.json({ data: closed, totals });
   } catch (err) {
     log.error('[workOrders] POST /:id/close failed', {}, err);
-    return c.json({ error: 'Failed to close work order', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to close work order', 'DB_ERROR');
   }
 });
 
@@ -636,7 +637,7 @@ wo.post('/:id{[0-9]+}/attachments', requireRole(...WRITE_ROLES), async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     log.error('[workOrders] POST /:id/attachments failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -744,7 +745,7 @@ wo.post('/:id{[0-9]+}/line-items', requireRole(...WRITE_ROLES), async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     log.error('[workOrders] POST /:id/line-items failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -787,7 +788,7 @@ wo.put('/line-items/:itemId{[0-9]+}', requireRole(...WRITE_ROLES), async (c) => 
     return c.json({ data: updated });
   } catch (err) {
     log.error('[workOrders] PUT /line-items/:itemId failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -805,7 +806,7 @@ wo.delete('/line-items/:itemId{[0-9]+}', requireRole(...WRITE_ROLES), async (c) 
     return c.json({ success: true });
   } catch (err) {
     log.error('[workOrders] DELETE /line-items/:itemId failed', {}, err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 

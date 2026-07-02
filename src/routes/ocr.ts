@@ -26,6 +26,7 @@ import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const ocr = new Hono<Env>();
 
 const PDF_TOOLS_NAME = 'shared';
@@ -161,10 +162,7 @@ ocr.post('/scan-document', async (c) => {
     }
     return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
   } catch (err) {
-    return c.json({
-      error: 'Extraction failed',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Extraction failed');
   }
 });
 

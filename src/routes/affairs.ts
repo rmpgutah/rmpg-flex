@@ -15,6 +15,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 // part of the Page 52 IA upgrade.
 import { recordAudit } from '../utils/auditLog';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const affairs = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -114,7 +115,7 @@ affairs.post('/complaints', async (c) => {
     });
     return c.json({ data: created, complaint_number: complaintNumber }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to create complaint', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to create complaint');
   }
 });
 

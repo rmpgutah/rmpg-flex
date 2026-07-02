@@ -29,6 +29,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const skiptracer = new Hono<Env>();
 
 function requireRole(
@@ -105,11 +106,7 @@ skiptracer.get('/status', async (c) => {
       last_run: last?.last_run ?? null,
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get skiptracer status',
-      code: 'STATUS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get skiptracer status', 'STATUS_ERROR');
   }
 });
 
@@ -147,11 +144,7 @@ skiptracer.get('/stats', async (c) => {
       recent_dossiers: recent,
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get skiptracer stats',
-      code: 'STATS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get skiptracer stats', 'STATS_ERROR');
   }
 });
 
@@ -208,8 +201,7 @@ skiptracer.get('/search/byname', async (c) => {
       Records: total, Page: page, source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Search failed', code: 'SEARCH_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');
   }
 });
 
@@ -249,8 +241,7 @@ skiptracer.get('/search/byaddress', async (c) => {
       Records: total, Page: page, source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Search failed', code: 'SEARCH_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');
   }
 });
 
@@ -298,8 +289,7 @@ skiptracer.get('/search/bynameaddress', async (c) => {
       Records: total, Page: page, source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Search failed', code: 'SEARCH_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');
   }
 });
 
@@ -350,8 +340,7 @@ skiptracer.get('/search/byphone', async (c) => {
       Records: total, Page: page, source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Search failed', code: 'SEARCH_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');
   }
 });
 
@@ -390,8 +379,7 @@ skiptracer.get('/search/byemail', async (c) => {
       Records: total, Page: page, source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Search failed', code: 'SEARCH_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');
   }
 });
 
@@ -437,8 +425,7 @@ skiptracer.get('/person/:id', async (c) => {
       source: 'LOCAL',
     });
   } catch (err) {
-    return c.json({ error: 'Person lookup failed', code: 'LOOKUP_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Person lookup failed', 'LOOKUP_ERROR');
   }
 });
 
@@ -484,8 +471,7 @@ skiptracer.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
-    return c.json({ error: 'CSV export failed', code: 'EXPORT_ERROR',
-      detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'CSV export failed', 'EXPORT_ERROR');
   }
 });
 
@@ -541,11 +527,7 @@ skiptracer.get('/dossiers', async (c) => {
       },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list dossiers',
-      code: 'DOSSIERS_LIST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list dossiers', 'DOSSIERS_LIST_ERROR');
   }
 });
 
@@ -576,11 +558,7 @@ skiptracer.get('/dossiers/:id', async (c) => {
     }
     return c.json({ data: row });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get dossier',
-      code: 'DOSSIER_GET_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get dossier', 'DOSSIER_GET_ERROR');
   }
 });
 

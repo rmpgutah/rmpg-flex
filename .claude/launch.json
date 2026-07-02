@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "client",
       "port": 5173
+    },
+    {
+      "name": "worker-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["wrangler", "dev", "--port", "8787"],
+      "port": 8787
     }
   ]
 }

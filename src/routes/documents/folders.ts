@@ -16,6 +16,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const folders = new Hono<Env>();
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -185,10 +186,7 @@ folders.get('/folders', async (c) => {
 
     return c.json({ folders: folderRows, files, breadcrumbs });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list folders', code: 'LIST_FOLDERS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list folders', 'LIST_FOLDERS_ERROR');
   }
 });
 
@@ -227,10 +225,7 @@ folders.post('/folders', async (c) => {
       201,
     );
   } catch (err) {
-    return c.json({
-      error: 'Failed to create folder', code: 'CREATE_FOLDER_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create folder', 'CREATE_FOLDER_ERROR');
   }
 });
 
@@ -273,10 +268,7 @@ folders.put('/folders/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
-    return c.json({
-      error: 'Failed to rename folder', code: 'RENAME_FOLDER_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to rename folder', 'RENAME_FOLDER_ERROR');
   }
 });
 
@@ -318,10 +310,7 @@ folders.delete('/folders/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
-    return c.json({
-      error: 'Failed to delete folder', code: 'DELETE_FOLDER_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete folder', 'DELETE_FOLDER_ERROR');
   }
 });
 
@@ -340,10 +329,7 @@ folders.post('/folders/:id/move-file', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
-    return c.json({
-      error: 'Failed to move file', code: 'MOVE_FILE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to move file', 'MOVE_FILE_ERROR');
   }
 });
 

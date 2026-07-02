@@ -18,6 +18,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const routing = new Hono<Env>();
 
 // Boot reconciler — deploy migrations are continue-on-error, so the route
@@ -142,7 +143,7 @@ routing.post('/optimize', async (c) => {
     });
   } catch (err) {
     console.error('POST /dispatch/routing/optimize failed:', err);
-    return c.json({ error: 'Failed to optimize route', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to optimize route');
   }
 });
 
@@ -180,7 +181,7 @@ routing.post('/save', async (c) => {
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
     console.error('POST /dispatch/routing/save failed:', err);
-    return c.json({ error: 'Failed to save route', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to save route');
   }
 });
 
@@ -198,7 +199,7 @@ routing.get('/unit/:unitId', async (c) => {
     return c.json(rows);
   } catch (err) {
     console.error('GET /dispatch/routing/unit failed:', err);
-    return c.json({ error: 'Failed to load saved routes', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load saved routes');
   }
 });
 
@@ -238,7 +239,7 @@ routing.post('/:id/complete-stop', async (c) => {
     return c.json({ success: true, completed_route: allDone });
   } catch (err) {
     console.error('POST /dispatch/routing/complete-stop failed:', err);
-    return c.json({ error: 'Failed to complete stop', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to complete stop');
   }
 });
 

@@ -14,6 +14,7 @@ import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
 import { getPdfSigningKey, bytesToBase64 } from '../utils/pdfSign';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const pdfTools = new Hono<Env>();
 
 // Stable container name. Stateless workload — every authenticated
@@ -77,11 +78,7 @@ pdfTools.post('/encrypt', async (c) => {
       headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/json' },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to encrypt PDF',
-      code: 'ENCRYPT_FAILED',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to encrypt PDF', 'ENCRYPT_FAILED');
   }
 });
 
@@ -132,7 +129,7 @@ pdfTools.post('/sign-payload', async (c) => {
       payloadHash,
     });
   } catch (err) {
-    return c.json({ error: 'Signing failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Signing failed');
   }
 });
 

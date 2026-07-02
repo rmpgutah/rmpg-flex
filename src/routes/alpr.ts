@@ -291,11 +291,19 @@ async function finalizeCapture(
   },
 ): Promise<FinalizeResult> {
   const read = args.read;
+  const plate = read?.plate ?? null;
+  // Never trust the vision model's self-reported confidence directly (it emits
+  // ~1.0 constantly — see clearpathAlpr.ts's captureTrust, which fixed the same
+  // bug on the dashcam path). Derive real trust from plateTrust.trustScore
+  // instead; a single read is capped at 0.84 inside trustScore, so one capture
+  // alone can never clear the default 0.85 accept gate.
+  const derivedConf = plate
+    ? trustScore({ reads: [plate], modelPct: read?.confidence ?? undefined }).trustScore
+    : null;
   const out: FinalizeResult = {
     hits: [], vehicles: [], recordIds: [], sightingId: null,
-    accepted: false, plateConf: read?.confidence ?? null,
+    accepted: false, plateConf: derivedConf,
   };
-  const plate = read?.plate ?? null;
   const TH = acceptThreshold(env);
   const accepted = !!plate && (out.plateConf ?? 0) >= TH;
   out.accepted = accepted;
@@ -379,12 +387,16 @@ async function finalizeCapture(
     });
 
     await execute(db,
+      // The initial INSERT (below, on capture) seeds both `confidence` and
+      // `plate_confidence` with the raw vision-model self-report — correct
+      // BOTH columns here to the derived value, not just plate_confidence,
+      // or `confidence` is left stuck at the untrustworthy raw read forever.
       `UPDATE alpr_captures SET make=?, model=?, color=?, year=?, state=?, vehicle_type=?,
-         plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
+         confidence=?, plate_confidence=?, accepted=?, review_status=?, sighting_id=?, vehicle_record_ids=?,
          vehicle_count=1, enrich_status='done' WHERE id=?`,
       accepted ? read.make : null, accepted ? read.model : null, accepted ? read.color : null,
       accepted ? read.year : null, read.state, accepted ? read.bodyStyle : null,
-      out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
+      out.plateConf, out.plateConf, accepted ? 1 : 0, accepted ? 'accepted' : 'needs_review',
       out.sightingId, JSON.stringify(out.recordIds), args.captureRowId);
   } catch (err: any) {
     console.error('[alpr] finalize failed:', err?.message);

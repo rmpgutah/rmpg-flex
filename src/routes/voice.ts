@@ -30,6 +30,7 @@ import {
 } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const voice = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ─── POST /api/voice/dialogue ──────────────────────────────────
@@ -159,7 +160,7 @@ voice.post('/dialogue', async (c) => {
   });
   } catch (err) {
     console.error('[voice] POST /dialogue failed:', err);
-    return c.json({ error: 'Dialogue processing failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Dialogue processing failed');
   }
 });
 
