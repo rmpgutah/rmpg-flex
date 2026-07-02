@@ -40,7 +40,12 @@ export const CHUNK_RELOAD_HOLD_MS = 10_000;
 // The full vocabulary of dynamic-import failures across engines: Chrome's
 // "Failed to fetch dynamically imported module", webpack's "ChunkLoadError" /
 // "Loading chunk", the MIME rejection ("expected a JavaScript-or-Wasm module
-// script" / "Failed to load module script"), and our own sentinel.
+// script" / "Failed to load module script" / "'text/html' is not a valid
+// JavaScript MIME type" — the exact phrasing Chrome uses when the SW's own
+// poison-guard, or a Pages SPA fallback, serves stale-chunk HTML with a 200;
+// missing this marker meant ErrorBoundary's auto-reload safety net (which
+// gates on isChunkLoadError) skipped a real stale-chunk failure and showed
+// the manual-recovery card instead, 2026-07-02), and our own sentinel.
 const CHUNK_ERROR_MARKERS = [
   'failed to fetch dynamically imported module',
   'chunkloaderror',
@@ -48,6 +53,7 @@ const CHUNK_ERROR_MARKERS = [
   'failed to load module script',
   'expected a javascript-or-wasm module',
   'chunk load failed',
+  'is not a valid javascript mime type',
 ];
 
 /** True when an error looks like a stale/failed dynamic-import (chunk) load. */

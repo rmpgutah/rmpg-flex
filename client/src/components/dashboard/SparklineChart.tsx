@@ -15,7 +15,12 @@ export default function SparklineChart({
   color = 'var(--spm-text-muted)',
   className = '',
 }: SparklineChartProps) {
-  if (!data.length) return null;
+  // A sparkline needs at least 2 points to draw a line; a single value
+  // divides by (data.length - 1) = 0 below, producing NaN coordinates and
+  // an invalid SVG polygon/polyline (2026-07-02: StatsCard call sites like
+  // `arr.slice(0, Math.min(stats.units_available, 12))` legitimately
+  // produce length-1 arrays whenever that stat is 1).
+  if (data.length < 2) return null;
 
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
