@@ -22,6 +22,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { parseTimestamp } from './dateUtils';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -34,7 +35,7 @@ const MT_TZ = 'America/Denver';
 function fmtDateTime(input: string | Date | undefined | null): string {
   if (!input) return '—';
   try {
-    const d = typeof input === 'string' ? new Date(input) : input;
+    const d = typeof input === 'string' ? parseTimestamp(input) : input;
     return new Intl.DateTimeFormat('en-US', {
       timeZone: MT_TZ, year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: false,

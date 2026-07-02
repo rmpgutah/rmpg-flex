@@ -646,7 +646,7 @@ export function generateNavSingleTripReport({
   }
 
   // Save
-  const dateStr = new Date(trip.start_time.replace(' ', 'T')).toISOString().slice(0, 10);
+  const dateStr = parseTimestamp(trip.start_time).toISOString().slice(0, 10);
   const officerSlug = (officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
   doc.save(`nav-trip-${officerSlug}-${dateStr}-${trip.id}.pdf`);
 }
