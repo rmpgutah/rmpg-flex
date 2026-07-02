@@ -72,6 +72,8 @@
 //       records, ALPR design, map sidebar visual upgrade, click-target
 //       a11y, loading screens, WebSocket Reconnecting pill, AbortController
 //       timeouts) into the production-deployed branch (2026-05-01).
+// v478: Spillman CAD console (P1 structural replica) — command line +
+//       three status grids on Dispatch, toggle key rmpg_dispatch_cad_board.
 // ============================================================
 
 const CACHE_NAME = 'rmpg-flex-v563';
