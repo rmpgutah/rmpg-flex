@@ -21,7 +21,14 @@ const MISSING_TOKEN_MESSAGE =
 
 /** Sync getter for build-time-only callers (e.g. early SSR-style reads). */
 export function getCachedMapboxAccessToken(): string {
-  return ((import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN as string | undefined)?.trim() || '';
+  const token = ((import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN as string | undefined)?.trim() || '';
+  // Reject secret (sk.*) tokens — Mapbox GL JS only works with public
+  // (pk.*) tokens client-side. Mirrors the guard in mapboxLoader.ts;
+  // without it, a bad build-time sk.* token short-circuits every caller
+  // below (getMapboxTokenStatus, hasMapboxToken) before they ever fall
+  // back to the server-resolved token.
+  if (token.startsWith('sk.')) return '';
+  return token;
 }
 
 export function getMapboxTokenErrorMessage(): string {
