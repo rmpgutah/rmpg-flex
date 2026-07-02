@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import jsPDF from 'jspdf';
-import { drawSectionHeader } from '../context';
+import { drawSectionHeader, resetSectionCounter } from '../context';
 import { LayoutEngine } from '../layout';
 
 function getDocText(doc: jsPDF): string {
@@ -31,5 +31,18 @@ describe('section header (Spillman style)', () => {
     const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
     drawSectionHeader(doc, layout, 'CITATION INFORMATION');
     expect(getDocText(doc)).toContain('CITATION INFORMATION');
+  });
+});
+
+describe('drawSectionHeader accent color', () => {
+  it('draws the rule under the title in the steel-blue accent', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, {
+      topMargin: 20, bottomMargin: 18, leftMargin: 10, rightMargin: 10,
+    });
+    resetSectionCounter();
+    drawSectionHeader(doc, layout, 'Identity');
+    const ops = doc.internal.pages[1].join('\n');
+    expect(ops).toContain('0.17 0.26 0.34 RG');
   });
 });

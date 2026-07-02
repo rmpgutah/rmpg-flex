@@ -4,7 +4,7 @@ import type { Primitives } from './primitives';
 import type {
   RenderContext, LabeledField, CheckboxField, NarrativeField, TableField, SignatureField,
 } from './types';
-import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, TONES_RGB } from './style';
 
 const SECTION_GAP = SPACING.sectionGap;
 
@@ -53,11 +53,13 @@ export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: strin
   doc.setFontSize(TYPOGRAPHY.sectionHeader.size);
   doc.text(title.toUpperCase(), layout.leftX + numWidth + 2, y);
 
-  // Draw a thin rule under the section header (low ink: outline-only, no fill bar)
+  // Draw a thin rule under the section header (low ink: outline-only, no fill
+  // bar). Steel-blue accent (2026-07) — distinct from the gold marker bar above.
   layout.advance(3);
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(...TONES_RGB.accentSteel);
   doc.setLineWidth(RULE_WEIGHTS.sectionRule);
   doc.line(layout.leftX, layout.cursorY, layout.rightX, layout.cursorY);
+  doc.setDrawColor(0, 0, 0); // reset for downstream drawing
   layout.advance(2);
 }
 
