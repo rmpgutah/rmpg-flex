@@ -64,4 +64,18 @@ describe('Spillman header', () => {
     );
     expect(getDocText(doc)).toContain('PAGE 2 OF 4');
   });
+
+  it('draws the top rule in the steel-blue accent, not black', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    drawDefaultHeader(
+      doc,
+      { formNumber: 'PS-209', title: 'CITATION', revision: '2026-05' },
+      {},
+    );
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
+    // jsPDF content streams encode RGB draw color as "r g b RG" (0-1 scale,
+    // rounded to jsPDF's default 2-decimal precision).
+    // #2c4256 = 44,66,86 -> 0.17, 0.26, 0.34
+    expect(ops).toContain('0.17 0.26 0.34 RG');
+  });
 });

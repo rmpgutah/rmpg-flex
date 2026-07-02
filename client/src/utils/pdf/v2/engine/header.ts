@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY } from './style';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY, TONES_RGB } from './style';
 import type { FormMeta } from './types';
 
 export interface HeaderContext {
@@ -36,9 +36,13 @@ export function drawDefaultHeader(
   const right = PAGE_WIDTH - SPACING.pageMarginRight;
   const center = PAGE_WIDTH / 2;
 
-  // 1) Top rule — thin (low ink, was thick)
+  // 1) Top rule — steel-blue accent (2026-07: restrained color upgrade,
+  // replaces the black rule; still renders as a distinguishable mid-gray
+  // on B&W laser printers).
+  doc.setDrawColor(...TONES_RGB.accentSteel);
   doc.setLineWidth(RULE_WEIGHTS.headerThick);
   doc.line(left, TOP, right, TOP);
+  doc.setDrawColor(0, 0, 0); // reset for the bottom rule + everything downstream
 
   // 2) Agency name
   doc.setFont('helvetica', TYPOGRAPHY.agencyName.weight);

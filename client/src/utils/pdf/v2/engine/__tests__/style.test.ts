@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY, FOOTER_TEXT } from '../style';
+import {
+  TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY, FOOTER_TEXT, TONES,
+} from '../style';
 
 describe('style tokens', () => {
   it('typography table has the expected entries with correct sizes', () => {
@@ -22,5 +24,15 @@ describe('style tokens', () => {
   });
   it('footer text mentions the law-enforcement-sensitive notice', () => {
     expect(FOOTER_TEXT.classification).toMatch(/LAW ENFORCEMENT SENSITIVE/);
+  });
+});
+
+describe('TONES accent colors', () => {
+  it('defines a steel-blue accent for Spillman-style headers/tables', () => {
+    expect(TONES.accentSteel).toBe('#2c4256');
+  });
+
+  it('defines a gold accent for flagged/priority emphasis', () => {
+    expect(TONES.accentGold).toBe('#d4a017');
   });
 });

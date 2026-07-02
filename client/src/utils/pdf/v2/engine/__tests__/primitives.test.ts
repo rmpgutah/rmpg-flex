@@ -263,4 +263,24 @@ describe('table (Spillman black-header zebra style)', () => {
     expect(text).not.toMatch(/\(undefined\)\s*Tj/);
     expect(text).not.toMatch(/\(null\)\s*Tj/);
   });
+
+  it('table header band fills with the steel-blue accent, not black', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, {
+      topMargin: 20, bottomMargin: 18, leftMargin: 10, rightMargin: 10,
+    });
+    const prims = new Primitives(doc, layout);
+    prims.table(
+      {
+        kind: 'table',
+        label: 'Items',
+        columns: [{ key: 'name', header: 'Name' }],
+        accessor: () => [{ name: 'Widget' }],
+      },
+      {},
+    );
+    const ops = (doc.internal.pages[1] as unknown as string[]).join('\n');
+    // Fill color uses lowercase "rg" (vs. draw color's uppercase "RG").
+    expect(ops).toContain('0.17 0.26 0.34 rg');
+  });
 });
