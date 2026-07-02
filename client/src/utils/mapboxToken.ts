@@ -23,13 +23,18 @@ export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
   if (_serverConfigPromise) return _serverConfigPromise;
   if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
 
+  // Read the token and bail BEFORE creating/caching the promise. Setting
+  // _serverConfigPromise = null inside the IIFE below (as the no-token
+  // branch used to do) runs synchronously while the IIFE's own return
+  // value is still being assigned to _serverConfigPromise, so the null
+  // gets clobbered by that outer assignment right after — permanently
+  // caching an empty {} for the rest of the session on any tokenless call
+  // (e.g. a map surface mounting before auth completes).
+  const token = localStorage.getItem('rmpg_token');
+  if (!token) return {};
+
   _serverConfigPromise = (async () => {
     try {
-      const token = localStorage.getItem('rmpg_token');
-      if (!token) {
-        _serverConfigPromise = null;
-        return {};
-      }
       const base = import.meta.env.VITE_API_BASE_URL || '';
       const res = await fetch(`${base}/api/integrations/mapbox/client-token`, {
         headers: { Authorization: `Bearer ${token}` },
