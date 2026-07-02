@@ -87,6 +87,14 @@ export default function SchedulerPage() {
     if (searchParams.get('call_id') || searchParams.get('serve_queue_id')) setShowCreate(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Deep-link (?event_id=): jump the calendar view to the matching custom
+  // event's date once it's loaded. Doesn't visually ring/highlight the
+  // event cell — that needs FullCalendar event-render hooks, out of scope here.
+  useEffect(() => {
+    if (!highlightId) return;
+    const match = items.find((i) => i.source === 'custom' && String(i.id) === highlightId);
+    if (match) calendarRef.current?.getApi().gotoDate(match.date);
+  }, [highlightId, items]);
 
   const visible = useMemo(() => items.filter((i) => sources.has(i.source)), [items, sources]);
   const events = useMemo(() => visible.map(agendaItemToEvent), [visible]);
@@ -229,7 +237,7 @@ export default function SchedulerPage() {
       </div>
 
       {highlightId && (
-        <div className="text-[10px] text-brand-400">Highlighting event #{highlightId} — scroll to find it on the grid.</div>
+        <div className="text-[10px] text-brand-400">Jumped to event #{highlightId}.</div>
       )}
 
       {/* Create modal */}
