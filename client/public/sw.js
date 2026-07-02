@@ -10,6 +10,9 @@
 //        VehicleDetailRoute now distinguishes loading vs 404 (no more
 //        silent blank on a bad ID), GpsTrackingRoute link updated from
 //        /fleet-legacy to /map (the actual GPS map surface).
+// v1097: Route Builder backend built (/api/dispatch/routing was never
+//        mounted — all four endpoints 404'd) + Directions now flow through
+//        the /api/mapbox proxy instead of direct api.mapbox.com fetches.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
