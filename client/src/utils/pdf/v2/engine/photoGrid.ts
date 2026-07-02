@@ -1,6 +1,6 @@
 import type jsPDF from 'jspdf';
 import type { LayoutEngine } from './layout';
-import type { ResolvedImage } from '../../pdfImageHelpers';
+import type { ResolvedImage } from '../../../pdfImageHelpers';
 
 export interface PhotoGridOptions {
   images: ResolvedImage[];
