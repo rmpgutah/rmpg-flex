@@ -7,6 +7,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
+import { log } from '../../utils/logger';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const calls = new Hono<Env>();
@@ -122,7 +123,7 @@ calls.get('/', async (c) => {
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (err) {
-    console.error('Get calls error:', err);
+    log.error('GET /dispatch/calls failed', { query: c.req.query() }, err as Error);
     return c.json({ error: 'Failed to get calls' }, 500);
   }
 });
