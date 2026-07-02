@@ -22,6 +22,10 @@
 //        from gold to steel-blue accent (--toolbar-nav-text-active, the
 //        active-tile border/glow, and SpmGroup tone) — brand gold stays on
 //        alerts/warnings only, blue carries the app's primary identity.
+// v1100: New "Blue & Silver" full-override theme (Settings → Display & Theme),
+//        same tier as the legacy black kill-switch: deep navy-blue surfaces
+//        with a silver accent replacing gold. html.theme-blue-silver +
+//        rmpg_theme_blue_silver flag; mutually exclusive with legacy black.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate

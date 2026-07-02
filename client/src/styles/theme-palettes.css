@@ -236,6 +236,80 @@ html.theme-legacy-black {
   --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
 }
 
+/* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
+   an independent forced palette selectable in Settings, not part of the
+   day/night schedule). Deep navy-blue surfaces with a cool silver/platinum
+   accent replacing the warm gold used everywhere else — that swap (via
+   --brand-gold and --field-label-color) IS the theme's identity. Severity/
+   priority colors stay the fixed, safety-critical hues shared by every theme. */
+html.theme-blue-silver {
+  --surface-base: #0c1a2b;  --surface-base-rgb: 12 26 43;
+  --surface-raised: #142640; --surface-raised-rgb: 20 38 64;
+  --surface-sunken: #081221; --surface-sunken-rgb: 8 18 33;
+  --surface-overlay: #050d18; --surface-overlay-rgb: 5 13 24;
+  --surface-deep: #050d18;   --surface-deep-rgb: 5 13 24;
+  --border-default: #3d5a7d; --border-subtle: #223850; --border-strong: #6b88ac; --border-panel: #345071;
+  --text-primary: #eef2f7; --text-secondary: #c7d2e0; --text-muted: #91a3ba;
+  --brand-blue: #4f8fdb; --brand-gold: #b7c2cf;
+  --pri-scheduled: #5c6f8a;
+  /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
+  --record-tile-bg: #1a3454; --record-tile-border: #3f74ac; --record-tile-fg: #8fc2f5;
+  --record-tile-bg-muted: #142640; --record-tile-border-muted: #3d5a7d; --record-tile-fg-muted: #7c8fa8;
+
+  --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
+  --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
+  --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
+  --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
+  --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
+  --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
+  --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
+  --brand-900-rgb: 14 22 32;
+  --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
+  --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
+  --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
+  --blue-900-rgb: 13 23 34;
+  /* gold token renders SILVER here — --brand-gold above is the theme's metallic accent. */
+  --brand-gold-300-rgb: 224 229 235; --brand-gold-400-rgb: 200 209 219; --brand-gold-500-rgb: 183 194 207;
+  --brand-gold-600-rgb: 148 162 179; --brand-gold-700-rgb: 112 128 148;
+  --brand-gold-rgb: 183 194 207;
+
+  /* Severity palette — bright, like night (dark background). Fixed hues, not re-derived. */
+  --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
+  --sev-high: #f97316;
+  --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;
+  --sev-caution: #facc15;
+  --sev-ok: #22c55e; --sev-ok-soft: #86efac;
+  --sev-info: #60a5fa;
+  --sev-special: #c084fc; --sev-special-soft: #a855f7;
+  --sev-critical-rgb: 239 68 68; --sev-high-rgb: 249 115 22;
+  --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
+  --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
+  --sev-special-rgb: 192 132 252;
+
+  /* Records chrome tokens — BLUE & SILVER */
+  --spm-chrome: #142640; --spm-form: #0c1a2b; --spm-field: #0f2036;
+  --spm-border: #3d5a7d; --spm-field-border: #3d5a7d; --spm-accent: #4f8fdb;
+  --spm-select: #316ac5; --spm-text: #eef2f7; --spm-text-muted: #91a3ba;
+  --spm-text-rgb: 238 242 247; --spm-text-muted-rgb: 145 163 186;
+  --spm-group-head: linear-gradient(#1f3a5c, #16283f);
+  --spm-toolbar: linear-gradient(#1f3a5c, #16283f);
+  --spm-toolbar-hover: linear-gradient(#284873, #1c3554);
+  --spm-toolbar-active: linear-gradient(#132234, #0d1a29);
+  --spm-toolbar-primary: linear-gradient(#3a6699, #2a4d75);
+
+  /* App chrome tokens — BLUE & SILVER */
+  --toolbar-gradient-start: #142640; --toolbar-gradient-end: #1f3a5c;
+  --grid-header-bg: #081221; --grid-row-alt: #10213a;
+  --field-label-color: #b7c2cf;
+  --surface-panel: #142640; --surface-panel-alt: #0f2036; --surface-hover: #1c3554;
+  --info-text: #c7d2e0; --info-bg: rgba(79, 143, 219, 0.12); --info-border: rgba(79, 143, 219, 0.24);
+  --desktop-shell-start: #0c1a2b; --desktop-shell-end: #142640;
+  --desktop-shell-raised-start: #142640; --desktop-shell-raised-end: #1f3a5c;
+  --desktop-shell-border: #3d5a7d; --desktop-shell-accent: #4f8fdb;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --desktop-shell-subtle-text: #91a3ba; --desktop-shell-icon: #91a3ba;
+}
+
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */
 /* Apply as a className to live-map wrappers, HUD overlays, and the MDT view so         */
 /* operators are never blinded by a bright UI at night. The Mapbox GL canvas itself is  */
