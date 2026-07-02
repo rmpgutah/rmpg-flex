@@ -233,6 +233,15 @@ export default {
 
     // ── Every minute ──
     if (event.cron === '* * * * *') {
+      // Unified scheduler reminders (scheduler_events.notify_at) — mirrors
+      // the serve-attempt sweep below; fires scheduler_reminder alerts.
+      ctx.waitUntil(
+        import('./utils/schedulerReminders').then((m) =>
+          m.sweepSchedulerReminders(env.DB, env).catch((err) =>
+            console.error('Scheduler reminder sweep failed:', err),
+          ),
+        ).catch(() => {}),
+      );
       // Serve attempt notifications: fires pre-event dispatch reminders
       ctx.waitUntil(
         import('./utils/serveAttemptScheduler').then((m) =>

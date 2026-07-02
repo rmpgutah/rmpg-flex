@@ -135,6 +135,8 @@ import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
 import scheduling from './routes/scheduling';
+import scheduler from './routes/scheduler';
+import shiftBriefings from './routes/shiftBriefings';
 import serve from './routes/serve';
 import serveDashboard from './routes/serveDashboard';
 import serveQueueEnhanced from './routes/serveQueueEnhanced';
@@ -181,6 +183,7 @@ import dispatchDuty from './routes/dispatch/duty';
 import inspections from './routes/inspections';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
+import dispatchRouting from './routes/dispatch/routing';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
@@ -315,6 +318,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
   { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
+  { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
+    note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAggregates, auth: 'required' },
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
@@ -440,6 +445,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/scheduling', router: scheduling, auth: 'required',
     note: 'Scheduling engine: coverage gaps, shift swaps, overtime, auto-schedule, handoff briefings' },
+  { prefix: '/api/scheduler', router: scheduler, auth: 'required',
+    note: 'Unified scheduler: cross-source agenda (serve attempts + shift plans + court events + custom events), event CRUD with cron reminders. Migration 0165.' },
+  { prefix: '/api/shift-briefings', router: shiftBriefings, auth: 'required',
+    note: 'Shift briefings: persisted briefings + live /generate + officer-safety alerts (backend for ShiftBriefingsPage; endpoints 404d before 2026-07-02). Migration 0165.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/nsopw', router: nsopw, auth: 'required',

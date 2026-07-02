@@ -53,7 +53,9 @@ export default function ServeDashboardPerformance() {
       setSummary(sum);
       setOfficers(rates.officers ?? []);
       setDeadlines(dl ?? []);
-      setScheduleAnalytics(analytics);
+      // Only accept a well-formed payload — an error-shaped or empty response
+      // must not crash the render (this widget must never break the page).
+      setScheduleAnalytics(analytics?.summary ? { by_day_of_week: {}, by_hour: {}, ...analytics } : null);
     } catch {
       // Silently fail — dashboard widget must never break the page
     } finally {

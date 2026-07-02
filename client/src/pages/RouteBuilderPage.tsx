@@ -29,6 +29,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 
@@ -295,23 +296,16 @@ export default function RouteBuilderPage() {
 
   const renderMapboxDirections = useCallback(
     async (map: mapboxgl.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
-      const token = mapboxTokenRef.current;
-      if (!token) {
-        renderSimpleRoute(map, routeOrigin, stops);
-        return;
-      }
-
-      // Build coordinates string: origin;waypoints;destination
-      const allPoints = [
-        `${routeOrigin.lng},${routeOrigin.lat}`,
-        ...stops.map((s) => `${s.longitude},${s.latitude}`),
+      // Directions go through the Worker proxy (/api/mapbox/directions) —
+      // server-side MAPBOX_ACCESS_TOKEN secret, auth'd, no direct
+      // api.mapbox.com egress from the browser.
+      const allPoints: [number, number][] = [
+        [routeOrigin.lng, routeOrigin.lat],
+        ...stops.map((s) => [s.longitude, s.latitude] as [number, number]),
       ];
-      const coordsStr = allPoints.join(';');
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${token}&geometries=geojson&overview=full`;
 
       try {
-        const resp = await fetch(url);
-        const data = await resp.json();
+        const data = await getDirections(allPoints, 'driving-traffic');
 
         if (data.routes && data.routes.length > 0) {
           const route = data.routes[0];

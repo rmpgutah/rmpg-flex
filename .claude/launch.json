@@ -2,15 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "api-server",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "watch", "server/src/index.ts"],
-      "port": 3001
-    },
-    {
-      "name": "vite-client",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "client"],
+      "name": "client-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "client",
       "port": 5173
     }
   ]

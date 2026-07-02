@@ -33,6 +33,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
+import UpcomingSchedulePanel from '../components/scheduler/UpcomingSchedulePanel';
 import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
 import IntegrationDashboardPanel from './dashboard/IntegrationDashboardPanel';
 import { useDashboardPanels } from './dashboard/useDashboardPanels';
@@ -189,8 +190,8 @@ interface UnitStatusData {
 // ─── Status & Chart Helpers ──────────────────────────────
 
 const UNIT_STATUS_COLORS: Record<string, string> = {
-  available: '#22c55e', dispatched: '#f59e0b', enroute: '#3b82f6',
-  onscene: '#ef4444', busy: '#a855f7', break: '#888888', off_duty: '#444444',
+  available: 'var(--stat-accent-green)', dispatched: 'var(--stat-accent-amber)', enroute: 'var(--sev-info)',
+  onscene: 'var(--stat-accent-red-bright)', busy: 'var(--stat-accent-purple)', break: 'var(--spm-text-muted)', off_duty: 'var(--pri-scheduled)',
 };
 
 const UNIT_STATUS_LABELS: Record<string, string> = {
@@ -199,10 +200,10 @@ const UNIT_STATUS_LABELS: Record<string, string> = {
 };
 
 const CHART_TOOLTIP_STYLE = {
-  backgroundColor: '#0a0a0a',
-  border: '1px solid #3a3a3a',
+  backgroundColor: 'var(--surface-raised)',
+  border: '1px solid var(--border-strong)',
   borderRadius: '2px',
-  color: '#cccccc',
+  color: 'var(--text-primary)',
   fontSize: '11px',
   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
   padding: '8px 12px',
@@ -459,11 +460,11 @@ function pollFreshnessColor(p: {
 // backend returns that isn't listed falls through to an "Other" bucket so no
 // data is silently dropped.
 const STATUS_PIPELINE: { key: string; label: string; color: string }[] = [
-  { key: 'pending', label: 'Pending', color: '#f59e0b' },
-  { key: 'dispatched', label: 'Dispatched', color: '#888888' },
-  { key: 'enroute', label: 'En Route', color: '#3b82f6' },
-  { key: 'onscene', label: 'On Scene', color: '#a855f7' },
-  { key: 'cleared', label: 'Cleared', color: '#22c55e' },
+  { key: 'pending', label: 'Pending', color: 'var(--stat-accent-amber)' },
+  { key: 'dispatched', label: 'Dispatched', color: 'var(--spm-text-muted)' },
+  { key: 'enroute', label: 'En Route', color: 'var(--sev-info)' },
+  { key: 'onscene', label: 'On Scene', color: 'var(--stat-accent-purple)' },
+  { key: 'cleared', label: 'Cleared', color: 'var(--stat-accent-green)' },
 ];
 
 // Build a contiguous N-day series (oldest→newest) from sparse daily rows,
@@ -487,12 +488,12 @@ function buildVolumeSeries(rows: { date: string; count: number }[], days: number
 // Status-dot color for a live unit's status (dispatch_units.status enum).
 function unitStatusColor(status: string | undefined): string {
   switch (status) {
-    case 'available': return '#22c55e';
-    case 'dispatched': return '#888888';
-    case 'enroute': return '#3b82f6';
-    case 'onscene': return '#a855f7';
-    case 'off_duty': return '#555555';
-    default: return '#666666';
+    case 'available': return 'var(--stat-accent-green)';
+    case 'dispatched': return 'var(--spm-text-muted)';
+    case 'enroute': return 'var(--sev-info)';
+    case 'onscene': return 'var(--stat-accent-purple)';
+    case 'off_duty': return 'var(--pri-scheduled)';
+    default: return 'var(--spm-text-muted)';
   }
 }
 
@@ -935,9 +936,9 @@ export default function DashboardPage() {
 
   // ─── Incident clearance donut data ─────────────────────
   const incidentPieData = clearanceRate ? [
-    { name: 'Cleared', value: clearanceRate.cleared || 0, fill: '#22c55e' },
-    { name: 'Active', value: clearanceRate.active || 0, fill: '#f59e0b' },
-    { name: 'Pending', value: clearanceRate.pending || 0, fill: '#888888' },
+    { name: 'Cleared', value: clearanceRate.cleared || 0, fill: 'var(--stat-accent-green)' },
+    { name: 'Active', value: clearanceRate.active || 0, fill: 'var(--stat-accent-amber)' },
+    { name: 'Pending', value: clearanceRate.pending || 0, fill: 'var(--spm-text-muted)' },
   ].filter(d => d.value > 0) : [];
 
   return (
@@ -1382,12 +1383,12 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#222222] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
                     width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    background: `linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) ${Math.round(shiftInfo.progress * 100)}%)`,
                     boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
                   }}
                 />
@@ -1399,7 +1400,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+            <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -1427,8 +1428,8 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#222222] shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-800 shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? 'var(--spm-text)' : weather.weatherCode === 0 || weather.weatherCode === 1 ? 'var(--stat-accent-amber-bright)' : 'var(--spm-text-muted)' }} />
                     </div>
                     <div>
                       <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
@@ -1457,7 +1458,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -1490,23 +1491,23 @@ export default function DashboardPage() {
           <div className="p-3">
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
               {[
-                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
-                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
-                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
-                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
-                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
-                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
-                { icon: Briefcase, label: 'Cases', path: '/cases', color: '#06b6d4' },
-                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: '#888888' },
-                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: '#ef4444' },
-                { icon: Gavel, label: 'Court Tracker', path: '/court', color: '#f59e0b' },
-                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: '#f97316' },
-                { icon: Car, label: 'Fleet', path: '/fleet', color: '#888888' },
+                { icon: Phone, label: 'New Call', path: '', color: 'var(--stat-accent-red-bright)', action: () => setShowNewCallModal(true) },
+                { icon: FileText, label: 'New Incident', path: '', color: 'var(--stat-accent-amber)', action: () => setShowIncidentModal(true) },
+                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: 'var(--stat-accent-green)' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: 'var(--spm-text-muted)' },
+                { icon: Target, label: 'Process Server', path: '/serve', color: 'var(--stat-accent-purple)' },
+                { icon: Mail, label: 'Email', path: '/email', color: 'var(--stat-accent-green)' },
+                { icon: Briefcase, label: 'Cases', path: '/cases', color: 'var(--sev-info)' },
+                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: 'var(--spm-text-muted)' },
+                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: 'var(--stat-accent-red-bright)' },
+                { icon: Gavel, label: 'Court Tracker', path: '/court', color: 'var(--stat-accent-amber)' },
+                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: 'var(--sev-high)' },
+                { icon: Car, label: 'Fleet', path: '/fleet', color: 'var(--spm-text-muted)' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2e2e2e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-rmpg-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
                   aria-label={label}
                 >
                   <ActionIcon
@@ -1677,7 +1678,7 @@ export default function DashboardPage() {
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
       {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
-        <SpmGroup title="Alerts & Reminders" tone="gold" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+        <SpmGroup title="Alerts & Reminders" tone="blue" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
           {shiftStats && (
             <div className="panel-beveled bg-surface-base p-3">
@@ -1734,6 +1735,10 @@ export default function DashboardPage() {
         </div>
         </SpmGroup>
       )}
+
+      {/* Unified upcoming schedule — hidden from client_viewer (internal
+          operational data; server also 403s the /api/scheduler feed) */}
+      {role !== 'client_viewer' && <UpcomingSchedulePanel />}
 
       {/* Serve Scheduler Panel — dispatch + admin only */}
       {hasPanel('serveSchedule') && (
@@ -1903,7 +1908,7 @@ export default function DashboardPage() {
               const segments = STATUS_PIPELINE.map((s) => ({ ...s, count: counts.get(norm(s.key)) ?? 0 }));
               const knownKeys = new Set(STATUS_PIPELINE.map((s) => norm(s.key)));
               const otherCount = callsByStatus.reduce((sum, r) => knownKeys.has(norm(r.status)) ? sum : sum + (r.count ?? 0), 0);
-              const all = otherCount > 0 ? [...segments, { key: 'other', label: 'Other', color: '#444444', count: otherCount }] : segments;
+              const all = otherCount > 0 ? [...segments, { key: 'other', label: 'Other', color: 'var(--pri-scheduled)', count: otherCount }] : segments;
               const total = all.reduce((sum, s) => sum + s.count, 0);
 
               if (total === 0) {
@@ -1917,7 +1922,7 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   {/* Stacked proportional bar */}
-                  <div className="flex h-5 w-full rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner bg-surface-sunken" role="img" aria-label="Call status distribution">
+                  <div className="flex h-5 w-full rounded-sm overflow-hidden border border-rmpg-800 shadow-inner bg-surface-sunken" role="img" aria-label="Call status distribution">
                     {all.filter((s) => s.count > 0).map((s) => (
                       <div
                         key={s.key}
@@ -1979,16 +1984,16 @@ export default function DashboardPage() {
                           <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
-                      <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} />
-                      <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} allowDecimals={false} width={28} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
+                      <XAxis dataKey="label" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} />
+                      <YAxis tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} allowDecimals={false} width={28} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #3a3a3a', borderRadius: '2px', color: '#cccccc', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
-                        labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
+                        contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
                         formatter={(value: any) => [`${value} calls`, '']}
                         cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
                       />
-                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: '#f0c040', r: 5, strokeWidth: 2, stroke: '#ffffff' }} animationDuration={700} />
+                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: 'rgb(var(--brand-gold-300-rgb))', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }} animationDuration={700} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -2050,7 +2055,7 @@ export default function DashboardPage() {
         const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
         // Gold→red ramp by relative volume so hot zones read at a glance.
         const heatColor = (ratio: number) =>
-          ratio >= 0.75 ? '#ef4444' : ratio >= 0.5 ? '#f59e0b' : ratio >= 0.25 ? '#d4a017' : '#888888';
+          ratio >= 0.75 ? 'var(--stat-accent-red-bright)' : ratio >= 0.5 ? 'var(--stat-accent-amber)' : ratio >= 0.25 ? '#d4a017' : 'var(--spm-text-muted)';
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
             <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
@@ -2066,14 +2071,14 @@ export default function DashboardPage() {
                 return (
                   <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
                     <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
-                    <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+                    <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
                       <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
                     </div>
                     <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
                   </div>
                 );
               })}
-              <div className="flex justify-end pt-1 mt-1 border-t border-[#2b2b2b]">
+              <div className="flex justify-end pt-1 mt-1 border-t border-rmpg-800">
                 <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">{zoneTotal} calls across {callsByZone.length} zones</span>
               </div>
             </div>
@@ -2116,13 +2121,13 @@ export default function DashboardPage() {
             {callsByType.length > 0 ? (
               <ResponsiveContainer width="100%" height={isMobile ? 140 : 180}>
                 <BarChart data={callsByType.slice(0, 8)} layout="vertical" margin={{ left: 5, right: 15, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="type" width={100} tick={{ fill: '#aaaaaa', fontSize: 9 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="type" width={100} tick={{ fill: 'var(--spm-text)', fontSize: 9 }} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
                   <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
                     {callsByType.slice(0, 8).map((_, i) => (
-                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? '#b8860b' : '#888888'} />
+                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? 'rgb(var(--brand-gold-600-rgb))' : 'var(--spm-text-muted)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -2284,17 +2289,17 @@ export default function DashboardPage() {
             <div className="p-3">
               <ResponsiveContainer width="100%" height={isMobile ? 160 : 200}>
                 <BarChart data={shiftComparison.shifts.map((s: any) => ({ shift: s.shift, calls: s.calls, incidents: s.incidents }))} margin={{ left: 5, right: 10, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" vertical={false} />
-                  <XAxis dataKey="shift" tick={{ fill: '#888888', fontSize: 10 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} />
-                  <YAxis tick={{ fill: '#666666', fontSize: 9 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" vertical={false} />
+                  <XAxis dataKey="shift" tick={{ fill: 'var(--spm-text-muted)', fontSize: 10 }} axisLine={{ stroke: 'var(--spm-border)' }} tickLine={{ stroke: 'var(--spm-border)' }} />
+                  <YAxis tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} axisLine={{ stroke: 'var(--spm-border)' }} tickLine={{ stroke: 'var(--spm-border)' }} allowDecimals={false} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="calls" name="Calls" fill="var(--spm-text-muted)" radius={[2, 2, 0, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               {/* Active shift highlight */}
-              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-[#2b2b2b]">
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-rmpg-800">
                 {shiftComparison.shifts.map((s: any) => {
                   const isActive = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
                   return (
@@ -2385,7 +2390,7 @@ export default function DashboardPage() {
                 <div key={type} className="flex items-center gap-2">
                   <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
                   <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
+                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? 'var(--stat-accent-red-bright)' : type === 'bench' ? 'var(--stat-accent-amber)' : type === 'search' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }} />
                   </div>
                   <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
                 </div>
@@ -2402,12 +2407,12 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-1">
               {(unifiedStats.incidents?.by_status || []).map((s: any) => {
-                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
+                const colorMap: Record<string, string> = { draft: 'var(--spm-text-muted)', submitted: 'var(--spm-text-muted)', under_review: 'var(--stat-accent-amber)', approved: 'var(--stat-accent-green)', closed: 'var(--pri-scheduled)', open: 'var(--stat-accent-red-bright)' };
                 return (
                   <div key={s.status} className="flex items-center gap-2">
                     <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || '#888888' }} />
+                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || 'var(--spm-text-muted)' }} />
                     </div>
                     <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{s.count}</span>
                   </div>
@@ -2460,10 +2465,10 @@ export default function DashboardPage() {
           </div>
           <div className="relative w-16 h-16 mx-auto my-1">
             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="var(--spm-border)" strokeWidth="3" />
               <circle
                 cx="18" cy="18" r="14" fill="none"
-                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                stroke={stats.avg_response_time_minutes <= 5 ? 'var(--stat-accent-green)' : stats.avg_response_time_minutes <= 10 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-red-bright)'}
                 strokeWidth="3"
                 strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
                 strokeLinecap="round"
@@ -2488,16 +2493,16 @@ export default function DashboardPage() {
             <PieChart>
               <Pie
                 data={[
-                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
+                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--pri-scheduled)' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -2517,7 +2522,7 @@ export default function DashboardPage() {
             <CheckCircle className="w-3 h-3 text-green-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }}>
             {clearanceRate?.rate ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
@@ -2552,10 +2557,10 @@ export default function DashboardPage() {
           aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
             {evidencePending?.pending ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
@@ -2571,10 +2576,10 @@ export default function DashboardPage() {
           aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }}>
             {overdueReports?.count ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>

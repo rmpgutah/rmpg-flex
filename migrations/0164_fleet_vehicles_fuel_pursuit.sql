@@ -1,12 +1,9 @@
--- 0164: fleet_vehicles.fuel_level + pursuit_rated
+-- 0164: fleet_vehicles.fuel_level
 --
--- src/routes/dispatch/units.ts (GET /dispatch/units) selects
--- fv.fuel_level and fv.pursuit_rated, but no migration ever added these
--- columns to fleet_vehicles — on live D1 the query failed with
--- "no such column: fv.fuel_level", 500ing the dispatch console's unit
--- board (2026-07-01 incident). fleetio ownership map also references both.
---
--- D1 has no IF NOT EXISTS for ADD COLUMN; re-apply fails harmlessly with
--- "duplicate column name" (deploy.yml migration step is continue-on-error).
+-- src/routes/dispatch/units.ts (GET /dispatch/units) selects fv.fuel_level,
+-- but no migration ever added it — live D1 500'd the dispatch unit board
+-- ("no such column: fv.fuel_level", 2026-07-01 incident).
+-- pursuit_rated lives in its own file (0166) so a duplicate-column failure
+-- on one ALTER cannot abort the other on partially-migrated environments
+-- (D1 has no IF NOT EXISTS for ADD COLUMN).
 ALTER TABLE fleet_vehicles ADD COLUMN fuel_level TEXT;
-ALTER TABLE fleet_vehicles ADD COLUMN pursuit_rated INTEGER DEFAULT 0;

@@ -513,6 +513,22 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
            const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
 
+           // A style/sprite/glyph fetch that returns HTML instead of JSON —
+           // Mapbox's API itself always answers style requests with JSON (even
+           // its error bodies), so this specific SyntaxError almost always
+           // means the request to api.mapbox.com never reached Mapbox at all:
+           // either the configured token is invalid/expired/domain-restricted
+           // (Mapbox's CDN edge serves an HTML error page for some rejected
+           // requests instead of the usual JSON 401), or something on this
+           // network path (VPN, corporate proxy, ad-blocker) is intercepting
+           // requests to api.mapbox.com. Neither classifies as isAuthErr
+           // (no 401/403 status, no "unauthorized" keyword) or isNetworkErr
+           // (no "failed to fetch") — without this it fell through to the
+           // generic fatal-error branch and showed a raw, unhelpful
+           // "Unexpected token '<'" SyntaxError to the officer.
+           const isHtmlResponseErr =
+            msgLower.includes('unexpected token') && msgLower.includes('doctype');
+
           if (isNetworkErr && !mapDidLoad) {
             // Network error during init — don't fall back immediately;
             // Mapbox GL retries tile fetches internally. Only log it.
@@ -562,7 +578,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
           cancelled = true;
           setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
-          setMapError(msg);
+          setMapError(isHtmlResponseErr
+            ? 'Mapbox returned an unexpected (non-JSON) response while loading the map style. This usually means the configured Mapbox token is invalid, expired, or domain-restricted — or a network filter (VPN, corporate proxy, ad-blocker) is blocking api.mapbox.com. Verify the token at account.mapbox.com/access-tokens and re-check Admin → Integrations → Mapbox.'
+            : msg);
           setMapLibreFallback(true);
           setLoading(false);
         });

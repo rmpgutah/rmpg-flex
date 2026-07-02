@@ -1516,7 +1516,7 @@ callActions.get('/:id/serve-link', async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
   const row = await queryFirst<Record<string, unknown>>(
-    getDb(c.env), 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    getDb(c.env), 'SELECT * FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id);
   return c.json(row ?? null);
 });
 
