@@ -17,6 +17,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { notConfigured } from '../utils/notConfigured';
 
 const mapbox = new Hono<Env>();
 
@@ -34,7 +35,7 @@ function token(c: any): string | null {
   return t;
 }
 
-function notConfigured(c: any) {
+function tokenMissing(c: any) {
   return c.json(
     { error: 'Mapbox not configured', code: 'MAPBOX_TOKEN_UNSET', detail: 'Set the MAPBOX_ACCESS_TOKEN Worker secret to enable server-side Mapbox features.' },
     503,
@@ -67,16 +68,19 @@ function fail(c: any, err: any, label: string) {
 }
 
 // ── Geocoding ──────────────────────────────────────────────
-// GET /api/mapbox/geocode?q=&limit=&types=  → { features: [...] }
+// GET /api/mapbox/geocode?q=&limit=&types=&proximity=&country=  → { features: [...] }
 mapbox.get('/geocode', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const q = (c.req.query('q') || '').trim();
   if (!q) return c.json({ error: 'q is required' }, 400);
   const limit = c.req.query('limit') || '5';
   const types = c.req.query('types');
-  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: 'us' });
+  const proximity = c.req.query('proximity');
+  const country = c.req.query('country');
+  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: country || 'us' });
   if (types) params.set('types', types);
+  if (proximity) params.set('proximity', proximity);
   try {
     const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?${params}`);
     return c.json({ features: data?.features ?? [] });
@@ -86,7 +90,7 @@ mapbox.get('/geocode', async (c) => {
 // GET /api/mapbox/reverse-geocode?lng=&lat=  → { features: [...] }
 mapbox.get('/reverse-geocode', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const params = new URLSearchParams({ access_token: tk, limit: '1' });
@@ -100,7 +104,7 @@ mapbox.get('/reverse-geocode', async (c) => {
 // GET /api/mapbox/directions?coordinates=&profile=&alternatives=  → { routes: [...] }
 mapbox.get('/directions', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving-traffic';
@@ -121,7 +125,7 @@ mapbox.get('/directions', async (c) => {
 // GET /api/mapbox/isochrone?lng=&lat=&minutes=&profile=  → { features: [...] }
 mapbox.get('/isochrone', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -137,7 +141,7 @@ mapbox.get('/isochrone', async (c) => {
 // GET /api/mapbox/matrix?coordinates=&profile=&sources=&destinations=
 mapbox.get('/matrix', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -155,7 +159,7 @@ mapbox.get('/matrix', async (c) => {
 // GET /api/mapbox/optimization?coordinates=&profile=&source=&destination=&roundtrip=
 mapbox.get('/optimization', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -177,7 +181,7 @@ mapbox.get('/optimization', async (c) => {
 // POST /api/mapbox/map-matching  { coordinates: [[lng,lat],...], profile }
 mapbox.post('/map-matching', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   let body: any = {};
   try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
   const coords = Array.isArray(body?.coordinates) ? body.coordinates : [];
@@ -197,7 +201,7 @@ mapbox.post('/map-matching', async (c) => {
 // MAPBOX_TILEQUERY_TILESET env override is set.
 mapbox.get('/tilequery', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const tileset = (c.env as any).MAPBOX_TILEQUERY_TILESET || 'mapbox.mapbox-streets-v8';
@@ -209,11 +213,50 @@ mapbox.get('/tilequery', async (c) => {
   } catch (err) { return fail(c, err, 'tilequery'); }
 });
 
+// ── Boundaries ─────────────────────────────────────────────
+// GET /api/mapbox/boundaries?lng=&lat=  → { county, municipality, place, source }
+// Resolves administrative jurisdiction for a point via the Mapbox Boundaries
+// API. This is a paid Mapbox add-on — access is not guaranteed on every
+// token. A 403/404 upstream is NOT a token-missing case (that's handled by
+// the shared `token()`/`tokenMissing()` pair above); it means the account
+// lacks the Boundaries entitlement, so we return the 200 skip shape instead
+// of a hard error — the client shows an "unavailable" badge, not a crash.
+mapbox.get('/boundaries', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const params = new URLSearchParams({ access_token: tk });
+  // Tileset ID 'adm2' is a best-guess (Mapbox's admin-2 = county-equivalent
+  // level in the US). Confirm the exact tileset ID this account is
+  // provisioned for once a live token is available — adjust this literal
+  // if the real ID differs (Mapbox docs: Boundaries v4 tilesets).
+  try {
+    const data = await mbFetch(`${MB}/boundaries/v4/adm2/tilequery/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
+    const feature = (data?.features ?? [])[0];
+    if (!feature) {
+      return c.json({ county: null, municipality: null, place: null, source: 'mapbox-boundaries' });
+    }
+    return c.json({
+      county: feature.properties?.name ?? null,
+      municipality: null,
+      place: null,
+      source: 'mapbox-boundaries',
+    });
+  } catch (err: any) {
+    if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+      console.warn('[mapbox/boundaries] upstream returned', err?.status, '— treating as entitlement gap. If this persists, verify the adm2 tileset ID is correct for this account.');
+      return notConfigured(c, 'Mapbox Boundaries API not enabled on this account token');
+    }
+    return fail(c, err, 'boundaries');
+  }
+});
+
 // ── Static map ─────────────────────────────────────────────
 // GET /api/mapbox/static-map?lng=&lat=&zoom=&width=&height=&style=  → { url, attribution }
 mapbox.get('/static-map', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const zoom = c.req.query('zoom') || '14';
