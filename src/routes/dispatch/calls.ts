@@ -808,6 +808,28 @@ calls.post('/:id/status', async (c) => {
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
+    // ── Release assigned units on a terminal transition ──
+    // BUG: closing/clearing/cancelling a call left every assigned unit stuck
+    // showing 'dispatched' with current_call_id still pointing at the now-dead
+    // call — assign-unit sets that pair (units SET status='dispatched',
+    // current_call_id=?) but nothing here ever reversed it outside the
+    // explicit per-unit unassign-unit route. Units then read as permanently
+    // busy on a call that's already gone from every active view, and
+    // recommended-units/closest-unit kept skipping them as unavailable.
+    // Mirrors the SQL unassign-unit already uses per-unit.
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+    if (TERMINAL_STATUSES.has(status)) {
+      try {
+        const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
+        if (Array.isArray(assignedIds) && assignedIds.length > 0) {
+          await execute(db,
+            `UPDATE units SET status = 'available', current_call_id = NULL
+             WHERE current_call_id = ? OR id IN (${assignedIds.map(() => '?').join(',')})`,
+            parseInt(id, 10), ...assignedIds);
+        }
+      } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
+    }
+
     // ── PSO cross-link: on clear/close of a process-server call, mirror
     // the outcome into serve_queue (creates or updates the linked job).
     // Fire-and-forget — the status transition must never fail on PSO sync.

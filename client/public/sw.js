@@ -13,6 +13,15 @@
 // v1097: Route Builder backend built (/api/dispatch/routing was never
 //        mounted — all four endpoints 404'd) + Directions now flow through
 //        the /api/mapbox proxy instead of direct api.mapbox.com fetches.
+// v1098: Dispatch clear/close/cancel now releases the call's assigned units
+//        back to 'available' server-side (units.current_call_id was never
+//        cleared, so they stayed stuck 'dispatched' on a dead call forever).
+//        Mapbox style-load HTML-response failures get a clear, actionable
+//        error message instead of a raw JSON SyntaxError on screen.
+// v1099: Active F-key nav tab + Dashboard "Alerts & Reminders" panel switched
+//        from gold to steel-blue accent (--toolbar-nav-text-active, the
+//        active-tile border/glow, and SpmGroup tone) — brand gold stays on
+//        alerts/warnings only, blue carries the app's primary identity.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate

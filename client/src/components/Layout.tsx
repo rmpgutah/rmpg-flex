@@ -1501,7 +1501,7 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        // Inherit the button's currentColor so active (gold) + hover
+                        // Inherit the button's currentColor so active (steel-blue) + hover
                         // states drive the glyph automatically — see .toolbar-nav-btn CSS.
                         color: 'currentColor',
                         marginBottom: 1,
@@ -1536,7 +1536,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1550,7 +1550,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
