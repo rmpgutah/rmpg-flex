@@ -268,56 +268,11 @@ export function printWithLightMaps(): void {
 
 // ============================================================
 // Server-managed Mapbox config
-// Fetches Mapbox access token from the server API.
+// Moved to mapboxToken.ts (2026-07-02) so REST-only callers (address
+// autocomplete, etc.) can resolve a token without loading mapbox-gl.
+// Re-exported here for existing map-surface callers of this module.
 // ============================================================
-
-let _serverConfigPromise: Promise<{ accessToken?: string }> | null = null;
-let _fetchFailCount = 0;
-const MAX_FETCH_RETRIES = 3;
-
-export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
-  if (_serverConfigPromise) return _serverConfigPromise;
-  if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
-
-  _serverConfigPromise = (async () => {
-    try {
-      const token = localStorage.getItem('rmpg_token');
-      if (!token) {
-        _serverConfigPromise = null;
-        return {};
-      }
-      const base = import.meta.env.VITE_API_BASE_URL || '';
-      const res = await fetch(`${base}/api/integrations/mapbox/client-token`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        _fetchFailCount++;
-        _serverConfigPromise = null;
-        return {};
-      }
-      _fetchFailCount = 0;
-      return await res.json();
-    } catch {
-      _fetchFailCount++;
-      _serverConfigPromise = null;
-      return {};
-    }
-  })();
-
-  return _serverConfigPromise;
-}
-
-export async function resolveMapboxAccessToken(): Promise<string> {
-  const buildTimeToken = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
-  if (buildTimeToken) return buildTimeToken;
-  const cfg = await fetchMapboxConfig();
-  return cfg.accessToken || '';
-}
-
-export function clearMapboxConfigCache(): void {
-  _serverConfigPromise = null;
-  _fetchFailCount = 0;
-}
+export { fetchMapboxConfig, resolveMapboxAccessToken, clearMapboxConfigCache } from './mapboxToken';
 
 // Re-export for pages that import map utilities from this module
 export { injectMapStyles as injectMapboxStyles, createMapboxMap } from './mapboxMap';

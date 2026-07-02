@@ -13,7 +13,16 @@
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { mapboxgl } from '../utils/mapboxLoader';
+// Type-only — erased at compile time. This hook is reachable from the
+// always-mounted NavTripContext (app-wide trip detection), so a runtime
+// `import { mapboxgl } from '../utils/mapboxLoader'` here was forcing the
+// full mapbox-gl + deck.gl SDK (~2.3MB) onto every authenticated session,
+// including roles that never touch a map. The two call sites that need the
+// real runtime value (new mapboxgl.Marker/.LngLatBounds) already receive an
+// already-instantiated `mapboxgl.Map`, so mapboxLoader is guaranteed to be
+// loaded by then — they import it dynamically at point of use instead
+// (2026-07-02 perf fix).
+import type mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
@@ -784,6 +793,10 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       try {
         const token = await getMapboxAccessToken();
         if (!token) return null;
+        // Loaded dynamically, not statically imported at module scope (see
+        // the header comment) — `map` above is already a live mapboxgl.Map
+        // instance, so this resolves from the already-warm module cache.
+        const { mapboxgl } = await import('../utils/mapboxLoader');
 
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];
