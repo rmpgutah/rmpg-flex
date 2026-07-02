@@ -13,16 +13,21 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
       // Synchronously apply theme before React loads to prevent flash-of-wrong-theme (FOUC).
-      // Resolution order: legacy flag → manual override → time-of-day schedule (06:00–18:00 day).
+      // Resolution order: legacy flag → blue-silver flag → manual override →
+      // time-of-day schedule (06:00–18:00 day).
       // Keep storage keys + valid values in sync with client/src/utils/theme.ts.
       (function () {
         try {
           var html = document.documentElement;
           var legacy = false;
           try { legacy = localStorage.getItem('rmpg_theme_legacy') === '1'; } catch (e) {}
+          var blueSilver = false;
+          if (!legacy) {
+            try { blueSilver = localStorage.getItem('rmpg_theme_blue_silver') === '1'; } catch (e) {}
+          }
 
           var theme;
-          if (legacy) {
+          if (legacy || blueSilver) {
             theme = 'dark';
           } else {
             var override = null;
@@ -35,13 +40,14 @@
             }
           }
 
-          html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'dark');
+          html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
           html.classList.add('theme-' + theme);
-          if (theme === 'dark' || legacy) html.classList.add('dark');
+          if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
           if (legacy) html.classList.add('theme-legacy-black');
+          if (blueSilver) html.classList.add('theme-blue-silver');
 
-          var lightSurface = theme === 'light' && !legacy;
-          var chrome = legacy ? '#000000' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
+          var lightSurface = theme === 'light' && !legacy && !blueSilver;
+          var chrome = legacy ? '#000000' : blueSilver ? '#0c1a2b' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
           html.style.colorScheme = lightSurface ? 'light' : 'dark';
           html.style.backgroundColor = chrome;
 
@@ -70,6 +76,7 @@
       #pre-splash { background: #0d1722; }
       html.theme-light #pre-splash { background: #ece9dd; }
       html.theme-legacy-black #pre-splash { background: #0a0a0a; }
+      html.theme-blue-silver #pre-splash { background: #0c1a2b; }
     </style>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:

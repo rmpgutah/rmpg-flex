@@ -12,6 +12,7 @@ import { callPosture } from '../../utils/callThreat';
 import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
+import { SpillmanCadBoard } from './spillman';
 import ZsbBadge from '../../components/ZsbBadge';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
@@ -342,6 +343,17 @@ export default function DispatchPage() {
   useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
+  // Spillman CAD console view (P1 structural replica). Persisted; defaults ON
+  // per program decision "replaces default look" — '0' opts back to classic.
+  const [cadBoardView, setCadBoardView] = useState<boolean>(
+    () => { try { return localStorage.getItem('rmpg_dispatch_cad_board') !== '0'; } catch { return true; } },
+  );
+  const toggleCadBoardView = () => {
+    setCadBoardView((v) => {
+      try { localStorage.setItem('rmpg_dispatch_cad_board', v ? '0' : '1'); } catch { /* private mode */ }
+      return !v;
+    });
+  };
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
@@ -834,6 +846,7 @@ export default function DispatchPage() {
     openEditUnit,
     handleSaveUnit, handleDisposeUnit,
     handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
+    handleDragUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
     units, setCalls, setUnits,
@@ -3269,7 +3282,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] min-w-[320px] border-r border-[var(--spm-border)] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className={`${cadBoardView ? 'w-[52%] min-w-[560px]' : 'w-[35%] min-w-[320px]'} border-r border-[var(--spm-border)] flex flex-col`} style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           {/* Enhancement 27: Live sync indicator */}
@@ -3443,7 +3456,29 @@ export default function DispatchPage() {
             <Shield style={{ width: 10, height: 10 }} />
             PSO
           </button>
+          <button type="button"
+            onClick={toggleCadBoardView}
+            className="toolbar-btn"
+            title={cadBoardView ? 'Switch to classic call list' : 'Switch to Spillman CAD console'}
+          >
+            <Terminal style={{ width: 10, height: 10 }} />
+            {cadBoardView ? 'List' : 'CAD'}
+          </button>
         </PanelTitleBar>
+        {cadBoardView && (
+          <SpillmanCadBoard
+            calls={calls}
+            units={units}
+            selectedCallId={selectedCall?.id ?? null}
+            onSelectCall={setSelectedCall}
+            onOpenNewCall={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
+            onAssignUnitToCall={handleDragAssignUnit}
+            onUnassignUnitFromCall={handleDragUnassignUnit}
+            onClearCall={(callId) => handleClearWithDisposition(callId)}
+            onCommandFeedback={(msg, level) => addToast(msg, level === 'info' ? 'success' : level)}
+          />
+        )}
+        {!cadBoardView && (<>
         <TabBar
           spillman
           tabs={[
@@ -3751,6 +3786,7 @@ export default function DispatchPage() {
             })
           )}
         </div>
+        </>)}
       </div>
 
       {/* ============================================================ */}

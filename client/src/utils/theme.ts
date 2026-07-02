@@ -4,6 +4,7 @@ export type ThemePreference = 'dark' | 'light';
 
 export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
 export const LEGACY_FLAG_KEY = 'rmpg_theme_legacy';
+export const BLUE_SILVER_FLAG_KEY = 'rmpg_theme_blue_silver';
 export const THEME_OVERRIDE_KEY = 'rmpg_theme_override';
 
 /** When set, restore the pre-refactor pure-black palette (prod kill-switch). */
@@ -11,6 +12,18 @@ export function isLegacyBlackForced(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     return localStorage.getItem(LEGACY_FLAG_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** When set, force the Blue & Silver full-override palette (html.theme-blue-silver).
+ *  Same tier as the legacy kill-switch — an independent forced theme, not part
+ *  of the day/night schedule. Legacy takes precedence if both are somehow set. */
+export function isBlueSilverForced(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return !isLegacyBlackForced() && localStorage.getItem(BLUE_SILVER_FLAG_KEY) === '1';
   } catch {
     return false;
   }
@@ -55,13 +68,19 @@ export function getThemeChromeColor(theme: ThemePreference): string {
   return THEME_CHROME_COLORS[theme];
 }
 
+// Blue & Silver forced-override chrome — matches --surface-base / body bg in
+// the html.theme-blue-silver block (theme-palettes.css). It's a dark theme
+// like legacy-black, so it always wins over THEME_CHROME_COLORS[theme].
+const BLUE_SILVER_CHROME = '#0c1a2b';
+
 function updateThemeMeta(theme: ThemePreference) {
   const legacy = isLegacyBlackForced();
+  const blueSilver = !legacy && isBlueSilverForced();
   const themeColor = getMetaTag('theme-color');
-  themeColor.setAttribute('content', legacy ? '#000000' : THEME_CHROME_COLORS[theme]);
+  themeColor.setAttribute('content', legacy ? '#000000' : blueSilver ? BLUE_SILVER_CHROME : THEME_CHROME_COLORS[theme]);
 
   const appleStatusBar = getMetaTag('apple-mobile-web-app-status-bar-style');
-  appleStatusBar.setAttribute('content', theme === 'light' && !legacy ? 'default' : 'black-translucent');
+  appleStatusBar.setAttribute('content', theme === 'light' && !legacy && !blueSilver ? 'default' : 'black-translucent');
 }
 
 async function syncNativeStatusBar(theme: ThemePreference) {
@@ -78,14 +97,16 @@ async function syncNativeStatusBar(theme: ThemePreference) {
 
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
-    // Day (light) surface needs dark icons; night/legacy surfaces need light icons.
-    // Capacitor Style.Dark = dark icons (for light backgrounds); Style.Light = light icons.
+    // Day (light) surface needs dark icons; night/legacy/blue-silver surfaces
+    // need light icons. Capacitor Style.Dark = dark icons (for light
+    // backgrounds); Style.Light = light icons.
     const legacy = isLegacyBlackForced();
-    const lightSurface = theme === 'light' && !legacy;
+    const blueSilver = !legacy && isBlueSilverForced();
+    const lightSurface = theme === 'light' && !legacy && !blueSilver;
     await StatusBar.setStyle({ style: lightSurface ? Style.Dark : Style.Light });
 
     if (cap.getPlatform?.() === 'android') {
-      await StatusBar.setBackgroundColor({ color: legacy ? '#000000' : THEME_CHROME_COLORS[theme] });
+      await StatusBar.setBackgroundColor({ color: legacy ? '#000000' : blueSilver ? BLUE_SILVER_CHROME : THEME_CHROME_COLORS[theme] });
     }
   } catch (error) {
     console.warn('[theme] Failed to sync native status bar', error);
@@ -103,20 +124,22 @@ export function applyThemePreference(
   const body = document.body;
 
   const legacy = isLegacyBlackForced();
-  html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'dark');
+  const blueSilver = !legacy && isBlueSilverForced();
+  html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
   html.classList.add(`theme-${theme}`);
-  if (theme === 'dark' || legacy) html.classList.add('dark');
+  if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
   if (legacy) html.classList.add('theme-legacy-black');
+  if (blueSilver) html.classList.add('theme-blue-silver');
 
   // Day (light) is a genuinely light surface → native controls/status bar use
-  // light mode (dark icons). Night stays dark. Legacy black stays dark.
-  const effectiveScheme: 'dark' | 'light' = theme === 'light' && !legacy ? 'light' : 'dark';
+  // light mode (dark icons). Night, legacy black, and blue-silver stay dark.
+  const effectiveScheme: 'dark' | 'light' = theme === 'light' && !legacy && !blueSilver ? 'light' : 'dark';
   html.style.colorScheme = effectiveScheme;
-  html.style.backgroundColor = legacy ? '#000000' : THEME_CHROME_COLORS[theme];
+  html.style.backgroundColor = legacy ? '#000000' : blueSilver ? BLUE_SILVER_CHROME : THEME_CHROME_COLORS[theme];
 
   if (body) {
     body.style.colorScheme = effectiveScheme;
-    body.style.backgroundColor = legacy ? '#0a0a0a' : THEME_BODY_BACKGROUNDS[theme];
+    body.style.backgroundColor = legacy ? '#0a0a0a' : blueSilver ? BLUE_SILVER_CHROME : THEME_BODY_BACKGROUNDS[theme];
   }
 
   updateThemeMeta(theme);
@@ -165,7 +188,7 @@ export function writeThemeOverride(override: ThemeOverride | null): void {
 
 /** Effective theme right now: legacy → active override → time schedule. Mirrors the index.html boot script. */
 export function resolveCurrentTheme(): ThemePreference {
-  if (isLegacyBlackForced()) return 'dark';
+  if (isLegacyBlackForced() || isBlueSilverForced()) return 'dark';
   const hour = new Date().getHours();
   return resolveEffectiveTheme(hour, DEFAULT_SCHEDULE, readThemeOverride());
 }

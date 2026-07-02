@@ -1508,6 +1508,18 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
 callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
   (c) => generateIncidentFromCall(c, false));
 
+// GET /:id/serve-link — read back the serve_queue row created by
+// send-to-serve below (legacy parity; DispatchPage polls this on call
+// selection). Returns null with 200 when no serve job is linked — a 404
+// here is just console noise since most calls have no serve job.
+callActions.get('/:id/serve-link', async (c) => {
+  const id = parseInt(c.req.param('id') || '', 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
+  const row = await queryFirst<Record<string, unknown>>(
+    getDb(c.env), 'SELECT * FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id);
+  return c.json(row ?? null);
+});
+
 // POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
 // (DispatchPage "Send to Serve Queue" button). The create-side mirror of
 // legacy's GET /:id/serve-link, which reads the same row back. Dedups on
