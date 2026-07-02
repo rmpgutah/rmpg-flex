@@ -1,13 +1,20 @@
-// Thin re-export wrapper around mapboxLoader's token resolver so every Mapbox
+// Thin re-export wrapper around mapboxToken's token resolver so every Mapbox
 // surface (MapPage / FleetMapCard / ForensicTrackMap / NavMapView / …) shares
 // one async path, one in-flight dedupe, and one cache. Historically this file
 // owned its own cache + fetch logic, which let one surface's cache invalidation
 // leave a stale token in the other path.
+//
+// Imports from mapboxToken.ts, NOT mapboxLoader.ts — the latter loads the
+// full mapbox-gl SDK at module scope. This file is reachable from
+// AddressAutocomplete (used by NewCallModal/IncidentFormModal, which are
+// eagerly imported by DashboardPage), so importing mapboxLoader here was
+// forcing ~2.3MB of mapbox-gl + deck.gl onto every Dashboard load just to
+// resolve a token string for a REST geocoding call (2026-07-02 perf fix).
 
 import {
   resolveMapboxAccessToken,
   clearMapboxConfigCache,
-} from './mapboxLoader';
+} from './mapboxToken';
 
 const MISSING_TOKEN_MESSAGE =
   'Mapbox access token not configured. Set VITE_MAPBOX_ACCESS_TOKEN in client/.env or Cloudflare Pages environment variables.';

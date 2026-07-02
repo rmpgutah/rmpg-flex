@@ -62,6 +62,17 @@ export default defineConfig({
         // Goal: shrink the main index chunk so initial page-paint isn't
         // blocked behind 1.7 MB of unrelated framework code.
         manualChunks(id: string) {
+          // Vite's shared dynamic-`import()` runtime helper (needed by every
+          // one of the app's 130+ lazy() routes to fire the FIRST code-split
+          // load). Left unassigned, Rollup's chunk-graph heuristic kept
+          // co-locating this tiny helper inside whichever large vendor
+          // bucket below it judged "most central" — vendor-deckgl, then
+          // vendor-mapbox, then vendor-pdf, each time forcing the ENTRY to
+          // eagerly download that entire multi-hundred-KB-to-multi-MB chunk
+          // just to reach the helper (2026-07-02 perf fix; see the removed
+          // vendor-mapbox/vendor-deckgl buckets below). Pin it explicitly to
+          // the already-eager, genuinely tiny rolldown-runtime chunk instead.
+          if (id === '\0vite/preload-helper.js') return 'rolldown-runtime';
           if (!id.includes('node_modules')) return;
           // Core React runtime — loaded on every page
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
@@ -105,7 +116,7 @@ export default defineConfig({
           if (id.includes('node_modules/leaflet')) {
             return 'vendor-leaflet';
           }
-          // Mapbox GL JS — primary map engine
+          // Mapbox GL JS — primary map engine.
           if (id.includes('node_modules/mapbox-gl')) {
             return 'vendor-mapbox';
           }
