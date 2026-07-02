@@ -92,20 +92,20 @@ export function useMapboxSearchBox(options?: {
 
       // Use apiFetch for authenticated server-side geocoding
       const { apiFetch } = await import('../hooks/useApi');
-      const data = await apiFetch<{ results: Array<{ name: string; full_address: string; latitude: number; longitude: number; place_type: string; relevance: number }> }>(
-        `/mapbox/geocode/forward?${params}`
+      const data = await apiFetch<{ features: Array<{ place_name: string; text: string; center: [number, number]; place_type: string[]; relevance: number }> }>(
+        `/mapbox/geocode?${params}`
       );
 
       if (abort.signal.aborted) return [];
 
-      const mapped: SearchBoxResult[] = (data.results || []).map((r, idx) => ({
+      const mapped: SearchBoxResult[] = (data.features || []).map((f, idx) => ({
         id: `result-${idx}`,
-        name: r.name || r.full_address || '',
-        full_address: r.full_address || '',
-        place_type: r.place_type || '',
-        latitude: r.latitude ?? 0,
-        longitude: r.longitude ?? 0,
-        properties: r as unknown as Record<string, unknown>,
+        name: f.text || f.place_name || '',
+        full_address: f.place_name || '',
+        place_type: (f.place_type || [])[0] || '',
+        latitude: f.center?.[1] ?? 0,
+        longitude: f.center?.[0] ?? 0,
+        properties: f as unknown as Record<string, unknown>,
       }));
 
       if (!abort.signal.aborted) {
