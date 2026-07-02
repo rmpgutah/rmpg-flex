@@ -44,15 +44,18 @@ export default function ServeDashboardPerformance() {
   const refetch = useCallback(async () => {
     try {
       if (!summary) setLoading(true);
+      // Each call fails independently — one broken endpoint must not blank
+      // the whole widget (previously schedule-analytics 400ing rejected the
+      // shared Promise.all and wiped summary/officers/deadlines too).
       const [sum, rates, dl, analytics] = await Promise.all([
-        apiFetch<ServeSummary>('/serve/stats/summary'),
-        apiFetch<SuccessRatesResp>('/serve/success-rates'),
-        apiFetch<DeadlineJob[]>('/serve/deadlines?days=7'),
-        apiFetch<any>('/serve/schedule-analytics?start_date=' + new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)),
+        apiFetch<ServeSummary>('/serve/stats/summary').catch(() => null),
+        apiFetch<SuccessRatesResp>('/serve/success-rates').catch(() => null),
+        apiFetch<DeadlineJob[]>('/serve/deadlines?days=7').catch(() => null),
+        apiFetch<any>('/serve/schedule-analytics?start_date=' + new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).catch(() => null),
       ]);
-      setSummary(sum);
-      setOfficers(rates.officers ?? []);
-      setDeadlines(dl ?? []);
+      if (sum) setSummary(sum);
+      if (rates) setOfficers(rates.officers ?? []);
+      if (dl) setDeadlines(dl);
       // Only accept a well-formed payload — an error-shaped or empty response
       // must not crash the render (this widget must never break the page).
       setScheduleAnalytics(analytics?.summary ? { by_day_of_week: {}, by_hour: {}, ...analytics } : null);

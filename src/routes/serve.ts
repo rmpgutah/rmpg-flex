@@ -240,6 +240,56 @@ sv.get('/success-rates', async (c) => {
   });
 });
 
+// GET /schedule-analytics?start_date=YYYY-MM-DD — attempt-timing patterns
+// for ServeDashboardPerformance's "when do we actually succeed" widget.
+// Never existed on the backend before (2026-07-02) — the client's call fell
+// into the /:id catch-all below (parseInt('schedule-analytics') → 400),
+// and because it's awaited inside a single Promise.all with summary/rates/
+// deadlines, that 400 threw and silently blanked the WHOLE widget on every
+// refresh, not just the analytics section.
+sv.get('/schedule-analytics', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query('start_date') || '')
+    ? c.req.query('start_date')!
+    : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const db = getDb(c.env);
+
+  const totals = await queryFirst<{ total: number; served: number }>(db, `
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
+    FROM serve_attempts WHERE date(attempt_at) >= ?`, startDate);
+
+  const byDow = await query<{ dow: string; total: number; served: number }>(db, `
+    SELECT strftime('%w', attempt_at) AS dow, COUNT(*) AS total,
+           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
+    FROM serve_attempts WHERE date(attempt_at) >= ? GROUP BY dow`, startDate);
+  const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const by_day_of_week: Record<string, { total: number; served: number }> = {};
+  for (const r of byDow) {
+    const name = DOW_NAMES[parseInt(r.dow, 10)] ?? r.dow;
+    by_day_of_week[name] = { total: r.total, served: r.served ?? 0 };
+  }
+
+  const byHour = await query<{ hour: string; total: number; served: number }>(db, `
+    SELECT strftime('%H', attempt_at) AS hour, COUNT(*) AS total,
+           SUM(CASE WHEN result IN ('served','sub_served') THEN 1 ELSE 0 END) AS served
+    FROM serve_attempts WHERE date(attempt_at) >= ? GROUP BY hour`, startDate);
+  const by_hour: Record<string, { total: number; served: number }> = {};
+  for (const r of byHour) by_hour[r.hour] = { total: r.total, served: r.served ?? 0 };
+
+  const total = totals?.total ?? 0;
+  const served = totals?.served ?? 0;
+  return c.json({
+    summary: {
+      total_attempts: total,
+      success_rate: total ? Math.round((served / total) * 10000) / 100 : 0,
+    },
+    by_day_of_week,
+    by_hour,
+  });
+});
+
 // GET /export/csv
 sv.get('/export/csv', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');

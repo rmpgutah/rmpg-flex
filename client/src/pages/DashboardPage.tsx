@@ -46,7 +46,6 @@ import { parseTimestamp } from '../utils/dateUtils';
 import '../styles/dashboard-enhancements.css';
 import GlassPanel from '../components/dashboard/GlassPanel';
 import StaggerWrapper from '../components/dashboard/StaggerWrapper';
-import SparklineChart from '../components/dashboard/SparklineChart';
 import ResponseTimeGauge from '../components/dashboard/ResponseTimeGauge';
 import PriorityHeatmap from '../components/dashboard/PriorityHeatmap';
 import ForecastChart from '../components/dashboard/ForecastChart';
@@ -742,8 +741,8 @@ export default function DashboardPage() {
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
       safe<any[]>('/dispatch/units'),
-      safe<any>('/dispatch/aggregates/call-volume?days=7'),
-      safe<any>('/dispatch/aggregates/by-zone?days=7'),
+      safe<any>('/dispatch/call-volume?days=7'),
+      safe<any>('/dispatch/by-zone?days=7'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
