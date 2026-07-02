@@ -4,6 +4,7 @@
 import type { CallForService, CallPriority, Unit } from '../../../types';
 import { unitStatusColor } from '../../../components/spillman';
 import type { StatusColumn } from '../../../components/spillman';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 /** RMPG P1..P4 → Spillman fixed priority number (1 red … 4 light green). */
 export function spillmanPriorityNumber(priority: CallPriority): number {
@@ -53,9 +54,8 @@ export function cadUnitColor(status: string | null | undefined): string {
 }
 
 export function timeHHMM(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
+  if (!iso || Number.isNaN(new Date(iso).getTime())) return '';
+  const d = parseTimestamp(iso);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 

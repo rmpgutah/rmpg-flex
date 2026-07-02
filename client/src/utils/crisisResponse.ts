@@ -6,6 +6,8 @@
 // homeless outreach, substance abuse response, wellness check data.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 31: CIT Deployment */
 export interface CITDeployment { id:string; date:string; officerId:string; citCertified:boolean; incidentType:string; subjectCondition:string; deescalationUsed:string[]; outcome:'resolved_on_scene'|'transport_to_facility'|'arrest'|'referral'|'other'; facilityName:string|null; holdPlaced:boolean; useOfForce:boolean; durationMinutes:number; }
 export function evaluateCITOutcomes(deployments:CITDeployment[]): { totalDeployments:number; resolvedOnScene:number; arrestRate:number; forceRate:number; avgDuration:number } {
@@ -20,9 +22,9 @@ export function evaluateCITOutcomes(deployments:CITDeployment[]): { totalDeploym
 /* FEATURE 32: Mental Health Hold Tracking */
 export interface MentalHealthHold { id:string; subjectName:string; date:string; initiatingOfficer:string; holdType:'5150'|'voluntary'|'court_ordered'|'emergency'; facility:string; transportMethod:string; holdStartDate:string; holdEndDate:string|null; evaluationResults:string|null; releasedTo:string|null; followUpRequired:boolean; }
 export function trackHoldCompliance(holds:MentalHealthHold[]): { activeHolds:number; overdueEvaluations:number; avgHoldDurationDays:number; followUpRate:number } {
-  const now = new Date(); const active = holds.filter(h=>!h.holdEndDate||new Date(h.holdEndDate)>now);
-  const overdue = holds.filter(h=>!h.evaluationResults&&(!h.holdEndDate||new Date(h.holdEndDate)<now));
-  const completed = holds.filter(h=>h.holdEndDate).map(h=>Math.ceil((new Date(h.holdEndDate!).getTime()-new Date(h.holdStartDate).getTime())/86400000));
+  const now = new Date(); const active = holds.filter(h=>!h.holdEndDate||parseTimestamp(h.holdEndDate)>now);
+  const overdue = holds.filter(h=>!h.evaluationResults&&(!h.holdEndDate||parseTimestamp(h.holdEndDate)<now));
+  const completed = holds.filter(h=>h.holdEndDate).map(h=>Math.ceil((parseTimestamp(h.holdEndDate!).getTime()-parseTimestamp(h.holdStartDate).getTime())/86400000));
   const avgDur = completed.length>0?Math.round(completed.reduce((s,v)=>s+v,0)/completed.length):0;
   const followUps = holds.filter(h=>h.followUpRequired).length;
   return { activeHolds:active.length, overdueEvaluations:overdue.length, avgHoldDurationDays:avgDur, followUpRate:holds.length>0?Math.round(followUps/holds.length*100):0 };

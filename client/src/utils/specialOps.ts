@@ -7,6 +7,8 @@
 // and special equipment inventory.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 21: SWAT Callout Tracking */
 export interface SWATCallout { id:string; date:string; time:string; callType:'barricade'|'hostage'|'active_shooter'|'high_risk_warrant'|'dignitary_protection'|'other'; location:string; respondingOperators:number; negotiatorsDeployed:number; k9Deployed:boolean; robotDeployed:boolean; gasDeployed:boolean; resolution:'surrender'|'breach_and_clear'|'negotation_success'|'use_of_force'|'stand_down'|'other'; durationMinutes:number; injuries:number; fatalities:number; }
 export function analyzeSWATPerformance(callouts:SWATCallout[]): { avgResponseMinutes:number; avgDuration:number; negotiationSuccessRate:number; forceUsageRate:number; injuryRate:number } {
@@ -40,7 +42,7 @@ export function evaluateNegotiationEffectiveness(log:NegotiationLog): { rapportS
   if (log.keyPhrases.length > 5) score += 20;
   if (log.resolution && log.resolution !== 'tactical_intervention') score += 30;
   const rating = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Needs Improvement';
-  return { rapportScore:score, concessionStrategy:log.concessionsMade.length>0?'Strategic concessions used':'No concessions — maintaining position', timeEfficiency:Math.round((log.endTime?new Date(log.endTime).getTime():Date.now())-new Date(log.startTime).getTime())/60000, outcomeRating:rating };
+  return { rapportScore:score, concessionStrategy:log.concessionsMade.length>0?'Strategic concessions used':'No concessions — maintaining position', timeEfficiency:Math.round((log.endTime?parseTimestamp(log.endTime).getTime():Date.now())-parseTimestamp(log.startTime).getTime())/60000, outcomeRating:rating };
 }
 
 /* FEATURE 24: Surveillance Logs */
@@ -104,7 +106,7 @@ export interface AfterActionReview { id:string; operationId:string; reviewDate:s
 export function trackAARCorrectiveActions(review:AfterActionReview): { total:number; completed:number; overdue:number; complianceRate:number } {
   const total = review.correctiveActions.length;
   const completed = review.correctiveActions.filter(a=>a.status==='completed').length;
-  const overdue = review.correctiveActions.filter(a=>a.status!=='completed'&&new Date(a.deadline)<new Date()).length;
+  const overdue = review.correctiveActions.filter(a=>a.status!=='completed'&&parseTimestamp(a.deadline)<new Date()).length;
   return { total, completed, overdue, complianceRate:total>0?Math.round(completed/total*100):0 };
 }
 
@@ -113,6 +115,6 @@ export interface SWATEquipment { id:string; equipmentType:string; serialNumber:s
 export function checkEquipmentReadiness(inventory:SWATEquipment[]): { readyRate:number; needsMaintenance:SWATEquipment[]; criticalItems:SWATEquipment[] } {
   const ready = inventory.filter(e=>e.condition==='ready');
   const needsMaint = inventory.filter(e=>e.condition==='maintenance'||e.condition==='repair');
-  const critical = inventory.filter(e=>e.condition==='retired'||(e.condition!=='ready'&&new Date(e.nextInspection)<new Date()));
+  const critical = inventory.filter(e=>e.condition==='retired'||(e.condition!=='ready'&&parseTimestamp(e.nextInspection)<new Date()));
   return { readyRate:inventory.length>0?Math.round(ready.length/inventory.length*100):0, needsMaintenance:needsMaint, criticalItems:critical };
 }

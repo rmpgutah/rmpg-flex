@@ -1583,7 +1583,7 @@ export default function DispatchPage() {
       const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
       const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
       if (pDiff !== 0) return pDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Pinned calls float to the top regardless of sort mode
     const aPin = a.pinned ? 1 : 0;

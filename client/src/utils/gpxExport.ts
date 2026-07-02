@@ -6,6 +6,8 @@
 // dance and is guarded for non-browser environments.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 export interface GpxPoint {
   lat: number;
   lng: number;
@@ -35,7 +37,7 @@ function esc(s: string): string {
 
 function toIso(t: number | string | undefined): string | null {
   if (t == null) return null;
-  const d = typeof t === 'number' ? new Date(t) : new Date(t);
+  const d = typeof t === 'number' ? new Date(t) : parseTimestamp(t);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
 }

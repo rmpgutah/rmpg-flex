@@ -16,7 +16,7 @@ import StatsCard from '../components/StatsCard';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
-import { safeDateStr, localToday } from '../utils/dateUtils';
+import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -96,8 +96,8 @@ export default function AccreditationsPage() {
 
   const isExpiringSoon = (d: string) => {
     if (!d) return false;
-    const exp = new Date(d);
-    const now = new Date(today);
+    const exp = parseTimestamp(d);
+    const now = parseTimestamp(today);
     const diff = (exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
     return diff >= 0 && diff <= 60;
   };

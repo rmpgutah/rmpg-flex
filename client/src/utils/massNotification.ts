@@ -7,6 +7,8 @@
 // analytics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 31: Template Management */
 export interface NotificationTemplate { id:string; name:string; category:string; subjectTemplate:string; bodyTemplate:string; variables:string[]; lastUsed:string|null; }
 export function fillTemplate(template:NotificationTemplate, values:Record<string,string>): { subject:string; body:string } {
@@ -60,7 +62,7 @@ export function manageSubscriptions(subscribers:SubscriberPreference[]): { total
 /* FEATURE 37: Scheduled Notifications */
 export interface ScheduledNotification { id:string; templateId:string; scheduledAt:string; sentAt:string|null; recurring:'none'|'daily'|'weekly'|'monthly'; recurrenceRule:string|null; status:'scheduled'|'sent'|'cancelled'; }
 export function manageSchedule(notifications:ScheduledNotification[]): { scheduled:number; sent:number; upcoming:ScheduledNotification[] } {
-  const now = new Date(); const upcoming = notifications.filter(n=>n.status==='scheduled'&&new Date(n.scheduledAt)>now);
+  const now = new Date(); const upcoming = notifications.filter(n=>n.status==='scheduled'&&parseTimestamp(n.scheduledAt)>now);
   return { scheduled:notifications.filter(n=>n.status==='scheduled').length, sent:notifications.filter(n=>n.status==='sent').length, upcoming };
 }
 
@@ -70,7 +72,7 @@ export function validateEASFormat(alert:EASAlert): { valid:boolean; issues:strin
   const issues:string[] = [];
   if (alert.message.length>90) issues.push('EAS message exceeds 90 character limit');
   if (alert.fipsCodes.length===0) issues.push('FIPS codes required for EAS distribution');
-  if (alert.expiresAt&&new Date(alert.expiresAt)<new Date()) issues.push('Alert has expired');
+  if (alert.expiresAt&&parseTimestamp(alert.expiresAt)<new Date()) issues.push('Alert has expired');
   return { valid:issues.length===0, issues };
 }
 

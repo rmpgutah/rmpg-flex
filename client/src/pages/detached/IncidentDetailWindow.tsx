@@ -8,6 +8,7 @@ import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import DetachedLayout from '../../components/DetachedLayout';
 import ReportTypeSelector from '../../components/ReportTypeSelector';
+import { parseTimestamp } from '../../utils/dateUtils';
 import StatusBadge from '../../components/StatusBadge';
 import { formatIncidentType, getTypeCode, getIncidentCategory, CATEGORY_COLORS } from '../../utils/caseNumbers';
 import { downloadPdfReport } from '../../utils/pdfGenerator';
@@ -17,7 +18,7 @@ import { fetchEntityImages } from '../../utils/pdfImageHelpers';
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -242,7 +243,7 @@ export default function IncidentDetailWindow() {
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Created</label>
-            <p className="text-rmpg-200">{incident.created_at ? new Date(incident.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
+            <p className="text-rmpg-200">{incident.created_at ? parseTimestamp(incident.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
           </div>
         </div>
       </div>

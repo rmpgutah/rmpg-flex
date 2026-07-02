@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { parseTimestamp } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
 
 interface Bulletin {
@@ -250,10 +251,10 @@ export default function IntelBulletinsPage() {
                   {b.location && (
                     <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{b.location}</span>
                   )}
-                  <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{new Date(b.created_at).toLocaleDateString()}</span>
+                  <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{parseTimestamp(b.created_at).toLocaleDateString()}</span>
                   {b.expires_at && (
                     <span className="flex items-center gap-0.5">
-                      <AlertTriangle className="w-3 h-3" />Exp: {new Date(b.expires_at).toLocaleDateString()}
+                      <AlertTriangle className="w-3 h-3" />Exp: {parseTimestamp(b.expires_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>
@@ -319,8 +320,8 @@ export default function IntelBulletinsPage() {
                 <div><span className="text-gray-500">Location:</span> <span className="text-gray-200">{selectedBulletin.location}</span></div>
               )}
               <div className="flex gap-4 pt-2 border-t border-[#222222] text-gray-500">
-                <span>Created: {new Date(selectedBulletin.created_at).toLocaleString()}</span>
-                {selectedBulletin.expires_at && <span>Expires: {new Date(selectedBulletin.expires_at).toLocaleString()}</span>}
+                <span>Created: {parseTimestamp(selectedBulletin.created_at).toLocaleString()}</span>
+                {selectedBulletin.expires_at && <span>Expires: {parseTimestamp(selectedBulletin.expires_at).toLocaleString()}</span>}
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-[#222222] text-gray-200 text-xs rounded-sm hover:bg-[#333333]">

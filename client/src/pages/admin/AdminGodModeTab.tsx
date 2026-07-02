@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { toDisplayLabel } from '../../utils/formatters';
-import { safeDateTimeStr } from '../../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download, HardDrive,
@@ -559,7 +559,7 @@ export default function AdminGodModeTab() {
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-rmpg-700'}`} />
                   <span className="text-rmpg-300 font-mono">{u.username || u.full_name}</span>
                   <span className="text-rmpg-500 text-[9px]">{toDisplayLabel(u.role || '')}</span>
-                  {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
+                  {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{parseTimestamp(u.last_seen).toLocaleTimeString()}</span>}
                 </div>
               ))}
             </div>
@@ -591,7 +591,7 @@ export default function AdminGodModeTab() {
                     <td className="px-2 py-1 text-rmpg-100">{c.username}</td>
                     <td className="px-2 py-1 text-rmpg-400">{toDisplayLabel(c.role || '')}</td>
                     <td className="px-2 py-1 font-mono text-rmpg-500">{c.ip}</td>
-                    <td className="px-2 py-1 text-rmpg-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
+                    <td className="px-2 py-1 text-rmpg-500">{c.connectedAt ? parseTimestamp(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -787,7 +787,7 @@ export default function AdminGodModeTab() {
             {activityFeed.map((a: any, i: number) => (
               <div key={i} className="flex items-start gap-2 py-1 border-b border-border-subtle/50 text-[10px]" onContextMenu={(e) => openMenu(e, buildActivityMenu(a))}>
                 <span className="text-rmpg-500 font-mono whitespace-nowrap min-w-[60px]">
-                  {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
+                  {a.timestamp ? parseTimestamp(a.timestamp).toLocaleTimeString() : '—'}
                 </span>
                 <span className="text-rmpg-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>

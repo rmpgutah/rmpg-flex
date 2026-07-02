@@ -33,7 +33,7 @@ import IconButton from '../components/IconButton';
 import { playTone } from '../utils/dispatchTones';
 import { Volume2, VolumeX, Vibrate } from 'lucide-react';
 import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
-import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
+import { formatDateTime, localToday, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 import { openShiftReportPdf } from '../utils/shiftReportPdf';
 
@@ -778,7 +778,7 @@ export default function MdtPage() {
     const start = call.dispatched_at;
     const end = call.onscene_at;
     if (!start || !end) return null;
-    const diffMs = new Date(end).getTime() - new Date(start).getTime();
+    const diffMs = parseTimestamp(end).getTime() - parseTimestamp(start).getTime();
     if (diffMs < 0) return null;
     const mins = Math.floor(diffMs / 60000);
     const secs = Math.floor((diffMs % 60000) / 1000);

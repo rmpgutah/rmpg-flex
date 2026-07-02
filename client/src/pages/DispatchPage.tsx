@@ -36,6 +36,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../types';
+import { parseTimestamp } from '../utils/dateUtils';
 import CallCard from '../components/CallCard';
 import UnitStatusBoard from '../components/UnitStatusBoard';
 import DispositionPrompt from '../components/DispositionPrompt';
@@ -194,11 +195,11 @@ function mapDbUnit(row: any): Unit {
 type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived';
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return parseTimestamp(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 function formatElapsed(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const min = Math.floor(diff / 60000);
   if (min < 60) return `${min}m`;
   return `${Math.floor(min / 60)}h ${min % 60}m`;
@@ -705,7 +706,7 @@ export default function DispatchPage() {
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   });
 
   // Keyboard shortcuts for dispatch power users
@@ -1794,7 +1795,7 @@ export default function DispatchPage() {
                         })),
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
-                          `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+                          `[${n.timestamp ? parseTimestamp(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
                         ).join('\n') || '',
                       }}
                       identifier={selectedCall?.call_number}

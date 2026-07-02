@@ -10,7 +10,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 import { useToast } from '../../components/ToastProvider';
-import { safeDateTimeStr } from '../../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -35,7 +35,7 @@ function parseUserAgent(ua: string): { device: string; icon: React.ElementType }
 }
 
 function isExpired(expiresAt: string) {
-  return new Date(expiresAt) < new Date();
+  return parseTimestamp(expiresAt) < new Date();
 }
 
 interface Props {
@@ -46,7 +46,7 @@ interface Props {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -178,7 +178,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
                 </td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono tabular-nums">{s.ip_address || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400 tabular-nums">
-                  {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'}
+                  {s.last_used_at ? parseTimestamp(s.last_used_at).toLocaleString() : '—'}
                 </td>
                 <td className="px-3 py-2 text-rmpg-400 tabular-nums">
                   {safeDateTimeStr(s.expires_at)}

@@ -1966,7 +1966,7 @@ interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -2920,12 +2920,12 @@ export default function EmailPage() {
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
         if (searchFilters.unreadOnly && msg.isRead) return false;
         if (searchFilters.dateFrom) {
-          const msgTime = new Date(msg.receivedAt).getTime();
+          const msgTime = parseTimestamp(msg.receivedAt).getTime();
           const fromTime = new Date(searchFilters.dateFrom).getTime();
           if (!Number.isNaN(msgTime) && !Number.isNaN(fromTime) && msgTime < fromTime) return false;
         }
         if (searchFilters.dateTo) {
-          const msgTime = new Date(msg.receivedAt).getTime();
+          const msgTime = parseTimestamp(msg.receivedAt).getTime();
           const endOfDay = new Date(searchFilters.dateTo);
           endOfDay.setHours(23, 59, 59, 999);
           const toTime = endOfDay.getTime();

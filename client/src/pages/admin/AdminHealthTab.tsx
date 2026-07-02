@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
-import { safeDateStr, safeTimeStr } from '../../utils/dateUtils';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -90,7 +90,7 @@ interface Props {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -844,7 +844,7 @@ function DatabaseBackupStatus() {
         <div>
           <div className="text-[9px] text-rmpg-500">Last Modified</div>
           <div className="text-sm font-bold text-rmpg-100">
-            {backup.lastModified ? new Date(backup.lastModified).toLocaleString() : 'N/A'}
+            {backup.lastModified ? parseTimestamp(backup.lastModified).toLocaleString() : 'N/A'}
           </div>
         </div>
       </div>

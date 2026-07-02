@@ -19,6 +19,8 @@
 // purge eligibility, record quality score, completeness check.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* 1: Person Merge */ export interface PersonMerge { primaryId:string; secondaryId:string; mergeFields:string[]; conflicts:Array<{field:string;primaryVal:string;secondaryVal:string;resolution:string}>; status:'pending'|'merged'|'conflict'; }
 export function detectMergeConflicts(primary:Record<string,any>,secondary:Record<string,any>,fields:string[]): PersonMerge['conflicts'] { return fields.filter(f=>primary[f]&&secondary[f]&&primary[f]!==secondary[f]).map(f=>({field:f,primaryVal:String(primary[f]),secondaryVal:String(secondary[f]),resolution:'keep_primary'})); }
 /* 2: Alias Management */ export interface PersonAlias { personId:string; aliasName:string; aliasType:'AKA'|'maiden'|'nickname'|'street_name'|'legal_change'; verified:boolean; source:string; }
@@ -42,7 +44,7 @@ export function checkRecordFlags(recordType:string,recordId:string,flags:RecordF
 /* 11: Relationship Mapping */ export interface PersonRelationship { personA:string; personB:string; relationshipType:string; startDate:string|null; endDate:string|null; notes:string; }
 export function findRelationships(personId:string,relationships:PersonRelationship[]): PersonRelationship[] { return relationships.filter(r=>r.personA===personId||r.personB===personId); }
 /* 12: SSN Masking */ export function maskSSN(ssn:string): string { return `***-**-${ssn.slice(-4)}`; }
-/* 13: DOB Verification */ export function verifyDOB(dob:string): {valid:boolean;age:number;isMinor:boolean} { const d=new Date(dob); if(isNaN(d.getTime()))return{valid:false,age:0,isMinor:false}; const age=Math.floor((Date.now()-d.getTime())/86400000/365.25); return{valid:true,age,isMinor:age<18}; }
+/* 13: DOB Verification */ export function verifyDOB(dob:string): {valid:boolean;age:number;isMinor:boolean} { const d=parseTimestamp(dob); if(isNaN(d.getTime()))return{valid:false,age:0,isMinor:false}; const age=Math.floor((Date.now()-d.getTime())/86400000/365.25); return{valid:true,age,isMinor:age<18}; }
 /* 14: Address Standardization */ export function standardizeAddress(address:string): {street:string;city:string;state:string;zip:string;standardized:string} { const parts=address.split(',').map(p=>p.trim()); return{street:parts[0]||'',city:parts[1]||'',state:parts[2]||'',zip:parts[3]||'',standardized:parts.join(', ').toUpperCase()}; }
 /* 15: Phone Carrier Lookup */ export interface PhoneInfo { number:string; carrier:string; type:'mobile'|'landline'|'voip'; location:string; }
 export function lookupPhoneCarrier(phone:string): PhoneInfo { const prefix=phone.replace(/\D/g,'').slice(0,6); return{number:phone,carrier:'Unknown',type:'mobile',location:''}; }
@@ -73,7 +75,7 @@ export function verifyInsurance(plate:string,policy:string): InsuranceInfo { ret
 /* 29: Stolen Status */ export interface StolenVehicle { plate:string; vin:string; stolenDate:string; recoveredDate:string|null; ncicNumber:string; status:'stolen'|'recovered'|'cleared'; }
 export function reportStolenVehicle(plate:string,vin:string,ncicNumber:string): StolenVehicle { return{plate,vin,stolenDate:new Date().toISOString().slice(0,10),recoveredDate:null,ncicNumber,status:'stolen'}; }
 /* 30: Impound Tracking */ export interface ImpoundRecord { plate:string; vin:string; towDate:string; towCompany:string; lotAddress:string; dailyRate:number; releaseDate:string|null; }
-export function calculateImpoundFees(impoundDate:string,dailyRate:number): {days:number;totalFee:number} { const days=Math.max(1,Math.ceil((Date.now()-new Date(impoundDate).getTime())/86400000)); return{days,totalFee:days*dailyRate}; }
+export function calculateImpoundFees(impoundDate:string,dailyRate:number): {days:number;totalFee:number} { const days=Math.max(1,Math.ceil((Date.now()-parseTimestamp(impoundDate).getTime())/86400000)); return{days,totalFee:days*dailyRate}; }
 /* 31: Property Serial Numbers */ export interface SerializedProperty { id:string; itemType:string; make:string; model:string; serialNumber:string; status:string; }
 export function searchBySerial(serial:string,items:SerializedProperty[]): SerializedProperty[] { return items.filter(i=>i.serialNumber.toLowerCase().includes(serial.toLowerCase())); }
 /* 32: Pawn Shop Integration */ export interface PawnTicket { ticketNumber:string; shopName:string; date:string; items:Array<{description:string;serialNumber:string|null}>; sellerName:string; sellerId:string; }
@@ -89,7 +91,7 @@ export function createBatchOp(type:string,recordType:string,ids:string[]): Batch
 /* 37: Record Linking */ export interface RecordLink { linkId:string; entityA:{type:string;id:string}; entityB:{type:string;id:string}; linkType:string; strength:'strong'|'moderate'|'weak'; }
 export function linkRecords(entityA:{type:string;id:string},entityB:{type:string;id:string},type:string): RecordLink { return{linkId:`rl-${Date.now()}`,entityA,entityB,linkType:type,strength:'moderate'}; }
 /* 38: Timeline View */ export interface RecordTimeline { entityType:string; entityId:string; events:Array<{date:string;eventType:string;description:string}>; }
-export function buildRecordTimeline(entityType:string,entityId:string,events:Array<{date:string;type:string;desc:string}>): RecordTimeline { return{entityType,entityId,events:events.map(e=>({date:e.date,eventType:e.type,description:e.desc})).sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime())}; }
+export function buildRecordTimeline(entityType:string,entityId:string,events:Array<{date:string;type:string;desc:string}>): RecordTimeline { return{entityType,entityId,events:events.map(e=>({date:e.date,eventType:e.type,description:e.desc})).sort((a,b)=>parseTimestamp(a.date).getTime()-parseTimestamp(b.date).getTime())}; }
 /* 39: Quick Search */ export interface QuickSearch { query:string; scope:string[]; maxResults:number; }
 export function performQuickSearch(query:string,records:Array<{id:string;type:string;name:string;description:string}>): typeof records { const q=query.toLowerCase(); return records.filter(r=>r.name.toLowerCase().includes(q)||r.description.toLowerCase().includes(q)).slice(0,20); }
 /* 40: Advanced Filters */ export interface AdvancedFilter { field:string; operator:'equals'|'contains'|'starts_with'|'greater_than'|'less_than'|'between'|'in_list'; value:string; }
@@ -97,7 +99,7 @@ export function applyFilters(records:Record<string,any>[],filters:AdvancedFilter
 /* 41: Saved Searches */ export interface SavedSearch { id:string; name:string; recordType:string; filters:AdvancedFilter[]; createdBy:string; createdAt:string; }
 export function saveSearch(name:string,recordType:string,filters:AdvancedFilter[]): SavedSearch { return{id:`ss-${Date.now()}`,name,recordType,filters,createdBy:'',createdAt:new Date().toISOString()}; }
 /* 42: Recent Records */ export interface RecentRecord { recordType:string; recordId:string; accessedAt:string; accessedBy:string; }
-export function getRecentRecords(userId:string,records:RecentRecord[],limit:number=10): RecentRecord[] { return records.filter(r=>r.accessedBy===userId).sort((a,b)=>new Date(b.accessedAt).getTime()-new Date(a.accessedAt).getTime()).slice(0,limit); }
+export function getRecentRecords(userId:string,records:RecentRecord[],limit:number=10): RecentRecord[] { return records.filter(r=>r.accessedBy===userId).sort((a,b)=>parseTimestamp(b.accessedAt).getTime()-parseTimestamp(a.accessedAt).getTime()).slice(0,limit); }
 /* 43: Frequently Accessed */ export interface FrequentRecord { recordType:string; recordId:string; accessCount:number; lastAccessed:string; }
 export function getFrequentRecords(records:FrequentRecord[],minAccess:number=5): FrequentRecord[] { return records.filter(r=>r.accessCount>=minAccess).sort((a,b)=>b.accessCount-a.accessCount); }
 /* 44: Record Sharing */ export interface RecordShare { recordType:string; recordId:string; sharedWith:string; sharedBy:string; sharedAt:string; expiresAt:string|null; permissions:string[]; }
@@ -107,7 +109,7 @@ export function logAccess(recordType:string,recordId:string,userId:string,action
 /* 46: Retention Flags */ export interface RetentionFlag { recordType:string; recordId:string; retentionPeriod:number; retentionExpires:string; holdReason:string|null; }
 export function setRetentionFlag(recordType:string,recordId:string,years:number,reason:string|null=null): RetentionFlag { const exp=new Date();exp.setFullYear(exp.getFullYear()+years); return{recordType,recordId,retentionPeriod:years,retentionExpires:exp.toISOString().slice(0,10),holdReason:reason}; }
 /* 47: Purge Eligibility */ export interface PurgeCheck { recordType:string; recordId:string; createdDate:string; retentionYears:number; eligible:boolean; onHold:boolean; }
-export function checkPurgeEligibility(recordType:string,recordId:string,createdDate:string,years:number,onHold:boolean): PurgeCheck { const exp=new Date(createdDate);exp.setFullYear(exp.getFullYear()+years); return{recordType,recordId,createdDate,retentionYears:years,eligible:new Date()>=exp,onHold}; }
+export function checkPurgeEligibility(recordType:string,recordId:string,createdDate:string,years:number,onHold:boolean): PurgeCheck { const exp=parseTimestamp(createdDate);exp.setFullYear(exp.getFullYear()+years); return{recordType,recordId,createdDate,retentionYears:years,eligible:new Date()>=exp,onHold}; }
 /* 48: Record Quality Score */ export interface QualityScore { recordType:string; recordId:string; completeness:number;accuracy:number;consistency:number;overall:number; }
 export function scoreRecordQuality(fields:{total:number;filled:number;verified:number}): QualityScore { const completeness=fields.total>0?Math.round(fields.filled/fields.total*100):0; const accuracy=fields.filled>0?Math.round(fields.verified/fields.filled*100):0; return{recordType:'',recordId:'',completeness,accuracy,consistency:100,overall:Math.round((completeness+accuracy+100)/3)}; }
 /* 49: Completeness Check */ export interface CompletenessCheck { recordType:string; requiredFields:string[]; missingFields:string[]; complete:boolean; }

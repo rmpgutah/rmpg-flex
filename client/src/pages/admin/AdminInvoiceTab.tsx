@@ -13,7 +13,7 @@ import type {
 } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
 import { useToast } from '../../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -68,7 +68,7 @@ function formatCurrency(n: number | undefined | null): string {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);

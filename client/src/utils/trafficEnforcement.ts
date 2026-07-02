@@ -6,6 +6,8 @@
 // enforcement, traffic complaint tracking, and school zone enforcement.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 31: DUI Processing */
 export interface DUIArrest { id: string; arrestDate: string; officerId: string; subjectName: string; stopReason: string; sfstResults: Array<{ test: string; clues: number; result: string }>; chemicalTest: { type: 'breath'|'blood'|'urine'|'refused'; result: number|null; time: string }; observations: string[]; }
 export const SFST_TESTS = { hgn: { name: 'Horizontal Gaze Nystagmus', maxClues: 6, threshold: 4 }, walk_and_turn: { name: 'Walk and Turn', maxClues: 8, threshold: 2 }, one_leg_stand: { name: 'One Leg Stand', maxClues: 4, threshold: 2 } };
@@ -59,21 +61,21 @@ export function planDUICheckpoint(date: string, location: string, hours: number)
 /* FEATURE 36: Citation Workflow */
 export interface CitationWorkflow { citationId: string; issuedDate: string; officerId: string; violationCode: string; fineAmount: number; courtDate: string|null; paymentStatus: 'unpaid'|'partial'|'paid'; warrantIssued: boolean; courtAppearanceRequired: boolean; }
 export function trackCitationStatus(citation: CitationWorkflow): { status: string; actionRequired: string; overdue: boolean } {
-  const now = new Date(); const courtDate = citation.courtDate ? new Date(citation.courtDate) : null;
+  const now = new Date(); const courtDate = citation.courtDate ? parseTimestamp(citation.courtDate) : null;
   if (citation.paymentStatus === 'paid') return { status:'Resolved', actionRequired:'None', overdue:false };
   if (citation.warrantIssued) return { status:'Warrant Issued', actionRequired:'Serve warrant', overdue:true };
   if (courtDate && courtDate < now) return { status:'Missed Court Date', actionRequired:'Issue Failure to Appear', overdue:true };
   if (citation.courtAppearanceRequired && courtDate && courtDate > now) return { status:'Awaiting Court', actionRequired:`Court date: ${citation.courtDate}`, overdue:false };
-  return { status:'Payment Pending', actionRequired:`Pay $${citation.fineAmount}`, overdue: new Date(citation.issuedDate).getTime() + 30*86400000 < now.getTime() };
+  return { status:'Payment Pending', actionRequired:`Pay $${citation.fineAmount}`, overdue: parseTimestamp(citation.issuedDate).getTime() + 30*86400000 < now.getTime() };
 }
 
 /* FEATURE 37: Tow Management */
 export interface TowRecord { id: string; vehiclePlate: string; vin: string; towDate: string; towReason: string; towCompany: string; storageLocation: string; dailyRate: number; releaseDate: string|null; releaseTo: string|null; lienDate: string|null; }
 export function calculateTowFees(tow: TowRecord, currentDate: Date = new Date()): { storageDays: number; storageFee: number; towFee: number; adminFee: number; lienFee: number; total: number } {
-  const towDate = new Date(tow.towDate); const endDate = tow.releaseDate ? new Date(tow.releaseDate) : currentDate;
+  const towDate = parseTimestamp(tow.towDate); const endDate = tow.releaseDate ? parseTimestamp(tow.releaseDate) : currentDate;
   const storageDays = Math.max(0, Math.ceil((endDate.getTime() - towDate.getTime()) / 86400000));
   const storageFee = storageDays * tow.dailyRate;
-  const lienDays = tow.lienDate ? Math.max(0, Math.ceil((currentDate.getTime() - new Date(tow.lienDate).getTime()) / 86400000)) : 0;
+  const lienDays = tow.lienDate ? Math.max(0, Math.ceil((currentDate.getTime() - parseTimestamp(tow.lienDate).getTime()) / 86400000)) : 0;
   return { storageDays, storageFee, towFee: 150, adminFee: 35, lienFee: lienDays > 30 ? 75 : 0, total: storageFee + 150 + 35 + (lienDays > 30 ? 75 : 0) };
 }
 

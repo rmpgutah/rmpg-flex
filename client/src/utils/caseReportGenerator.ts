@@ -15,6 +15,7 @@ import {
 } from './pdfGenerator';
 import { LAYOUT } from './pdfTokens';
 import { loadSealBase64 } from './pdfAssets';
+import { parseTimestamp } from './dateUtils';
 
 export interface CaseReportData {
   caseRow: Record<string, any>;
@@ -60,7 +61,7 @@ const safe = (v: unknown, dash = '—'): string => {
 };
 const safeDate = (v: unknown): string => {
   if (!v) return '—';
-  const d = new Date(String(v));
+  const d = parseTimestamp(String(v));
   return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString();
 };
 
