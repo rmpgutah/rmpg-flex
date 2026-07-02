@@ -67,7 +67,7 @@ function fail(c: any, err: any, label: string) {
 }
 
 // ── Geocoding ──────────────────────────────────────────────
-// GET /api/mapbox/geocode?q=&limit=&types=  → { features: [...] }
+// GET /api/mapbox/geocode?q=&limit=&types=&proximity=&country=  → { features: [...] }
 mapbox.get('/geocode', async (c) => {
   const tk = token(c);
   if (!tk) return notConfigured(c);
