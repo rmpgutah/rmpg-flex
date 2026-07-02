@@ -17,6 +17,7 @@ import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
 import RecordAvatar from '../../components/records/RecordAvatar';
+import JurisdictionLookup from '../../components/JurisdictionLookup';
 import { propertyIcon } from '../../components/records/recordIcons';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
@@ -510,6 +511,11 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
             <RecordBadge tone="gray" glow={false}>{selectedProperty.property_type}</RecordBadge>
           )}
         </RecordHero>
+        <div className="px-4">
+          <div className="mt-1">
+            <JurisdictionLookup address={propertyAddress} />
+          </div>
+        </div>
         <div className="px-4 pb-2 flex items-center gap-2">
           {/* Inline action buttons for properties (edit/delete/archive in detail header) */}
           <div className="ml-auto flex items-center gap-1">
