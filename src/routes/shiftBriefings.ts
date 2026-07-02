@@ -88,13 +88,15 @@ sb.get('/generate', async (c) => {
       FROM warrants WHERE status = 'active' AND COALESCE(priority,'') IN ('high','urgent','critical')
       ORDER BY id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
-      SELECT COALESCE(address,'') AS address, COALESCE(alert_type, type, 'alert') AS alert_type,
-             COALESCE(notes, description, '') AS notes
-      FROM premise_alerts WHERE COALESCE(status,'active') = 'active' ORDER BY id DESC LIMIT 10`).catch(() => []),
+      SELECT COALESCE(address,'') AS address, COALESCE(alert_type,'alert') AS alert_type,
+             COALESCE(description,'') AS notes
+      FROM premise_alerts
+      WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))
+      ORDER BY id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
-      SELECT COALESCE(subject_name, name, '') AS name, COALESCE(charges,'') AS charges,
-             created_at AS arrest_time
-      FROM arrest_records WHERE created_at >= datetime('now','-48 hours') ORDER BY id DESC LIMIT 10`).catch(() => []),
+      SELECT COALESCE(full_name,'') AS name, COALESCE(charges,'') AS charges,
+             COALESCE(booking_date, created_at) AS arrest_time
+      FROM arrest_records WHERE created_at >= datetime('now','-48 hours') ORDER BY id DESC LIMIT 10`),
     query<Record<string, any>>(db, `
       SELECT u.call_sign AS unit_id, COALESCE(usr.full_name,'') AS officer_name, u.status
       FROM units u LEFT JOIN users usr ON usr.id = u.officer_id
@@ -114,9 +116,10 @@ sb.get('/generate', async (c) => {
 sb.get('/officer-safety/alerts', async (c) => {
   const db = getDb(c.env);
   const premises = await query<Record<string, any>>(db, `
-    SELECT id, COALESCE(address,'') AS location, COALESCE(notes, description, alert_type, '') AS description,
+    SELECT id, COALESCE(address,'') AS location, COALESCE(description, alert_type, '') AS description,
            created_at FROM premise_alerts
-    WHERE COALESCE(status,'active') = 'active' ORDER BY id DESC LIMIT 15`).catch(() => [] as Record<string, any>[]);
+    WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))
+    ORDER BY id DESC LIMIT 15`);
   const weapons = await query<Record<string, any>>(db, `
     SELECT id, COALESCE(location_address,'') AS location,
            COALESCE(incident_type,'') || ' — ' || COALESCE(call_number,'') AS description, created_at

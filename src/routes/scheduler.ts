@@ -17,6 +17,15 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 const sch = new Hono<Env>();
 
+// Agenda data aggregates internal operational detail (officer assignments,
+// serve recipients, court events) — client_viewer must not see it even
+// though the mount is plain auth:'required'. Nav hiding alone isn't a gate.
+sch.use('*', async (c, next) => {
+  const u = c.get('user') as { role?: string } | undefined;
+  if (u?.role === 'client_viewer') return c.json({ error: 'Insufficient role' }, 403);
+  await next();
+});
+
 const WRITE = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
 const CATEGORIES = new Set(['general', 'follow_up', 'court', 'meeting', 'patrol', 'maintenance']);
 const STATUSES = new Set(['scheduled', 'completed', 'cancelled']);
@@ -93,8 +102,9 @@ async function collectAgenda(db: D1Database, start: string, end: string, officer
     });
   }
 
-  // ── court events ──
-  const courtRows = await query<Record<string, any>>(db, `
+  // ── court events (agency-wide: not officer-scoped, so an officer filter
+  // excludes the source entirely rather than pretending to filter it) ──
+  const courtRows = officerId ? [] : await query<Record<string, any>>(db, `
     SELECT id, event_number, event_type, event_date, event_time, court_name, courtroom,
            defendant_name, status FROM court_events
     WHERE substr(event_date,1,10) BETWEEN ? AND ? AND status NOT IN ('cancelled')

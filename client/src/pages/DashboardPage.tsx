@@ -1736,8 +1736,9 @@ export default function DashboardPage() {
         </SpmGroup>
       )}
 
-      {/* Unified upcoming schedule — all sources, links to /scheduler */}
-      <UpcomingSchedulePanel />
+      {/* Unified upcoming schedule — hidden from client_viewer (internal
+          operational data; server also 403s the /api/scheduler feed) */}
+      {role !== 'client_viewer' && <UpcomingSchedulePanel />}
 
       {/* Serve Scheduler Panel — dispatch + admin only */}
       {hasPanel('serveSchedule') && (
