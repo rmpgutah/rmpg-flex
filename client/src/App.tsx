@@ -117,6 +117,8 @@ const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
 const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
 const ServeSchedulerPage = lazyRetry(() => import('./pages/ServeSchedulerPage'));
+const SchedulerPage = lazyRetry(() => import('./pages/SchedulerPage'));
+const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
@@ -588,6 +590,8 @@ function AppRoutes() {
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
             <Route path="/serve-intake/scheduler" element={<RouteErrorBoundary><ServeSchedulerPage /></RouteErrorBoundary>} />
+            <Route path="/scheduler" element={<RouteErrorBoundary><SchedulerPage /></RouteErrorBoundary>} />
+            <Route path="/shift-briefings" element={<RouteErrorBoundary><ShiftBriefingsPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />

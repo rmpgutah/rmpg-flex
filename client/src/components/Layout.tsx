@@ -148,6 +148,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/ncic': 'NCIC Terminal',
   '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
+  '/scheduler': 'Scheduler',
+  '/shift-briefings': 'Shift Briefings',
   '/statute-analytics': 'Statute Analytics',
   '/reports/custom': 'Report Builder',
   '/criminal-history': 'Criminal History',
@@ -237,6 +239,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dispatch', icon: Radio, label: 'Dispatch Board' },
     { path: '/mdt', icon: Monitor, label: 'MDT Terminal' },
     { path: '/geography', icon: MapPin, label: 'Geography / Zones' },
+    { path: '/scheduler', icon: Calendar, label: 'Scheduler' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
@@ -312,6 +315,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/scheduler', icon: Calendar, label: 'Scheduler' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
     { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
@@ -369,7 +373,7 @@ const TOOLBAR_NAV: NavItem[] = [
 // Paths that client_viewer role is NOT allowed to see
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
-  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/radio', '/patrol', '/shift-plans', '/scheduler', '/shift-briefings', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
 ]);
 
