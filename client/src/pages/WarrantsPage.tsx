@@ -20,6 +20,7 @@ import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
+import JurisdictionLookup from '../components/JurisdictionLookup';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -2575,6 +2576,9 @@ export default function WarrantsPage() {
                         <div className="col-span-2">
                           <span className="text-rmpg-500 text-[9px]">Address</span>
                           <div className="text-rmpg-300">{selectedWarrant.subject_address}</div>
+                          <div className="mt-1">
+                            <JurisdictionLookup address={selectedWarrant.subject_address} />
+                          </div>
                         </div>
                       )}
                     </div>
