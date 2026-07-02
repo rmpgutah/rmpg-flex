@@ -12,6 +12,7 @@ import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras'
 // its own file so the read-only routes (PR 1) stay reviewable.
 import './personnel/bodyCameraUploads';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const personnel = new Hono<Env>();
 
 // Sub-routers — mounted BEFORE any /:id handler below so the literal
@@ -107,7 +108,7 @@ personnel.get('/', async (c) => {
     return c.json(rows);
   } catch (err) {
     console.error('GET /personnel failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -552,7 +553,7 @@ personnel.get('/schedules', async (c) => {
     return c.json(expanded);
   } catch (err) {
     console.error('GET /personnel/schedules failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -594,7 +595,7 @@ personnel.post('/schedules', async (c) => {
 
     const created = await queryFirst(db, 'SELECT * FROM shift_plans WHERE id = ?', id);
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /personnel/schedules/:id — update a shift plan.
@@ -620,7 +621,7 @@ personnel.put('/schedules/:id', async (c) => {
     await execute(db, `UPDATE shift_plans SET ${cols.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM shift_plans WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /personnel/schedules/:id
@@ -726,7 +727,7 @@ personnel.get('/time', async (c) => {
     });
   } catch (err) {
     console.error('GET /personnel/time failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -752,7 +753,7 @@ personnel.post('/time/clock-in', async (c) => {
     return c.json(entry, 201);
   } catch (err) {
     console.error('POST /personnel/time/clock-in failed:', err);
-    return c.json({ error: 'Clock in failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Clock in failed');
   }
 });
 
@@ -782,7 +783,7 @@ personnel.post('/time/clock-out', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('POST /personnel/time/clock-out failed:', err);
-    return c.json({ error: 'Clock out failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Clock out failed');
   }
 });
 
@@ -807,7 +808,7 @@ personnel.post('/time/start-break', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('POST /personnel/time/start-break failed:', err);
-    return c.json({ error: 'Start break failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Start break failed');
   }
 });
 
@@ -836,7 +837,7 @@ personnel.post('/time/end-break', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('POST /personnel/time/end-break failed:', err);
-    return c.json({ error: 'End break failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'End break failed');
   }
 });
 
@@ -890,7 +891,7 @@ personnel.post('/time', async (c) => {
     return c.json({ ...(created || {}), edits: [] }, 201);
   } catch (err) {
     console.error('POST /personnel/time failed:', err);
-    return c.json({ error: 'Failed to create time entry', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to create time entry');
   }
 });
 
@@ -1043,7 +1044,7 @@ personnel.put('/time/:id', async (c) => {
     return c.json({ ...(updated || {}), edits: editRows });
   } catch (err) {
     console.error('PUT /personnel/time/:id failed:', err);
-    return c.json({ error: 'Failed to update time entry', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to update time entry');
   }
 });
 
@@ -1083,7 +1084,7 @@ personnel.delete('/time/:id', async (c) => {
     return c.json({ message: 'Time entry deleted', id });
   } catch (err) {
     console.error('DELETE /personnel/time/:id failed:', err);
-    return c.json({ error: 'Failed to delete time entry', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete time entry');
   }
 });
 
@@ -1131,7 +1132,7 @@ personnel.get('/deployments', async (c) => {
     return c.json(rows);
   } catch (err) {
     console.error('GET /personnel/deployments failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1156,7 +1157,7 @@ personnel.post('/deployments', async (c) => {
     const result = await execute(db, `INSERT INTO deployments (${cols.join(', ')}) VALUES (${ph.join(', ')})`, ...vals);
     const created = await queryFirst(db, 'SELECT * FROM deployments WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /personnel/deployments/:id
@@ -1178,7 +1179,7 @@ personnel.put('/deployments/:id', async (c) => {
     await execute(db, `UPDATE deployments SET ${cols.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM deployments WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /personnel/deployments/:id
@@ -1345,7 +1346,7 @@ personnel.get('/coverage-gaps', async (c) => {
     return c.json(gaps);
   } catch (err) {
     console.error('GET /personnel/coverage-gaps failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1467,7 +1468,7 @@ personnel.post('/', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /personnel failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1590,7 +1591,7 @@ personnel.put('/:id', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /personnel/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1641,7 +1642,7 @@ personnel.post('/:id/role', async (c) => {
     return c.json({ ok: true, id: targetId, previous_role: existing.role, role: newRole });
   } catch (err) {
     console.error('POST /personnel/:id/role failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1689,7 +1690,7 @@ personnel.post('/:id/reset-password', async (c) => {
     return c.json({ ok: true, id: targetId, must_change_password: true });
   } catch (err) {
     console.error('POST /personnel/:id/reset-password failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1740,7 +1741,7 @@ personnel.post('/:id/status', async (c) => {
     return c.json({ ok: true, id: targetId, previous_status: existing.status, status: newStatus });
   } catch (err) {
     console.error('POST /personnel/:id/status failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1795,7 +1796,7 @@ personnel.delete('/:id', async (c) => {
     return c.json({ ok: true, id: targetId, previous_status: existing.status, status: 'terminated' });
   } catch (err) {
     console.error('DELETE /personnel/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 

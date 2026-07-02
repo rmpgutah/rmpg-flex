@@ -33,6 +33,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   buildDateWindow,
   computeCostBreakdown,
@@ -174,7 +175,7 @@ viz.get('/dossier/:id{[0-9]+}', async (c) => {
     });
   } catch (err) {
     console.error('[fleetViz] /dossier failed', err);
-    return c.json({ error: 'Failed to load dossier', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load dossier');
   }
 });
 

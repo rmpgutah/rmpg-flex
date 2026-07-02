@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const businessPhotos = new Hono<Env>();
 
 const VALID_CATEGORIES = ['storefront', 'interior', 'exterior', 'parking', 'other'] as const;
@@ -61,11 +62,7 @@ businessPhotos.get('/file/:key{.+}', async (c) => {
     c.header('etag', obj.httpEtag);
     return c.body(data);
   } catch (err) {
-    return c.json({
-      error: 'Failed to fetch photo',
-      code: 'FETCH_PHOTO_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to fetch photo', 'FETCH_PHOTO_ERROR');
   }
 });
 
@@ -86,11 +83,7 @@ businessPhotos.get('/:businessId', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
-    return c.json({
-      error: 'Failed to load business photos',
-      code: 'LOAD_BUSINESS_PHOTOS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to load business photos', 'LOAD_BUSINESS_PHOTOS_ERROR');
   }
 });
 
@@ -173,11 +166,7 @@ businessPhotos.post('/', async (c) => {
 
     return c.json(row, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to upload photo',
-      code: 'UPLOAD_PHOTO_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to upload photo', 'UPLOAD_PHOTO_ERROR');
   }
 });
 
@@ -206,11 +195,7 @@ businessPhotos.delete('/:photoId', async (c) => {
 
     return c.body(null, 204);
   } catch (err) {
-    return c.json({
-      error: 'Failed to delete photo',
-      code: 'DELETE_PHOTO_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete photo', 'DELETE_PHOTO_ERROR');
   }
 });
 

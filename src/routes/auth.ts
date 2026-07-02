@@ -16,6 +16,7 @@ import type {
   AuthenticatorTransportFuture, RegistrationResponseJSON, AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -1573,7 +1574,7 @@ auth.post('/recover-all', async (c) => {
     });
   } catch (err) {
     console.error('POST /auth/recover-all failed:', err);
-    return c.json({ error: 'Failed to recover accounts', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to recover accounts');
   }
 });
 

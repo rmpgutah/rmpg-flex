@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const properties = new Hono<Env>();
 
 // GET /records/properties
@@ -37,7 +38,7 @@ properties.post('/', async (c) => {
       body.notes || null, body.is_active ?? 1);
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/properties/export — MUST be registered BEFORE '/:id'. Hono's
@@ -62,7 +63,7 @@ properties.get('/:id', async (c) => {
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?', id);
     if (!row) return c.json({ error: 'Property not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /records/properties/:id
@@ -96,7 +97,7 @@ properties.put('/:id', async (c) => {
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /records/properties/:id
@@ -108,7 +109,7 @@ properties.delete('/:id', async (c) => {
     if (!existing) return c.json({ error: 'Property not found' }, 404);
     await execute(db, 'DELETE FROM properties WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/properties/:id/archive — soft-delete via archived_at column.
@@ -121,7 +122,7 @@ properties.post('/:id/archive', async (c) => {
     if (existing.archived_at) return c.json({ message: 'Already archived' });
     await execute(db, "UPDATE properties SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true, archived: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/properties/:id/unarchive
@@ -134,7 +135,7 @@ properties.post('/:id/unarchive', async (c) => {
     if (!existing.archived_at) return c.json({ message: 'Not archived' });
     await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true, archived: false });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 export default properties;

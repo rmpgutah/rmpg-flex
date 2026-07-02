@@ -6,6 +6,7 @@ import { geocodeAddress } from '../geocode';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const geography = new Hono<Env>();
 
 // GET /dispatch/geography/tree
@@ -60,7 +61,7 @@ geography.get('/tree', async (c) => {
     return c.json({ areas, unassigned_sectors });
   } catch (err) {
     log.error('GET /dispatch/geography/tree failed', {}, err);
-    return c.json({ error: 'Failed to get geography', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to get geography');
   }
 });
 

@@ -1086,7 +1086,7 @@ export default function ServePage() {
     if (!map) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.remove());
+    markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
     markersRef.current = [];
 
     // Clear old route source layer

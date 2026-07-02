@@ -27,6 +27,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { log } from '../../utils/logger';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const duty = new Hono<Env>();
 
 // Dispatch-tier roles may start/end a shift on another officer's behalf.
@@ -222,7 +223,7 @@ duty.get('/roster', async (c) => {
     return c.json({ officers: await loadRoster(getDb(c.env)) });
   } catch (err) {
     log.error('GET /dispatch/duty/roster failed', {}, err);
-    return c.json({ error: 'Failed to load duty roster', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load duty roster');
   }
 });
 
@@ -235,7 +236,7 @@ duty.get('/onduty', async (c) => {
     return c.json({ officers });
   } catch (err) {
     log.error('GET /dispatch/duty/onduty failed', {}, err);
-    return c.json({ error: 'Failed to load on-duty roster', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load on-duty roster');
   }
 });
 
@@ -254,7 +255,7 @@ duty.get('/timecard', async (c) => {
     return c.json({ entries });
   } catch (err) {
     log.error('GET /dispatch/duty/timecard failed', {}, err);
-    return c.json({ error: 'Failed to load timecard', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load timecard');
   }
 });
 
@@ -266,7 +267,7 @@ duty.get('/me', async (c) => {
     return c.json(await stateFor(getDb(c.env), officerId));
   } catch (err) {
     log.error('GET /dispatch/duty/me failed', {}, err);
-    return c.json({ error: 'Failed to load shift state', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load shift state');
   }
 });
 
@@ -392,7 +393,7 @@ duty.post('/start', async (c) => {
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
     log.error('POST /dispatch/duty/start failed', {}, err);
-    return c.json({ error: 'Failed to start shift', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to start shift');
   }
 });
 
@@ -485,7 +486,7 @@ duty.post('/end', async (c) => {
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
     log.error('POST /dispatch/duty/end failed', {}, err);
-    return c.json({ error: 'Failed to end shift', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to end shift');
   }
 });
 

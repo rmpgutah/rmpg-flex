@@ -13,6 +13,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -234,10 +235,7 @@ citations.get('/', async (c) => {
       pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list citations', code: 'LIST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list citations', 'LIST_ERROR');
   }
 });
 
@@ -392,10 +390,7 @@ citations.post('/', async (c) => {
 
     return c.json({ data: created, citation_number: citationNumber }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create citation', code: 'CREATE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create citation', 'CREATE_ERROR');
   }
 });
 
@@ -617,10 +612,7 @@ citations.post('/:id/copies', async (c) => {
       ...(errors.length ? { errors } : {}),
     }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to upload copies', code: 'COPIES_UPLOAD_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to upload copies', 'COPIES_UPLOAD_ERROR');
   }
 });
 

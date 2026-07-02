@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   parseWarehouse,
   extractRows,
@@ -94,7 +95,7 @@ function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
     // 4xx from R2 SQL is usually a query/permission problem on our side → 502
     // so the client sees "upstream analytics error" rather than a bare 500.
     console.error('[analytics] R2 SQL error:', err.status, err.message);
-    return c.json({ error: 'analytics query failed', detail: err.message, upstream_status: err.status }, 502);
+    return dbErrorResponse(c, err, 'analytics query failed');
   }
   console.error('[analytics] unexpected error:', err instanceof Error ? err.message : String(err));
   return c.json({ error: 'analytics query failed' }, 500);

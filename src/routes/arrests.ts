@@ -35,6 +35,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const arrests = new Hono<Env>();
 
 // ── Allowed values ─────────────────────────────────────────
@@ -203,10 +204,7 @@ arrests.post('/manual', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM arrest_records WHERE id = ?', newId);
     return c.json({ success: true, id: newId, data: created, warrant_hits: warrantHitCount }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create arrest record', code: 'CREATE_ARREST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create arrest record', 'CREATE_ARREST_ERROR');
   }
 });
 
