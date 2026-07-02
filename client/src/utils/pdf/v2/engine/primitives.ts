@@ -4,7 +4,7 @@ import type {
   LabeledField, CheckboxField, NarrativeField, TableField, SignatureField, Width,
 } from './types';
 import {
-  TYPOGRAPHY, RULE_WEIGHTS, SPACING, TONES,
+  TYPOGRAPHY, RULE_WEIGHTS, SPACING, TONES, TONES_RGB,
 } from './style';
 
 // Font sizes are always in points regardless of doc unit.
@@ -183,11 +183,13 @@ export class Primitives {
     const rowH = TABLE_ROW_H;
     const left = this.layout.leftX;
 
-    // Draw the black header band + white UPPERCASE column labels at `top`.
+    // Draw the steel-blue header band + white UPPERCASE column labels at `top`.
     // Repeated at the top of every page a long table spills onto so the
     // columns stay identifiable on continuation pages.
     const drawHeaderBand = (top: number): void => {
-      this.doc.setFillColor(0, 0, 0);
+      // Steel-blue fill (2026-07 accent upgrade, was pure black) with
+      // inverted white text — unchanged contrast/readability.
+      this.doc.setFillColor(...TONES_RGB.accentSteel);
       this.doc.rect(left, top, tableWidth, headerH, 'F');
       this.doc.setFont('helvetica', TYPOGRAPHY.tableHeader.weight);
       this.doc.setFontSize(TYPOGRAPHY.tableHeader.size);
