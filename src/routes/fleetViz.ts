@@ -58,7 +58,11 @@ viz.get('/kpi', async (c) => {
       db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status = 'in_service'`,
     );
     const inShop = await queryFirst<{ n: number }>(
-      db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status IN ('in_shop','out_of_service')`,
+      // 'in_shop' is not a valid fleet_vehicles.status value (VALID_STATUSES
+      // in fleet.ts only allows in_service/out_of_service/maintenance/
+      // retired/archived) — this always undercounted to 0 for maintenance
+      // vehicles until fixed. Canonical value is 'maintenance'.
+      db, `SELECT COUNT(*) AS n FROM fleet_vehicles WHERE status IN ('maintenance','out_of_service')`,
     );
     // Overdue PMs: vehicles whose next_service_date is in the past, or
     // current_mileage > next_service_mileage.
@@ -199,7 +203,7 @@ viz.get('/readiness', async (c) => {
       FROM fleet_vehicles v
       WHERE v.status != 'archived'
       ORDER BY
-        CASE WHEN v.status = 'in_service' THEN 0 WHEN v.status = 'in_shop' THEN 1 ELSE 2 END,
+        CASE WHEN v.status = 'in_service' THEN 0 WHEN v.status IN ('maintenance','out_of_service') THEN 1 ELSE 2 END,
         v.vehicle_number`,
     );
     return c.json({ count: rows.length, data: rows });

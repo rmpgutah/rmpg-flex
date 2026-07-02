@@ -52,6 +52,43 @@ const WRITABLE_COLS: readonly string[] = [
 
 const VALID_STATUSES = new Set(['in_service', 'out_of_service', 'maintenance', 'retired', 'archived']);
 
+// A stray Title-Case / space-separated status ("In Service" instead of
+// 'in_service') has landed on live D1 before via an out-of-band write
+// (legacy import), and every exact-match status filter/count in this repo
+// silently returns zero for those rows instead of erroring — a "vehicle
+// data looks wrong" bug that's invisible until you diff against the raw
+// table. `normalizeStatus` coerces on write (belt) and `statusNormSql`
+// re-derives the canonical form on read (suspenders), so a future stray
+// value degrades gracefully instead of zeroing out KPIs again.
+function normalizeStatus(raw: unknown): string {
+  return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
+}
+/** SQL expression that canonicalizes a status column the same way `normalizeStatus` does. */
+function statusNormSql(col: string): string {
+  return `LOWER(REPLACE(TRIM(${col}), ' ', '_'))`;
+}
+/**
+ * Self-heal any stray non-canonical status value (e.g. "In Service" from a
+ * legacy import) back to the canonical form. The dozen+ analytics/report
+ * endpoints below all do exact-match `status = 'in_service'`-style SQL —
+ * rather than rewrite every one of those raw queries, normalize the column
+ * itself once here so they're all correct downstream. Idempotent no-op when
+ * everything's already canonical (WHERE clause makes the common case a
+ * zero-row UPDATE). Called from the list endpoint since that's the primary
+ * Fleet page load.
+ */
+async function healStatusDrift(db: D1Database): Promise<void> {
+  try {
+    await execute(
+      db,
+      `UPDATE fleet_vehicles SET status = ${statusNormSql('status')}
+       WHERE status IS NOT NULL AND status != ${statusNormSql('status')}`,
+    );
+  } catch {
+    // Best-effort — never let a self-heal failure break the list response.
+  }
+}
+
 // D1 `.bind()` only accepts null | number | string | boolean | ArrayBuffer.
 // Columns like `equipment` arrive from the client as JS arrays (multi-select);
 // binding one directly throws `D1_TYPE_ERROR: Type 'object' not supported`.
@@ -80,6 +117,7 @@ fleet.get('/', async (c) => {
     if (!tableCheck?.n) {
       return c.json({ data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } });
     }
+    await healStatusDrift(db);
     const q = c.req.query();
 
     // Pagination — default 200, cap 500 (matches FleetPage which fetches
@@ -1117,6 +1155,7 @@ fleet.post('/', async (c) => {
     const vehicleNumber = typeof body.vehicle_number === 'string' ? body.vehicle_number.trim() : '';
     if (!vehicleNumber) return c.json({ error: 'vehicle_number is required' }, 400);
 
+    if (body.status != null) body.status = normalizeStatus(body.status);
     if (body.status != null && !VALID_STATUSES.has(String(body.status))) {
       return c.json({ error: 'Invalid status', valid: Array.from(VALID_STATUSES) }, 400);
     }
@@ -1193,6 +1232,7 @@ fleet.put('/:id{[0-9]+}', async (c) => {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
+    if (body.status != null) body.status = normalizeStatus(body.status);
     if (body.status != null && !VALID_STATUSES.has(String(body.status))) {
       return c.json({ error: 'Invalid status', valid: Array.from(VALID_STATUSES) }, 400);
     }

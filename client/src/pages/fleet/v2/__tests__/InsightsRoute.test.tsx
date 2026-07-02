@@ -112,7 +112,7 @@ describe('<InsightsRoute>', () => {
         count: 2,
         data: [
           { id: 1, vehicle_name: 'Patrol 12', vehicle_number: 'P12', status: 'in_service', current_mileage: 50000, miles_to_pm: 1200, open_work_orders: 0, last_inspection_failed: 0, last_fuel_level: '7/8' },
-          { id: 2, vehicle_name: 'Patrol 14', vehicle_number: 'P14', status: 'in_shop', current_mileage: 80000, miles_to_pm: -300, open_work_orders: 2, last_inspection_failed: 1, last_fuel_level: '1/4' },
+          { id: 2, vehicle_name: 'Patrol 14', vehicle_number: 'P14', status: 'maintenance', current_mileage: 80000, miles_to_pm: -300, open_work_orders: 2, last_inspection_failed: 1, last_fuel_level: '1/4' },
         ],
       },
       '/fleet-viz/calls-per-gallon': { period: 'x', count: 0, data: [] },
@@ -186,7 +186,7 @@ describe('<InsightsRoute>', () => {
         data: [
           { id: 1, vehicle_number: 'P12', vehicle_name: null, status: 'in_service', current_mileage: 50000, next_service_mileage: 55000, miles_to_pm: 5000, assigned_unit_id: 11, lat: 40.76, lng: -111.89, gps_ts: '2026-06-21T18:00:00Z', readiness: 'ready' },
           { id: 2, vehicle_number: 'P13', vehicle_name: null, status: 'in_service', current_mileage: 70000, next_service_mileage: 70200, miles_to_pm: 200, assigned_unit_id: 12, lat: 40.77, lng: -111.90, gps_ts: '2026-06-21T17:30:00Z', readiness: 'attention' },
-          { id: 3, vehicle_number: 'P14', vehicle_name: null, status: 'in_shop', current_mileage: 90000, next_service_mileage: 95000, miles_to_pm: 5000, assigned_unit_id: null, lat: null, lng: null, gps_ts: null, readiness: 'unavailable' },
+          { id: 3, vehicle_number: 'P14', vehicle_name: null, status: 'maintenance', current_mileage: 90000, next_service_mileage: 95000, miles_to_pm: 5000, assigned_unit_id: null, lat: null, lng: null, gps_ts: null, readiness: 'unavailable' },
         ],
       },
     });
