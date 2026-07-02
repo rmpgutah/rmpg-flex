@@ -50,7 +50,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   applyThemePreference, normalizeThemePreference, writeThemeOverride,
   resolveCurrentTheme, readThemeOverride, isLegacyBlackForced,
-  LEGACY_FLAG_KEY,
+  LEGACY_FLAG_KEY, isBlueSilverForced, BLUE_SILVER_FLAG_KEY,
 } from '../utils/theme';
 import { useUserPreferences } from '../context/UserPreferencesContext';
 
@@ -285,6 +285,7 @@ export default function SettingsPage() {
   };
   const [themeChoice, setThemeChoice] = useState<'auto' | 'dark' | 'light'>(readThemeChoice);
   const [legacyBlack, setLegacyBlack] = useState<boolean>(isLegacyBlackForced);
+  const [blueSilver, setBlueSilver] = useState<boolean>(isBlueSilverForced);
   const [fontScale, setFontScale] = useState<number>(() => {
     const fromPrefs = userPrefs?.font_scale;
     return typeof fromPrefs === 'number' && fromPrefs > 0 ? fromPrefs : 1.0;
@@ -318,7 +319,28 @@ export default function SettingsPage() {
       if (on) localStorage.setItem(LEGACY_FLAG_KEY, '1');
       else localStorage.removeItem(LEGACY_FLAG_KEY);
     } catch { /* storage unavailable */ }
+    // Legacy and Blue & Silver are both full-override themes — mutually
+    // exclusive, same as flipping a radio. Turning legacy on switches
+    // Blue & Silver off (legacy already wins in isBlueSilverForced()'s own
+    // check, but keep the UI toggle in sync so it doesn't look stuck on).
+    if (on && blueSilver) {
+      setBlueSilver(false);
+      try { localStorage.removeItem(BLUE_SILVER_FLAG_KEY); } catch { /* storage unavailable */ }
+    }
     // Re-resolve so the change is visible immediately.
+    applyThemePreference(resolveCurrentTheme(), { persist: false });
+  }
+
+  function toggleBlueSilver(on: boolean) {
+    setBlueSilver(on);
+    try {
+      if (on) localStorage.setItem(BLUE_SILVER_FLAG_KEY, '1');
+      else localStorage.removeItem(BLUE_SILVER_FLAG_KEY);
+    } catch { /* storage unavailable */ }
+    if (on && legacyBlack) {
+      setLegacyBlack(false);
+      try { localStorage.removeItem(LEGACY_FLAG_KEY); } catch { /* storage unavailable */ }
+    }
     applyThemePreference(resolveCurrentTheme(), { persist: false });
   }
 
@@ -521,6 +543,12 @@ export default function SettingsPage() {
               description="Restores the pre-Spillman black palette. Use only if the new theme is unreadable."
               checked={legacyBlack}
               onChange={toggleLegacyBlack}
+            />
+            <ToggleRow
+              label="Blue & Silver mode"
+              description="Deep navy-blue surfaces with a silver accent in place of gold. Overrides the Auto/Night/Day schedule until switched off."
+              checked={blueSilver}
+              onChange={toggleBlueSilver}
             />
             <p className="px-3 py-2 text-[10px]" style={{ color: 'var(--text-muted)' }}>
               Auto (shift) follows the duty schedule: Day 06:00–18:00, Night 18:00–06:00.
