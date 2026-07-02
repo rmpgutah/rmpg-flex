@@ -181,6 +181,7 @@ import dispatchDuty from './routes/dispatch/duty';
 import inspections from './routes/inspections';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
+import dispatchRouting from './routes/dispatch/routing';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
@@ -315,6 +316,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
   { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
+  { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
+    note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAggregates, auth: 'required' },
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
