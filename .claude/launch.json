@@ -2,17 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "client-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "client",
-      "port": 5173
-    },
-    {
       "name": "worker-dev",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["wrangler", "dev", "--port", "8787"],
       "port": 8787
+    },
+    {
+      "name": "client-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5183", "--strictPort"],
+      "cwd": "client",
+      "port": 5183
     }
   ]
 }
