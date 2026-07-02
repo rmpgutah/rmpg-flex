@@ -137,7 +137,7 @@ function formatDuration(minutes: number): string {
  *  row can show "26-CFS00180 @ 15:36" without eating column width. */
 function formatHourMin(iso: string | null | undefined): string {
   if (!iso) return '';
-  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  const d = parseTimestamp(iso);
   if (isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
