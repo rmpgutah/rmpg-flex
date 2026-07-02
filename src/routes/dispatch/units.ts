@@ -47,7 +47,7 @@ units.get('/', async (c) => {
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
-      LEFT JOIN time_entries te ON te.user_id = u.officer_id AND te.clock_out IS NULL
+      LEFT JOIN time_entries te ON te.officer_id = u.officer_id AND te.clock_out IS NULL
       ORDER BY u.call_sign
     `);
     return c.json(rows);
