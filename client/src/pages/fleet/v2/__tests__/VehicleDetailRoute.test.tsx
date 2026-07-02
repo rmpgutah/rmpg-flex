@@ -65,11 +65,13 @@ describe('<VehicleDetailRoute>', () => {
     expect(screen.queryByText(/coming in pr 7'b\.2/i)).toBeNull();
   });
 
-  it('clicking Work Orders tab renders the real WorkOrdersTab (shipped in PR 5)', async () => {
+  it("clicking Work Orders tab renders the implemented WorkOrdersTab (empty state with no rows)", async () => {
     renderAt('/fleet/v2/vehicles/1');
     await screen.findByText('Unit 12', {}, { timeout: 3000 });
     fireEvent.click(screen.getByRole('tab', { name: /^work orders/i }));
-    // WorkOrdersTab is implemented now — the deferred-placeholder must be gone.
+    // WorkOrdersTab shipped (it fetches /work-orders); with the mocked empty
+    // response it settles to its own empty state, not the old PR-5 placeholder.
+    expect(await screen.findByText(/no work orders for this vehicle/i)).toBeInTheDocument();
     expect(screen.queryByText(/coming in pr 5/i)).toBeNull();
   });
 });

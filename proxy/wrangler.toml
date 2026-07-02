@@ -19,7 +19,7 @@ service = "rmpg-flex-api"
 
 [[services]]
 binding = "LEGACY"
-service = "rmpg-flex"
+service = "rmpg-flex-api" # strangler cutover complete 2026-07-01: legacy worker code was clobbered by Workers Builds bot; everything serves from rmpg-flex-api
 
 # Workers Logs — required for the cutover inventory (Phase 0 of
 # docs/superpowers/plans/2026-06-12-worker-cutover.md). Captures the

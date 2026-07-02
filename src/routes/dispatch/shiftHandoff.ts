@@ -93,7 +93,7 @@ handoff.get('/briefing', async (c) => {
     // Recent duty starts (last 2 hours)
     const recentShifts = await query<{ officer_name: string; clock_in: string }>(
       db, `SELECT COALESCE(usr.full_name, 'Unknown') AS officer_name, te.clock_in
-           FROM time_entries te LEFT JOIN users usr ON te.user_id = usr.id
+           FROM time_entries te LEFT JOIN users usr ON te.officer_id = usr.id
            WHERE te.clock_in >= datetime('now', '-2 hours') AND te.clock_out IS NULL
            ORDER BY te.clock_in DESC LIMIT 20`,
     );

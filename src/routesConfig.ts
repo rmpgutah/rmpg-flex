@@ -135,6 +135,8 @@ import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
 import scheduling from './routes/scheduling';
+import scheduler from './routes/scheduler';
+import shiftBriefings from './routes/shiftBriefings';
 import serve from './routes/serve';
 import serveDashboard from './routes/serveDashboard';
 import serveQueueEnhanced from './routes/serveQueueEnhanced';
@@ -440,6 +442,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/scheduling', router: scheduling, auth: 'required',
     note: 'Scheduling engine: coverage gaps, shift swaps, overtime, auto-schedule, handoff briefings' },
+  { prefix: '/api/scheduler', router: scheduler, auth: 'required',
+    note: 'Unified scheduler: cross-source agenda (serve attempts + shift plans + court events + custom events), event CRUD with cron reminders. Migration 0165.' },
+  { prefix: '/api/shift-briefings', router: shiftBriefings, auth: 'required',
+    note: 'Shift briefings: persisted briefings + live /generate + officer-safety alerts (backend for ShiftBriefingsPage; endpoints 404d before 2026-07-02). Migration 0165.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/nsopw', router: nsopw, auth: 'required',

@@ -74,7 +74,12 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v563';
+// 'rmpg-flex-BUILD' is a placeholder — the stamp-sw-version plugin in
+// vite.config.ts replaces it with 'rmpg-flex-<git-sha>' on every prod build.
+// NEVER hand-edit this to a vNNN literal: a static value means clients never
+// invalidate their cache and keep serving the previous UI after deploys
+// (incidents: SW v321 2026-05-24, and v563 2026-07-01).
+const CACHE_NAME = 'rmpg-flex-BUILD';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

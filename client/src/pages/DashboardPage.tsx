@@ -33,6 +33,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
+import UpcomingSchedulePanel from '../components/scheduler/UpcomingSchedulePanel';
 import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
 import IntegrationDashboardPanel from './dashboard/IntegrationDashboardPanel';
 import { useDashboardPanels } from './dashboard/useDashboardPanels';
@@ -1734,6 +1735,10 @@ export default function DashboardPage() {
         </div>
         </SpmGroup>
       )}
+
+      {/* Unified upcoming schedule — hidden from client_viewer (internal
+          operational data; server also 403s the /api/scheduler feed) */}
+      {role !== 'client_viewer' && <UpcomingSchedulePanel />}
 
       {/* Serve Scheduler Panel — dispatch + admin only */}
       {hasPanel('serveSchedule') && (

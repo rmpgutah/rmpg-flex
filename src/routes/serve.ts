@@ -111,6 +111,25 @@ sv.get('/stats/summary', async (c) => {
   });
 });
 
+// GET /active-routes — DispatchPage's process-server overlay. Returns
+// today's routes (America/Denver) + all not-yet-terminal serve jobs.
+// Must be declared before /:id, which otherwise eats the path as an id
+// and 400s (the exact bug this fixes, 2026-07-01).
+sv.get('/active-routes', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' })
+    .format(new Date());
+  const [routes, jobs] = await Promise.all([
+    query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
+    query(db, `SELECT * FROM serve_queue
+               WHERE status NOT IN ('served','completed','cancelled','closed','failed')
+               ORDER BY sort_order, id DESC LIMIT 200`),
+  ]);
+  return c.json({ jobs, routes });
+});
+
 // GET /routes/:date  (specific path before /:id catches "routes")
 sv.get('/routes/:date', async (c) => {
   const denied = requireRole(c, ...READ);

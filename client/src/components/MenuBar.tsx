@@ -512,6 +512,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Daily Activity Report', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Shift Plan', icon: CalendarDays, action: () => navigate('/shift-plans') },
+          { type: 'action', label: 'Scheduler', icon: CalendarDays, action: () => navigate('/scheduler') },
         ],
       },
       { type: 'separator' },
