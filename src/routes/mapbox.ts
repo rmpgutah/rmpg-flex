@@ -75,8 +75,11 @@ mapbox.get('/geocode', async (c) => {
   if (!q) return c.json({ error: 'q is required' }, 400);
   const limit = c.req.query('limit') || '5';
   const types = c.req.query('types');
-  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: 'us' });
+  const proximity = c.req.query('proximity');
+  const country = c.req.query('country');
+  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: country || 'us' });
   if (types) params.set('types', types);
+  if (proximity) params.set('proximity', proximity);
   try {
     const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?${params}`);
     return c.json({ features: data?.features ?? [] });
