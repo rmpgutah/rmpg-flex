@@ -9,9 +9,20 @@ export function createMapboxMap(
   style?: string,
 ): mapboxgl.Map {
   try {
+    // `style` may be a short id ('dark', 'satellite', …) from MapboxMapPage's
+    // persisted UI state, or a full mapbox://styles/... / https:// URL (custom
+    // Studio styles, e.g. Admin-configured mapbox_style_url). Passing a bare
+    // id straight to mapboxgl.Map's `style` option makes it resolve as a
+    // relative URL against the current page (https://<host>/dark), which the
+    // SPA's fallback routing answers with index.html — producing an
+    // "unexpected non-JSON response" map init failure with no real Mapbox
+    // request ever happening.
+    const resolvedStyle = style && (style.startsWith('mapbox://') || style.startsWith('http'))
+      ? style
+      : resolveMapStyleUrl(style || 'dark');
     const map = new mapboxgl.Map({
       container,
-      style: style || DARK_STYLE,
+      style: resolvedStyle,
       center: [-111.8910, 40.7608],
       zoom: 12,
       attributionControl: false,
