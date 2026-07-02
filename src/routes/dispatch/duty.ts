@@ -286,7 +286,7 @@ duty.post('/start', async (c) => {
 
     // Fatigue check: warn if less than 8 hours since last shift ended
     const lastShift = await queryFirst<{ clock_out: string }>(
-      db, 'SELECT clock_out FROM time_entries WHERE user_id = ? AND clock_out IS NOT NULL ORDER BY clock_out DESC LIMIT 1', officerId,
+      db, 'SELECT clock_out FROM time_entries WHERE officer_id = ? AND clock_out IS NOT NULL ORDER BY clock_out DESC LIMIT 1', officerId,
     ).catch(() => null);
     if (lastShift?.clock_out) {
       const hoursSince = Math.round((Date.now() - new Date(lastShift.clock_out).getTime()) / 3600000 * 10) / 10;
