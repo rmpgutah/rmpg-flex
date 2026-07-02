@@ -5,7 +5,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { printWithLightMaps } from '../utils/mapboxLoader';
 import { APP_VERSION } from '../utils/version';
 import {
   Radio, FileText, Database, Users, MessageSquare, BarChart3, Map,
