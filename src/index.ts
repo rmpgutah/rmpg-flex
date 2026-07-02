@@ -157,6 +157,28 @@ export default {
     if (url.pathname === '/api/ws') {
       return handleWebSocket(request, env);
     }
+    // Alert + voice hubs: upgrades forward straight to the DO. HTTP-level
+    // auth is intentionally absent — clients connect bare (no JWT in URLs,
+    // 2026-04-15 policy) and the DO verifies the first `authenticate` frame
+    // itself, dropping sockets that never authenticate. These handlers were
+    // lost in a squash (restored 2026-07-01; without them the paths fell
+    // into the Hono auth middleware and every upgrade 401'd).
+    if (url.pathname === '/api/alerts-ws') {
+      if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('Expected WebSocket', { status: 426 });
+      }
+      const id = env.ALERT_HUB.idFromName('global');
+      return env.ALERT_HUB.get(id).fetch(request);
+    }
+    if (url.pathname === '/api/voice-ws') {
+      const room = url.searchParams.get('room') || '';
+      if (!room) return new Response('Missing room query parameter', { status: 400 });
+      if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('Expected WebSocket', { status: 426 });
+      }
+      const id = env.VOICE_HUB.idFromName(room);
+      return env.VOICE_HUB.get(id).fetch(request);
+    }
     return app.fetch(request, env, ctx);
   },
 
