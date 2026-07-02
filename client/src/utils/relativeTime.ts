@@ -1,5 +1,7 @@
 // Relative time formatter
 
+import { parseTimestamp } from './dateUtils';
+
 const DIVISIONS: Array<{ amount: number; name: Intl.RelativeTimeFormatUnit }> = [
   { amount: 60, name: 'seconds' },
   { amount: 60, name: 'minutes' },
@@ -17,7 +19,7 @@ const formatter =
 
 /** Format a date as relative time ("5 minutes ago", "in 3 days") */
 export function relativeTime(date: Date | string | number): string {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = date instanceof Date ? date : typeof date === 'string' ? parseTimestamp(date) : new Date(date);
   if (isNaN(d.getTime())) return 'Invalid date';
 
   if (!formatter) {
@@ -46,7 +48,7 @@ export function relativeTime(date: Date | string | number): string {
 
 /** Format a timestamp as "X ago" or absolute date if too old */
 export function timeAgo(date: Date | string | number, maxDays = 30): string {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = date instanceof Date ? date : typeof date === 'string' ? parseTimestamp(date) : new Date(date);
   if (isNaN(d.getTime())) return 'Unknown';
 
   const diffMs = Date.now() - d.getTime();

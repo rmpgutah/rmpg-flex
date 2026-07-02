@@ -6,6 +6,8 @@
 // prevention programs, and gang statistical reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 11: Gang Member Tracking */
 export interface GangMember { id:string; name:string; moniker:string; gangId:string; gangName:string; status:'active'|'associate'|'inactive'|'incarcerated'|'deceased'; joinDate:string|null; rank:string; tattoos:string[]; knownAssociates:string[]; lastContact:string|null; officerSafetyFlags:string[]; }
 export function assessMemberRisk(member:GangMember, recentActivity:number): {riskLevel:'high'|'medium'|'low'; factors:string[]} {
@@ -74,7 +76,7 @@ export function calculateTerritoryControl(incidents:Array<{zone:string;gangRelat
 /* FEATURE 18: Gang Rivalry Tracking */
 export interface GangConflict { id:string; gangA:string; gangB:string; conflictType:'territorial'|'retaliatory'|'drug_trade'|'personal'|'unknown'; startDate:string; lastIncident:string; incidentCount:number; severity:'verbal'|'physical'|'weapons'|'fatal'; active:boolean; mediationAttempted:boolean; }
 export function assessConflictEscalation(conflict:GangConflict, recentIncidents:Array<{date:string;severity:string;weaponsInvolved:boolean;injuries:number}>): {escalating:boolean; riskOfViolence:'low'|'medium'|'high'|'critical'; interventionRecommended:boolean} {
-  const recent90 = recentIncidents.filter(i=>new Date(i.date).getTime()>Date.now()-90*86400000);
+  const recent90 = recentIncidents.filter(i=>parseTimestamp(i.date).getTime()>Date.now()-90*86400000);
   const withWeapons = recent90.filter(i=>i.weaponsInvolved).length;
   const withInjuries = recent90.filter(i=>i.injuries>0).length;
   const escalating = recent90.length >=3 && (withWeapons>0||withInjuries>0);

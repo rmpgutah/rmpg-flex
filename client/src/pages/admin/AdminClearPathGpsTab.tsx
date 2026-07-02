@@ -6,7 +6,7 @@ import {
   HardDrive, Download, Play, X as XIcon, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { safeTimeStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -1477,7 +1477,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <div className="bg-surface-sunken p-2 text-center">
                 <p className="text-sm font-bold text-rmpg-200 font-mono">
                   {mediaStatus.last_media_sync
-                    ? new Date(mediaStatus.last_media_sync).toLocaleTimeString()
+                    ? parseTimestamp(mediaStatus.last_media_sync).toLocaleTimeString()
                     : '—'}
                 </p>
                 <p className="field-label">Last Sync</p>
@@ -1513,7 +1513,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     )}
                     <span className="text-rmpg-500">
                       {dev.last_media_synced_at
-                        ? `Synced ${new Date(dev.last_media_synced_at).toLocaleString()}`
+                        ? `Synced ${parseTimestamp(dev.last_media_synced_at).toLocaleString()}`
                         : 'Never synced'}
                     </span>
                   </div>

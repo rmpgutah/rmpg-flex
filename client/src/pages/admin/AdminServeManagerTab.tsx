@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
-import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
@@ -24,7 +24,7 @@ interface Props {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -433,7 +433,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               <div className="text-[10px] text-rmpg-400">Last Sync</div>
               <div className="text-xs font-mono text-rmpg-200">
                 {status.last_sync
-                  ? new Date(status.last_sync.completed_at || status.last_sync.started_at).toLocaleString()
+                  ? parseTimestamp(status.last_sync.completed_at || status.last_sync.started_at).toLocaleString()
                   : 'Never'}
               </div>
               {status.last_sync && (
@@ -581,7 +581,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Last poll info */}
           <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
             <Clock className="w-3 h-3" />
-            <span>Last poll: {pollerStatus?.last_poll_at ? new Date(pollerStatus.last_poll_at).toLocaleString() : 'Never'}</span>
+            <span>Last poll: {pollerStatus?.last_poll_at ? parseTimestamp(pollerStatus.last_poll_at).toLocaleString() : 'Never'}</span>
             <span className="text-rmpg-600">|</span>
             <span>Status: {pollerEnabled
               ? <span className="text-green-400">Active</span>
@@ -654,7 +654,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                       {att.serve_type && <span className="text-rmpg-500">({att.serve_type})</span>}
                       {att.server_name && <span className="text-rmpg-400">{att.server_name}</span>}
                       {att.lat != null && att.lng != null && <MapPin className="w-3 h-3 text-rmpg-500" />}
-                      <span className="ml-auto text-rmpg-500">{att.served_at ? new Date(att.served_at).toLocaleString() : ''}</span>
+                      <span className="ml-auto text-rmpg-500">{att.served_at ? parseTimestamp(att.served_at).toLocaleString() : ''}</span>
                     </div>
                   ))}
                 </div>

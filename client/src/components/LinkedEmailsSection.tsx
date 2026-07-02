@@ -9,6 +9,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Mail, Loader2, RefreshCw } from 'lucide-react';
 import CollapsibleSection from './CollapsibleSection';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 type EntityType = 'cfs' | 'call' | 'incident' | 'warrant' | 'person';
 
@@ -37,7 +38,7 @@ interface Props {
 
 function fmtDate(s: string | null): string {
   if (!s) return '';
-  const d = new Date(s);
+  const d = parseTimestamp(s);
   if (Number.isNaN(d.getTime())) return s.slice(0, 16);
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }

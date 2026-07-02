@@ -4,6 +4,7 @@
 // PDF, an NCIC submission, a real bond/extradition decision, or any officer-facing
 // surface. Use the real handlers (src/routes/warrants.ts) + verified D1 data instead.
 // Kept only as a UI-shape reference; delete if it remains unused.
+import { parseTimestamp } from './dateUtils';
 // 50 warrant enhancements
 export interface WarrantBatch { id:string; warrants:string[]; batchType:'service'|'verification'|'recall'; createdBy:string; status:string; }
 export function createWarrantBatch(warrantIds:string[],type:string): WarrantBatch { return{id:`wb-${Date.now()}`,warrants:warrantIds,batchType:type as any,createdBy:'',status:'pending'}; }
@@ -42,7 +43,7 @@ export interface WarrantSearchLog { id:string; searchDate:string; searchedBy:str
 export function logWarrantSearch(searcher:string,criteria:Record<string,string>,results:number): WarrantSearchLog { return{id:`ws-${Date.now()}`,searchDate:new Date().toISOString(),searchedBy:searcher,searchCriteria:criteria,resultsCount:results}; }
 export interface WarrantReport { reportType:string; generatedAt:string; filters:Record<string,any>; data:any; }
 export function generateWarrantReport(type:string,filters:Record<string,any>): WarrantReport { return{reportType:type,generatedAt:new Date().toISOString(),filters,data:{}}; }
-export function getWarrantCountdown(expirationDate:string): {daysRemaining:number;expired:boolean;urgency:string} { const days=Math.ceil((new Date(expirationDate).getTime()-Date.now())/86400000); return{daysRemaining:days,expired:days<=0,urgency:days<=0?'expired':days<=7?'critical':days<=30?'warning':'normal'}; }
+export function getWarrantCountdown(expirationDate:string): {daysRemaining:number;expired:boolean;urgency:string} { const days=Math.ceil((parseTimestamp(expirationDate).getTime()-Date.now())/86400000); return{daysRemaining:days,expired:days<=0,urgency:days<=0?'expired':days<=7?'critical':days<=30?'warning':'normal'}; }
 export function scrubWarrantData(warrant:Record<string,any>,fieldsToScrub:string[]): Record<string,any> { const scrubbed={...warrant}; for(const f of fieldsToScrub)delete scrubbed[f]; return scrubbed; }
 export function compareWarrantVersions(v1:Record<string,any>,v2:Record<string,any>): {changes:Record<string,{from:any;to:any}>} { const changes:Record<string,{from:any;to:any}>={}; for(const k of Object.keys({...v1,...v2})){if(JSON.stringify(v1[k])!==JSON.stringify(v2[k]))changes[k]={from:v1[k],to:v2[k]};} return{changes}; }
 export interface WarrantDispatch { warrantId:string; assignedTo:string; assignedAt:string; acceptedAt:string|null; status:string; }

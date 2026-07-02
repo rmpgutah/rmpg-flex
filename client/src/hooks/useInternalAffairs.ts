@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* FEATURE 21: Complaint Intake */
 export interface IAComplaint { id: string; complainantName: string; complainantContact: string; complaintType: 'excessive_force'|'discourtesy'|'harassment'|'improper_procedure'|'misconduct'|'ethics'|'discrimination'|'other'; officerInvolved: string; dateOfIncident: string; location: string; description: string; witnesses: string[]; evidence: string[]; status: 'submitted'|'screening'|'investigation'|'review'|'sustained'|'not_sustained'|'exonerated'|'unfounded'|'closed'; priority: 'routine'|'priority'|'critical'; assignedTo: string|null; }
@@ -24,7 +25,7 @@ export interface IAInvestigation { complaintId: string; investigatorId: string; 
 export function trackInvestigationProgress(investigation: IAInvestigation): { pctComplete: number; onTrack: boolean; daysRemaining: number; overdueSteps: string[] } {
   const completed = investigation.steps.filter(s => s.completed).length;
   const pct = investigation.steps.length > 0 ? Math.round(completed / investigation.steps.length * 100) : 0;
-  const daysRemaining = Math.ceil((new Date(investigation.dueDate).getTime() - Date.now()) / 86400000);
+  const daysRemaining = Math.ceil((parseTimestamp(investigation.dueDate).getTime() - Date.now()) / 86400000);
   const overdue = investigation.steps.filter(s => !s.completed).map(s => s.step);
   return { pctComplete: pct, onTrack: daysRemaining >= 0, daysRemaining, overdueSteps: daysRemaining < 0 ? overdue : [] };
 }
@@ -46,7 +47,7 @@ export interface DisciplinaryAction { id: string; complaintId: string; officerId
 export function useDisciplinaryTracking() {
   const [actions, setActions] = useState<DisciplinaryAction[]>([]); const [loading, setLoading] = useState(false);
   const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<DisciplinaryAction[]>('/admin/ia/disciplinary'); if (r) setActions(r); } catch (err) { console.warn('[useDisciplinaryTracking] load failed:', err); } setLoading(false); }, []);
-  const active = useMemo(() => actions.filter(a => new Date(a.effectiveDate) <= new Date() && (!a.duration || new Date(a.effectiveDate).getTime() + a.duration*86400000 > Date.now())), [actions]);
+  const active = useMemo(() => actions.filter(a => parseTimestamp(a.effectiveDate) <= new Date() && (!a.duration || parseTimestamp(a.effectiveDate).getTime() + a.duration*86400000 > Date.now())), [actions]);
   const underAppeal = useMemo(() => actions.filter(a => a.appealFiled && a.appealStatus !== 'resolved'), [actions]);
   return { actions, loading, load, active, underAppeal };
 }

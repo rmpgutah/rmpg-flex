@@ -5,6 +5,7 @@ import {
   Radio, Clock, Truck, Camera, History, RefreshCw, Globe,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -471,7 +472,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
               {status.last_sync && (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  Last: {new Date(status.last_sync).toLocaleTimeString()}
+                  Last: {parseTimestamp(status.last_sync).toLocaleTimeString()}
                 </span>
               )}
             </div>
@@ -545,7 +546,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                     {m.last_synced_at && (
                       <span className="ml-auto text-[9px] text-rmpg-600 flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" />
-                        {new Date(m.last_synced_at).toLocaleTimeString()}
+                        {parseTimestamp(m.last_synced_at).toLocaleTimeString()}
                       </span>
                     )}
                     <button
@@ -680,7 +681,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                       </span>
                     )}
                     <span className="ml-auto text-[9px] text-rmpg-600 whitespace-nowrap">
-                      {new Date(evt.event_timestamp).toLocaleString()}
+                      {parseTimestamp(evt.event_timestamp).toLocaleString()}
                     </span>
                   </div>
                 );

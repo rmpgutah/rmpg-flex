@@ -4,6 +4,7 @@ import {
   Wifi, WifiOff, RefreshCw, CheckCircle2, MoonStar,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 // ============================================================
 // Admin → GPS Health Dashboard
@@ -226,7 +227,7 @@ export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {
 
       {generatedAt && (
         <div className="text-[10px] text-[#666] text-right font-mono">
-          Last refresh: {new Date(generatedAt).toLocaleTimeString()} · Auto-refreshes every 5s while tab is visible
+          Last refresh: {parseTimestamp(generatedAt).toLocaleTimeString()} · Auto-refreshes every 5s while tab is visible
         </div>
       )}
       {/* Suppress unused-import warning; reserved for future battery indicator. */}

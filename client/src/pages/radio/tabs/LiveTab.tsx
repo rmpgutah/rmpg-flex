@@ -16,6 +16,7 @@ import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   selectedChannelId: number | null;
@@ -272,9 +273,9 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const time = useMemo(() => {
-    try { return new Date(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
+    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
-  const isLive = tx.duration_seconds > 0 && Date.now() - new Date(tx.transmitted_at).getTime() < 10_000;
+  const isLive = tx.duration_seconds > 0 && Date.now() - parseTimestamp(tx.transmitted_at).getTime() < 10_000;
 
   const buildTxMenu = (): ContextMenuItem[] => [
     ...(tx.audio_url

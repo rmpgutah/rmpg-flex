@@ -6,6 +6,8 @@
 // download tracking, and compliance reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 81: Public Datasets */
 export interface PublicDataset { id:string; name:string; category:string; description:string; lastUpdated:string; updateFrequency:'daily'|'weekly'|'monthly'|'quarterly'|'annual'; rowCount:number; fileFormats:string[]; downloadUrl:string; }
 export function trackDatasetUsage(datasets:PublicDataset[], downloads:number[]): { totalDatasets:number; totalDownloads:number; mostPopular:string } {
@@ -24,7 +26,7 @@ export function generateAPIReference(endpoints:APIDocumentation[]): { totalEndpo
 
 /* FEATURE 84: Request Management */
 export interface DataRequest { id:string; requesterName:string; requesterEmail:string; datasetRequested:string; requestDate:string; status:'pending'|'in_progress'|'published'|'denied'; priority:string; }
-export function prioritizeDataRequests(requests:DataRequest[]): DataRequest[] { return [...requests].sort((a,b)=>new Date(a.requestDate).getTime()-new Date(b.requestDate).getTime()); }
+export function prioritizeDataRequests(requests:DataRequest[]): DataRequest[] { return [...requests].sort((a,b)=>parseTimestamp(a.requestDate).getTime()-parseTimestamp(b.requestDate).getTime()); }
 
 /* FEATURE 85: Data Anonymization */
 export interface AnonymizationRule { datasetId:string; fields:string[]; method:'redaction'|'generalization'|'aggregation'|'suppression'|'perturbation'; applied:boolean; lastApplied:string|null; }
@@ -35,7 +37,7 @@ export function validateAnonymization(rules:AnonymizationRule[]): { totalRules:n
 /* FEATURE 86: Publication Schedule */
 export interface PublicationSchedule { datasetId:string; nextPublication:string; frequency:string; lastPublished:string|null; overdue:boolean; }
 export function checkPublicationStatus(schedule:PublicationSchedule[]): { total:number; overdue:number; upcoming:number } {
-  const now = new Date(); const overdue = schedule.filter(s=>new Date(s.nextPublication)<now); const upcoming = schedule.filter(s=>new Date(s.nextPublication)>now&&new Date(s.nextPublication).getTime()-now.getTime()<7*86400000);
+  const now = new Date(); const overdue = schedule.filter(s=>parseTimestamp(s.nextPublication)<now); const upcoming = schedule.filter(s=>parseTimestamp(s.nextPublication)>now&&parseTimestamp(s.nextPublication).getTime()-now.getTime()<7*86400000);
   return { total:schedule.length, overdue:overdue.length, upcoming:upcoming.length };
 }
 

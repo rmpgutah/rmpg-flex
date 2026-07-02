@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Calendar } from 'lucide-react';
 import SpmGroup from '../../pages/dashboard/SpmGroup';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface CourtDate {
   id: number | string;
@@ -28,14 +29,14 @@ function getCountdown(target: Date): { days: number; hours: number; minutes: num
 
 export default function CourtCountdown({ dates, className = '' }: CourtCountdownProps) {
   const sorted = useMemo(
-    () => [...dates].sort((a, b) => new Date(a.court_date).getTime() - new Date(b.court_date).getTime()),
+    () => [...dates].sort((a, b) => parseTimestamp(a.court_date).getTime() - parseTimestamp(b.court_date).getTime()),
     [dates],
   );
 
   if (!dates.length) return null;
 
   const next = sorted[0];
-  const target = new Date(next.court_date);
+  const target = parseTimestamp(next.court_date);
   const cd = getCountdown(target);
   const isUrgent = cd.days < 7;
 

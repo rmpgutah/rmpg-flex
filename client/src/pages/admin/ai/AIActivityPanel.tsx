@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Loader2, Activity } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface ActivityEntry {
   id: number;
@@ -82,7 +83,7 @@ export default function AIActivityPanel() {
             {filtered.map((a, i) => (
               <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-surface-sunken/50">
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">
-                  {a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                  {a.created_at ? parseTimestamp(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </div>
                 <div className="text-rmpg-100 font-mono truncate">{a.task_type}</div>
                 <div className="text-rmpg-400 truncate">{a.provider}</div>

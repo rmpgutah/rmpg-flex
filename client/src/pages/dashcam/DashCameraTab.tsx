@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useMemo, useState } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search,
   Play, HardDrive, Film, Shield, Clock, Eye, CheckSquare, Square,
@@ -71,7 +72,7 @@ interface Props {
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function statusLabel(status: string): string {

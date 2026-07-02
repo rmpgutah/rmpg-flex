@@ -67,7 +67,7 @@ export function formatActivityDetails(details: string): string {
  * Label a call's age bucket based on time since creation.
  */
 export function formatCallAge(createdAt: string): string {
-  const diff = Date.now() - new Date(createdAt).getTime();
+  const diff = Date.now() - parseTimestamp(createdAt).getTime();
   if (isNaN(diff) || diff < 0) return 'NEW';
   const mins = diff / 60_000;
   if (mins < 5) return 'NEW';

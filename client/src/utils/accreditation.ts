@@ -6,6 +6,8 @@
 // file management, assessor coordination, and compliance dashboard.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 81: Standard Tracking */
 export interface AccreditationStandard { id:string; chapter:string; standardNumber:string; title:string; description:string; complianceLevel:'compliant'|'partial'|'non_compliant'|'not_applicable'; lastReviewed:string; nextReview:string; proofFiles:string[]; comments:string; }
 export function calculateComplianceRate(standards:AccreditationStandard[]): { overallRate:number; byChapter:Record<string,{total:number;compliant:number;rate:number}>; nonCompliantCount:number } {
@@ -28,7 +30,7 @@ export function verifyProofs(proofs:ProofOfCompliance[]): { total:number; verifi
 export interface AssessmentPrep { id:string; assessorVisitDate:string; preparationDeadlines:Array<{task:string;dueDate:string;completed:boolean;assignedTo:string}>; mockAssessmentDate:string|null; mockAssessmentScore:number|null; readinessPct:number; status:'preparing'|'ready'|'in_progress'; }
 export function evaluateAssessmentReadiness(prep:AssessmentPrep): { readyForAssessment:boolean; criticalTasks:Array<{task:string;dueDate:string}>; overallReadiness:number } {
   const incomplete = prep.preparationDeadlines.filter(t=>!t.completed);
-  const overdue = incomplete.filter(t=>new Date(t.dueDate)<new Date());
+  const overdue = incomplete.filter(t=>parseTimestamp(t.dueDate)<new Date());
   const totalTasks = prep.preparationDeadlines.length;
   const completed = totalTasks-incomplete.length;
   const readiness = totalTasks>0?Math.round(completed/totalTasks*100):0;
@@ -38,7 +40,7 @@ export function evaluateAssessmentReadiness(prep:AssessmentPrep): { readyForAsse
 /* FEATURE 84: Policy Review Workflow */
 export interface PolicyReview { policyId:string; policyTitle:string; currentVersion:number; reviewDate:string; reviewerId:string; reviewStatus:'pending'|'approved'|'revision_requested'|'rejected'; revisionNotes:string|null; newVersion:number|null; effectiveDate:string|null; }
 export function trackPolicyReviewCycle(reviews:PolicyReview[]): { policiesDue:number; policiesOverdue:number; avgReviewDays:number; approvalRate:number } {
-  const now = new Date(); const dueThisQuarter = reviews.filter(r=>new Date(r.reviewDate)<=new Date(now.getFullYear(),Math.ceil((now.getMonth()+1)/3)*3,0));
+  const now = new Date(); const dueThisQuarter = reviews.filter(r=>parseTimestamp(r.reviewDate)<=new Date(now.getFullYear(),Math.ceil((now.getMonth()+1)/3)*3,0));
   const overdue = dueThisQuarter.filter(r=>r.reviewStatus==='pending');
   const completed = reviews.filter(r=>r.reviewStatus==='approved'||r.reviewStatus==='revision_requested');
   const approvalRate = completed.length>0?Math.round(completed.filter(r=>r.reviewStatus==='approved').length/completed.length*100):0;
@@ -65,7 +67,7 @@ export function generateAnnualReport(year:number, standards:AccreditationStandar
 export interface CorrectiveAction { id:string; standardId:string; finding:string; actionRequired:string; assignedTo:string; dueDate:string; completedDate:string|null; evidenceFile:string|null; status:'open'|'in_progress'|'completed'|'overdue'; }
 export function monitorCorrectiveActions(actions:CorrectiveAction[]): { total:number; open:number; overdue:number; completionRate:number } {
   const now = new Date(); const open = actions.filter(a=>a.status!=='completed');
-  const overdue = open.filter(a=>new Date(a.dueDate)<now);
+  const overdue = open.filter(a=>parseTimestamp(a.dueDate)<now);
   const completed = actions.filter(a=>a.status==='completed').length;
   return { total:actions.length, open:open.length, overdue:overdue.length, completionRate:actions.length>0?Math.round(completed/actions.length*100):0 };
 }

@@ -262,7 +262,7 @@ export function getTimerState(call: CallForService): TimerState {
 
 function tsMs(v: string | undefined | null): number {
   if (!v) return 0;
-  const t = new Date(v).getTime();
+  const t = parseTimestamp(v).getTime();
   return Number.isFinite(t) ? t : 0;
 }
 

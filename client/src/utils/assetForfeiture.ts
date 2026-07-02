@@ -6,6 +6,8 @@
 // owner notification, and audit compliance.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 51: Seizure Intake */
 export interface SeizedAsset { id: string; caseNumber: string; seizureDate: string; seizingOfficer: string; assetType: 'currency'|'vehicle'|'firearm'|'real_property'|'electronics'|'jewelry'|'financial_account'|'other'; description: string; estimatedValue: number; location: string; storageLocation: string; probableCauseStatement: string; status: 'held'|'forfeiture_filed'|'forfeited'|'returned'|'equitable_share'; }
 export function validateSeizureIntake(asset: SeizedAsset): { valid: boolean; missing: string[] } {
@@ -29,9 +31,9 @@ export function calculateAssetValue(originalValue: number, ageYears: number, ass
 /* FEATURE 53: Forfeiture Case Tracking */
 export interface ForfeitureCase { assetId: string; filingDate: string; courtCaseNumber: string; prosecutorName: string; deadlines: Array<{ description: string; dueDate: string; completed: boolean }>; hearings: Array<{ date: string; type: string; outcome: string }>; objections: Array<{ filedBy: string; date: string; basis: string; status: string }>; finalDisposition: string|null; }
 export function trackForfeitureDeadlines(case_: ForfeitureCase): { daysSinceFiling: number; upcomingDeadlines: number; overdue: string[]; pctComplete: number } {
-  const daysSince = Math.floor((Date.now() - new Date(case_.filingDate).getTime()) / 86400000);
-  const now = new Date(); const overdue = case_.deadlines.filter(d => !d.completed && new Date(d.dueDate) < now).map(d => d.description);
-  const upcoming = case_.deadlines.filter(d => !d.completed && new Date(d.dueDate) > now && new Date(d.dueDate).getTime() - now.getTime() < 30*86400000).length;
+  const daysSince = Math.floor((Date.now() - parseTimestamp(case_.filingDate).getTime()) / 86400000);
+  const now = new Date(); const overdue = case_.deadlines.filter(d => !d.completed && parseTimestamp(d.dueDate) < now).map(d => d.description);
+  const upcoming = case_.deadlines.filter(d => !d.completed && parseTimestamp(d.dueDate) > now && parseTimestamp(d.dueDate).getTime() - now.getTime() < 30*86400000).length;
   const pct = case_.deadlines.length > 0 ? Math.round(case_.deadlines.filter(d => d.completed).length / case_.deadlines.length * 100) : 0;
   return { daysSinceFiling: daysSince, upcomingDeadlines: upcoming, overdue, pctComplete: pct };
 }
@@ -65,9 +67,9 @@ export function calculateCurrencyTotal(denominations: Record<string,number>): { 
 /* FEATURE 57: Forfeiture Timeline */
 export interface ForfeitureTimeline { assetId: string; events: Array<{ date: string; event: string; actor: string; notes: string }>; }
 export function generateTimelineReport(timeline: ForfeitureTimeline): { totalDays: number; fromSeizureToResolution: number; keyEvents: string[] } {
-  const sorted = [...timeline.events].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sorted = [...timeline.events].sort((a,b) => parseTimestamp(a.date).getTime() - parseTimestamp(b.date).getTime());
   const first = sorted[0]; const last = sorted[sorted.length-1];
-  const totalDays = first && last ? Math.ceil((new Date(last.date).getTime() - new Date(first.date).getTime()) / 86400000) : 0;
+  const totalDays = first && last ? Math.ceil((parseTimestamp(last.date).getTime() - parseTimestamp(first.date).getTime()) / 86400000) : 0;
   return { totalDays, fromSeizureToResolution: totalDays, keyEvents: sorted.map(e => `${e.date}: ${e.event}`) };
 }
 
@@ -85,7 +87,7 @@ export function evaluatePCStatement(statement: PCStatement): { adequate: boolean
 /* FEATURE 59: Owner Notification */
 export interface OwnerNotification { assetId: string; ownerName: string; ownerAddress: string; notificationSent: string|null; notificationMethod: 'certified_mail'|'personal_service'|'publication'; responseDeadline: string; ownerResponse: string|null; claimFiled: boolean; claimDate: string|null; hearingRequested: boolean; }
 export function checkNotificationCompliance(notification: OwnerNotification): { compliant: boolean; deadlinePassed: boolean; actionRequired: string } {
-  const now = new Date(); const deadline = new Date(notification.responseDeadline);
+  const now = new Date(); const deadline = parseTimestamp(notification.responseDeadline);
   const passed = deadline < now;
   if (!notification.notificationSent) return { compliant: false, deadlinePassed: passed, actionRequired: 'Send owner notification immediately' };
   if (passed && !notification.ownerResponse && !notification.claimFiled) return { compliant: true, deadlinePassed: true, actionRequired: 'Response deadline passed. Proceed with default forfeiture.' };

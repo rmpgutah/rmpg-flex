@@ -6,13 +6,15 @@
 // compliance, referral services, and victim case tracking.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 41: Victim Notification */
 export interface VictimNotification { id:string; caseNumber:string; victimName:string; victimContact:string; notificationType:'arrest'|'release'|'court_date'|'case_disposition'|'appeal'|'parole_hearing'; notificationDate:string|null; notificationMethod:'phone'|'mail'|'email'|'in_person'; status:'pending'|'sent'|'delivered'|'failed'; notes:string; }
 export function checkNotificationCompliance(notifications:VictimNotification[], requiredTypes:VictimNotification['notificationType'][]): { compliant:boolean; missingTypes:string[]; overdue:VictimNotification[] } {
   const sent = notifications.filter(n=>n.status==='sent'||n.status==='delivered');
   const sentTypes = new Set(sent.map(n=>n.notificationType));
   const missing = requiredTypes.filter(t=>!sentTypes.has(t));
-  const overdue = notifications.filter(n=>n.status==='pending'&&n.notificationDate&&new Date(n.notificationDate)<new Date());
+  const overdue = notifications.filter(n=>n.status==='pending'&&n.notificationDate&&parseTimestamp(n.notificationDate)<new Date());
   return { compliant:missing.length===0, missingTypes:missing, overdue };
 }
 
@@ -39,7 +41,7 @@ export interface VictimImpactStatement { id:string; caseNumber:string; victimNam
 export function manageImpactStatements(statements:VictimImpactStatement[]): { total:number; submittedToCourt:number; pendingSubmission:number; avgDaysToSubmit:number } {
   const submitted = statements.filter(s=>s.submittedToCourt);
   const pending = statements.filter(s=>!s.submittedToCourt);
-  const days = submitted.filter(s=>s.submissionDate).map(s=>Math.ceil((new Date(s.submissionDate!).getTime()-new Date(s.statementDate).getTime())/86400000));
+  const days = submitted.filter(s=>s.submissionDate).map(s=>Math.ceil((parseTimestamp(s.submissionDate!).getTime()-parseTimestamp(s.statementDate).getTime())/86400000));
   const avgDays = days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0;
   return { total:statements.length, submittedToCourt:submitted.length, pendingSubmission:pending.length, avgDaysToSubmit:avgDays };
 }
@@ -48,8 +50,8 @@ export function manageImpactStatements(statements:VictimImpactStatement[]): { to
 export interface ProtectiveOrder { id:string; caseNumber:string; protectedPerson:string; restrainedPerson:string; orderType:'TRO'|'CPO'|'EPO'|'no_contact'; issuedDate:string; expirationDate:string; serviceStatus:'pending'|'served'|'unable'; servedDate:string|null; violations:Array<{date:string;description:string;arrestMade:boolean}>; }
 export function checkProtectiveOrderStatus(orders:ProtectiveOrder[]): { active:number; expiringSoon:number; unserved:number; withViolations:number } {
   const now = new Date(); const thirtyDays = new Date(now.getTime()+30*86400000);
-  const active = orders.filter(o=>new Date(o.expirationDate)>now);
-  const expiring = active.filter(o=>new Date(o.expirationDate)<thirtyDays);
+  const active = orders.filter(o=>parseTimestamp(o.expirationDate)>now);
+  const expiring = active.filter(o=>parseTimestamp(o.expirationDate)<thirtyDays);
   const unserved = active.filter(o=>o.serviceStatus==='pending'||o.serviceStatus==='unable');
   const withViolations = active.filter(o=>o.violations.length>0);
   return { active:active.length, expiringSoon:expiring.length, unserved:unserved.length, withViolations:withViolations.length };
@@ -69,7 +71,7 @@ export interface SafetyPlan { id:string; victimId:string; createdDate:string; re
 export function evaluateSafetyPlan(plan:SafetyPlan): { completeness:number; missingElements:string[]; requiresUpdate:boolean } {
   const required = ['safeLocation','emergencyContacts','transportationPlan','documentsSecured']; const missing = required.filter(r=>!(plan as any)[r]);
   const completeness = Math.round((required.length-missing.length)/required.length*100);
-  return { completeness, missingElements:missing, requiresUpdate:!plan.reviewed||(plan.reviewedDate?new Date(plan.reviewedDate).getTime()<Date.now()-180*86400000:true) };
+  return { completeness, missingElements:missing, requiresUpdate:!plan.reviewed||(plan.reviewedDate?parseTimestamp(plan.reviewedDate).getTime()<Date.now()-180*86400000:true) };
 }
 
 /* FEATURE 48: Victim Rights Compliance */
@@ -94,8 +96,8 @@ export function analyzeReferralNetwork(referrals:ServiceReferral[]): { totalRefe
 export interface VictimCaseTracker { caseNumber:string; victimName:string; lastContactDate:string|null; nextContactDate:string|null; caseStatus:string; defendantStatus:string; upcomingCourtDates:string[]; restitutionStatus:string; safetyConcerns:string[]; satisfactionRating:number|null; }
 export function prioritizeVictimFollowUp(cases:VictimCaseTracker[]): VictimCaseTracker[] {
   return [...cases].sort((a,b) => {
-    const aScore = (a.safetyConcerns.length*10) + (!a.lastContactDate?5:0) + (a.nextContactDate&&new Date(a.nextContactDate)<new Date()?8:0);
-    const bScore = (b.safetyConcerns.length*10) + (!b.lastContactDate?5:0) + (b.nextContactDate&&new Date(b.nextContactDate)<new Date()?8:0);
+    const aScore = (a.safetyConcerns.length*10) + (!a.lastContactDate?5:0) + (a.nextContactDate&&parseTimestamp(a.nextContactDate)<new Date()?8:0);
+    const bScore = (b.safetyConcerns.length*10) + (!b.lastContactDate?5:0) + (b.nextContactDate&&parseTimestamp(b.nextContactDate)<new Date()?8:0);
     return bScore - aScore;
   });
 }

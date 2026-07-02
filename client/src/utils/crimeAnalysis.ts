@@ -6,6 +6,8 @@
 // threat assessments, crime trends dashboard, and COMPSTAT reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 1: Crime Pattern Analysis */
 export interface CrimePattern { id: string; patternName: string; crimeType: string; dateRange: {start:string;end:string}; totalIncidents:number; zones:string[]; dayOfWeek:number[]; timeOfDay:{start:number;end:number}; suspectDescription:string|null; vehicleDescription:string|null; moDetails:string; confidence:number; status:'active'|'monitoring'|'closed'; }
 export function detectCrimePatterns(incidents: Array<{crimeType:string;date:string;hour:number;dayOfWeek:number;zone:string;moDescription:string;suspectDesc:string|null;vehicleDesc:string|null}>): CrimePattern[] {
@@ -34,7 +36,7 @@ export function generateLinkChart(caseNumber:string, persons:Array<{id:string;na
 export interface TemporalAnalysis { crimeType:string; byHour:number[]; byDay:number[]; byMonth:number[]; peakHour:number; peakDay:number; peakMonth:number; seasonalTrend:string; }
 export function analyzeTemporalPatterns(incidents:Array<{crimeType:string;date:string;hour:number}>): TemporalAnalysis {
   const byHour = new Array(24).fill(0); const byDay = new Array(7).fill(0); const byMonth = new Array(12).fill(0);
-  for (const i of incidents) { byHour[i.hour]++; const d = new Date(i.date); byDay[d.getDay()]++; byMonth[d.getMonth()]++; }
+  for (const i of incidents) { byHour[i.hour]++; const d = parseTimestamp(i.date); byDay[d.getDay()]++; byMonth[d.getMonth()]++; }
   const peakHour = byHour.indexOf(Math.max(...byHour)); const peakDay = byDay.indexOf(Math.max(...byDay)); const peakMonth = byMonth.indexOf(Math.max(...byMonth));
   return { crimeType: incidents[0]?.crimeType||'unknown', byHour, byDay, byMonth, peakHour, peakDay, peakMonth, seasonalTrend: peakMonth >= 5 && peakMonth <= 8 ? 'summer_peak' : peakMonth >= 11 || peakMonth <= 1 ? 'winter_peak' : 'no_clear_seasonal' };
 }

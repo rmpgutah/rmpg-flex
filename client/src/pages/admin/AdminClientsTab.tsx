@@ -14,6 +14,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { asArray } from '../../utils/asArray';
 import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -63,7 +64,7 @@ interface AdminClientsTabProps {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -665,7 +666,7 @@ export default function AdminClientsTab({
                           <td className="text-xs font-mono font-bold text-rmpg-300">{inc.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{inc.location_address}</td>
-                          <td className="text-[10px] text-rmpg-400">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
+                          <td className="text-[10px] text-rmpg-400">{inc.created_at ? parseTimestamp(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -700,7 +701,7 @@ export default function AdminClientsTab({
                           <td className="text-xs font-mono font-bold text-rmpg-300">{call.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(call.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{formatAddressDisplay(call.location)}</td>
-                          <td className="text-[10px] text-rmpg-400">{call.created_at ? new Date(call.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
+                          <td className="text-[10px] text-rmpg-400">{call.created_at ? parseTimestamp(call.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
                       ))}
                     </tbody>

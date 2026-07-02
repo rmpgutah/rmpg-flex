@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 101: Subpoena Tracking Workflow ───────────────
    Spillman Flex tracks subpoenas from issuance through
@@ -64,8 +65,8 @@ export function useSubpoenaTracking() {
   }, []);
 
   const pending = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'pending'), [subpoenas]);
-  const overdue = useMemo(() => subpoenas.filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && new Date(s.serviceDeadline) < new Date()), [subpoenas]);
-  const upcoming = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'served' && !s.appearanceConfirmed && new Date(s.courtDate) > new Date()), [subpoenas]);
+  const overdue = useMemo(() => subpoenas.filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && parseTimestamp(s.serviceDeadline) < new Date()), [subpoenas]);
+  const upcoming = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'served' && !s.appearanceConfirmed && parseTimestamp(s.courtDate) > new Date()), [subpoenas]);
 
   return { subpoenas, loading, load, create, update, pending, overdue, upcoming };
 }
@@ -91,8 +92,8 @@ export function trackServiceDeadlines(subpoenas: Subpoena[]): ServiceDeadline[] 
   return subpoenas
     .filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && s.serviceStatus !== 'quashed')
     .map(s => {
-      const deadline = new Date(s.serviceDeadline);
-      const courtDate = new Date(s.courtDate);
+      const deadline = parseTimestamp(s.serviceDeadline);
+      const courtDate = parseTimestamp(s.courtDate);
       const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / 86400000);
       const daysUntilCourt = Math.ceil((courtDate.getTime() - now.getTime()) / 86400000);
 
@@ -253,7 +254,7 @@ export function checkSubpoenaCompliance(subpoenas: Subpoena[]): SubpoenaComplian
   const now = new Date();
 
   return subpoenas
-    .filter(s => new Date(s.courtDate) < now)
+    .filter(s => parseTimestamp(s.courtDate) < now)
     .map(s => {
       const served = s.serviceStatus === 'served';
       const appeared = s.appearanceConfirmed;
@@ -317,7 +318,7 @@ export function useDiscoveryManagement() {
     setLoading(false);
   }, []);
 
-  const overdue = useMemo(() => obligations.filter(d => d.status === 'overdue' || (d.status === 'pending' && new Date(d.dueDate) < new Date())), [obligations]);
+  const overdue = useMemo(() => obligations.filter(d => d.status === 'overdue' || (d.status === 'pending' && parseTimestamp(d.dueDate) < new Date())), [obligations]);
   const pending = useMemo(() => obligations.filter(d => d.status === 'pending' || d.status === 'in_progress'), [obligations]);
 
   return { obligations, loading, load, overdue, pending };
@@ -417,7 +418,7 @@ export function generateSubpoenaBatch(
   generatedBy: string
 ): SubpoenaBatch {
   // Service deadline: typically 14 days before court for witnesses, 7 for officers
-  const deadlineDate = new Date(courtDate);
+  const deadlineDate = parseTimestamp(courtDate);
   deadlineDate.setDate(deadlineDate.getDate() - 14);
 
   return {

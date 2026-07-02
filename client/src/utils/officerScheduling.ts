@@ -1,6 +1,7 @@
+import { parseTimestamp } from './dateUtils';
 // 10 officer scheduling features
 export interface ShiftRoster { weekStart:string; shifts:Array<{officerId:string;day:number;shift:'day'|'swing'|'graveyard'|'off';zone:string}>; }
-export function buildWeeklyRoster(weekStart:string,officers:Array<{id:string;shift:string;zone:string;daysOff:number[]}>): ShiftRoster { const roster:ShiftRoster['shifts']=[]; const d=new Date(weekStart); for(let day=0;day<7;day++){for(const o of officers){if(!o.daysOff.includes(day))roster.push({officerId:o.id,day,shift:o.shift as any,zone:o.zone});} d.setDate(d.getDate()+1);} return{weekStart,shifts:roster}; }
+export function buildWeeklyRoster(weekStart:string,officers:Array<{id:string;shift:string;zone:string;daysOff:number[]}>): ShiftRoster { const roster:ShiftRoster['shifts']=[]; const d=parseTimestamp(weekStart); for(let day=0;day<7;day++){for(const o of officers){if(!o.daysOff.includes(day))roster.push({officerId:o.id,day,shift:o.shift as any,zone:o.zone});} d.setDate(d.getDate()+1);} return{weekStart,shifts:roster}; }
 export interface OvertimeRequest { officerId:string; date:string; hours:number; reason:string; status:'requested'|'approved'|'denied'; }
 export function manageOvertime(requests:OvertimeRequest[]): {totalHours:number;approvedHours:number;cost:number} { const approved=requests.filter(r=>r.status==='approved'); const hours=approved.reduce((s,r)=>s+r.hours,0); return{totalHours:requests.reduce((s,r)=>s+r.hours,0),approvedHours:hours,cost:Math.round(hours*45*1.5)}; }
 export interface ShiftBid { officerId:string; bidRank:number; preferredShift:string; preferredDaysOff:number[]; seniorityPoints:number; awarded:boolean; }

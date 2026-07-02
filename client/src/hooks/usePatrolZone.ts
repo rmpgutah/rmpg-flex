@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 81: Patrol Zone Allocation ─────────────────────
    Spillman Flex intelligently allocates officers to patrol
@@ -316,7 +317,7 @@ export function useCrimePatternOverlay(zone: string | null) {
     setLoading(false);
   }, [zone]);
 
-  const activePatterns = useMemo(() => patterns.filter(p => new Date(p.lastIncident).getTime() > Date.now() - 7 * 86400000), [patterns]);
+  const activePatterns = useMemo(() => patterns.filter(p => parseTimestamp(p.lastIncident).getTime() > Date.now() - 7 * 86400000), [patterns]);
 
   return { patterns, loading, load, activePatterns };
 }

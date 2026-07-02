@@ -6,6 +6,7 @@ import { docsApi, canEditDocument } from './useDocuments';
 import type { DocRecord, DocRevisionMeta } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface Props {
   documentId: number;
@@ -16,7 +17,7 @@ interface Props {
 export default function DocumentEditor({ documentId, onClose, onChanged }: Props) {
   const { user } = useAuth();
   const { addToast } = useToast();
-  const fmtWhen = (s: string) => { const d = new Date(s.replace(' ', 'T')); return isNaN(d.getTime()) ? s : d.toLocaleString(); };
+  const fmtWhen = (s: string) => { const d = parseTimestamp(s); return isNaN(d.getTime()) ? s : d.toLocaleString(); };
   const [doc, setDoc] = useState<DocRecord | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');

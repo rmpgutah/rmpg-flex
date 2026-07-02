@@ -7,12 +7,14 @@
 // program statistical reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 51: Reserve Officer Tracking */
 export interface ReserveOfficer { id:string; name:string; rank:string; joinDate:string; status:'active'|'inactive'|'suspended'|'resigned'; hoursThisMonth:number; hoursThisYear:number; minHoursRequired:number; certifications:Array<{name:string;expirationDate:string}>; assignedFTO:string|null; }
 export function checkReserveCompliance(officers:ReserveOfficer[]): { total:number; compliantHours:number; nonCompliant:ReserveOfficer[]; expiringCerts:number } {
   const now = new Date(); const thirtyDays = new Date(now.getTime()+30*86400000);
   const nonCompliant = officers.filter(o=>o.status==='active'&&o.hoursThisYear<o.minHoursRequired);
-  const expiringCerts = officers.filter(o=>o.certifications.some(c=>new Date(c.expirationDate)<thirtyDays)).length;
+  const expiringCerts = officers.filter(o=>o.certifications.some(c=>parseTimestamp(c.expirationDate)<thirtyDays)).length;
   return { total:officers.length, compliantHours:officers.length-nonCompliant.length, nonCompliant, expiringCerts };
 }
 
@@ -45,7 +47,7 @@ export function trackReserveTraining(courses:ReserveTraining[]): { totalCourses:
 export interface ReserveEquipment { id:string; officerId:string; equipmentType:string; serialNumber:string; issuedDate:string; returnDate:string|null; condition:string; notes:string; }
 export function trackEquipmentIssuance(items:ReserveEquipment[]): { totalIssued:number; currentlyOut:number; overdue:ReserveEquipment[] } {
   const now = new Date(); const out = items.filter(i=>!i.returnDate);
-  const overdue = out.filter(i=>new Date(i.issuedDate).getTime()+365*86400000<now.getTime());
+  const overdue = out.filter(i=>parseTimestamp(i.issuedDate).getTime()+365*86400000<now.getTime());
   return { totalIssued:items.length, currentlyOut:out.length, overdue };
 }
 
@@ -61,9 +63,9 @@ export function analyzeReserveDeployments(deployments:ReserveDeployment[]): { to
 export interface ReserveCertification { officerId:string; certName:string; issueDate:string; expirationDate:string; renewalHours:number; hoursCompleted:number; status:'current'|'expiring'|'expired'; }
 export function trackCertificationStatus(certs:ReserveCertification[]): { current:number; expiring:number; expired:number; complianceRate:number } {
   const now = new Date(); const thirtyDays = new Date(now.getTime()+30*86400000);
-  const current = certs.filter(c=>new Date(c.expirationDate)>thirtyDays);
-  const expiring = certs.filter(c=>new Date(c.expirationDate)<=thirtyDays&&new Date(c.expirationDate)>now);
-  const expired = certs.filter(c=>new Date(c.expirationDate)<=now);
+  const current = certs.filter(c=>parseTimestamp(c.expirationDate)>thirtyDays);
+  const expiring = certs.filter(c=>parseTimestamp(c.expirationDate)<=thirtyDays&&parseTimestamp(c.expirationDate)>now);
+  const expired = certs.filter(c=>parseTimestamp(c.expirationDate)<=now);
   return { current:current.length, expiring:expiring.length, expired:expired.length, complianceRate:certs.length>0?Math.round(current.length/certs.length*100):0 };
 }
 
@@ -71,7 +73,7 @@ export function trackCertificationStatus(certs:ReserveCertification[]): { curren
 export interface MentorshipAssignment { id:string; mentorId:string; mentorName:string; menteeId:string; menteeName:string; startDate:string; endDate:string|null; meetingFrequency:string; goals:string[]; progressNotes:string[]; }
 export function evaluateMentorshipPairings(assignments:MentorshipAssignment[]): { active:number; completed:number; avgDurationMonths:number } {
   const completed = assignments.filter(a=>a.endDate);
-  const durations = completed.map(a=>(new Date(a.endDate!).getTime()-new Date(a.startDate).getTime())/86400000/30);
+  const durations = completed.map(a=>(parseTimestamp(a.endDate!).getTime()-parseTimestamp(a.startDate).getTime())/86400000/30);
   return { active:assignments.filter(a=>!a.endDate).length, completed:completed.length, avgDurationMonths:durations.length>0?Math.round(durations.reduce((s,v)=>s+v,0)/durations.length):0 };
 }
 

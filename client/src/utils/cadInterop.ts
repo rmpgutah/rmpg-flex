@@ -7,6 +7,8 @@
 // and interoperability metrics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 1: Agency Discovery */
 export interface PartnerAgency { id:string; agencyName:string; jurisdiction:string; cadSystem:string; interopEndpoint:string; status:'online'|'offline'|'maintenance'; sharingLevel:'full'|'calls_only'|'units_only'|'none'; lastHeartbeat:string; }
 export function discoverAgencies(agencies:PartnerAgency[]): { online:number; sharableAgencies:number; bySystem:Record<string,number> } {
@@ -21,7 +23,7 @@ export interface MutualAidRequest { id:string; requestingAgency:string; resource
 export function trackMutualAid(requests:MutualAidRequest[]): { total:number; fulfillmentRate:number; avgResponseSeconds:number; pendingWithHighPriority:number } {
   const fulfilled = requests.filter(r=>r.status==='fulfilled');
   const pending = requests.filter(r=>r.status==='pending'&&r.priority==='immediate');
-  const responses = fulfilled.filter(r=>r.responseTime).map(r=>(new Date(r.responseTime!).getTime()-new Date(r.requestTime).getTime())/1000);
+  const responses = fulfilled.filter(r=>r.responseTime).map(r=>(parseTimestamp(r.responseTime!).getTime()-parseTimestamp(r.requestTime).getTime())/1000);
   return { total:requests.length, fulfillmentRate:requests.length>0?Math.round(fulfilled.length/requests.length*100):0, avgResponseSeconds:responses.length>0?Math.round(responses.reduce((s,v)=>s+v,0)/responses.length):0, pendingWithHighPriority:pending.length };
 }
 
@@ -59,7 +61,7 @@ export function validateExchange(exchange:DataExchange): { valid:boolean; errors
 export interface InteropCredentials { agencyId:string; apiKey:string; issuedAt:string; expiresAt:string; rotationDue:boolean; lastRotated:string; permissions:string[]; }
 export function checkCredentialHealth(creds:InteropCredentials[]): { total:number; expiring:number; needsRotation:number } {
   const now = new Date(); const thirtyDays = new Date(now.getTime()+30*86400000);
-  return { total:creds.length, expiring:creds.filter(c=>new Date(c.expiresAt)<=thirtyDays).length, needsRotation:creds.filter(c=>c.rotationDue||new Date(c.lastRotated).getTime()<now.getTime()-90*86400000).length };
+  return { total:creds.length, expiring:creds.filter(c=>parseTimestamp(c.expiresAt)<=thirtyDays).length, needsRotation:creds.filter(c=>c.rotationDue||parseTimestamp(c.lastRotated).getTime()<now.getTime()-90*86400000).length };
 }
 
 /* FEATURE 8: Failover Management */
@@ -67,7 +69,7 @@ export interface FailoverConfig { primaryCad:string; backupCad:string|null; auto
 export function testFailover(config:FailoverConfig): { ready:boolean; issues:string[] } {
   const issues:string[] = [];
   if (!config.backupCad) issues.push('No backup CAD system configured');
-  if (!config.lastTested||new Date(config.lastTested).getTime()<Date.now()-90*86400000) issues.push('Failover test overdue (>90 days)');
+  if (!config.lastTested||parseTimestamp(config.lastTested).getTime()<Date.now()-90*86400000) issues.push('Failover test overdue (>90 days)');
   if (!config.manualFailoverProcedure) issues.push('No manual failover procedure documented');
   return { ready:issues.length===0, issues };
 }
