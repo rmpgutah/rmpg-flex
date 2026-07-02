@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* FEATURE 11: Certification Tracking */
 export interface Certification { id: string; officerId: string; name: string; issuingAuthority: string; issuedDate: string; expirationDate: string; status: 'active'|'expiring'|'expired'; renewalRequired: boolean; renewalHours: number; }
@@ -31,7 +32,7 @@ export function calculateTrainingCompliance(completedHours: number, requiredHour
 export interface QualificationAlert { officerId: string; officerName: string; qualification: string; expiresInDays: number; expirationDate: string; requiredFor: string; renewalProcess: string; }
 export function generateExpiryAlerts(quals: Array<{officerId:string;officerName:string;qualification:string;expirationDate:string;requiredFor:string;renewalProcess:string}>): QualificationAlert[] {
   const now = new Date();
-  return quals.map(q => { const days = Math.ceil((new Date(q.expirationDate).getTime() - now.getTime()) / 86400000); return { ...q, expiresInDays: days }; }).filter(q => q.expiresInDays <= 90).sort((a,b) => a.expiresInDays - b.expiresInDays);
+  return quals.map(q => { const days = Math.ceil((parseTimestamp(q.expirationDate).getTime() - now.getTime()) / 86400000); return { ...q, expiresInDays: days }; }).filter(q => q.expiresInDays <= 90).sort((a,b) => a.expiresInDays - b.expiresInDays);
 }
 
 /* FEATURE 14: Lesson Plan Library */
@@ -71,7 +72,7 @@ export interface AcademyClass { id: string; name: string; startDate: string; end
 export function useAcademyTracking() {
   const [classes, setClasses] = useState<AcademyClass[]>([]); const [loading, setLoading] = useState(false);
   const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<AcademyClass[]>('/personnel/training/academy'); if (r) setClasses(r); } catch (err) { console.warn("[useTrainingRecords] load failed:", err); } setLoading(false); }, []);
-  const active = useMemo(() => classes.filter(c => new Date(c.endDate) > new Date()), [classes]);
+  const active = useMemo(() => classes.filter(c => parseTimestamp(c.endDate) > new Date()), [classes]);
   return { classes, loading, load, active };
 }
 
@@ -89,9 +90,9 @@ export function evaluateFTOProgress(assignment: FTOAssignment, reports: Array<{r
 /* FEATURE 20: Continuing Education Credits */
 export interface CECredit { officerId: string; courseName: string; provider: string; hours: number; completedDate: string; certNumber: string; category: string; verified: boolean; }
 export function trackCEProgress(officerId: string, credits: CECredit[], requiredPerYear: number): { earned: number; remaining: number; compliant: boolean; byCategory: Record<string,number>; expiresSoon: CECredit[] } {
-  const now = new Date(); const thisYear = credits.filter(c => new Date(c.completedDate).getFullYear() === now.getFullYear());
+  const now = new Date(); const thisYear = credits.filter(c => parseTimestamp(c.completedDate).getFullYear() === now.getFullYear());
   const earned = thisYear.reduce((s,c) => s + c.hours, 0);
   const byCategory: Record<string,number> = {}; for (const c of thisYear) { byCategory[c.category] = (byCategory[c.category]||0) + c.hours; }
-  const expiresSoon = credits.filter(c => { const d = new Date(c.completedDate); d.setFullYear(d.getFullYear()+2); return (d.getTime() - now.getTime()) / 86400000 < 90 && (d.getTime() - now.getTime()) > 0; });
+  const expiresSoon = credits.filter(c => { const d = parseTimestamp(c.completedDate); d.setFullYear(d.getFullYear()+2); return (d.getTime() - now.getTime()) / 86400000 < 90 && (d.getTime() - now.getTime()) > 0; });
   return { earned: Math.round(earned*10)/10, remaining: Math.max(0, requiredPerYear - earned), compliant: earned >= requiredPerYear, byCategory, expiresSoon };
 }
