@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
 import SpillmanCadBoard from '../SpillmanCadBoard';
 
 afterEach(cleanup);
@@ -25,6 +25,11 @@ function mount(over: Partial<React.ComponentProps<typeof SpillmanCadBoard>> = {}
   };
   render(<SpillmanCadBoard {...(props as any)} />);
   return props;
+}
+
+function clickUnitRow(callSign: string) {
+  const grid = screen.getByText('UNIT STATUS').closest('.spm-status-grid') as HTMLElement;
+  fireEvent.click(within(grid).getByText(callSign));
 }
 
 function runCmd(value: string) {
@@ -72,5 +77,41 @@ describe('SpillmanCadBoard', () => {
     const p = mount();
     fireEvent.doubleClick(screen.getByText('2026-000451'));
     expect(p.onSelectCall).toHaveBeenCalledWith(calls[0]);
+  });
+
+  it('Dispatch/Unassign/Clear Call buttons are disabled with nothing selected', () => {
+    mount();
+    expect(screen.getByText('Dispatch')).toBeDisabled();
+    expect(screen.getByText('Unassign')).toBeDisabled();
+    expect(screen.getByText('Clear Call')).toBeDisabled();
+  });
+
+  it('clicking a unit row selects it, enabling Unassign for an assigned unit', () => {
+    const p = mount();
+    clickUnitRow('P12');
+    expect(screen.getByText('Unassign')).not.toBeDisabled();
+    fireEvent.click(screen.getByText('Unassign'));
+    expect(p.onUnassignUnitFromCall).toHaveBeenCalledWith('c2', 'u1');
+  });
+
+  it('Dispatch button assigns the selected unit to the selected call (no typing required)', () => {
+    const p = mount({ selectedCallId: 'c1' });
+    clickUnitRow('S3');
+    const btn = screen.getByText('Dispatch');
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(p.onAssignUnitToCall).toHaveBeenCalledWith('c1', 'u2');
+  });
+
+  it('Clear Call button clears the selected call', () => {
+    const p = mount({ selectedCallId: 'c2' });
+    fireEvent.click(screen.getByText('Clear Call'));
+    expect(p.onClearCall).toHaveBeenCalledWith('c2');
+  });
+
+  it('New Call button opens the new-call modal', () => {
+    const p = mount();
+    fireEvent.click(screen.getByText('New Call'));
+    expect(p.onOpenNewCall).toHaveBeenCalled();
   });
 });

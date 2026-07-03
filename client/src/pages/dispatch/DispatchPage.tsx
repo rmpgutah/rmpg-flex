@@ -6387,7 +6387,17 @@ export default function DispatchPage() {
 
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
-            {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
+            {(() => {
+              const callHasLocation = selectedCall?.latitude != null && selectedCall?.longitude != null;
+              // Mapbox path is null-call safe (renders units even with no
+              // selected call), so it can stay up whenever any unit has a
+              // GPS fix — e.g. the CAD board before a call is picked. The
+              // Google Maps fallback assumes a located call throughout, so
+              // it keeps the stricter gate.
+              const anyUnitHasLocation = units.some((u) => u.latitude != null && u.longitude != null);
+              if (mapEngine === 'mapbox' ? (callHasLocation || anyUnitHasLocation) : callHasLocation) return true;
+              return false;
+            })() ? (
               mapEngine === 'mapbox' ? (
                 <MapboxMiniMap
                   call={selectedCall}
