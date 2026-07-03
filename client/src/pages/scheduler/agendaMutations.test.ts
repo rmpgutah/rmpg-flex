@@ -17,6 +17,15 @@ describe('rescheduleAgendaItem', () => {
     });
   });
 
+  it('serve: translates a 409 overlap into an actionable message', async () => {
+    apiFetchMock.mockRejectedValueOnce(
+      Object.assign(new Error('overlap'), { status: 409, payload: { error: 'overlap', conflicts: [] } }),
+    );
+    await expect(
+      rescheduleAgendaItem({ source: 'serve', originalId: 42, date: '2026-07-11', officerId: 9 }),
+    ).rejects.toThrow('That time conflicts with another scheduled attempt for this officer — pick a different slot or officer.');
+  });
+
   it('shift: PUTs /shift-plans/:id with date only', async () => {
     await rescheduleAgendaItem({ source: 'shift', originalId: 5, date: '2026-07-12', officerId: null });
     expect(apiFetchMock).toHaveBeenCalledWith('/shift-plans/5', {
