@@ -12,6 +12,8 @@ import {
   type CadCallRow, type CadUnitRow,
 } from './cadGridMappers';
 import { parseCadCommand, findUnitByCallSign, findCallByNumber } from './cadCommandLine';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 export interface SpillmanCadBoardProps {
   calls: CallForService[];
@@ -132,6 +134,39 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     onClearCall(selectedCall.id);
   };
 
+  // Right-click menus — same shared ContextMenuContext/useMenuActions system
+  // as UnitStatusBoard.tsx (single global menu instance; works inside table
+  // rows), so these are consistent with every other right-click menu in the
+  // app rather than a bespoke CAD-only dropdown.
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildCallMenu = (call: CallForService): ContextMenuItem[] => [
+    m.action('Dispatch selected unit here', () => onAssignUnitToCall(call.id, selectedUnit!.id), {
+      disabled: !selectedUnit, hint: selectedUnit?.call_sign,
+    }),
+    m.action('Open call', () => onSelectCall(call)),
+    m.action('Clear call', () => onClearCall(call.id), { danger: true }),
+    m.separator(),
+    m.copy('Copy call #', call.call_number),
+    m.copyCoords(call.latitude, call.longitude),
+  ];
+
+  const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
+    m.action('Dispatch to selected call', () => onAssignUnitToCall(selectedCall!.id, unit.id), {
+      disabled: !selectedCall, hint: selectedCall?.call_number,
+    }),
+    m.action('Unassign', () => onUnassignUnitFromCall(String(unit.current_call_id), unit.id), {
+      disabled: !unit.current_call_id, danger: true,
+    }),
+    m.separator(),
+    m.copy('Copy call sign', unit.call_sign),
+    ...(unit.officer_name ? [m.copy('Copy officer', unit.officer_name)] : []),
+    m.copyCoords(unit.latitude, unit.longitude),
+    m.separator(),
+    m.copyId(unit.id),
+  ];
+
   const callGridShared = {
     rowKey: (r: CadCallRow) => r.id,
     rowColor: (r: CadCallRow) => priorityColor(r.pri),
@@ -139,6 +174,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     onSelect: (r: CadCallRow) => onSelectCall(r.call),
     onActivate: (r: CadCallRow) => onSelectCall(r.call),
     onDropRow: onCallDrop,
+    onContextMenu: (r: CadCallRow, e: React.MouseEvent) => openMenu(e, buildCallMenu(r.call)),
   };
 
   return (
@@ -254,6 +290,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           selectedKey={selectedUnitId ?? undefined}
           onSelect={(r) => setSelectedUnitId(r.unit.id)}
           onDragStartRow={onUnitDragStart}
+          onContextMenu={(r, e) => openMenu(e, buildUnitMenu(r.unit))}
         />
       </div>
     </div>

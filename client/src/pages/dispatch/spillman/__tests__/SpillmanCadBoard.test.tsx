@@ -2,6 +2,9 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
 import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { ToastProvider } from '../../../../components/ToastProvider';
+import { ContextMenuProvider } from '../../../../context/ContextMenuContext';
 import SpillmanCadBoard from '../SpillmanCadBoard';
 
 afterEach(cleanup);
@@ -23,7 +26,15 @@ function mount(over: Partial<React.ComponentProps<typeof SpillmanCadBoard>> = {}
     onClearCall: vi.fn(), onCommandFeedback: vi.fn(),
     ...over,
   };
-  render(<SpillmanCadBoard {...(props as any)} />);
+  render(
+    <MemoryRouter>
+      <ToastProvider>
+        <ContextMenuProvider>
+          <SpillmanCadBoard {...(props as any)} />
+        </ContextMenuProvider>
+      </ToastProvider>
+    </MemoryRouter>,
+  );
   return props;
 }
 
@@ -113,5 +124,26 @@ describe('SpillmanCadBoard', () => {
     const p = mount();
     fireEvent.click(screen.getByText('New Call'));
     expect(p.onOpenNewCall).toHaveBeenCalled();
+  });
+
+  it('right-clicking a call row opens a menu; Clear call fires onClearCall', () => {
+    const p = mount();
+    fireEvent.contextMenu(screen.getByText('2026-000451'));
+    // no unit selected — toBeDisabled() must target the <button> itself, not
+    // the inner label <span> (jest-dom doesn't climb from a plain descendant
+    // to a disabled ancestor the way it does for <fieldset disabled>).
+    expect(screen.getByText('Dispatch selected unit here').closest('button')).toBeDisabled();
+    fireEvent.click(screen.getByText('Clear call'));
+    expect(p.onClearCall).toHaveBeenCalledWith('c1');
+  });
+
+  it('right-clicking a unit row opens a menu; Unassign fires onUnassignUnitFromCall', () => {
+    const p = mount();
+    fireEvent.contextMenu(within(
+      screen.getByText('UNIT STATUS').closest('.spm-status-grid') as HTMLElement,
+    ).getByText('P12'));
+    const items = screen.getAllByText('Unassign');
+    fireEvent.click(items[items.length - 1]); // last match = the context-menu item, not the toolbar button
+    expect(p.onUnassignUnitFromCall).toHaveBeenCalledWith('c2', 'u1');
   });
 });
