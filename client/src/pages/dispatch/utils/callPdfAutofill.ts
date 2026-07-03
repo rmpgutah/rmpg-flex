@@ -7,6 +7,15 @@
 
 import type { CallForService } from '../../../types';
 
+// PSO/process-service incident types — matches PROCESS_SERVICE_INCIDENT_TYPES
+// in constants/dispositionCodes.ts and NewCallModal.tsx's PSO_TYPES (which
+// now shows the PSO-requestor form fields for all three types, so this
+// fallback must recognize all three too, or a process_service/
+// civil_paper_service call that DID get pso_requestor_* filled in on the
+// form would never see it flow into caller_name/phone/address on the
+// printed record — caught 2026-07-03, same drift as the Serve tab).
+const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+
 /**
  * Apply autofill fallbacks to a call before it goes to the PDF generator.
  *
@@ -34,7 +43,7 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
 
   // PSO calls: the requestor IS the contracting client (e.g., "ICU Investigations, LLC").
   // If the requestor block was left blank, fall back to the linked client record.
-  if (filled.incident_type === 'pso_client_request') {
+  if (PSO_TYPES.has(filled.incident_type)) {
     if (!filled.pso_requestor_name && filled.client_name) {
       filled.pso_requestor_name = filled.client_name;
     }
