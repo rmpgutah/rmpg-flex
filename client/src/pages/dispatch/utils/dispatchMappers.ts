@@ -297,6 +297,8 @@ export function mapDbUnit(row: any): Unit {
     emergency_active: row.emergency_active ? 1 : 0,
     emergency_call_id: row.emergency_call_id ?? null,
     emergency_since: row.emergency_since ?? null,
+    camera_device_id: row.camera_device_id ?? null,
+    camera_ignition_state: row.camera_ignition_state ?? null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
   };

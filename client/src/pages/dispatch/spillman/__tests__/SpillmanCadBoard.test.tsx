@@ -14,7 +14,7 @@ const calls = [
   { id: 'c2', call_number: '2026-000452', incident_type: 'patrol_request', priority: 'P3', status: 'dispatched', location: '200 W TEMPLE', assigned_units: ['P12'], created_at: '2026-07-02T09:10:00Z' },
 ] as any[];
 const units = [
-  { id: 'u1', call_sign: 'P12', officer_name: 'ZAMORA', status: 'dispatched', current_call_id: 'c2', last_status_change: '2026-07-02T09:11:00Z' },
+  { id: 'u1', call_sign: 'P12', officer_name: 'ZAMORA', status: 'dispatched', current_call_id: 'c2', last_status_change: '2026-07-02T09:11:00Z', camera_device_id: 'cpg-1', camera_ignition_state: 'on' },
   { id: 'u2', call_sign: 'S3', officer_name: 'DOE', status: 'available', current_call_id: null, last_status_change: '2026-07-02T08:00:00Z' },
 ] as any[];
 
@@ -153,5 +153,14 @@ describe('SpillmanCadBoard', () => {
     expect(hitCell.querySelector('svg')).toBeInTheDocument();
     const cleanCell = screen.getAllByText('2026-000452')[0].closest('td') as HTMLElement;
     expect(cleanCell.querySelector('svg')).not.toBeInTheDocument();
+  });
+
+  it('shows a camera icon for a unit with a dashcam device mapping, none for one without', () => {
+    mount();
+    const grid = screen.getByText('UNIT STATUS').closest('.spm-status-grid') as HTMLElement;
+    const p12Cell = within(grid).getByText('P12').closest('td') as HTMLElement;
+    expect(p12Cell.querySelector('svg')).toBeInTheDocument();
+    const s3Cell = within(grid).getByText('S3').closest('td') as HTMLElement;
+    expect(s3Cell.querySelector('svg')).not.toBeInTheDocument();
   });
 });
