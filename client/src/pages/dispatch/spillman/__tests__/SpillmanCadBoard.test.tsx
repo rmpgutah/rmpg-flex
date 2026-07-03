@@ -12,6 +12,7 @@ afterEach(cleanup);
 const calls = [
   { id: 'c1', call_number: '2026-000451', incident_type: 'alarm', priority: 'P1', status: 'pending', location: '100 S MAIN ST', assigned_units: [], created_at: '2026-07-02T09:00:00Z' },
   { id: 'c2', call_number: '2026-000452', incident_type: 'patrol_request', priority: 'P3', status: 'dispatched', location: '200 W TEMPLE', assigned_units: ['P12'], created_at: '2026-07-02T09:10:00Z' },
+  { id: 'c3', call_number: '2026-000453', incident_type: 'noise_complaint', priority: 'P4', status: 'pending', location: '300 E STATE', assigned_units: [], created_at: '2026-07-02T09:05:00Z' },
 ] as any[];
 const units = [
   { id: 'u1', call_sign: 'P12', officer_name: 'ZAMORA', status: 'dispatched', current_call_id: 'c2', last_status_change: '2026-07-02T09:11:00Z', camera_device_id: 'cpg-1', camera_ignition_state: 'on' },
@@ -162,5 +163,23 @@ describe('SpillmanCadBoard', () => {
     expect(p12Cell.querySelector('svg')).toBeInTheDocument();
     const s3Cell = within(grid).getByText('S3').closest('td') as HTMLElement;
     expect(s3Cell.querySelector('svg')).not.toBeInTheDocument();
+  });
+
+  it('clicking a column header sorts UNDISPATCHED CALLS independently of the other grids', () => {
+    mount();
+    const grid = screen.getByText('UNDISPATCHED CALLS').closest('.spm-status-grid') as HTMLElement;
+    const bodyRows = () => within(grid).getAllByRole('row').slice(1);
+
+    // Default (insertion) order: c1 (P1) before c3 (P4).
+    expect(bodyRows()[0].textContent).toContain('2026-000451');
+
+    fireEvent.click(within(grid).getByText('Pri')); // ascending — same order here (1 < 4)
+    fireEvent.click(within(grid).getByText('Pri')); // descending — reverses
+    expect(bodyRows()[0].textContent).toContain('2026-000453');
+
+    // DISPATCHED CALLS' own header click must not affect UNDISPATCHED's sort.
+    const dispatchedGrid = screen.getByText(/^DISPATCHED CALLS$/).closest('.spm-status-grid') as HTMLElement;
+    fireEvent.click(within(dispatchedGrid).getByText('Pri'));
+    expect(bodyRows()[0].textContent).toContain('2026-000453');
   });
 });
