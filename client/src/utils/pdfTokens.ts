@@ -24,7 +24,7 @@ export const COLOR = {
   TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
-  TEXT_SUBHEAD_INVERTED: [184, 184, 184] as const,  // #b8b8b8 light-medium grey — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
+  TEXT_SUBHEAD_INVERTED: [128, 128, 128] as const,  // #808080 mid grey (was #b8b8b8 light-medium grey, reconfigured 2026-07-03) — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
   TEXT_CAPTION:    [120, 120, 120]  as const,  // Image captions, provenance labels
   TEXT_PLACEHOLDER: [180, 180, 180] as const,  // Empty state, placeholder text
@@ -61,7 +61,14 @@ export const COLOR = {
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
   BG_SECTION_HDR: [51, 51, 51]    as const,  // #333 dark grey — section/hero header bars. Softened from solid black 2026-06-16 (white titles stay legible; sub-headings use TEXT_SUBHEAD_INVERTED)
-  BG_TABLE_HDR:    [51, 51, 51]    as const,  // #333 dark grey — table column-header band. Matched to BG_SECTION_HDR 2026-06-16 for a uniform dark-grey header treatment
+  // Reconfigured 2026-07-03: was #333 dark grey (matched BG_SECTION_HDR).
+  // Tables now sit under a light-gray/white dual tone throughout — this
+  // header band no longer carries the dark agency-banner treatment, so it
+  // reads as a distinct, lighter structural element from the main headers.
+  // Same value as BG_TABLE_HDR_LIGHT (nested tables) — both table-header
+  // tiers are unified under one light-gray tone; pair with
+  // TEXT_TABLE_HDR_LIGHT (not TEXT_INVERTED) for legible dark text on top.
+  BG_TABLE_HDR:    [224, 224, 224] as const,  // #e0e0e0 light grey — table column-header band
   BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr

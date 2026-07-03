@@ -412,12 +412,13 @@ export function drawCodeReferenceTable(
   const colW = totalW / Math.max(cols, 1);
   const rowH = 3.2;
 
-  // Title bar
+  // Title bar — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03),
+  // dark text pairing (TEXT_TABLE_HDR_LIGHT, not TEXT_INVERTED).
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
   doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
   let curY = y + 4;
 
@@ -1248,7 +1249,7 @@ export function drawDispatchTimelineStrip(
   doc.setLineWidth(BORDER.TIMELINE_OUTER);
   doc.rect(margin, y, w, h);
 
-  // Header strip (dark)
+  // Header strip — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03).
   const headerH = 2.6;
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(margin, y, w, headerH, 'F');
@@ -1275,10 +1276,15 @@ export function drawDispatchTimelineStrip(
       doc.line(cellX, y, cellX, y + h);
     }
 
-    // Stage label in header strip
+    // Stage label in header strip. The strip is now light-gray
+    // (BG_TABLE_HDR reconfigured 2026-07-03) so the label needs dark text
+    // — EXCEPT on the active-stage cell, which still overpaints in the
+    // darker ACTIVE_AMBER gray above and needs the white/inverted text
+    // it always used.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const labelColor = isActive ? COLOR.TEXT_INVERTED : COLOR.TEXT_TABLE_HDR_LIGHT;
+    doc.setTextColor(labelColor[0], labelColor[1], labelColor[2]);
     doc.text(
       sanitizePdfText(ev.label.toUpperCase()),
       cellX + cellW / 2,
@@ -1410,12 +1416,13 @@ export function drawChainOfCustodyTable(
   let cx = x;
   for (const c of colW) { colX.push(cx); cx += c; }
 
-  // Header row
+  // Header row — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03),
+  // dark text pairing (TEXT_TABLE_HDR_LIGHT, not TEXT_INVERTED).
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, curY, w, headerH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_COC_HEADER);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
   const headers = ['DATE / TIME', 'RELEASED BY (SIGNATURE)', 'RECEIVED BY (SIGNATURE)', 'PURPOSE', 'LOCATION'];
   for (let i = 0; i < headers.length; i++) {
     doc.text(headers[i], colX[i] + 1, curY + headerH - 1.4);
