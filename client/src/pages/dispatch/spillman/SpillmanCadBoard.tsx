@@ -27,9 +27,11 @@ export interface SpillmanCadBoardProps {
   onClearCall: (callId: string) => void;
   /** Toast/announce channel for command-line feedback (errors, echoes). */
   onCommandFeedback: (message: string, level: 'success' | 'error' | 'info') => void;
-  /** Call IDs with a critical intel-screening hit (GET /dispatch/calls/hits)
-   *  — stolen/watchlisted vehicle or a linked person with an active warrant/
-   *  watchlist entry. Badges the call # cell; absent/empty renders nothing. */
+  /** Call IDs with an intel-screening hit worth a glance (GET
+   *  /dispatch/calls/hits) — stolen/watchlisted vehicle, a linked person
+   *  with an active warrant/watchlist entry, or a linked person matched to
+   *  the NSOPW sex-offender registry. Badges the call # cell; absent/empty
+   *  renders nothing. */
   hitCallIds?: Set<string>;
 }
 
@@ -173,9 +175,10 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     m.copyId(unit.id),
   ];
 
-  // Badges the call # cell for a critical intel-screening hit (stolen/
-  // watchlisted vehicle or a linked person with an active warrant/watchlist
-  // entry) — see GET /dispatch/calls/hits. Every other column renders as
+  // Badges the call # cell for an intel-screening hit worth a glance (stolen/
+  // watchlisted vehicle, a linked person with an active warrant/watchlist
+  // entry, or an NSOPW registry match) — see GET /dispatch/calls/hits. Every
+  // other column renders as
   // SpillmanStatusGrid's own default (String(row[col.key])).
   const renderCallCell = (r: CadCallRow, col: StatusColumn): React.ReactNode => {
     if (col.key === 'call_number' && hitCallIds?.has(r.call.id)) {
