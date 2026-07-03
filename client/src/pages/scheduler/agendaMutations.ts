@@ -3,6 +3,7 @@
 // before this feature — see docs/superpowers/plans/2026-07-02-unified-schedule-calendar.md
 // for why no new backend endpoint was added.
 import { apiFetch } from '../../hooks/useApi';
+import { describeServeScheduleError } from '../../utils/serveScheduleErrors';
 import type { AgendaSource } from './agendaToCalendarEvents';
 
 export interface RescheduleArgs {
@@ -15,11 +16,15 @@ export interface RescheduleArgs {
 export async function rescheduleAgendaItem({ source, originalId, date, officerId }: RescheduleArgs): Promise<void> {
   switch (source) {
     case 'serve':
-      await apiFetch(`/serve-intake/schedule/${originalId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scheduled_date: date, officer_id: officerId }),
-      });
+      try {
+        await apiFetch(`/serve-intake/schedule/${originalId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduled_date: date, officer_id: officerId }),
+        });
+      } catch (err) {
+        throw describeServeScheduleError(err);
+      }
       return;
     case 'shift':
       await apiFetch(`/shift-plans/${originalId}`, {
