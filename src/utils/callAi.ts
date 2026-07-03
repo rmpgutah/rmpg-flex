@@ -6,6 +6,20 @@
 //
 // Consumers should prefer callAi() over callClaude() directly so the
 // fallback chain works automatically when admins rotate keys.
+//
+// ── Cooldown circuit breaker ─────────────────────────────────────
+// A paid provider that's out of credit (or has a revoked/misscoped key)
+// fails the SAME way on every single call — but without a breaker every
+// OCR/extraction request still pays the round-trip to find that out
+// before falling back to Workers AI. Found live 2026-07-02: both the
+// configured Anthropic AND OpenAI keys were exhausted, so every serve-
+// intake scan was silently eating two dead HTTP calls (extra latency)
+// before ever reaching the free model. Once a call fails in a way that
+// won't self-heal within minutes (bad key, no permission, exhausted
+// credit/quota), we cache that in KV for COOLDOWN_TTL_SECONDS so the
+// next call skips straight past it — no extra network call, no wasted
+// tokens. Best-effort: KV is optional and any KV error is swallowed, so
+// this can never turn into a new failure mode of its own.
 
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from './anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from './openai';
@@ -29,9 +43,56 @@ export interface AiCallResult {
   fellBack: boolean;
 }
 
-interface CallAiEnv { DB: D1Database; AI: Ai; }
+// KV is optional here (not every caller/test wires one up) — every KV
+// operation below degrades to "not cooling down" / "don't record" rather
+// than throwing when it's absent.
+interface CallAiEnv { DB: D1Database; AI: Ai; KV?: KVNamespace; }
 
 const DEFAULT_CHAIN: AiProvider[] = ['claude', 'openai', 'workers-ai'];
+
+const COOLDOWN_TTL_SECONDS = 600; // 10 minutes — long enough to stop hammering a dead key, short enough to notice a top-up promptly.
+const cooldownKey = (provider: AiProvider) => `ai_provider_down:${provider}`;
+
+async function getCooldownReason(kv: KVNamespace | undefined, provider: AiProvider): Promise<string | null> {
+  if (!kv) return null;
+  try { return await kv.get(cooldownKey(provider)); } catch { return null; }
+}
+
+/** Read-only peek at a provider's cooldown state, for admin health checks — does
+ *  not spend an API call (unlike an actual health probe). Null = not cooling down. */
+export async function getProviderCooldownReason(kv: KVNamespace | undefined, provider: AiProvider): Promise<string | null> {
+  return getCooldownReason(kv, provider);
+}
+
+async function setCooldown(kv: KVNamespace | undefined, provider: AiProvider, reason: string): Promise<void> {
+  if (!kv) return;
+  try {
+    await kv.put(cooldownKey(provider), reason.slice(0, 200), { expirationTtl: COOLDOWN_TTL_SECONDS });
+  } catch { /* best-effort — a KV write failure must never block the AI call it's tracking */ }
+}
+
+// A failure worth a cooldown is one that will keep failing on every retry
+// until a human intervenes (bad/revoked key, no model permission, exhausted
+// credit or quota) — as opposed to a transient blip (plain rate limit, 5xx)
+// that might succeed on the very next request. Mirrors the credit-hint
+// detection in isFallbackable() but is intentionally narrower: we only want
+// to suppress calls we're confident are dead, not ones that are just having
+// a bad moment. Deliberately excludes the bare word "exceeded" — Anthropic
+// phrases a TRANSIENT per-minute rate limit as "...has exceeded your
+// per-minute rate limit...", which would otherwise misclassify a healthy
+// provider as dead. That matters more here than in isFallbackable(): this
+// cooldown key is global (cooldownKey()), so one misfire disables the
+// provider for every callAi() consumer in the Worker for 10 minutes, not
+// just the current request.
+function isPersistentFailure(provider: AiProvider, err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const { status } = provider === 'claude' ? diagnoseAnthropicError(msg) : diagnoseOpenAiError(msg);
+  if (status === 401 || status === 403 || status === 402) return true;
+  if (status === 400 || status === 429) {
+    return /(credit|balance|billing|quota|insufficient)/i.test(msg);
+  }
+  return false;
+}
 
 function isFallbackable(provider: AiProvider, err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -121,14 +182,30 @@ export async function callAi(env: CallAiEnv, opts: AiCallOpts): Promise<AiCallRe
   const errors: Array<{ provider: AiProvider; message: string }> = [];
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i];
+    const last = i === chain.length - 1;
+
+    // Workers AI has no key/billing state to cool down — only gate claude/openai.
+    if (provider !== 'workers-ai') {
+      const cooldownReason = await getCooldownReason(env.KV, provider);
+      if (cooldownReason) {
+        errors.push({ provider, message: `skipped — cooling down (${cooldownReason})` });
+        if (last) {
+          throw new Error(`callAi: all providers failed — ${errors.map(e => `${e.provider}: ${e.message.slice(0,80)}`).join(' | ')}`);
+        }
+        continue;
+      }
+    }
+
     try {
       const { text, model } = await runProvider(provider, env, opts);
       return { text, provider, model, fellBack: i > 0 };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ provider, message: msg });
-      const last = i === chain.length - 1;
       const isKeyMissing = /key not configured/i.test(msg);
+      if (provider !== 'workers-ai' && !isKeyMissing && isPersistentFailure(provider, err)) {
+        await setCooldown(env.KV, provider, msg.slice(0, 150));
+      }
       if (!isKeyMissing && !isFallbackable(provider, err)) {
         throw err;
       }

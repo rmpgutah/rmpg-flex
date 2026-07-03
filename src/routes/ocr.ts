@@ -25,6 +25,8 @@ import { extractVision, extractVisionWorkersAI } from '../utils/visionExtract';
 import type { OcrProfileSelector } from '../utils/ocrProfiles';
 import { getContainer } from '@cloudflare/containers';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
+import { getOpenAiKey } from '../utils/openai';
+import { getProviderCooldownReason } from '../utils/callAi';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const ocr = new Hono<Env>();
@@ -55,19 +57,43 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // reached (text-only ping). Surfaces the real Anthropic error (401/404/400) so an
 // admin can tell "advanced OCR is live on Claude" from "key/model misconfigured,
 // silently falling back to Workers AI". Admin/manager only.
+//
+// Also reports OpenAI + the callAi() cooldown circuit breaker (src/utils/callAi.ts)
+// WITHOUT spending an OpenAI call — cooldown state is a cheap KV read reflecting
+// the most recent real failure, not a fresh probe. Found live 2026-07-02: both
+// configured keys were exhausted and every serve-intake OCR call was silently
+// falling all the way through to Workers AI with no visibility anywhere — this
+// is the visibility.
 ocr.get('/claude-health', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) {
     return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
   }
+  const openaiKey = await getOpenAiKey(c.env);
+  const openaiCooldown = await getProviderCooldownReason(c.env.KV, 'openai');
+  const openai = {
+    configured: !!openaiKey,
+    cooling_down: !!openaiCooldown,
+    cooldown_reason: openaiCooldown,
+  };
+
   const key = await getAnthropicKey(c.env);
-  if (!key) return c.json({ configured: false, engine: 'workers-ai-vision' });
+  const claudeCooldown = await getProviderCooldownReason(c.env.KV, 'claude');
+  if (!key) {
+    return c.json({ configured: false, engine: 'workers-ai-vision', openai });
+  }
   const model = await getClaudeModel(c.env);
   try {
     const reply = await callClaude(key, { text: 'Reply with the single word: OK', maxTokens: 16, model });
-    return c.json({ configured: true, ok: true, engine: 'claude-vision', model, reply: reply.trim().slice(0, 40) });
+    return c.json({
+      configured: true, ok: true, engine: 'claude-vision', model, reply: reply.trim().slice(0, 40),
+      cooling_down: !!claudeCooldown, cooldown_reason: claudeCooldown, openai,
+    });
   } catch (err) {
-    return c.json({ configured: true, ok: false, model, error: err instanceof Error ? err.message : String(err) });
+    return c.json({
+      configured: true, ok: false, model, error: err instanceof Error ? err.message : String(err),
+      cooling_down: !!claudeCooldown, cooldown_reason: claudeCooldown, openai,
+    });
   }
 });
 
