@@ -4,8 +4,9 @@
 // line → Undispatched / Dispatched / Unit Status grids. Grids stay dark in
 // both day/night themes via the kit's .spm-status-grid (tactical surface).
 import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { CallForService, Unit } from '../../../types';
-import { SpillmanStatusGrid, priorityColor } from '../../../components/spillman';
+import { SpillmanStatusGrid, priorityColor, type StatusColumn } from '../../../components/spillman';
 import {
   UNDISPATCHED_COLUMNS, DISPATCHED_COLUMNS, UNIT_COLUMNS,
   partitionCalls, callToRow, unitToRow, cadUnitColor,
@@ -26,6 +27,10 @@ export interface SpillmanCadBoardProps {
   onClearCall: (callId: string) => void;
   /** Toast/announce channel for command-line feedback (errors, echoes). */
   onCommandFeedback: (message: string, level: 'success' | 'error' | 'info') => void;
+  /** Call IDs with a critical intel-screening hit (GET /dispatch/calls/hits)
+   *  — stolen/watchlisted vehicle or a linked person with an active warrant/
+   *  watchlist entry. Badges the call # cell; absent/empty renders nothing. */
+  hitCallIds?: Set<string>;
 }
 
 function useCadClock(): string {
@@ -44,6 +49,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
   const {
     calls, units, selectedCallId, onSelectCall, onOpenNewCall,
     onAssignUnitToCall, onUnassignUnitFromCall, onClearCall, onCommandFeedback,
+    hitCallIds,
   } = props;
 
   const clock = useCadClock();
@@ -167,6 +173,22 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     m.copyId(unit.id),
   ];
 
+  // Badges the call # cell for a critical intel-screening hit (stolen/
+  // watchlisted vehicle or a linked person with an active warrant/watchlist
+  // entry) — see GET /dispatch/calls/hits. Every other column renders as
+  // SpillmanStatusGrid's own default (String(row[col.key])).
+  const renderCallCell = (r: CadCallRow, col: StatusColumn): React.ReactNode => {
+    if (col.key === 'call_number' && hitCallIds?.has(r.call.id)) {
+      return (
+        <span className="inline-flex items-center gap-1" style={{ color: 'var(--sev-critical)' }}>
+          <AlertTriangle style={{ width: 10, height: 10, flexShrink: 0 }} />
+          {r.call_number}
+        </span>
+      );
+    }
+    return String(r[col.key] ?? '');
+  };
+
   const callGridShared = {
     rowKey: (r: CadCallRow) => r.id,
     rowColor: (r: CadCallRow) => priorityColor(r.pri),
@@ -175,6 +197,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     onActivate: (r: CadCallRow) => onSelectCall(r.call),
     onDropRow: onCallDrop,
     onContextMenu: (r: CadCallRow, e: React.MouseEvent) => openMenu(e, buildCallMenu(r.call)),
+    renderCell: renderCallCell,
   };
 
   return (

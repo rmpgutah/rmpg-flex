@@ -487,6 +487,51 @@ calls.get('/check-duplicate', async (c) => {
   }
 });
 
+// GET /dispatch/calls/hits - MUST be before /:id routes.
+// Lightweight companion to the intel screening engine (src/utils/intelScreen.ts)
+// for the Dispatch CAD board: rather than running screenPerson/screenVehicle
+// per call on every render (N+1, expensive), this returns just the set of
+// non-archived call IDs with a CRITICAL-severity hit (stolen/watchlisted
+// vehicle or a linked person with an active warrant/watchlist entry) linked
+// via call_vehicles/call_persons, so the board can badge a row at a glance.
+// Warning-severity hits (SOR/caution/gang) are intentionally excluded here —
+// this is a queue-scanning signal, not the full screening detail (that still
+// lives on the call/person/vehicle record itself).
+calls.get('/hits', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ call_id: number }>(db, `
+      SELECT DISTINCT c.id as call_id
+      FROM calls_for_service c
+      WHERE c.status != 'archived' AND (
+        EXISTS (
+          SELECT 1 FROM call_vehicles cv JOIN vehicles_records v ON v.id = cv.vehicle_id
+          WHERE cv.call_id = c.id AND (v.is_stolen = 1 OR (v.stolen_status IS NOT NULL AND v.stolen_status != ''))
+        )
+        OR EXISTS (
+          SELECT 1 FROM call_vehicles cv JOIN intel_watchlist w
+            ON w.entity_type = 'vehicle' AND w.entity_id = cv.vehicle_id AND w.active = 1
+          WHERE cv.call_id = c.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM call_persons cp JOIN warrants wa
+            ON (wa.subject_person_id = cp.person_id OR wa.person_id = cp.person_id) AND wa.status IN ('active', 'outstanding')
+          WHERE cp.call_id = c.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM call_persons cp JOIN intel_watchlist w
+            ON w.entity_type = 'person' AND w.entity_id = cp.person_id AND w.active = 1
+          WHERE cp.call_id = c.id
+        )
+      )
+    `);
+    return c.json({ call_ids: rows.map((r) => r.call_id) });
+  } catch (err) {
+    log.error('GET /dispatch/calls/hits failed', {}, err as Error);
+    return c.json({ error: 'Failed to get call hits' }, 500);
+  }
+});
+
 // GET /dispatch/calls/archive-bulk - MUST be before /:id routes
 calls.get('/archive-bulk', async (c) => {
   // redirect to POST

@@ -146,4 +146,12 @@ describe('SpillmanCadBoard', () => {
     fireEvent.click(items[items.length - 1]); // last match = the context-menu item, not the toolbar button
     expect(p.onUnassignUnitFromCall).toHaveBeenCalledWith('c2', 'u1');
   });
+
+  it('badges the call # cell for a call in hitCallIds, leaves others plain', () => {
+    mount({ hitCallIds: new Set(['c1']) });
+    const hitCell = screen.getByText('2026-000451').closest('td') as HTMLElement;
+    expect(hitCell.querySelector('svg')).toBeInTheDocument();
+    const cleanCell = screen.getAllByText('2026-000452')[0].closest('td') as HTMLElement;
+    expect(cleanCell.querySelector('svg')).not.toBeInTheDocument();
+  });
 });

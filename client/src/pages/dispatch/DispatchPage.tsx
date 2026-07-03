@@ -891,11 +891,21 @@ export default function DispatchPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showAttachUnitDropdown]);
 
+  // Intel-screening hit indicator for the CAD board (GET /dispatch/calls/hits
+  // — call IDs with a critical hit: stolen/watchlisted vehicle or a linked
+  // person with an active warrant/watchlist entry). Fetched independently of
+  // the main calls/units load, best-effort — a failure here just means the
+  // CAD board shows no hit badges this cycle, it must never break the load.
+  const [hitCallIds, setHitCallIds] = useState<Set<string>>(new Set());
+
   // Fetch calls and units on mount
   const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
     const controller = options?.signal ? undefined : new AbortController();
     const signal = options?.signal || controller!.signal;
     const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
+    apiFetch<{ call_ids: number[] }>('/dispatch/calls/hits', { signal })
+      .then((res) => setHitCallIds(new Set((res?.call_ids || []).map(String))))
+      .catch(() => { /* best-effort — badges just don't show this cycle */ });
     try {
       const [callsRes, unitsRes] = await Promise.all([
         apiFetch<any>('/dispatch/calls?limit=200', { signal }),
@@ -3478,6 +3488,7 @@ export default function DispatchPage() {
           <SpillmanCadBoard
             calls={calls}
             units={units}
+            hitCallIds={hitCallIds}
             selectedCallId={selectedCall?.id ?? null}
             onSelectCall={setSelectedCall}
             onOpenNewCall={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
