@@ -5,6 +5,7 @@
 import type { FormSchema } from '../engine/types';
 import { drawBadge } from '../engine/badge';
 import { formatActivity, type CaseActivityRow } from '../../../caseActivity';
+import { parseTimestamp } from '../../../dateUtils';
 
 export interface CaseReportData {
   caseRow: Record<string, any>;
@@ -43,7 +44,10 @@ export function buildCaseReportSections(data: CaseReportData): ReportSection[] {
 const safe = (v: unknown, dash = '—'): string => (v === null || v === undefined || v === '' ? dash : String(v));
 const safeDate = (v: unknown): string => {
   if (!v) return '—';
-  const d = new Date(String(v));
+  // parseTimestamp (not raw `new Date()`) — the server writes naive-UTC
+  // wall-clock strings; see its docstring for why this matters. Matches
+  // the original caseReportGenerator.ts's safeDate exactly.
+  const d = parseTimestamp(String(v));
   return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString();
 };
 
@@ -74,13 +78,25 @@ export const caseReportSchema: FormSchema<CaseReportData> = {
   sections: [
     (ctx, data) => {
       const c = data.caseRow || {};
+      // Same field set/order as the legacy generator's cover fields
+      // (Status, Priority, Type, Lead Investigator, Opened, [Closed],
+      // [Disposition], Generated) — this is a visual/architecture
+      // migration only, not a content redesign, so nothing gets dropped.
+      // The priority badge is an additive visual upgrade alongside the
+      // plain-text field, not a replacement for it.
+      const genTs = new Date().toLocaleString('en-US', {
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
       ctx.section('Overview', (inner) => {
         inner.labeledField({ kind: 'labeled', label: 'Status', accessor: () => safe(c.status, '').replace(/_/g, ' ').toUpperCase() }, data);
+        inner.labeledField({ kind: 'labeled', label: 'Priority', accessor: () => safe(c.priority, '').toUpperCase() }, data);
         inner.labeledField({ kind: 'labeled', label: 'Type', accessor: () => safe(c.case_type, '').replace(/_/g, ' ') }, data);
         inner.labeledField({ kind: 'labeled', label: 'Lead Investigator', accessor: () => safe(c.lead_investigator_name) }, data);
         inner.labeledField({ kind: 'labeled', label: 'Opened', accessor: () => safeDate(c.opened_date) }, data);
         if (c.closed_date) inner.labeledField({ kind: 'labeled', label: 'Closed', accessor: () => safeDate(c.closed_date) }, data);
         if (c.disposition) inner.labeledField({ kind: 'labeled', label: 'Disposition', accessor: () => safe(c.disposition) }, data);
+        inner.labeledField({ kind: 'labeled', label: 'Generated', accessor: () => genTs }, data);
         if (c.priority) drawBadge(ctx.doc, ctx.layout, { label: String(c.priority), tone: c.priority === 'high' ? 'gold' : 'steel' });
       });
 

@@ -47,4 +47,17 @@ describe('caseReportSchema', () => {
     const sections = buildCaseReportSections(BASE_DATA);
     expect(sections.map((s) => s.key)).toEqual(['persons', 'evidence']);
   });
+
+  it('renders the Overview cover fields the legacy generator showed (Priority label, Generated timestamp)', async () => {
+    // This is a content-parity regression guard: the v2 migration is
+    // visual/architecture-only, not a content redesign, so every field
+    // the legacy caseReportGenerator.ts's Overview section showed must
+    // still appear (the priority badge is additive, not a replacement
+    // for the plain-text "PRIORITY" label+value the original always drew).
+    const doc = await renderPdfV2(caseReportSchema, BASE_DATA, { coreFontsOnly: true });
+    const text = getDocText(doc);
+    expect(text).toContain('PRIORITY');
+    expect(text).toContain('HIGH');
+    expect(text).toContain('GENERATED');
+  });
 });
