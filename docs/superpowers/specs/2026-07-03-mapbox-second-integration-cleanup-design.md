@@ -74,6 +74,16 @@ file path) **and** a confirmed live replacement elsewhere:
 | `useMapboxStaticMap.ts` | `useMapSnapshot.ts` (uses `mapboxApiService.mapboxStaticImageUrl`) | referenced for PDF/report map images |
 | `useMapboxRoutes.ts` | `useMapRouting.ts` | `DispatchMiniMap.tsx` / `MapboxMiniMap.tsx` unit→call routing |
 | `useMapboxGeocode.ts` | inline `MapboxGeocoder` plugin | `MapboxMapPage.tsx` |
+| `components/MapboxAddressAutofill.tsx` | `components/AddressAutocomplete.tsx` | 16 form consumers system-wide (`NewCallModal`, `PersonFormModal`, `DispatchPage`, etc.) |
+
+Follow-up user request ("address autofill causing issues system wide") triggered a
+full audit of `AddressAutocomplete.tsx` and all 16 of its form consumers' `onSelect`
+wiring — no reproducible bug found; every consumer correctly cascades picked
+addresses into sibling City/State/ZIP fields with non-clobbering merge logic. The
+only confirmed issue was `MapboxAddressAutofill.tsx` itself: a second, entirely
+unused implementation (zero importers) — same abandoned-duplicate pattern as the
+hooks above. Deleting it is folded into this PR; no other address-autofill changes
+are in scope absent a concrete repro.
 
 **Explicitly NOT deleted** (verified live/intentional, re-confirmed against
 yesterday's spec + git history):
@@ -209,7 +219,8 @@ Three PRs to keep review scope sane, in priority order:
 1. **Contract-fix PR (Part 0)** — highest priority, fixes 6 currently-broken live
    tools including core dispatch "Nearest Unit". Small, surgical diff confined to
    `mapboxApiService.ts`. Ship first.
-2. **Cleanup PR (Part 1)** — delete the 8 dead hooks. Zero behavior change (nothing
+2. **Cleanup PR (Part 1)** — delete the 8 dead hooks + `MapboxAddressAutofill.tsx`.
+   Zero behavior change (nothing
    imports them), low-risk, fast to review.
 3. **Features PR (Part 2)** — Heatmap historical mode, fix Incidents envelope bug,
    wire 5 new overlay toggles, add the `repeat-addresses` backend route. One PR
