@@ -47,6 +47,21 @@ function useCadClock(): string {
   });
 }
 
+// Column-header click-to-sort, one independent instance per grid (each has
+// its own columns/data, so a shared sort state across all three wouldn't
+// make sense). SpillmanStatusGrid already sorts internally via sortGridRows
+// once handed a sortKey/sortDir — this hook is just the click-to-toggle
+// state that was never wired up despite the grid supporting it.
+function useGridSort(defaultKey?: string) {
+  const [sortKey, setSortKey] = useState<string | undefined>(defaultKey);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const onSort = (key: string) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  };
+  return { sortKey, sortDir, onSort };
+}
+
 export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
   const {
     calls, units, selectedCallId, onSelectCall, onOpenNewCall,
@@ -59,6 +74,11 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
   // Click-to-select a unit row, so Dispatch/Unassign below work without the
   // command line — the grid previously only supported drag-to-assign.
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+
+  // Column-header click-to-sort, one instance per grid.
+  const undispatchedSort = useGridSort();
+  const dispatchedSort = useGridSort();
+  const unitSort = useGridSort();
 
   const { undispatched, dispatched } = useMemo(() => partitionCalls(calls), [calls]);
   const undispatchedRows = useMemo(() => undispatched.map(callToRow), [undispatched]);
@@ -314,6 +334,9 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           columns={UNDISPATCHED_COLUMNS}
           rows={undispatchedRows}
           {...callGridShared}
+          sortKey={undispatchedSort.sortKey}
+          sortDir={undispatchedSort.sortDir}
+          onSort={undispatchedSort.onSort}
         />
         <SpillmanStatusGrid<CadCallRow>
           title="DISPATCHED CALLS"
@@ -321,6 +344,9 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           columns={DISPATCHED_COLUMNS}
           rows={dispatchedRows}
           {...callGridShared}
+          sortKey={dispatchedSort.sortKey}
+          sortDir={dispatchedSort.sortDir}
+          onSort={dispatchedSort.onSort}
         />
         <SpillmanStatusGrid<CadUnitRow>
           title="UNIT STATUS"
@@ -334,6 +360,9 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           onDragStartRow={onUnitDragStart}
           onContextMenu={(r, e) => openMenu(e, buildUnitMenu(r.unit))}
           renderCell={renderUnitCell}
+          sortKey={unitSort.sortKey}
+          sortDir={unitSort.sortDir}
+          onSort={unitSort.onSort}
         />
       </div>
     </div>
