@@ -892,10 +892,11 @@ export default function DispatchPage() {
   }, [showAttachUnitDropdown]);
 
   // Intel-screening hit indicator for the CAD board (GET /dispatch/calls/hits
-  // — call IDs with a critical hit: stolen/watchlisted vehicle or a linked
-  // person with an active warrant/watchlist entry). Fetched independently of
-  // the main calls/units load, best-effort — a failure here just means the
-  // CAD board shows no hit badges this cycle, it must never break the load.
+  // — call IDs with a hit worth a glance: stolen/watchlisted vehicle, a
+  // linked person with an active warrant/watchlist entry, or an NSOPW
+  // registry match). Fetched independently of the main calls/units load,
+  // best-effort — a failure here just means the CAD board shows no hit
+  // badges this cycle, it must never break the load.
   const [hitCallIds, setHitCallIds] = useState<Set<string>>(new Set());
 
   // Fetch calls and units on mount

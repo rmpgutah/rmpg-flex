@@ -491,12 +491,13 @@ calls.get('/check-duplicate', async (c) => {
 // Lightweight companion to the intel screening engine (src/utils/intelScreen.ts)
 // for the Dispatch CAD board: rather than running screenPerson/screenVehicle
 // per call on every render (N+1, expensive), this returns just the set of
-// non-archived call IDs with a CRITICAL-severity hit (stolen/watchlisted
-// vehicle or a linked person with an active warrant/watchlist entry) linked
-// via call_vehicles/call_persons, so the board can badge a row at a glance.
-// Warning-severity hits (SOR/caution/gang) are intentionally excluded here —
-// this is a queue-scanning signal, not the full screening detail (that still
-// lives on the call/person/vehicle record itself).
+// non-archived call IDs with a hit worth a queue-scanning glance — stolen/
+// watchlisted vehicle, a linked person with an active warrant/watchlist
+// entry, or a linked person matched to the NSOPW sex-offender registry
+// (national_sex_offenders.person_id, migration 0149) — linked via
+// call_vehicles/call_persons. Generic caution/gang flags are intentionally
+// excluded: this is a "check this call" signal, not the full screening
+// detail (that still lives on the call/person/vehicle record itself).
 calls.get('/hits', async (c) => {
   try {
     const db = getDb(c.env);
@@ -521,6 +522,10 @@ calls.get('/hits', async (c) => {
         OR EXISTS (
           SELECT 1 FROM call_persons cp JOIN intel_watchlist w
             ON w.entity_type = 'person' AND w.entity_id = cp.person_id AND w.active = 1
+          WHERE cp.call_id = c.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM call_persons cp JOIN national_sex_offenders nso ON nso.person_id = cp.person_id
           WHERE cp.call_id = c.id
         )
       )

@@ -1,9 +1,10 @@
 // Route-level regression test (Miniflare/workerd) for GET /api/dispatch/calls/hits.
 // Companion to the intel screening engine (src/utils/intelScreen.ts) for the
-// Dispatch CAD board: returns the set of non-archived call IDs with a
-// critical-severity hit (stolen/watchlisted vehicle, or a linked person with
-// an active warrant/watchlist entry) via call_vehicles/call_persons, so the
-// board can badge a row without running screenPerson/screenVehicle per call.
+// Dispatch CAD board: returns the set of non-archived call IDs with a hit
+// worth a queue-scanning glance (stolen/watchlisted vehicle, a linked person
+// with an active warrant/watchlist entry, or a linked person matched to the
+// NSOPW sex-offender registry) via call_vehicles/call_persons, so the board
+// can badge a row without running screenPerson/screenVehicle per call.
 import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
@@ -39,6 +40,9 @@ beforeAll(async () => {
   await execute(db, `CREATE TABLE IF NOT EXISTS warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, subject_person_id INTEGER, person_id INTEGER, status TEXT, warrant_number TEXT
   )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS national_sex_offenders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER, jurisdiction TEXT, last_name TEXT
+  )`);
 
   // Call 1: linked to a stolen vehicle → HIT
   await execute(db, "INSERT INTO calls_for_service (call_number, incident_type, status) VALUES ('2026-000960', 'traffic_stop', 'onscene')");
@@ -66,10 +70,15 @@ beforeAll(async () => {
   await execute(db, "INSERT INTO calls_for_service (call_number, incident_type, status) VALUES ('2026-000964', 'traffic_stop', 'archived')");
   await execute(db, "INSERT INTO vehicles_records (plate_number, is_stolen) VALUES ('OLD999', 1)");
   await execute(db, "INSERT INTO call_vehicles (call_id, vehicle_id) VALUES (5, 3)");
+
+  // Call 6: linked to a person matched to the NSOPW sex-offender registry → HIT
+  await execute(db, "INSERT INTO calls_for_service (call_number, incident_type, status) VALUES ('2026-000965', 'welfare_check', 'pending')");
+  await execute(db, "INSERT INTO national_sex_offenders (person_id, jurisdiction, last_name) VALUES (88, 'UT', 'DOE')");
+  await execute(db, "INSERT INTO call_persons (call_id, person_id) VALUES (6, 88)");
 });
 
 describe('GET /api/dispatch/calls/hits', () => {
-  it('returns call IDs with a critical hit, excludes clean and archived calls', async () => {
+  it('returns call IDs with a hit worth a glance, excludes clean and archived calls', async () => {
     const res = await app.request('/api/dispatch/calls/hits', {}, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(200);
     const body = await res.json() as { call_ids: number[] };
@@ -78,6 +87,7 @@ describe('GET /api/dispatch/calls/hits', () => {
     expect(ids).toContain(1); // stolen vehicle
     expect(ids).toContain(2); // active warrant
     expect(ids).toContain(4); // watchlisted person
+    expect(ids).toContain(6); // NSOPW match
     expect(ids).not.toContain(3); // clean vehicle + served warrant
     expect(ids).not.toContain(5); // archived, would otherwise hit
   });
