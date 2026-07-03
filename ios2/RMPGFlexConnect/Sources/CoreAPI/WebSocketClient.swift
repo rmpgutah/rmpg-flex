@@ -61,28 +61,34 @@ public final class WebSocketClient: ObservableObject {
         {"type":"authenticate","token":"\(authToken)"}
         """
         task?.send(.string(authMsg)) { [weak self] error in
-            if let error = error {
-                self?.onError?("Auth failed: \(error.localizedDescription)")
-                self?.connectionState = .disconnected
-                self?.scheduleReconnect()
-                return
+            Task { @MainActor in
+                guard let self else { return }
+                if let error = error {
+                    self.onError?("Auth failed: \(error.localizedDescription)")
+                    self.connectionState = .disconnected
+                    self.scheduleReconnect()
+                    return
+                }
+                self.connectionState = .connected
+                self.startPing()
+                self.receive()
             }
-            self?.connectionState = .connected
-            self?.startPing()
-            self?.receive()
         }
     }
 
     private func receive() {
         task?.receive { [weak self] result in
-            switch result {
-            case .success(let message):
-                self?.handleMessage(message)
-                self?.receive()
-            case .failure(let error):
-                self?.onError?("WS error: \(error.localizedDescription)")
-                self?.connectionState = .disconnected
-                self?.scheduleReconnect()
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .success(let message):
+                    self.handleMessage(message)
+                    self.receive()
+                case .failure(let error):
+                    self.onError?("WS error: \(error.localizedDescription)")
+                    self.connectionState = .disconnected
+                    self.scheduleReconnect()
+                }
             }
         }
     }
@@ -129,14 +135,18 @@ public final class WebSocketClient: ObservableObject {
     private func startPing() {
         pingTimer?.invalidate()
         pingTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.task?.sendPing { _ in }
+            Task { @MainActor in
+                self?.task?.sendPing { _ in }
+            }
         }
     }
 
     private func scheduleReconnect() {
         reconnectTimer?.invalidate()
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
-            self?.connect()
+            Task { @MainActor in
+                self?.connect()
+            }
         }
     }
 

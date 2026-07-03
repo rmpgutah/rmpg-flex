@@ -14,11 +14,10 @@ public final class PushManager: NSObject, ObservableObject, @unchecked Sendable 
     }
 
     public func register() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                UIApplication.shared.registerForRemoteNotifications()
-            }
+        Task {
+            guard let granted = try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .badge, .sound]), granted else { return }
+            UIApplication.shared.registerForRemoteNotifications()
         }
     }
 
