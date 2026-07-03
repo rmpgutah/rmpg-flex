@@ -258,6 +258,29 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
 // recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
 // posture so low-risk records print exactly as before (no added length).
 
+const POSTURE_CHIP_MAX_CHARS = 22;
+
+/** Truncate a posture-chip label to POSTURE_CHIP_MAX_CHARS, cutting at the
+ *  last word boundary and appending "..." rather than hard-slicing mid-word.
+ *  Most flags are short category tags ("GANG", "MENTAL HEALTH") that never
+ *  hit the cap; the cap exists for the rare case where a raw freeform
+ *  caution note gets passed in as a flag value (e.g. "REGISTERED SEX
+ *  OFFENDER" or a caution narrative's opening words) — a bare `.slice()`
+ *  there produced chips reading "REGISTERED SEX OFFENDE" / "TURLEY CAN BE
+ *  UNPREDIC" with no indication they were cut off (caught 2026-07-03 on
+ *  person records CLARK, CAMDEN and TURLEY, KARL). */
+export function truncatePostureChip(s: string): string {
+  if (s.length <= POSTURE_CHIP_MAX_CHARS) return s;
+  const ELL = '...';
+  const cut = s.slice(0, POSTURE_CHIP_MAX_CHARS - ELL.length);
+  const lastSpace = cut.lastIndexOf(' ');
+  // Only trim to the word boundary if it doesn't throw away most of the
+  // budget (e.g. a single very long word) — otherwise fall back to the
+  // raw character cut so short single-word flags aren't over-shortened.
+  const trimmed = lastSpace >= POSTURE_CHIP_MAX_CHARS / 2 ? cut.slice(0, lastSpace) : cut;
+  return `${trimmed.trimEnd()}${ELL}`;
+}
+
 /** Run a posture-flag array through recordPosture() and render the band.
  *  Returns y unchanged for a 'clear' posture. Chips are the matched flags,
  *  de-duped + upper-cased; drawThreatPostureBand caps the count with "+N". */
@@ -273,7 +296,7 @@ function renderRecordPostureBand(
   const seen = new Set<string>();
   for (const f of flags) {
     if (!f) continue;
-    const c = String(f).replace(/_/g, ' ').toUpperCase().trim().slice(0, 22);
+    const c = truncatePostureChip(String(f).replace(/_/g, ' ').toUpperCase().trim());
     if (c && !seen.has(c)) { seen.add(c); chips.push(c); }
   }
   return drawThreatPostureBand(doc, {
@@ -3232,18 +3255,30 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       y = checkPageBreak(doc, y, headerH + 3, prio);
 
       // Resolve entry-type tag from author. System-generated authors
-      // (SERVE INTAKE / DISPATCH / SYSTEM) become the chip; named
-      // officer authors fall under a generic "OFFICER NOTE" tag with
-      // the name floating to the right.
+      // (SERVE INTAKE / DISPATCH / SYSTEM / OFFICER SAFETY / OCR) become
+      // the chip; named officer authors fall under a generic "OFFICER
+      // NOTE" tag with the name floating to the right.
+      //
+      // "OFFICER SAFETY" and "OCR" were missing from this list even
+      // though the auto-intake pipeline uses them as pseudo-authors for
+      // its own generated entries (risk-assessment notes, OCR extraction
+      // logs) — neither is a real officer name. Without the match they
+      // fell through to the "named officer" branch, so the header drew
+      // BOTH the pseudo-author text as an inline suffix AND the generic
+      // "OFFICER NOTE" badge immediately next to it with only a 2mm gap,
+      // reading as run-together noise ("OCR OFFICER NOTE",
+      // "OFFICER SAFETY OFFICER NOTE") on CFS prints (caught 2026-07-03
+      // on CFS26-00100).
       const authorRaw = (n.author || '').trim();
       const upper = authorRaw.toUpperCase();
-      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT)$/i.test(authorRaw)
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT|OFFICER SAFETY|OCR)$/i.test(authorRaw)
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
       const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
         : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
         : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
+        : upper === 'OFFICER SAFETY' || upper === 'OCR' ? [80, 80, 80]
         : !isSystemTag ? [90, 90, 90]
         : [70, 70, 70];
 

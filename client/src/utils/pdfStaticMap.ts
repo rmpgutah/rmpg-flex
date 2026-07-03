@@ -188,7 +188,12 @@ async function fetchDrivingRoute(
   for (const s of steps) {
     const n = (s.name || '').trim().toUpperCase();
     if (n && chain[chain.length - 1] !== n && !chain.includes(n)) chain.push(n);
-    if (chain.length >= 3) break;
+    // Capped at 2 (was 3) — a 3-road " > "-joined chain plus the
+    // distance/duration prefix routinely overflowed the EGRESS form
+    // cell's single-line width, forcing fitTextToWidth's last-resort
+    // ellipsis truncation mid-word (e.g. "...COLLEGE DRI..."). Two
+    // roads still conveys the actionable "via X > Y" path.
+    if (chain.length >= 2) break;
   }
   return {
     coords: coords as [number, number][],
