@@ -12,6 +12,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
@@ -314,6 +315,26 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Role-based guard for /dispatch — officer redirects to the terminal built
+ *  for them (/mdt), contract_manager/client_viewer/human_resources redirect
+ *  to the dashboard (no operational need for a live CAD board). Every other
+ *  role reaches the full board unchanged. See
+ *  docs/superpowers/specs/2026-07-02-dispatch-role-routing-p1-design.md */
+function DispatchRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  const access = resolveDispatchAccess(user?.role);
+  if (access.mode === 'redirect') {
+    return <Navigate to={access.to} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
@@ -504,7 +525,7 @@ function AppRoutes() {
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
-            <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
+            <Route path="/dispatch" element={<RouteErrorBoundary><DispatchRoleGuard><DispatchPage /></DispatchRoleGuard></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
             <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
