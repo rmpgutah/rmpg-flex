@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveDispatchAccess } from '../dispatchAccess';
+import type { UserRole } from '../../../types';
 
 describe('resolveDispatchAccess', () => {
   it('redirects officer to /mdt (already has a purpose-built terminal)', () => {
@@ -20,8 +21,12 @@ describe('resolveDispatchAccess', () => {
   });
 
   it('is a denylist — an unrecognized or missing role falls through to the board', () => {
-    expect(resolveDispatchAccess('something_new')).toEqual({ mode: 'board' });
+    // Casts simulate a value the compiler wouldn't normally allow (a stale
+    // role after a UserRole rename, an imperfectly-validated API response) —
+    // the whole point of the denylist design is to stay safe at runtime
+    // against exactly this.
+    expect(resolveDispatchAccess('something_new' as UserRole)).toEqual({ mode: 'board' });
     expect(resolveDispatchAccess(undefined)).toEqual({ mode: 'board' });
-    expect(resolveDispatchAccess('')).toEqual({ mode: 'board' });
+    expect(resolveDispatchAccess('' as UserRole)).toEqual({ mode: 'board' });
   });
 });

@@ -16,20 +16,26 @@
 // ROLE_DEFAULT, which is an allowlist with a fallback — that fits a page
 // everyone is meant to use in some form; this page isn't that.
 
+import type { UserRole } from '../../types';
+
 export type DispatchAccess =
   | { mode: 'board' }
   | { mode: 'redirect'; to: string };
 
-const REDIRECT_ROLES: Record<string, string> = {
+// Partial<Record<UserRole, ...>>, not Record<string, ...>: the redirect keys
+// are checked against the real role union, so a renamed/removed UserRole
+// member is caught at compile time instead of silently falling through to
+// {mode: 'board'} unnoticed. The denylist fallback behavior is unchanged —
+// any UserRole not listed here (or a future new role) still resolves to the
+// board.
+const REDIRECT_ROLES: Partial<Record<UserRole, string>> = {
   officer: '/mdt',
   contract_manager: '/',
   client_viewer: '/',
   human_resources: '/',
 };
 
-export function resolveDispatchAccess(role: string | undefined): DispatchAccess {
-  if (role && role in REDIRECT_ROLES) {
-    return { mode: 'redirect', to: REDIRECT_ROLES[role] };
-  }
-  return { mode: 'board' };
+export function resolveDispatchAccess(role: UserRole | undefined): DispatchAccess {
+  const to = role && REDIRECT_ROLES[role];
+  return to ? { mode: 'redirect', to } : { mode: 'board' };
 }
