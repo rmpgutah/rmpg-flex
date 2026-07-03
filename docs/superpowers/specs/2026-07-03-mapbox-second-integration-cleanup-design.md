@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 **Status:** Approved — ready for implementation
-**Delivery:** split into 2 PRs (see Delivery below)
+**Delivery:** split into 3 PRs (see Delivery below)
 
 ## Background
 
@@ -23,6 +23,41 @@ exist for the same capabilities; only one is visible to users.
 This spec: (1) removes the confirmed-dead half of the older stack, (2) wires up the
 genuinely-missing features that neither stack covers, (3) leaves alone what the
 2026-07-02 spec already fixed correctly (already merged, PR #2544).
+
+## Part 0 — Fix live client/server contract breaks in `mapboxApiService.ts` (highest priority)
+
+Follow-up user request ("ensure Directions is set up") triggered a deeper check of
+`client/src/services/mapboxApiService.ts` against `src/routes/mapbox.ts`. Found the
+same class of bug yesterday's spec fixed once in `useMapboxSearchBox.ts` (wrong path/
+wrong response shape) — but that fix was never applied to this **shared** service
+file, so six currently-mounted, user-facing tools in `MapboxMapPage.tsx` silently
+404 today:
+
+| Function | Live caller (mounted tool) | Bug |
+|---|---|---|
+| `mapboxForwardGeocode` | `useMapPlacesSearch.ts` ("Places Search") | wrong path `/mapbox/geocode/forward` (real: `/mapbox/geocode`); reads `data.results` but server returns `{ features }` |
+| `mapboxReverseGeocode` | `useMapStreetView.ts` ("Street View") | wrong path `/mapbox/geocode/reverse` (real: `/mapbox/reverse-geocode`); same `results`-vs-`features` key mismatch |
+| `mapboxDirections` | `useMapDirectionsPanel.ts` ("Directions") | POST + JSON body; server is `GET /mapbox/directions?coordinates=&profile=...` (coordinates as a `lng,lat;lng,lat` string, not an array) |
+| `mapboxMatrix` | `findNearestUnits()` → `MapboxMapPage.tsx` ("Nearest Unit" — core dispatch) | POST + JSON body; server is `GET /mapbox/matrix?coordinates=&sources=&destinations=` (same string-coordinates + comma-separated index lists) |
+| `mapboxOptimization` | `useMapOptimization.ts` ("Route Optimizer") | POST + JSON body; server is `GET /mapbox/optimization?coordinates=&source=&destination=&roundtrip=` |
+| `mapboxMapMatch` | `useMapMatchTrace.ts` ("Map Match Trace") | wrong path `/mapbox/map-match` (real: `/mapbox/map-matching`) — method (POST) and body shape already match |
+
+**Fix:** rewrite each of these 6 functions in `mapboxApiService.ts` to call the real
+route with the real param shape:
+- Build the `"lng,lat;lng,lat"` coordinate string client-side (a 3-line helper,
+  shared by directions/matrix/optimization) instead of sending raw tuple arrays.
+- Switch directions/matrix/optimization from `POST` to plain `GET` with
+  `URLSearchParams`.
+- Fix the map-matching path to `/mapbox/map-matching`.
+- Fix both geocode functions' paths (`/geocode`, `/reverse-geocode`) and read
+  `data.features` instead of `data.results` (map each `feature` to the
+  `MapboxGeocodingResult` shape the callers already expect — same normalization
+  `useMapboxSearchBox.ts` already does post-fix, reuse that mapping logic rather
+  than re-deriving it).
+- Datasets API functions (`mapboxListDatasets`/`mapboxCreateDataset`/etc.) have
+  **no server route at all** (not a path bug — genuinely unbuilt) and no live
+  caller found anywhere. Leave them as-is; flagged in Out of scope below rather
+  than building a Datasets API server route no feature currently needs.
 
 ## Part 1 — Delete confirmed-dead duplicate hooks
 
@@ -58,7 +93,22 @@ All new overlays register in the existing `MapOverlaysPanel` group structure on
 `MapboxMapPage.tsx` (`tactical`/`history`/`tools` groups already exist with icons
 pre-imported for exactly this: `Shield`, `AlertTriangle`, `History`, `MapPin`).
 
-### 2a. Incidents layer
+### 2a. Historical Heatmap mode
+
+**Gap:** the live "Crime Heatmap" toggle (`useMapHeatmap.ts`) is populated only
+from `calls` already loaded on the map page (current active calls) —
+`heatmap.updatePoints()` is only ever called with today's live call locations, not
+historical density. It's not broken, just much sparser than the name implies.
+
+**Fix:** add a mode switch (Live / Historical) next to the existing toggle:
+- Live mode: unchanged, current behavior.
+- Historical mode: fetch `GET /dispatch/heatmap?mode=all&days=N` (same live
+  endpoint 2d's Safety Zones layer uses with `mode=risk`) and feed those points
+  into `heatmap.updatePoints()` instead.
+- Reuse the existing `heatmap` hook instance — this is a data-source switch, not a
+  new overlay/hook.
+
+### 2b. Incidents layer
 
 **Bug found:** `useMapboxIncidents.ts` does `Array.isArray(data) ? data : []` on
 the response from `GET /api/incidents?days=&limit=`, but that route returns
@@ -78,7 +128,7 @@ render zero incidents forever.
 - Wire a "Incidents" toggle into the `tactical` group, calling `fetchIncidents()`
   on enable.
 
-### 2b. Coverage Gaps layer
+### 2c. Coverage Gaps layer
 
 Fully self-contained (grid computation client-side, only dependency is the
 already-live `GET /dispatch/units`). No server work needed.
@@ -88,14 +138,14 @@ already-live `GET /dispatch/units`). No server work needed.
   recompute on `moveend` while the layer is active (debounced, since it's an
   O(cells × units) scan) so panning the map keeps the overlay accurate.
 
-### 2c. Safety Zones layer
+### 2d. Safety Zones layer
 
 Endpoint already live (`GET /dispatch/heatmap?mode=risk`, verified in
 `src/routes/dispatch/aggregates.ts`). No server work needed.
 
 - Wire a "Safety Zones" toggle into the `tactical` group.
 
-### 2d. History Calls layer
+### 2e. History Calls layer
 
 Endpoint already live (`GET /dispatch/history-map`, verified in
 `src/routes/dispatch/aggregates.ts`, supports `days`/`limit`/`status`/`types`/
@@ -105,7 +155,7 @@ Endpoint already live (`GET /dispatch/history-map`, verified in
   control (default 30, matching the hook's default) rather than exposing every
   filter param — status/type/priority filtering can be a follow-up if requested.
 
-### 2e. Tilequery ("Identify") tool
+### 2f. Tilequery ("Identify") tool
 
 `DispatchToolPanel.tsx` (geocode+isochrone+matrix+tilequery tabs) exists fully
 built but has zero importers anywhere — nobody mounts it. Three of its four tabs
@@ -127,7 +177,7 @@ sector info at that point via the Mapbox Tilequery API.
   fully-built component is a separate, lower-urgency decision than deleting the
   8 zero-value duplicate hooks in Part 1.
 
-### 2f. Repeat Addresses layer (needs new backend route)
+### 2g. Repeat Addresses layer (needs new backend route)
 
 **Gap:** `useMapboxRepeatAddresses.ts` calls `GET /dispatch/repeat-addresses`,
 which does not exist anywhere in `src/routes/dispatch/`.
@@ -154,14 +204,17 @@ GET /dispatch/repeat-addresses?days=30&min_count=3&limit=200
 
 ## Delivery
 
-Two PRs to keep review scope sane:
+Three PRs to keep review scope sane, in priority order:
 
-1. **Cleanup PR** — delete the 8 dead hooks (Part 1). Zero behavior change (nothing
+1. **Contract-fix PR (Part 0)** — highest priority, fixes 6 currently-broken live
+   tools including core dispatch "Nearest Unit". Small, surgical diff confined to
+   `mapboxApiService.ts`. Ship first.
+2. **Cleanup PR (Part 1)** — delete the 8 dead hooks. Zero behavior change (nothing
    imports them), low-risk, fast to review.
-2. **Features PR** — Part 2a-2f: fix Incidents envelope bug, wire 5 new overlay
-   toggles, add the `repeat-addresses` backend route. One PR since they share the
-   same `layerGroups` useMemo edit in `MapboxMapPage.tsx` and reviewing that diff
-   in pieces would be more confusing than reviewing it whole.
+3. **Features PR (Part 2)** — Heatmap historical mode, fix Incidents envelope bug,
+   wire 5 new overlay toggles, add the `repeat-addresses` backend route. One PR
+   since they share the same `layerGroups` useMemo edit in `MapboxMapPage.tsx` and
+   reviewing that diff in pieces would be more confusing than reviewing it whole.
 
 ## Testing
 
@@ -170,16 +223,21 @@ Two PRs to keep review scope sane:
   before wiring the client to it.
 - Client: typecheck + existing vitest suite (no new component logic complex enough
   to warrant new tests beyond what exists — these are toggle wires over
-  already-tested hooks, except the Incidents envelope fix which is a one-line
-  logic change worth a quick manual check).
+  already-tested hooks, except the Incidents envelope fix and Part 0's contract
+  fixes, which are logic changes worth a quick manual check each).
 - Manual verification via `npm run dev` + Chrome preview on `/map`:
-  1. Toggle each of the 5 new overlays on/off, confirm they render and clear
-     cleanly (no orphaned Mapbox layers/sources left after toggle-off).
-  2. Confirm Incidents layer shows real clustered points (not empty).
-  3. Confirm Coverage Gaps recomputes on pan while active.
-  4. Confirm Repeat Addresses returns real repeat-call clusters for a known busy
+  1. Part 0: exercise each of the 6 fixed tools (search a place, click Street View,
+     request Directions between two points, click "Nearest Unit" on a call with
+     units on the board, run Route Optimizer, start a Map Match Trace) and confirm
+     each returns real data instead of a 404/silent no-op.
+  2. Toggle each of the 5 new + 1 modified (Heatmap mode switch) overlays on/off,
+     confirm they render and clear cleanly (no orphaned Mapbox layers/sources left
+     after toggle-off).
+  3. Confirm Incidents layer shows real clustered points (not empty).
+  4. Confirm Coverage Gaps recomputes on pan while active.
+  5. Confirm Repeat Addresses returns real repeat-call clusters for a known busy
      property.
-  5. Confirm the cleanup PR's deletions don't break `npx tsc --noEmit` (no stray
+  6. Confirm the cleanup PR's deletions don't break `npx tsc --noEmit` (no stray
      imports anywhere — already verified none exist).
 
 ## Out of scope
@@ -190,7 +248,13 @@ Two PRs to keep review scope sane:
   days-back control only; richer filtering is a follow-up if requested.
 - Any change to `useMapboxBoundaries.ts`, `useMapboxSearchBox.ts`,
   `useMapboxDraw.ts` — all confirmed live/correct as-is.
-- Re-auditing the rest of the ~50 `useMapbox*` surface named in yesterday's spec —
-  this pass only covers hooks touched by today's "fix all Mapbox functions"
-  request; Directions/Optimization/PMTiles etc. were not re-checked since nothing
-  today suggested they're broken.
+- Building a server-side Datasets API route for `mapboxApiService.ts`'s 7
+  dataset functions (`mapboxListDatasets`/`mapboxCreateDataset`/etc.) — no server
+  route exists for these today and no live caller was found anywhere in the
+  client. Left broken-and-unused rather than building a route no feature needs;
+  revisit if a future feature actually calls them.
+- Re-auditing the rest of the ~50 `useMapbox*`/`mapboxApiService.ts` surface not
+  named in Part 0 — Isochrone, Tilequery, Boundaries, Static Image, PMTiles were
+  spot-checked (their client paths/methods/response keys already match their
+  server routes) but not exercised live end-to-end; Part 0's manual test pass
+  covers the 6 confirmed-broken functions specifically, not the full surface.
