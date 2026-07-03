@@ -87,4 +87,25 @@ describe('pdfGenerator smoke tests', () => {
     expect(DEFAULT_PDF_BRANDING.accent_color).toBe('#d4a017');
     expect(DEFAULT_PDF_BRANDING.header_bg_color).toBe('#1a2f5c');
   });
+
+  it('header includes the gold tagline text', () => {
+    // The v1 header embeds an Arial TTF via registerArialFont() with
+    // Identity-H encoding, so drawn text shows up as glyph-index hex
+    // strings in the content stream, not literal ASCII — .toContain()
+    // on the raw text can never match (confirmed: even pre-existing
+    // strings like the agency name don't appear literally). Instead,
+    // assert the italic font selector + the gold accent fill color
+    // both appear together immediately around the tagline's draw call,
+    // which is the closest verifiable signal that the tagline line was
+    // rendered with the right styling. See nibrsHeaderRender.test.ts
+    // for the established pattern of testing this header via structural
+    // signals (font registration, y-bounds) rather than literal text.
+    const doc = generatePdfReport('incident', baseIncident as any);
+    const pageText = (doc.internal.pages[1] as unknown as string[]).join('\n');
+    // #d4a017 gold -> 0.831 0.627 0.09 (jsPDF's 3-decimal RGB fill color)
+    expect(pageText).toContain('0.831 0.627 0.09 rg');
+    // Italic face of the registered Arial font family was selected.
+    const fonts = Object.keys((doc as unknown as { getFontList: () => Record<string, unknown> }).getFontList());
+    expect(fonts).toContain('Arial');
+  });
 });

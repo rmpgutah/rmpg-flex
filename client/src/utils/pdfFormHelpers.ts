@@ -7,7 +7,7 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb } from './pdfGenerator';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
@@ -583,6 +583,9 @@ export function drawNibrsHeader(
   // header. registerArialFont is idempotent and per-document.
   const FONT_FAMILY = registerArialFont(doc);
   const AGENCY_LOCATION = 'SALT LAKE CITY, UTAH';
+  const AGENCY_TAGLINE = 'TO SERVE, CONSULT, AND PROTECT THE UTAH WASATCH FRONTIER.';
+  const primaryRgb = hexToRgb(getActiveBranding().primary_color);
+  const accentRgb = hexToRgb(getActiveBranding().accent_color);
 
   if (isLight) {
     // ── Classic government / police-report letterhead (black on white) ──
@@ -626,13 +629,19 @@ export function drawNibrsHeader(
       nameSize = Math.max(9, nameSize * (nameMaxW / nameW));
       doc.setFontSize(nameSize);
     }
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.text(nameText, textX, y + 8.6);
+
+    // Gold italic tagline — sits between the agency name and location line.
+    doc.setFont(FONT_FAMILY, 'italic');
+    doc.setFontSize(FONT.SIZE_SUBHEADER);
+    doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+    doc.text(AGENCY_TAGLINE, textX, y + 12.6);
 
     doc.setFont(FONT_FAMILY, 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(AGENCY_LOCATION, textX, y + 12.6);
+    doc.text(AGENCY_LOCATION, textX, y + 16.6);
 
     // Metadata box: bordered grid with gray label column.
     if (rows.length) {
@@ -670,11 +679,13 @@ export function drawNibrsHeader(
       doc.line(boxX + labelW, y, boxX + labelW, y + boxH);
     }
 
-    const topZoneH = Math.max(hasSeal ? sealSize + 1 : 14, boxH, 14);
+    // +4mm to topZoneH's floor to fit the new tagline line (4 lines now:
+    // state, name, tagline, location — was 3).
+    const topZoneH = Math.max(hasSeal ? sealSize + 1 : 18, boxH, 18);
     y += topZoneH + 1.5;
 
     // Heavy rule under the identity zone.
-    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.setLineWidth(0.6);
     doc.line(margin, y, margin + contentW, y);
 
@@ -689,7 +700,7 @@ export function drawNibrsHeader(
     y += bandH;
 
     // Thin closing rule.
-    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.setLineWidth(0.3);
     doc.line(margin, y, margin + contentW, y);
 
@@ -729,10 +740,15 @@ export function drawNibrsHeader(
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...headTextColor);
   doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+  // Gold italic tagline — sits between the agency name and the form title.
+  doc.setFont(FONT_FAMILY, 'italic');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.text(AGENCY_TAGLINE, textX, midY + 4.5);
   doc.setFont(FONT_FAMILY, 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
   doc.setTextColor(...headTextColor);
-  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 9);
 
   if (config.caseNumber) {
     const caseBoxH = headerH - 6;
