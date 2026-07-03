@@ -60,4 +60,32 @@ describe('caseReportSchema', () => {
     expect(text).toContain('HIGH');
     expect(text).toContain('GENERATED');
   });
+
+  it('renders solvability score and factors when present', async () => {
+    const data: CaseReportData = {
+      ...BASE_DATA,
+      caseRow: {
+        ...BASE_DATA.caseRow,
+        solvability_score: 72,
+        solvability_factors: JSON.stringify({ witnesses_present: true, physical_evidence: true, suspect_named: false }),
+      },
+    };
+    const doc = await renderPdfV2(caseReportSchema, data, { coreFontsOnly: true });
+    const text = getDocText(doc);
+    expect(text).toContain('72/100');
+    expect(text).toContain('witnesses present');
+    expect(text).toContain('physical evidence');
+    expect(text).not.toContain('suspect named');
+  });
+
+  it('omits the Factors field when no solvability factors are true', async () => {
+    const data: CaseReportData = {
+      ...BASE_DATA,
+      caseRow: { ...BASE_DATA.caseRow, solvability_score: 40, solvability_factors: JSON.stringify({ suspect_named: false }) },
+    };
+    const doc = await renderPdfV2(caseReportSchema, data, { coreFontsOnly: true });
+    const text = getDocText(doc);
+    expect(text).toContain('40/100');
+    expect(text).not.toContain('FACTORS');
+  });
 });

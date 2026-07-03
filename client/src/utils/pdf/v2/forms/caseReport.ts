@@ -110,6 +110,14 @@ export const caseReportSchema: FormSchema<CaseReportData> = {
       if (c.solvability_score != null && Number.isFinite(Number(c.solvability_score))) {
         ctx.section('Solvability', (inner) => {
           inner.labeledField({ kind: 'labeled', label: 'Score', accessor: () => `${Number(c.solvability_score)}/100` }, data);
+          let factors: Record<string, boolean> = {};
+          try {
+            factors = c.solvability_factors
+              ? (typeof c.solvability_factors === 'string' ? JSON.parse(c.solvability_factors) : c.solvability_factors)
+              : {};
+          } catch { /* ignore */ }
+          const present = Object.entries(factors).filter(([, v]) => v).map(([k]) => k.replace(/_/g, ' '));
+          if (present.length) inner.labeledField({ kind: 'labeled', label: 'Factors', accessor: () => present.join(', ') }, data);
         });
       }
 
