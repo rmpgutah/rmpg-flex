@@ -1512,8 +1512,17 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
 
-  // PSO incident types — must be declared before filteredCalls which references it
-  const PSO_INCIDENT_TYPES = ['pso_client_request'];
+  // PSO incident types — must be declared before filteredCalls which references it.
+  // Matches PROCESS_SERVICE_INCIDENT_TYPES in constants/dispositionCodes.ts — this
+  // list drifted to a single-member array at some point (this file's own detail-
+  // panel checks elsewhere, e.g. the visit-history/serve-completion logic, already
+  // used the full ['pso_client_request', 'process_service'] pair), which meant any
+  // call created via the "Process Service (General)" dropdown option or with
+  // incident_type='civil_paper_service' rendered correctly everywhere EXCEPT the
+  // Serve tab/queue and its count, where it was silently invisible (caught
+  // 2026-07-03 — reported as "multiple missing requests" with no calls appearing
+  // in the Serve tab despite existing in the database).
+  const PSO_INCIDENT_TYPES = ['pso_client_request', 'process_service', 'civil_paper_service'];
 
   // When the admin-config disposition list is empty (production default),
   // derive the correct fallback codes from the incident type so PSO calls
