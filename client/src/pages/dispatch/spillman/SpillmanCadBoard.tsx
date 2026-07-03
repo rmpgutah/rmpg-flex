@@ -4,7 +4,7 @@
 // line → Undispatched / Dispatched / Unit Status grids. Grids stay dark in
 // both day/night themes via the kit's .spm-status-grid (tactical surface).
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Camera } from 'lucide-react';
 import type { CallForService, Unit } from '../../../types';
 import { SpillmanStatusGrid, priorityColor, type StatusColumn } from '../../../components/spillman';
 import {
@@ -200,6 +200,22 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     renderCell: renderCallCell,
   };
 
+  // Badges the unit call-sign cell for a ClearPathGPS/FlexCam dashcam device
+  // mapping (cpg_device_mappings). The device records continuously — this is
+  // a capability indicator ("footage exists for this unit if requested"), not
+  // a live recording toggle, since there isn't one to show.
+  const renderUnitCell = (r: CadUnitRow, col: StatusColumn): React.ReactNode => {
+    if (col.key === 'call_sign' && r.unit.camera_device_id) {
+      return (
+        <span className="inline-flex items-center gap-1" title={`Dashcam mapped${r.unit.camera_ignition_state ? ` — ignition ${r.unit.camera_ignition_state}` : ''}`}>
+          <Camera style={{ width: 10, height: 10, flexShrink: 0, opacity: 0.7 }} />
+          {r.call_sign}
+        </span>
+      );
+    }
+    return String(r[col.key] ?? '');
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0" data-testid="spillman-cad-board">
       {/* Command band — steel-blue strip: module label + live clock */}
@@ -314,6 +330,7 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           onSelect={(r) => setSelectedUnitId(r.unit.id)}
           onDragStartRow={onUnitDragStart}
           onContextMenu={(r, e) => openMenu(e, buildUnitMenu(r.unit))}
+          renderCell={renderUnitCell}
         />
       </div>
     </div>
