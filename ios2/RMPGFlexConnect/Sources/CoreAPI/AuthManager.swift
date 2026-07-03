@@ -24,11 +24,11 @@ public final class AuthManager: ObservableObject {
         await apiClient.setAuthToken(token)
 
         do {
-            let user: UserProfile = try await apiClient.request(Endpoint(
+            let response: MeResponse = try await apiClient.request(Endpoint(
                 path: "/api/auth/me",
                 method: .get
             ))
-            currentUser = user
+            currentUser = response.user
             isAuthenticated = true
         } catch {
             await attemptTokenRefresh(refreshToken: refreshToken)
@@ -49,16 +49,7 @@ public final class AuthManager: ObservableObject {
         keychain.storeRefreshToken(response.refreshToken)
         keychain.storeSessionId(response.sessionId)
 
-        currentUser = UserProfile(
-            id: response.userId,
-            username: response.username,
-            role: response.role,
-            fullName: response.fullName,
-            badgeNumber: response.badgeNumber,
-            email: response.email,
-            phone: response.phone,
-            status: "active"
-        )
+        currentUser = response.user
         isAuthenticated = true
         authError = nil
     }
@@ -100,11 +91,11 @@ public final class AuthManager: ObservableObject {
             keychain.storeToken(response.token)
             keychain.storeRefreshToken(response.refreshToken)
 
-            let user: UserProfile = try await apiClient.request(Endpoint(
+            let meResponse: MeResponse = try await apiClient.request(Endpoint(
                 path: "/api/auth/me",
                 method: .get
             ))
-            currentUser = user
+            currentUser = meResponse.user
             isAuthenticated = true
         } catch {
             await apiClient.setAuthToken(nil)
@@ -138,17 +129,15 @@ struct LoginRequest: Codable {
     let password: String
 }
 
+public struct MeResponse: Codable, Sendable {
+    public let user: UserProfile
+}
+
 public struct LoginResponse: Codable, Sendable {
     public let token: String
     public let refreshToken: String
     public let sessionId: String
-    public let userId: Int
-    public let username: String
-    public let role: String
-    public let fullName: String
-    public let badgeNumber: String?
-    public let email: String?
-    public let phone: String?
+    public let user: UserProfile
 }
 
 struct RefreshRequest: Codable {
