@@ -106,11 +106,15 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // With a call selected, show only units assigned to it (existing
+  // behavior). With no call selected — e.g. the CAD board before a call is
+  // picked — fall back to every unit with a GPS fix so the map isn't blank.
   const assignedUnits = useMemo(() =>
-    units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
-    ),
-    [units, call?.assigned_units],
+    units.filter(u => {
+      if (u.latitude == null || u.longitude == null) return false;
+      return call ? !!call.assigned_units?.includes(String(u.id)) : true;
+    }),
+    [units, call],
   );
 
   // Initialize Mapbox map

@@ -46,6 +46,9 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
 
   const clock = useCadClock();
   const [command, setCommand] = useState('');
+  // Click-to-select a unit row, so Dispatch/Unassign below work without the
+  // command line — the grid previously only supported drag-to-assign.
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
   const { undispatched, dispatched } = useMemo(() => partitionCalls(calls), [calls]);
   const undispatchedRows = useMemo(() => undispatched.map(callToRow), [undispatched]);
@@ -105,6 +108,30 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
     if (unitId) onAssignUnitToCall(row.call.id, unitId);
   };
 
+  // Toolbar equivalents of the dc/uc/cc commands, for click-only operation.
+  const selectedCall = useMemo(
+    () => (selectedCallId ? calls.find((c) => c.id === selectedCallId) ?? null : null),
+    [calls, selectedCallId],
+  );
+  const selectedUnit = useMemo(
+    () => (selectedUnitId ? units.find((u) => u.id === selectedUnitId) ?? null : null),
+    [units, selectedUnitId],
+  );
+  const handleDispatchClick = () => {
+    if (!selectedUnit) { onCommandFeedback('Select a unit first', 'error'); return; }
+    if (!selectedCall) { onCommandFeedback('Select a call first', 'error'); return; }
+    onAssignUnitToCall(selectedCall.id, selectedUnit.id);
+  };
+  const handleUnassignClick = () => {
+    if (!selectedUnit) { onCommandFeedback('Select a unit first', 'error'); return; }
+    if (!selectedUnit.current_call_id) { onCommandFeedback(`${selectedUnit.call_sign} is not on a call`, 'error'); return; }
+    onUnassignUnitFromCall(String(selectedUnit.current_call_id), selectedUnit.id);
+  };
+  const handleClearClick = () => {
+    if (!selectedCall) { onCommandFeedback('Select a call first', 'error'); return; }
+    onClearCall(selectedCall.id);
+  };
+
   const callGridShared = {
     rowKey: (r: CadCallRow) => r.id,
     rowColor: (r: CadCallRow) => priorityColor(r.pri),
@@ -150,6 +177,57 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
         />
       </div>
 
+      {/* Click-only action toolbar — same three operations as the command
+          line (dc/uc/cc), for dispatchers who never touch the keyboard.
+          Select a call row and/or a unit row below, then click a button. */}
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 flex-shrink-0 text-[10px] font-bold uppercase tracking-wide"
+        style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--spm-border)' }}
+      >
+        <button
+          type="button"
+          onClick={onOpenNewCall}
+          className="px-2 py-0.5 rounded-sm"
+          style={{ background: 'var(--surface-raised)', color: 'var(--spm-text)', border: '1px solid var(--spm-border)' }}
+        >
+          New Call
+        </button>
+        <button
+          type="button"
+          onClick={handleDispatchClick}
+          disabled={!selectedUnit || !selectedCall}
+          className="px-2 py-0.5 rounded-sm disabled:opacity-40"
+          style={{ background: 'var(--surface-raised)', color: 'var(--spm-text)', border: '1px solid var(--spm-border)' }}
+          title="Dispatch selected unit to selected call"
+        >
+          Dispatch
+        </button>
+        <button
+          type="button"
+          onClick={handleUnassignClick}
+          disabled={!selectedUnit?.current_call_id}
+          className="px-2 py-0.5 rounded-sm disabled:opacity-40"
+          style={{ background: 'var(--surface-raised)', color: 'var(--spm-text)', border: '1px solid var(--spm-border)' }}
+          title="Unassign selected unit from its current call"
+        >
+          Unassign
+        </button>
+        <button
+          type="button"
+          onClick={handleClearClick}
+          disabled={!selectedCall}
+          className="px-2 py-0.5 rounded-sm disabled:opacity-40"
+          style={{ background: 'var(--surface-raised)', color: 'var(--spm-text)', border: '1px solid var(--spm-border)' }}
+          title="Clear selected call"
+        >
+          Clear Call
+        </button>
+        <span className="ml-auto font-normal normal-case" style={{ color: 'var(--spm-text-muted)' }}>
+          {selectedCall ? selectedCall.call_number : 'no call selected'}
+          {selectedUnit ? ` · ${selectedUnit.call_sign}` : ''}
+        </span>
+      </div>
+
       {/* Three status grids */}
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 p-1">
         <SpillmanStatusGrid<CadCallRow>
@@ -173,6 +251,8 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
           rows={unitRows}
           rowKey={(r) => r.id}
           rowColor={(r) => cadUnitColor(r.unit.status)}
+          selectedKey={selectedUnitId ?? undefined}
+          onSelect={(r) => setSelectedUnitId(r.unit.id)}
           onDragStartRow={onUnitDragStart}
         />
       </div>
