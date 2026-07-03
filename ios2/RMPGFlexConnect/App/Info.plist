@@ -41,6 +41,14 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>RMPG Flex uses the camera to scan driver's licenses, state IDs, passports, and body-worn/dash footage capture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RMPG Flex needs access to your photo library to attach ID scans and evidence photos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RMPG Flex uses the microphone to record voice notes and field interview audio.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>RMPG Flex uses NFC to read chip-enabled ID cards and passports.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>RMPG Flex tracks your location for officer safety and dispatch routing. Location data is sent to the RMPG dispatch center in real time.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
