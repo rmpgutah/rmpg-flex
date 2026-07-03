@@ -4075,7 +4075,7 @@ export default function DispatchPage() {
                       <button type="button"
                         className="toolbar-btn"
                         title="Open Route Builder for assigned unit"
-                        style={{ color: '#d4a017' }}
+                        style={{ color: 'var(--brand-gold)' }}
                         onClick={() => {
                           const firstUnitId = selectedCall.assigned_units?.[0];
                           if (!firstUnitId) return;

@@ -940,7 +940,7 @@ body.fx-noise::after {
 
   .table-dark thead th {
     @apply px-2 py-[3px] text-[9px] font-bold uppercase tracking-wider;
-    color: #d4a017;
+    color: var(--brand-gold);
     border-right: 1px solid var(--border-default);
   }
 
