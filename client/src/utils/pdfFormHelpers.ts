@@ -1330,9 +1330,16 @@ export function drawDispatchTimelineStrip(
 
     // Progress LED between stages — green up to the last completed stage,
     // amber on the active stage to mark the live edge of the lifecycle.
+    // Positioned inside the dark header-label strip (not beside the
+    // timestamp value below it) — at headerH+1.5 the 0.5mm dot sat right
+    // next to narrow cells' centered timestamp text (e.g. "13:09:59")
+    // and read as a stray trailing bullet rather than a status marker
+    // (caught 2026-07-03 on CFS26-00100). Centering it vertically in the
+    // header strip keeps it visually grouped with the stage label, not
+    // the value.
     if (i < events.length - 1 && (ev.time || isActive)) {
       const ledX = cellX + cellW - 1.5;
-      const ledY = y + headerH + 1.5;
+      const ledY = y + headerH / 2;
       if (isActive && !ev.time) {
         doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
       } else {
