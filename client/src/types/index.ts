@@ -474,6 +474,13 @@ export interface Unit {
    *  officer is detected out of the vehicle (CoreMotion). */
   on_foot?: number | boolean | null;
   on_foot_since?: string | null;
+  /** ClearPathGPS/FlexCam dashcam device mapping (cpg_device_mappings, active
+   *  rows only). Non-null camera_device_id means the unit's vehicle has a
+   *  mapped dashcam — the device records continuously (no live on/off
+   *  toggle), so this is a capability indicator, not a "recording now" flag.
+   *  ignition_state ('on'/'off'/etc.) is the last-synced vehicle state. */
+  camera_device_id?: string | null;
+  camera_ignition_state?: string | null;
   created_at: string;
   updated_at: string;
 }
