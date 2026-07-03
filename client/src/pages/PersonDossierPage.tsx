@@ -2,15 +2,16 @@
 // One /api/intel/dossier/person/:id call renders identity + flags,
 // unified contact timeline, known associates (pivot to THEIR dossiers),
 // vehicles, addresses, confirmed linked identities, and disseminated
-// intel reports naming this person. PDF export via dossierPdfGenerator
-// (Arial-only stack).
+// intel reports naming this person. PDF export via the schema-driven
+// pdf/v2 engine (steel/gold accents).
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff, X, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import { generateDossierPdf, type DossierData, type LinkedIntelEntry } from '../utils/dossierPdfGenerator';
+import { downloadPdfV2 } from '../utils/pdf/v2';
+import { dossierSchema, type DossierData, type LinkedIntelEntry } from '../utils/pdf/v2/forms/dossier';
 import { formatLabel } from '../utils/formatters';
 import { formatDate } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
@@ -139,7 +140,11 @@ export default function PersonDossierPage() {
   const onExportPdf = async () => {
     if (pdfBusy) return;
     setPdfBusy(true);
-    try { generateDossierPdf(data); }
+    try {
+      const filename = `dossier-${(data.person.first_name ?? '') + '-' + (data.person.last_name ?? '')}`
+        .toLowerCase().replace(/\s+/g, '-').replace(/^-+|-+$/g, '') || `dossier-${data.person.id}`;
+      await downloadPdfV2(dossierSchema, data, `${filename}-${data.person.id}.pdf`, { schemaId: 'dossier' });
+    }
     finally {
       // Tiny visual debounce so accidental double-press doesn't fire two
       // jsPDF instances (each one re-registers the Arial font subset).
