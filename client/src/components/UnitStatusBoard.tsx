@@ -57,7 +57,7 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
 // neutral gray; no active trip → nothing. Format: "▶ RESPONSE 24-0613 · 2.1 mi · 4m".
 function TripBadge({ trip }: { trip: Trip }) {
   const isResponse = trip.trip_type === 'call_response';
-  const color = isResponse ? '#d4a017' : '#888888';
+  const color = isResponse ? 'var(--brand-gold)' : 'var(--rmpg-500)';
   const miles = tripMiles(trip);
   const mins = tripDurationMin(trip);
   const parts: string[] = [tripLabel(trip)];

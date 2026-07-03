@@ -97,6 +97,27 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   return el;
 }
 
+// Recolor the stock dark-v11 basemap toward the app's steel-blue chrome
+// (--surface-base/--surface-deep in theme-palettes.css) so the map reads as
+// part of the same CAD console rather than a generic gray Mapbox dark style.
+// 'background' and 'water' are present in every Mapbox base style (classic
+// and Standard), so this is safe across style versions; each call is guarded
+// so a future style swap that drops a layer just no-ops instead of throwing.
+function applySteelBlueMapTheme(map: mapboxgl.Map): void {
+  const trySetPaint = (layerId: string, prop: string, value: unknown) => {
+    if (map.getLayer(layerId)) {
+      // setPaintProperty's prop union is keyed per-layer-type; this helper is
+      // intentionally generic across layers, so the exact literal type can't
+      // be threaded through without a much larger overload dance for two
+      // call sites — the runtime getLayer()+try/catch guard is what actually
+      // keeps this safe against a missing/renamed paint property.
+      try { (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(layerId, prop, value); } catch { /* layer exists but lacks this paint prop on this style version */ }
+    }
+  };
+  trySetPaint('background', 'background-color', '#0d1722');
+  trySetPaint('water', 'fill-color', '#0a1420');
+}
+
 export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: MapboxMiniMapProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -162,6 +183,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           if (!cancelled) {
             setLoaded(true);
             setError(null);
+            applySteelBlueMapTheme(map);
 
             // Add compact geocoder control
             if (!geocoderRef.current) {
@@ -269,6 +291,18 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
     <div className={`relative bg-[#0a0a0a] border border-[#222] overflow-hidden ${fullHeight ? 'h-full' : 'h-[180px]'}`}>
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Steel-blue tint on just the WebGL canvas (grayscale→sepia→hue-rotate
+          is the standard CSS trick for tinting toward an arbitrary hue while
+          keeping the basemap's own shading/contrast) — scoped to
+          .mapboxgl-canvas specifically, NOT a full-panel overlay, so the
+          priority-colored unit/call marker pins (siblings within the map
+          container, not part of the canvas) keep their true colors. */}
+      <style>{`
+        .mapboxgl-canvas {
+          filter: grayscale(0.4) sepia(0.6) hue-rotate(178deg) saturate(2.4) brightness(0.85);
+        }
+      `}</style>
 
       {/* Geocoder compact dark theme override */}
       <style>{`
