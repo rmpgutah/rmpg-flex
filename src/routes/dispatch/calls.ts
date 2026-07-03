@@ -87,8 +87,18 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
-      where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+    // `active=true` narrows to in-progress statuses only. This used to also
+    // fire implicitly whenever neither `status` nor `archived` was passed,
+    // which *replaced* the whole WHERE clause above (silently dropping
+    // cleared/closed/cancelled rows AND any startDate/search/priority filter
+    // for every caller that didn't explicitly ask for archived/status —
+    // CallHistoryDrawer, MdtPage's monthly fetch, CallPicker, and the
+    // Dispatch page's "Cleared" tab all hit this). Dedicated active-only
+    // listing lives at GET /dispatch/calls/active; this flag is now additive,
+    // not a replacement, so unset callers correctly get "everything
+    // non-archived" per the archived handling above.
+    if (active === 'true') {
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
