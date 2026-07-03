@@ -77,13 +77,19 @@ async function setCooldown(kv: KVNamespace | undefined, provider: AiProvider, re
 // that might succeed on the very next request. Mirrors the credit-hint
 // detection in isFallbackable() but is intentionally narrower: we only want
 // to suppress calls we're confident are dead, not ones that are just having
-// a bad moment.
+// a bad moment. Deliberately excludes the bare word "exceeded" — Anthropic
+// phrases a TRANSIENT per-minute rate limit as "...has exceeded your
+// per-minute rate limit...", which would otherwise misclassify a healthy
+// provider as dead. That matters more here than in isFallbackable(): this
+// cooldown key is global (cooldownKey()), so one misfire disables the
+// provider for every callAi() consumer in the Worker for 10 minutes, not
+// just the current request.
 function isPersistentFailure(provider: AiProvider, err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   const { status } = provider === 'claude' ? diagnoseAnthropicError(msg) : diagnoseOpenAiError(msg);
   if (status === 401 || status === 403 || status === 402) return true;
   if (status === 400 || status === 429) {
-    return /(credit|balance|fund|billing|quota|exceeded)/i.test(msg);
+    return /(credit|balance|billing|quota|insufficient)/i.test(msg);
   }
   return false;
 }

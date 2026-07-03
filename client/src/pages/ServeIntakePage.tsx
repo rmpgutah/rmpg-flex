@@ -143,10 +143,12 @@ interface OcrScanResult {
 // True when a document's extraction fell back to the free Workers AI model
 // instead of the configured paid engine (Claude/OpenAI). Absent `model` (older
 // cached results, or a doc that never reached extraction) is NOT treated as
-// degraded — there's nothing to warn about yet.
+// degraded — there's nothing to warn about yet. Server always labels a paid
+// result as `${provider}:${model}` (see serveIntakeExtract.ts / visionExtract.ts),
+// so an OpenAI result is always 'openai:gpt-...' — never a bare 'gpt-...' id.
 function isFallbackEngine(model: string | null | undefined): boolean {
   if (!model) return false;
-  return !model.startsWith('claude:') && !model.startsWith('openai:') && !model.startsWith('gpt-');
+  return !model.startsWith('claude:') && !model.startsWith('openai:');
 }
 
 const DOCUMENT_TYPES = [
@@ -904,7 +906,7 @@ export default function ServeIntakePage() {
         <div className="flex items-start gap-2 px-3 py-2 panel-beveled bg-amber-900/20 border border-amber-700/40 text-amber-300 text-xs">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            Advanced OCR (Claude) is currently unavailable — this batch used the standard
+            Advanced OCR (Claude/OpenAI) is currently unavailable — this batch used the standard
             fallback engine, which reads real-world documents less reliably. Double-check
             every extracted field below before submitting.
           </span>

@@ -199,6 +199,25 @@ describe('callAi cooldown circuit breaker', () => {
     expect(kv.put).not.toHaveBeenCalled();
   });
 
+  it('does not cool down on a transient per-minute rate limit (contains "exceeded" but no billing/quota hint)', async () => {
+    // Regression: Anthropic phrases a plain rate limit as "...has exceeded your
+    // per-minute rate limit..." — the bare word "exceeded" must NOT trip the
+    // breaker, or a healthy provider gets disabled for every caller for 10 minutes.
+    const kv = makeKv();
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockResolvedValueOnce(new Response(
+      '{"error":{"message":"Number of requests has exceeded your per-minute rate limit"}}', { status: 429 },
+    ));
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ choices: [{ message: { content: 'openai-rescue' } }] }), { status: 200 },
+    ));
+    const env = { ...makeEnv({ keys: { anthropic_api_key: 'sk-ant-test', openai_api_key: 'sk-test' } }), KV: kv };
+
+    const result = await callAi(env, { text: 'hi' });
+    expect(result.provider).toBe('openai'); // still falls back for THIS request...
+    expect(kv.put).not.toHaveBeenCalled();  // ...but does not cool Claude down for the next one.
+  });
+
   it('works fine with no KV bound at all (existing callers unaffected)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
       JSON.stringify({ content: [{ type: 'text', text: 'claude-reply' }] }), { status: 200 },
