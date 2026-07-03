@@ -62,7 +62,7 @@ import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, type FilterTab,
 } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
@@ -99,9 +99,8 @@ import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo, humanizeStatus, humanizeType,
+  formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
-import { coded } from '../../utils/searchText';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -1559,26 +1558,7 @@ export default function DispatchPage() {
       case 'archived': return true;
       default: return true;
     }
-  }).filter((call) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (call.call_number || '').toLowerCase().includes(q) ||
-      (call.location || '').toLowerCase().includes(q) ||
-      coded(call.incident_type, humanizeType).includes(q) ||
-      (call.description || '').toLowerCase().includes(q) ||
-      (call.caller_name || '').toLowerCase().includes(q) ||
-      // Geography: let dispatchers filter the queue to a district by typing a
-      // Spillman code ("SL1", "SL1-HER/C") or a place name ("Herriman").
-      (call.dispatch_code || '').toLowerCase().includes(q) ||
-      (call.zone_beat || '').toLowerCase().includes(q) ||
-      (call.sector_name || '').toLowerCase().includes(q) ||
-      (call.zone_id || '').toLowerCase().includes(q) ||
-      (call.zone_name || '').toLowerCase().includes(q) ||
-      (call.beat_id || '').toLowerCase().includes(q) ||
-      (call.beat_name || '').toLowerCase().includes(q)
-    );
-  }).filter((call) => {
+  }).filter((call) => callMatchesSearch(call, searchQuery)).filter((call) => {
     if (priorityFilter && call.priority !== priorityFilter) return false;
     return true;
   }).filter((call) => {
@@ -1636,6 +1616,17 @@ export default function DispatchPage() {
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+
+  // The "Search calls" box lives in the shared toolbar above both the CAD
+  // board and the classic list, but was only ever wired into filteredCalls
+  // (the classic-list pipeline) — typing into it did nothing while the CAD
+  // board was showing. Same callMatchesSearch predicate as filteredCalls
+  // above, minus the tab/priority/type/signal/sort stages the CAD board
+  // doesn't expose.
+  const cadBoardCalls = useMemo(
+    () => calls.filter((call) => callMatchesSearch(call, searchQuery)),
+    [calls, searchQuery],
+  );
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -3486,7 +3477,7 @@ export default function DispatchPage() {
         </PanelTitleBar>
         {cadBoardView && (
           <SpillmanCadBoard
-            calls={calls}
+            calls={cadBoardCalls}
             units={units}
             hitCallIds={hitCallIds}
             selectedCallId={selectedCall?.id ?? null}

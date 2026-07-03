@@ -5,6 +5,9 @@
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
+import { humanizeType } from '../../../utils/statusLabels';
+import { coded } from '../../../utils/searchText';
+import type { CallForService } from '../../../types';
 
 /** Filter tab type for the dispatch call queue. */
 export type FilterTab = 'queue' | 'pending' | 'active' | 'hold' | 'serve' | 'cleared' | 'archived';
@@ -171,4 +174,30 @@ export function formatQualityScore(compliance: {
   const pct = compliance.total > 0 ? Math.round((compliance.within_target / compliance.total) * 100) : 0;
   const grade = pct >= 95 ? 'A' : pct >= 85 ? 'B' : pct >= 75 ? 'C' : pct >= 60 ? 'D' : 'F';
   return `${compliance.priority}: ${pct}% (${grade}) — ${compliance.within_target}/${compliance.total} within target`;
+}
+
+/**
+ * Case-insensitive substring match for the Dispatch page's "Search calls" box
+ * — call #, location, incident type (raw or humanized/coded), description,
+ * caller name, and geography (dispatch code, sector/zone/beat). Shared by
+ * the classic list's filteredCalls pipeline and the CAD board's own search
+ * filter, so both surfaces match the same way for the same query.
+ */
+export function callMatchesSearch(call: CallForService, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    (call.call_number || '').toLowerCase().includes(q) ||
+    (call.location || '').toLowerCase().includes(q) ||
+    coded(call.incident_type, humanizeType).includes(q) ||
+    (call.description || '').toLowerCase().includes(q) ||
+    (call.caller_name || '').toLowerCase().includes(q) ||
+    (call.dispatch_code || '').toLowerCase().includes(q) ||
+    (call.zone_beat || '').toLowerCase().includes(q) ||
+    (call.sector_name || '').toLowerCase().includes(q) ||
+    (call.zone_id || '').toLowerCase().includes(q) ||
+    (call.zone_name || '').toLowerCase().includes(q) ||
+    (call.beat_id || '').toLowerCase().includes(q) ||
+    (call.beat_name || '').toLowerCase().includes(q)
+  );
 }
