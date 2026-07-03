@@ -4439,8 +4439,11 @@ export default function DispatchPage() {
                 })}
               </div>
 
-              {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              {/* Detail Body — Scrollable, tab-controlled. `.cad-detail-body`
+                  applies the CAD board's dense monospace treatment (see
+                  spillman-kit.css) via a scoped CSS rule rather than touching
+                  every individual Tailwind class in this ~1500-line region. */}
+              <div className="cad-detail-body flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
