@@ -6,6 +6,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { loadSealBase64 } from './pdfAssets';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
@@ -6898,6 +6899,12 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
+
+  // Preload the agency seal so drawNibrsHeader()'s synchronous seal-fallback
+  // (getCachedSealBase64()) has it ready — every generateXxxReport() below
+  // calls drawNibrsHeader without passing sealBase64 explicitly, so it relies
+  // entirely on this cache being warm by the time that runs.
+  await loadSealBase64();
 
   // Set form key for footer form numbers
   setActiveFormKey(recordType);

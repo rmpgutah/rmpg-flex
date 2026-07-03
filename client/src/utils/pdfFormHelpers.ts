@@ -8,6 +8,7 @@
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb } from './pdfGenerator';
+import { getCachedSealBase64 } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
@@ -586,6 +587,12 @@ export function drawNibrsHeader(
   const AGENCY_TAGLINE = 'TO SERVE, CONSULT, AND PROTECT THE UTAH WASATCH FRONTIER.';
   const primaryRgb = hexToRgb(getActiveBranding().primary_color);
   const accentRgb = hexToRgb(getActiveBranding().accent_color);
+  // No caller currently passes `config.sealBase64`/`config.logoBase64`
+  // explicitly — fall back to whatever `loadSealBase64()` has already
+  // cached (callers should `await loadSealBase64()` once before
+  // generating so this is populated by the time this synchronous
+  // function runs; see getCachedSealBase64()'s doc comment).
+  const resolvedSeal = config.sealBase64 ?? config.logoBase64 ?? getCachedSealBase64();
 
   if (isLight) {
     // ── Classic government / police-report letterhead (black on white) ──
@@ -594,9 +601,9 @@ export function drawNibrsHeader(
     // the right (FORM / DATE / SUBJECT-or-CASE), a heavy separating rule,
     // then a gray report-type band. Reads like a real LE records form.
     const sealSize = LAYOUT.SEAL_SIZE;
-    const hasSeal = !!config.sealBase64;
+    const hasSeal = !!resolvedSeal;
     if (hasSeal) {
-      try { doc.addImage(config.sealBase64!, 'PNG', margin, y + 1, sealSize, sealSize); }
+      try { doc.addImage(resolvedSeal!, 'PNG', margin, y + 1, sealSize, sealSize); }
       catch { /* skip if image fails */ }
     }
     const textX = margin + (hasSeal ? sealSize + 4 : 0);
@@ -722,13 +729,13 @@ export function drawNibrsHeader(
 
   const sealSize = LAYOUT.SEAL_SIZE;
   const sealX = margin + 3;
-  if (config.sealBase64) {
-    try { doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize); }
+  if (resolvedSeal) {
+    try { doc.addImage(resolvedSeal, 'PNG', sealX, y + 3, sealSize, sealSize); }
     catch { /* skip if image fails */ }
   }
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2;
-  const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
+  const textX = resolvedSeal ? sealX + sealSize + 4 : margin + 4;
 
   if (config.stateIdentifier) {
     doc.setFont(FONT_FAMILY, 'normal');

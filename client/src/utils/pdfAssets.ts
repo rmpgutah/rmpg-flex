@@ -177,6 +177,17 @@ export async function loadLogoLightBase64(): Promise<string | null> {
   }
 }
 
+/**
+ * Synchronous read of whatever `loadSealBase64()` has already cached, or
+ * `null` if it hasn't resolved yet. `drawNibrsHeader()` (pdfFormHelpers.ts)
+ * is synchronous and can't `await` the loader itself, so callers that
+ * generate a report should `await loadSealBase64()` once up front — this
+ * getter is the synchronous read side of that same cache.
+ */
+export function getCachedSealBase64(): string | null {
+  return sealBase64;
+}
+
 /** Clear cached images (for testing) */
 export function clearImageCache(): void {
   sealBase64 = null;
