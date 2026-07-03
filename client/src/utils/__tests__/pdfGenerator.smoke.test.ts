@@ -80,4 +80,11 @@ describe('pdfGenerator smoke tests', () => {
     } as any);
     expect(doc.getNumberOfPages()).toBeGreaterThan(0);
   });
+
+  it('DEFAULT_PDF_BRANDING uses navy/gold, not the neutralized grays', async () => {
+    const { DEFAULT_PDF_BRANDING } = await import('../pdfGenerator');
+    expect(DEFAULT_PDF_BRANDING.primary_color).toBe('#1a2f5c');
+    expect(DEFAULT_PDF_BRANDING.accent_color).toBe('#d4a017');
+    expect(DEFAULT_PDF_BRANDING.header_bg_color).toBe('#1a2f5c');
+  });
 });

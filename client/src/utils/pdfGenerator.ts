@@ -133,9 +133,9 @@ export interface PdfBranding {
 export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
-  primary_color: '#888888',
-  accent_color: 'var(--rmpg-500)', // neutralized 2026-05-30 (was gold #d4a017)
-  header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
+  primary_color: '#1a2f5c',   // navy — restored 2026-07-03 (was #888888 gray)
+  accent_color: '#d4a017',    // gold — restored 2026-07-03 (was the unparseable CSS-var string 'var(--rmpg-500)' — hexToRgb() can't resolve CSS vars, so every substring parsed as NaN and silently fell back to RGB(48,48,48), a dark gray, not the intended gold)
+  header_bg_color: '#1a2f5c', // navy — restored 2026-07-03 (was #333333 charcoal)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor
   // becomes the default (burgundy for hazards, green for resolution,
