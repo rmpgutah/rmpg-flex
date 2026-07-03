@@ -36,7 +36,8 @@ import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
 import { InvestigationTab } from '../components/InvestigationTab';
 import { CaseRelatedSection } from '../components/CaseRelated';
 import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
-import { downloadCaseReport } from '../utils/caseReportGenerator';
+import { downloadPdfV2 } from '../utils/pdf/v2';
+import { caseReportSchema, type CaseReportData } from '../utils/pdf/v2/forms/caseReport';
 import { getSavedViews, persistViews, upsertView, type SavedView } from '../utils/caseSavedViews';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
@@ -550,13 +551,15 @@ export default function CaseManagementPage() {
       const r = await apiFetch<{ data: any[] }>(`/cases/${selected.id}/tasks`);
       tasks = Array.isArray(r) ? r : (r?.data || []);
     } catch { /* tasks optional in the report */ }
-    await downloadCaseReport({
+    const reportData: CaseReportData = {
       caseRow: cf || selected,
       calls: cf?.calls, incidents: cf?.incidents, persons: cf?.persons,
       vehicles: cf?.vehicles, properties: cf?.properties, evidence: cf?.evidence,
       warrants: cf?.warrants, citations: cf?.citations, notes: cf?.notes,
       related: cf?.related, tasks, activity: caseActivity,
-    });
+    };
+    const num = String(reportData.caseRow?.case_number ?? 'case').replace(/[^\w-]/g, '_');
+    await downloadPdfV2(caseReportSchema, reportData, `case_report_${num}.pdf`, { schemaId: 'case_report' });
     addToast('Case report generated', 'success');
   };
 
