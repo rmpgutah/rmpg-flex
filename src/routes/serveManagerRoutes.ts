@@ -41,14 +41,25 @@ sm.get('/status', async (c) => {
 // trigger from the admin tab. Logs a sm_sync_log row (the poller's
 // /poller/poll-now does not log), reusing the same poll logic.
 sm.post('/sync', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const type = body?.type === 'full' ? 'full' : 'incremental';
   const db = getDb(c.env);
-  const inserted = await execute(db,
-    "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now','localtime'))",
-    type);
-  const syncId = inserted.meta?.last_row_id;
+  let syncId: number | undefined;
+  let type: 'full' | 'incremental' = 'incremental';
   try {
+    const body = await c.req.json().catch(() => ({}));
+    type = body?.type === 'full' ? 'full' : 'incremental';
+    const inserted = await execute(db,
+      "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now','localtime'))",
+      type);
+    syncId = inserted.meta?.last_row_id;
+
+    // A 'full' sync re-fetches everything by clearing the poller's
+    // incremental watermark first — pollServeManagerJobs() otherwise
+    // always fetches only since servemanager_last_poll_at.
+    if (type === 'full') {
+      await execute(db,
+        "DELETE FROM system_config WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'");
+    }
+
     const result = await pollServeManagerJobs(c.env as any);
     await execute(db,
       "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
@@ -59,10 +70,12 @@ sm.post('/sync', async (c) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Sync failed';
-    await execute(db,
-      "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
-      message, syncId);
-    return c.json({ success: false, sync_id: syncId, type, jobs_synced: 0, attempts_synced: 0, error: message }, 500);
+    if (syncId != null) {
+      await execute(db,
+        "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+        message, syncId).catch(() => {});
+    }
+    return c.json({ success: false, sync_id: syncId ?? null, type, jobs_synced: 0, attempts_synced: 0, error: message }, 500);
   }
 });
 
