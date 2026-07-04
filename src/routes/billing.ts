@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 const billing = new Hono<Env>();
@@ -317,8 +317,11 @@ billing.post('/invoices/:id/generate', async (c) => {
   try {
     const db = getDb(c.env);
     const invoiceId = parseInt(c.req.param('id'), 10);
-    const invoice = await queryFirst<{ contract_id: number | null }>(db, 'SELECT contract_id FROM invoices WHERE id = ?', invoiceId);
+    const invoice = await queryFirst<{ contract_id: number | null; status: string }>(db, 'SELECT contract_id, status FROM invoices WHERE id = ?', invoiceId);
     if (!invoice) return c.json({ error: 'Invoice not found' }, 404);
+    if (invoice.status !== 'draft') {
+      return c.json({ error: `Cannot regenerate a '${invoice.status}' invoice — only draft invoices can be regenerated (regenerating a sent/paid invoice would silently invalidate recorded payments).` }, 400);
+    }
     if (!invoice.contract_id) {
       return c.json({ error: 'Invoice has no linked contract to regenerate line items from' }, 400);
     }
@@ -330,12 +333,16 @@ billing.post('/invoices/:id/generate', async (c) => {
         error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
       }, 400);
     }
-    await execute(db, 'DELETE FROM invoice_line_items WHERE invoice_id = ?', invoiceId);
+    // Only remove previously auto-generated ('contract') lines — a user who
+    // added custom manual lines shouldn't lose them when clicking Regenerate.
+    // DELETE + INSERT batched atomically so a failure never leaves the
+    // invoice with its old lines gone and no new ones.
     const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
-    await execute(db,
-      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
-       VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`,
-      invoiceId, description, contract.rate_amount, contract.rate_amount);
+    await executeBatch(db, [
+      { sql: "DELETE FROM invoice_line_items WHERE invoice_id = ? AND line_type = 'contract'", bindings: [invoiceId] },
+      { sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+              VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`, bindings: [invoiceId, description, contract.rate_amount, contract.rate_amount] },
+    ]);
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated });

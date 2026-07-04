@@ -1287,10 +1287,10 @@ hr.post('/grievances/bulk-status', requireRole(...MANAGER_ROLES), async (c) => {
     const now = nowIso();
     const resolvedAt = (status === 'resolved' || status === 'dismissed') ? now : null;
     const placeholders = ids.map(() => '?').join(',');
-    await execute(db,
+    const res = await execute(db,
       `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
       status, resolvedAt, now, ...ids);
-    return c.json({ success: true, updated: ids.length });
+    return c.json({ success: true, updated: res.meta.changes ?? 0 });
   } catch (err) {
     console.error('[hr] POST /grievances/bulk-status', err);
     return c.json({ error: 'Failed to bulk-update grievances', code: 'HR_GRIEV_BULK_ERR' }, 500);
