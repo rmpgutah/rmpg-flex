@@ -286,11 +286,12 @@ export async function mapboxOptimization(
   coordinates: Array<[number, number]>,
   options?: { profile?: string; steps?: boolean; roundtrip?: boolean; source?: string; destination?: string }
 ): Promise<MapboxOptimizationResponse> {
-  return apiFetch<MapboxOptimizationResponse>('/mapbox/optimization', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ coordinates, ...options }),
-  });
+  const params = new URLSearchParams({ coordinates: coordsToParam(coordinates) });
+  if (options?.profile) params.set('profile', options.profile);
+  if (options?.source) params.set('source', options.source);
+  if (options?.destination) params.set('destination', options.destination);
+  if (options?.roundtrip != null) params.set('roundtrip', String(options.roundtrip));
+  return apiFetch<MapboxOptimizationResponse>(`/mapbox/optimization?${params}`);
 }
 
 // ── Datasets API ──────────────────────────────────────────

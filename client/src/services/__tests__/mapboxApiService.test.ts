@@ -58,3 +58,25 @@ describe('mapboxMatrix', () => {
     expect(vi.mocked(apiFetch).mock.calls[0][1]).toBeUndefined();
   });
 });
+
+import { mapboxOptimization } from '../mapboxApiService';
+
+describe('mapboxOptimization', () => {
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
+
+  it('issues a GET with source/destination/roundtrip as query params', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ trips: [], waypoints: [] });
+
+    await mapboxOptimization(
+      [[-111.891, 40.7608], [-111.9, 40.75]],
+      { roundtrip: true, source: 'first', destination: 'last' },
+    );
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0];
+    expect(url).toContain('/mapbox/optimization?');
+    expect(url).toContain('roundtrip=true');
+    expect(url).toContain('source=first');
+    expect(url).toContain('destination=last');
+    expect(vi.mocked(apiFetch).mock.calls[0][1]).toBeUndefined();
+  });
+});
