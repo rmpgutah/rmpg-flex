@@ -271,4 +271,34 @@ scrapers.post('/:key/reset-circuit', async (c) => {
   return c.json({ error: `Unknown source key: ${key}` }, 404);
 });
 
+scrapers.post('/bulk', async (c) => {
+  const user = c.get('user') as { role?: string } | undefined;
+  if (!user?.role || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions' }, 403);
+  }
+
+  const body = await c.req.json<{ source_keys?: string[]; enabled?: boolean }>();
+  if (!Array.isArray(body.source_keys) || body.source_keys.length === 0 || typeof body.enabled !== 'boolean') {
+    return c.json({ error: 'source_keys (array) and enabled (boolean) are required' }, 400);
+  }
+
+  const db = getDb(c.env);
+  const enabledVal = body.enabled ? 1 : 0;
+  let affected = 0;
+
+  for (const key of body.source_keys) {
+    const configResult = await execute(
+      db, `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name = ?`, enabledVal, key,
+    );
+    if (configResult.meta.changes > 0) { affected++; continue; }
+
+    const nationalResult = await execute(
+      db, `UPDATE national_warrant_sources SET enabled = ? WHERE source_key = ?`, enabledVal, key,
+    );
+    if (nationalResult.meta.changes > 0) affected++;
+  }
+
+  return c.json({ success: true, affected });
+});
+
 export default scrapers;

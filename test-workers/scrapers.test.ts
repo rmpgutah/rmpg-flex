@@ -140,3 +140,39 @@ describe('POST /api/warrants/scrapers/:key/reset-circuit', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('POST /api/warrants/scrapers/bulk', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ source_keys: ['ada-county-id'], enabled: false }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('disables sources across both frameworks in one call', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ source_keys: ['ada-county-id', 'arcgis-arlington-tx'], enabled: false }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { success: boolean; affected: number };
+    expect(body.affected).toBe(2);
+
+    const listRes = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { sources: Array<{ source_key: string; enabled: 0 | 1 }> };
+    expect(list.sources.find((s) => s.source_key === 'ada-county-id')?.enabled).toBe(0);
+    expect(list.sources.find((s) => s.source_key === 'arcgis-arlington-tx')?.enabled).toBe(0);
+  });
+
+  it('rejects a request missing source_keys', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ enabled: true }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+  });
+});
