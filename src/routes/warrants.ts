@@ -12,6 +12,16 @@ import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 
 const warrants = new Hono<Env>();
 
+// Warrant data (active warrants, per-person profiles) is sworn-side law
+// enforcement data — not everyone with a valid session should see it.
+// client_viewer is this system's external/business-facing role (see
+// CLAUDE.md role list) and has no legitimate reason to query it.
+warrants.use('*', async (c, next) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (user?.role === 'client_viewer') return c.json({ error: 'Forbidden' }, 403);
+  await next();
+});
+
 // GET / — list warrants with pagination + status filter
 // Used by DashboardPage (per_page=1 for count) and WarrantsPage (full list).
 // Query: ?status=active&per_page=1&page=1&sort=created_at&order=desc
