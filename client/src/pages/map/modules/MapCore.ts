@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import {
   createMapboxMap, destroyMapboxMap, injectMapboxStyles, addMapbox3DBuildings,
+  setMapboxStyle, addMapboxTerrain,
 } from '../../../utils/mapboxLoader';
 import { getMapboxTokenStatus } from '../../../utils/mapboxApiKey';
 import { devLog, devWarn } from '../../../utils/devLog';
@@ -24,6 +25,8 @@ export interface UseMapCoreOptions {
   /** Called to bump the caller-owned retryNonce (used on style-not-found retry). */
   onRetryNonceRequest: () => void;
   loadBeatOverlay: (map: mapboxgl.Map) => void | Promise<void>;
+  /** Whether 3D terrain is currently enabled — replicated onto the map after a style switch. */
+  terrainEnabled: boolean;
 }
 
 export interface UseMapCoreResult {
@@ -33,10 +36,19 @@ export interface UseMapCoreResult {
   loading: boolean;
   mapError: string | null;
   mapLibreFallback: boolean;
+  /**
+   * Switches the live map instance to a new style and re-applies dark-style 3D
+   * buildings, the beat overlay, and terrain (if enabled) once the new style loads.
+   * Callers must also update their own persisted `mapStyle` state after calling
+   * this (e.g. `setMapStyleId(styleId)`) — `changeStyle` only mutates the live map
+   * instance, it does not update the `mapStyle` option this hook was called with.
+   */
+  changeStyle: (styleId: MapStyleId) => void;
 }
 
 export function useMapCore({
   preferredEngine, mapStyle, retryNonce, onStyleFallback, onRetryNonceRequest, loadBeatOverlay,
+  terrainEnabled,
 }: UseMapCoreOptions): UseMapCoreResult {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -257,5 +269,18 @@ export function useMapCore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
 
-  return { mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback };
+  const changeStyle = useCallback((styleId: MapStyleId) => {
+    const map = mapRef.current;
+    if (!map) return;
+    setMapboxStyle(map, styleId);
+    map.once('style.load', () => {
+      if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
+      loadBeatOverlay(map);
+      if (terrainEnabled) addMapboxTerrain(map);
+    });
+  }, [loadBeatOverlay, terrainEnabled]);
+
+  return {
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle,
+  };
 }

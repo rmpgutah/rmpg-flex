@@ -17,6 +17,7 @@ describe('useMapCore', () => {
         onStyleFallback: () => {},
         onRetryNonceRequest: () => {},
         loadBeatOverlay: async () => {},
+        terrainEnabled: false,
       })
     );
 
@@ -36,6 +37,7 @@ describe('useMapCore', () => {
         onStyleFallback: () => {},
         onRetryNonceRequest: () => {},
         loadBeatOverlay: async () => {},
+        terrainEnabled: false,
       })
     );
 
@@ -47,5 +49,22 @@ describe('useMapCore', () => {
 
     expect(result.current.mapError).toMatch(/Mapbox access token not configured/);
     expect(result.current.mapLibreFallback).toBe(true);
+  });
+
+  it('changeStyle does not throw when no map instance exists yet', () => {
+    const { result } = renderHook(() =>
+      useMapCore({
+        preferredEngine: 'mapbox',
+        mapStyle: 'dark',
+        retryNonce: 0,
+        onStyleFallback: () => {},
+        onRetryNonceRequest: () => {},
+        loadBeatOverlay: () => {},
+        terrainEnabled: false,
+      })
+    );
+
+    expect(result.current.mapRef.current).toBeNull();
+    expect(() => result.current.changeStyle('satellite')).not.toThrow();
   });
 });
