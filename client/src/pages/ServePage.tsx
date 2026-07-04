@@ -693,7 +693,7 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/servemanager/sync', { method: 'POST', body: JSON.stringify({ type: 'incremental' }) });
       refreshJobs();
     } catch {
       addToast('Sync from ServeManager failed', 'error');
@@ -948,8 +948,35 @@ export default function ServePage() {
   const handleLoadCostEstimate = async (jobId: number) => {
     setCostJobId(jobId);
     try {
-      const data = await apiFetch<any>(`/process-server/${jobId}/cost-estimate`);
-      setCostEstimate(data);
+      const job = jobs.find(j => j.id === jobId);
+      const params = new URLSearchParams({
+        priority: job?.priority ?? 'normal',
+        attempts: String(job?.attempt_count ?? 1),
+      });
+      // GET /billing/cost-estimate returns a generic {subtotal, lines: [{pricing_code, ...}]}
+      // pricing engine response — reshape into the {costs: {...}} named-field shape this
+      // page renders (this route/path used to 404 entirely; /process-server/:id/cost-estimate
+      // never existed as a route).
+      const data = await apiFetch<{ subtotal: number; lines: Array<{ pricing_code: string; quantity: number; line_total: number }> }>(
+        `/billing/cost-estimate?${params}`);
+      const lineFor = (code: string) => data.lines.find(l => l.pricing_code === code);
+      const rush = lineFor('rush');
+      const extra = lineFor('extra_attempt');
+      const skip = lineFor('skip_trace');
+      const mileage = lineFor('mileage');
+      setCostEstimate({
+        costs: {
+          base_fee: lineFor('flat_serve')?.line_total ?? 0,
+          extra_attempts: extra?.quantity ?? 0,
+          extra_attempt_fee: extra?.line_total ?? 0,
+          rush_surcharge: rush?.line_total ?? 0,
+          skip_trace_count: skip?.quantity ?? 0,
+          skip_trace_fee: skip?.line_total ?? 0,
+          mileage: mileage?.quantity ?? 0,
+          mileage_fee: mileage?.line_total ?? 0,
+          total: data.subtotal,
+        },
+      });
     } catch { setCostEstimate(null); }
   };
 
