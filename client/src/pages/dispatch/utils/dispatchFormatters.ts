@@ -8,6 +8,7 @@ import { displayTimeZone } from '../../../utils/timeZoneMode';
 import { humanizeType } from '../../../utils/statusLabels';
 import { coded } from '../../../utils/searchText';
 import type { CallForService } from '../../../types';
+import type { WarningTag } from '../../../components/WarningTags';
 
 /** Filter tab type for the dispatch call queue. */
 export type FilterTab = 'queue' | 'pending' | 'active' | 'hold' | 'serve' | 'cleared' | 'archived';
@@ -200,4 +201,35 @@ export function callMatchesSearch(call: CallForService, query: string): boolean 
     (call.beat_id || '').toLowerCase().includes(q) ||
     (call.beat_name || '').toLowerCase().includes(q)
   );
+}
+
+// Values that mean "no weapon", not "unknown weapon" — same exclusion list
+// the server's callWarnings handler (src/routes/dispatch/extensions.ts) uses
+// so a plain truthy check doesn't flag "none" as ARMED.
+const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'None']);
+
+/**
+ * Derives CallCard's compact warning badges from fields already present on
+ * every list-row call object (weapons_involved/injuries_reported/
+ * domestic_violence — see LIST_VIEW_COLUMNS in calls.ts) — no extra network
+ * round trip. Deliberately a SUBSET of the full safety briefing the server's
+ * GET /dispatch/calls/:id/warnings returns (that one also covers officer-
+ * safety-caution/hazmat/mental-health/felony-in-progress/gang/premise-alert
+ * proximity, all of which live in calls_for_service_ext or need a per-call
+ * geo query — not safe/practical to bulk-fetch for every row in the queue).
+ * This is a "does this call need a second look" glance, not the full detail
+ * — that still lives on the call's own record.
+ */
+export function deriveCallWarnings(call: CallForService): WarningTag[] {
+  const warnings: WarningTag[] = [];
+  if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved))) {
+    warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
+  }
+  if (call.domestic_violence) {
+    warnings.push({ type: 'DV', label: 'DOMESTIC VIOLENCE', severity: 'high', source: 'call' });
+  }
+  if (call.injuries_reported) {
+    warnings.push({ type: 'INJURIES', label: 'INJURIES REPORTED', severity: 'high', source: 'call' });
+  }
+  return warnings;
 }
