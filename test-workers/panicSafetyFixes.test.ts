@@ -137,6 +137,27 @@ describe('POST /api/dispatch/panic/:id/resolve and /false-alarm — role gating 
     expect(second.status).toBe(409);
   });
 
+  it('allows resolving an already-ACKNOWLEDGED alert (not just active) — full active->acknowledged->resolved lifecycle', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const ins = await execute(db, "INSERT INTO panic_alerts (user_id, source) VALUES (5, 'manual')");
+    const id = (ins as unknown as D1Result).meta.last_row_id;
+
+    const dispatcherApp = appAs('dispatcher');
+    const ack = await dispatcherApp.request(
+      `/api/dispatch/panic/${id}/acknowledge`,
+      { method: 'POST' },
+      env as unknown as Record<string, unknown>,
+    );
+    expect(ack.status).toBe(200);
+
+    const resolve = await dispatcherApp.request(
+      `/api/dispatch/panic/${id}/resolve`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) },
+      env as unknown as Record<string, unknown>,
+    );
+    expect(resolve.status).toBe(200);
+  });
+
   it('returns 404 (not fabricated success) when resolving a nonexistent alert id', async () => {
     const app = appAs('dispatcher');
     const res = await app.request(

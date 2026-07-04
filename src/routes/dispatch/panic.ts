@@ -207,7 +207,7 @@ panic.post('/panic/:id/resolve', requireRole('dispatcher', 'supervisor', 'manage
     `UPDATE panic_alerts
      SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'),
          resolution_notes = ?, updated_at = datetime('now')
-     WHERE id = ? AND status = 'active'`,
+     WHERE id = ? AND status IN ('active', 'acknowledged')`,
     userId, body.notes ?? null, id,
   );
   if (result.meta.changes === 0) {
@@ -239,7 +239,7 @@ panic.post('/panic/:id/cancel', async (c) => {
     `UPDATE panic_alerts
      SET status = 'cancelled', resolved_by = ?, resolved_at = datetime('now'),
          updated_at = datetime('now')
-     WHERE id = ? AND status = 'active'`,
+     WHERE id = ? AND status IN ('active', 'acknowledged')`,
     userId, id,
   );
   if (result.meta.changes === 0) {
@@ -260,7 +260,7 @@ panic.post('/panic/:id/false-alarm', requireRole('dispatcher', 'supervisor', 'ma
     `UPDATE panic_alerts
      SET status = 'false_alarm', resolved_by = ?, resolved_at = datetime('now'),
          updated_at = datetime('now')
-     WHERE id = ? AND status = 'active'`,
+     WHERE id = ? AND status IN ('active', 'acknowledged')`,
     userId, id,
   );
   if (result.meta.changes === 0) {

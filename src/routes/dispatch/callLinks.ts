@@ -191,7 +191,7 @@ links.delete('/calls/:id/persons/:linkId', requireRole('dispatcher', 'supervisor
 });
 
 // PATCH /dispatch/calls/:id/persons/:linkId — change role / notes
-links.patch('/calls/:id/persons/:linkId', async (c) => {
+links.patch('/calls/:id/persons/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
@@ -420,7 +420,7 @@ links.delete('/calls/:id/vehicles/:linkId', requireRole('dispatcher', 'superviso
   return c.json({ success: true });
 });
 
-links.patch('/calls/:id/vehicles/:linkId', async (c) => {
+links.patch('/calls/:id/vehicles/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
@@ -764,7 +764,7 @@ links.delete('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervi
 });
 
 // PATCH /dispatch/calls/:id/businesses/:linkId — change role / notes
-links.patch('/calls/:id/businesses/:linkId', async (c) => {
+links.patch('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
