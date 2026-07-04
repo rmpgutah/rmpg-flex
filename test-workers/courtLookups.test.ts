@@ -64,3 +64,38 @@ describe('GET /api/court/lookups', () => {
     expect(body.map((r) => r.value)).toEqual(['third-district', 'justice-court']);
   });
 });
+
+describe('POST /api/court/lookups', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/court/lookups', {
+      method: 'POST',
+      body: JSON.stringify({ category: 'outcome', value: 'guilty', display_label: 'Guilty' }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('creates a new lookup row as admin', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups', {
+      method: 'POST',
+      body: JSON.stringify({ category: 'outcome', value: 'guilty', display_label: 'Guilty', display_order: 10 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { id: number };
+    expect(typeof body.id).toBe('number');
+
+    const listRes = await app.request('/api/court/lookups?category=outcome', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as Array<{ value: string }>;
+    expect(list.map((r) => r.value)).toContain('guilty');
+  });
+
+  it('rejects a request missing value', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups', {
+      method: 'POST',
+      body: JSON.stringify({ category: 'outcome' }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+  });
+});

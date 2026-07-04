@@ -744,4 +744,31 @@ ct.get('/lookups', async (c) => {
   }
 });
 
+ct.post('/lookups', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const body = await c.req.json<{
+    category?: string; value?: string; display_label?: string | null;
+    meta?: string | null; display_order?: number; is_active?: number | boolean;
+  }>();
+  if (!body.category || !body.value) {
+    return c.json({ error: 'category and value are required' }, 400);
+  }
+
+  const result = await execute(
+    db,
+    `INSERT INTO court_lookups (category, value, display_label, meta, display_order, is_active)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    body.category,
+    body.value,
+    body.display_label ?? null,
+    body.meta ?? null,
+    body.display_order ?? 100,
+    body.is_active === undefined ? 1 : (body.is_active ? 1 : 0),
+  );
+  return c.json({ id: result.meta.last_row_id, success: true });
+});
+
 export default ct;
