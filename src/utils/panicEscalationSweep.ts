@@ -9,17 +9,22 @@
 // (simpler than a new Durable Object Alarm the original comment
 // suggested, and this infra is already proven for other sweeps).
 //
-// Escalation: every full minute an active, unacknowledged alert stays
-// unacknowledged, bump escalation_level by 1 and re-broadcast with
-// increasing urgency in the message. Idempotent per-run (only touches
-// rows still status='active'), so a missed/delayed cron tick just
-// catches up next minute with no double-counting risk beyond the
-// normal 1-level-per-minute cadence.
+// Escalation cadence: level N means N full minutes unacknowledged —
+// gated on elapsed time (not just "still active on this tick") so a
+// brand-new alert isn't escalated on its very first cron pass. Capped
+// at MAX_ESCALATION_LEVEL so a stuck/orphaned row doesn't re-broadcast
+// forever with an ever-growing level and alert-fatigue dispatchers.
+// Sent only to on-duty dispatch/command roles via sendToUser —
+// broadcastAll would both duplicate the message to those same users
+// AND blast it to every connected client (field officers, the officer
+// in duress), which isn't the intent of a dispatcher/supervisor re-alert.
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
-import { sendToUser, broadcastAll } from '../routes/ws';
+import { sendToUser } from '../routes/ws';
+
+const MAX_ESCALATION_LEVEL = 10;
 
 interface ActivePanicRow {
   id: number;
@@ -41,12 +46,17 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
 
   let escalated = 0;
   for (const row of rows) {
+    if (row.escalation_level >= MAX_ESCALATION_LEVEL) continue;
+    const minutesUnacked = Math.floor((Date.now() - Date.parse(row.created_at)) / 60000);
+    // Level N corresponds to N minutes unacknowledged — only escalate once
+    // a full additional minute has elapsed since the last level bump.
+    if (minutesUnacked <= row.escalation_level) continue;
+
     const nextLevel = row.escalation_level + 1;
     await execute(db,
       `UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime('now') WHERE id = ? AND status = 'active'`,
       nextLevel, row.id);
 
-    const minutesUnacked = Math.max(1, Math.round((Date.now() - Date.parse(row.created_at)) / 60000));
     const payload = {
       action: 'panic_escalated',
       panic_id: row.id,
@@ -54,7 +64,6 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
       minutes_unacknowledged: minutesUnacked,
       location_address: row.location_address,
     };
-    broadcastAll('panic_alert', payload);
     for (const t of targets) sendToUser(t.id, 'panic_alert', payload);
     escalated++;
   }
