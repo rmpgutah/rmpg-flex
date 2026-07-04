@@ -6,6 +6,7 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { loadSealBase64 } from './pdfAssets';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
@@ -1762,6 +1763,9 @@ async function addLocationMapSection(
   // axes pass exactly through the location the pin marks. Every overlay
   // stroke is double-drawn (wide white underlay + thin dark line) so it
   // stays legible over both dark rooftops and pale concrete.
+  // intentional one-off white(255,255,255)/near-black(20,20,20) pair for this
+  // block — high-contrast overlay drawn on satellite imagery, not report
+  // chrome, so it deliberately does not follow the navy/gold COLOR tokens.
   const cxm = offX + drawW / 2;
   const cym = imgY + drawH / 2;
   const hair = (x1: number, y1: number, x2: number, y2: number) => {
@@ -2297,6 +2301,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         // Status dot
+        // intentional one-off grays, no matching COLOR token — luminance pair
+        // for a small on/off status dot, distinct from any labeled token
         if (it.on) {
           doc.setFillColor(80, 80, 80); // neutralized 2026-05-30
         } else {
@@ -2382,6 +2388,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       // Subsection header bar
       const subX = lx;
       const subW = ffw;
+      // intentional one-off gray, no matching COLOR token — local 3-tier
+      // shading scheme (subsection header / column header / zebra row) that
+      // doesn't line up with any single named token
       doc.setFillColor(230, 230, 230);
       doc.rect(subX, y, subW, 4, 'F');
       doc.setFont('helvetica', 'bold');
@@ -2395,6 +2404,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const cTs   = subX + 30;
       const cDelta = subX + 95;
       const cPhase = subX + 120;
+      // intentional one-off gray, part of the same local shading scheme
+      // noted above — no matching COLOR token
       doc.setFillColor(245, 245, 245);
       doc.rect(subX, y, subW, 3.5, 'F');
       doc.setFont('helvetica', 'bold');
@@ -2425,6 +2436,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           const pad = (n: number) => n.toString().padStart(2, '0');
           deltaStr = hh > 0 ? `+${pad(hh)}:${pad(mm)}:${pad(ss)}` : `+${pad(mm)}:${pad(ss)}`;
         }
+        // intentional one-off gray (zebra row tint), part of the same local
+        // shading scheme noted above — no matching COLOR token
         if (i % 2 === 1) { doc.setFillColor(250, 250, 250); doc.rect(subX, y, subW, rowH, 'F'); }
         doc.text(s.label.toUpperCase(), cStep, y + 2.7);
         doc.text(fmtTimestamp(s.ts as string), cTs, y + 2.7);
@@ -3212,7 +3225,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.rect(lx, strip_y, ffw, headerH);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(0, 0, 0);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const entryLead = continued
         ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
         : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
@@ -3225,11 +3238,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setDrawColor(tagBg[0], tagBg[1], tagBg[2]);
       doc.setLineWidth(0.2);
       doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4);
-      doc.setTextColor(0, 0, 0);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
       if (officerSuffix && !continued) {
         doc.setFont(PDF_VALUE_FONT, 'normal');
         doc.setFontSize(5.5);
+        // intentional one-off light gray, no matching COLOR token — very
+        // faint suffix text, close to BG_TABLE_HDR (224,224,224) but not
+        // the same use case (a table header fill, not near-white text)
         doc.setTextColor(220, 220, 220);
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
@@ -3530,6 +3546,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       } catch {
         try { addImageToPage(doc, data.id_photo!, photoX, photoY, photoW, photoH); } catch { /* skip */ }
       }
+      // intentional one-off gray photo-frame border — coincidentally matches
+      // COLOR.TEXT_CAPTION's value but this is a B&W photocopy-style frame
+      // border, not caption text, so it's not swapped to that token
       doc.setDrawColor(120, 120, 120);
       doc.setLineWidth(0.2);
       doc.rect(photoX, photoY, photoW, photoH);
@@ -4538,7 +4557,7 @@ function drawDiagonalWatermark(
   (doc as any).setGState?.(new (doc as any).GState({ opacity: color[3] }));
   doc.text(text, pageW / 2, pageH / 2, { align: 'center', angle: -30 });
   (doc as any).setGState?.(new (doc as any).GState({ opacity: 1 }));
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
 }
 
 export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Promise<void> {
@@ -4639,11 +4658,11 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     doc.setDrawColor(bucket.color[0], bucket.color[1], bucket.color[2]);
     doc.setLineWidth(0.2);
     doc.roundedRect(chipX, chipY, chipW, chipH, 1, 1);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.text(`${bucket.label} ${data.priority_score}/100`, chipX + chipW / 2, chipY + chipH - 1.7, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     y = chipY + chipH + 1; // advance past chip so next section doesn't overlap
   }
 
@@ -4671,9 +4690,12 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     doc.addImage(qrUrl, 'PNG', qrX, qrY, qrSize, qrSize);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
+    // intentional one-off gray caption — coincidentally matches
+    // COLOR.BORDER_DOUBLE_RULE's value but this is small caption text under
+    // a QR code, not a divider rule, so it's not swapped to that token
     doc.setTextColor(80, 80, 80);
     doc.text('SCAN FOR WARRANT', qrX + qrSize / 2, qrY + qrSize + 2.2, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
   // NCIC compliance block
@@ -4984,9 +5006,9 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 }
 
@@ -6878,6 +6900,12 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
 
+  // Preload the agency seal so drawNibrsHeader()'s synchronous seal-fallback
+  // (getCachedSealBase64()) has it ready — every generateXxxReport() below
+  // calls drawNibrsHeader without passing sealBase64 explicitly, so it relies
+  // entirely on this cache being warm by the time that runs.
+  await loadSealBase64();
+
   // Set form key for footer form numbers
   setActiveFormKey(recordType);
 
@@ -7226,7 +7254,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
     doc.rect(margin, y, contentW, 7);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(`${subj.last_name || '?'}, ${subj.first_name || '?'}`.toUpperCase(), margin + 2, y + 5);
 
     // Severity badge on right
@@ -7299,12 +7327,12 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       // Table header — outline only (low ink)
-      doc.setDrawColor(55, 55, 55);
+      doc.setDrawColor(...COLOR.BORDER_SECTION);
       doc.setLineWidth(0.3);
       doc.rect(margin + 2, y, contentW - 4, 5);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(0, 0, 0);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text('WARRANT #', margin + 4, y + 3.5);
       doc.text('TYPE', margin + 40, y + 3.5);
       doc.text('CHARGE', margin + 60, y + 3.5);
@@ -7474,12 +7502,12 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     ty += 5;
 
     // Header row — outline only (low ink)
-    doc.setDrawColor(55, 55, 55);
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
     doc.setLineWidth(0.3);
     doc.rect(x, ty, w, 5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text('CATEGORY', x + 2, ty + 3.5);
     doc.text('COUNT', x + w - 2, ty + 3.5, { align: 'right' });
     ty += 6;
@@ -7526,12 +7554,12 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
-    doc.setDrawColor(55, 55, 55);
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
     doc.setLineWidth(0.3);
     doc.rect(margin, y, contentW, 5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text('COURT', margin + 2, y + 3.5);
     doc.text('WARRANTS', margin + contentW - 2, y + 3.5, { align: 'right' });
     y += 6;

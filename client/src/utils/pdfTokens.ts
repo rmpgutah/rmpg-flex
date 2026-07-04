@@ -60,7 +60,7 @@ export const COLOR = {
   // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
-  BG_SECTION_HDR: [51, 51, 51]    as const,  // #333 dark grey — section/hero header bars. Softened from solid black 2026-06-16 (white titles stay legible; sub-headings use TEXT_SUBHEAD_INVERTED)
+  BG_SECTION_HDR: [26, 47, 92]    as const,  // #1a2f5c navy — restored 2026-07-03 (was #333 charcoal)
   // Reconfigured 2026-07-03: was #333 dark grey (matched BG_SECTION_HDR).
   // Tables now sit under a light-gray/white dual tone throughout — this
   // header band no longer carries the dark agency-banner treatment, so it
@@ -73,14 +73,10 @@ export const COLOR = {
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
 
-  // Brand accent — pivoted to grayscale 2026-05-04 (user request).
-  // Token name retained for backwards compatibility with existing call
-  // sites; the underlying value is now a dark charcoal so every site
-  // that previously rendered a gold accent (agency header strip,
-  // quick-reference banner left rule, district bar accent, notes entry
-  // left rule, horizontal section dividers) automatically becomes
-  // grayscale via this single point of change.
-  ACCENT_GOLD:     [0, 0, 0]       as const,  // Pure black accent (Spillman convention, 2026-05-30)
+  // Brand accent — restored to color 2026-07-03 (navy letterhead program,
+  // supersedes the 2026-05-04 grayscale pivot). Real gold, used for the
+  // header tagline, section-close rule, and priority-bar high end.
+  ACCENT_GOLD:     [212, 160, 23]  as const,  // #d4a017
 
   // Financial — neutralized 2026-05-30: credit green and debit red converted to
   // neutral grays so financial indicators carry zero color splash. Distinct
@@ -110,12 +106,12 @@ export const COLOR = {
   FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (unchanged)
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [0, 0, 0]        as const,  // Black sidebar tab (Spillman convention, 2026-05-30)
+  BG_SIDEBAR_TAB:      [26, 47, 92]     as const,  // #1a2f5c navy — restored 2026-07-03
   BG_FORM_CELL_LABEL:  [241, 241, 241]  as const,  // Light gray label strip inside cell (de-blued 2026-05-30)
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
   // Police-form furniture (added 2026-04-17 for enhanced LE styling)
-  RULE_GOLD:           [80, 80, 80]     as const,  // Dark gray accent rule (was gold; grayscale 2026-05-04)
+  RULE_GOLD:           [212, 160, 23]   as const,  // #d4a017 — restored 2026-07-03
   RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
   BATES_STAMP:         [70, 70, 70]     as const,  // Neutral gray (was burgundy; neutralized 2026-05-30)
   BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
@@ -133,10 +129,10 @@ export const COLOR = {
   // Priority bar palette — neutralized 2026-05-30: red/orange/yellow/green
   // hues replaced by a luminance gradient (darkest → lightest) so the urgency
   // level is still visually distinguishable on grayscale printouts.
-  PRIO_1_BG:           [50, 50, 50]     as const,  // Darkest (was red)
-  PRIO_2_BG:           [75, 75, 75]     as const,  // Medium-dark (was orange)
-  PRIO_3_BG:           [100, 100, 100]  as const,  // Medium (was yellow)
-  PRIO_4_BG:           [125, 125, 125]  as const,  // Lightest (was green)
+  PRIO_1_BG:           [26, 47, 92]     as const,  // #1a2f5c navy — most urgent
+  PRIO_2_BG:           [58, 84, 138]    as const,  // mid navy
+  PRIO_3_BG:           [140, 130, 90]   as const,  // navy-to-gold transition
+  PRIO_4_BG:           [230, 210, 160]  as const,  // pale gold — least urgent
   PRIO_FG:             [255, 255, 255]  as const,
 } as const;
 
@@ -157,12 +153,12 @@ export const CLASSIFICATION: Record<
   // distinctions (LES red, CUI purple, FOUO amber, UNCLAS green, CONFIDENTIAL
   // dark red, SEALED gold text) replaced with luminance-graded grays. CJIS
   // markings remain visually distinguishable via bar shade + label text.
-  LES:          { bg: [50, 50, 50],   fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
-  CUI:          { bg: [65, 65, 65],   fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
-  FOUO:         { bg: [80, 80, 80],   fg: [255, 255, 255], label: 'FOR OFFICIAL USE ONLY' },
-  UNCLAS:       { bg: [100, 100, 100], fg: [255, 255, 255], label: 'UNCLASSIFIED' },
-  CONFIDENTIAL: { bg: [40, 40, 40],   fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
-  SEALED:       { bg: [30, 30, 30],   fg: [200, 200, 200], label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
+  LES:          { bg: [26, 47, 92],   fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
+  CUI:          { bg: [40, 62, 112],  fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
+  FOUO:         { bg: [58, 84, 138],  fg: [255, 255, 255], label: 'FOR OFFICIAL USE ONLY' },
+  UNCLAS:       { bg: [90, 110, 150], fg: [255, 255, 255], label: 'UNCLASSIFIED' },
+  CONFIDENTIAL: { bg: [15, 28, 56],   fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
+  SEALED:       { bg: [10, 18, 38],   fg: [212, 160, 23],  label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
   DRAFT:        { bg: [110, 110, 110], fg: [255, 255, 255], label: 'DRAFT -- UNOFFICIAL -- NOT FOR DISTRIBUTION' },
 } as const;
 

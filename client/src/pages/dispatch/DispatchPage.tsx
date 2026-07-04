@@ -3789,7 +3789,7 @@ export default function DispatchPage() {
                     onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}
-                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    hasIntelHit={hitCallIds.has(call.id)}
                     onTogglePin={handleTogglePin}
                     signalInfo={signalLookup(call.incident_type || '') || null}
                   />
