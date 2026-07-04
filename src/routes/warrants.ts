@@ -333,6 +333,21 @@ warrants.get('/national-coverage', async (c) => {
     stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
   }
 
+  // Utah is always covered regardless of national_warrant_sources /
+  // warrant_scraper_config state: it has its own dedicated poller/pipeline
+  // (utahWarrantPoller.ts / runUtahWarrantScan), entirely separate from the
+  // generic code-adapter registry gating that getEnabledAdapters applies.
+  // The `utah-warrant-watch` adapter key is never seeded into
+  // warrant_scraper_config by any migration, so getEnabledAdapters correctly
+  // (and misleadingly, for this route's purposes) excludes it when the table
+  // has no Utah row — see src/routes/scrapers.ts's `POST /:key/trigger`
+  // handler for the same always-on special-case precedent. Guard with
+  // `!stateSources.has('UT')` so this stays idempotent if getEnabledAdapters
+  // ever does return a UT-keyed adapter (e.g. fail-open on a missing table).
+  if (!stateSources.has('UT')) {
+    stateSources.set('UT', 1);
+  }
+
   const warrantCountRows = await query<{ state: string | null; n: number }>(
     db, `SELECT state, COUNT(*) as n FROM scraped_warrants WHERE status = 'active' GROUP BY state`,
   );

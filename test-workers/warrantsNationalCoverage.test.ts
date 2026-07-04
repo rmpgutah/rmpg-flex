@@ -28,6 +28,22 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT, first_name TEXT, last_name TEXT,
     date_of_birth TEXT, age INTEGER, state TEXT, status TEXT DEFAULT 'active'
   )`);
+  // Real production schema (migrations/baseline/schema.sql + 0151_warrant_scraper_enabled.sql):
+  // id, created_at, source_name, last_run_at, last_error, source_type, priority,
+  // content_hash, content_hash_updated_at, etag, last_modified, last_success_at,
+  // avg_parse_count, p95_latency_ms, jitter_seed, enabled. getEnabledAdapters()
+  // queries `SELECT source_name FROM warrant_scraper_config WHERE enabled = 1`.
+  // Deliberately seeded EMPTY (no utah-warrant-watch, ada-county-id, or
+  // natrona-county-wy rows) — this proves the route's Utah coverage comes from
+  // the dedicated always-on special case, not from getEnabledAdapters failing
+  // open (which would incorrectly also cover ID/WY).
+  await execute(db, `CREATE TABLE IF NOT EXISTS warrant_scraper_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')),
+    source_name TEXT, last_run_at TEXT, last_error TEXT, source_type TEXT, priority INTEGER,
+    content_hash TEXT, content_hash_updated_at TEXT, etag TEXT, last_modified TEXT,
+    last_success_at TEXT, avg_parse_count REAL, p95_latency_ms INTEGER, jitter_seed INTEGER,
+    enabled INTEGER NOT NULL DEFAULT 1
+  )`);
 
   await execute(db, `INSERT INTO national_warrant_sources
     (source_key, family, display_name, state, jurisdiction, format, enabled, priority)
@@ -68,8 +84,23 @@ describe('GET /api/warrants/national-coverage', () => {
     expect(la?.available).toBe(false);
     expect(la?.message).toBeTruthy();
 
+    // Utah is ALWAYS covered via the route's dedicated always-on special
+    // case (utah-warrant-watch has its own poller/pipeline, independent of
+    // national_warrant_sources / warrant_scraper_config). This table is
+    // seeded empty with no UT row, so this proves the special case — not
+    // getEnabledAdapters' fail-open behavior — is what makes this true.
     const ut = body.states.find((s) => s.stateCode === 'UT');
     expect(ut?.available).toBe(true);
+
+    // Idaho (ada-county-id) and Wyoming (natrona-county-wy) are genuinely
+    // gated, generic code-resident adapters — NOT the Utah always-on special
+    // case. warrant_scraper_config exists in this test (so the query
+    // succeeds, no fail-open) but has zero rows, so getEnabledAdapters()
+    // returns [] and neither adapter is counted as an enabled source.
+    const id = body.states.find((s) => s.stateCode === 'ID');
+    expect(id?.available).toBe(false);
+    const wy = body.states.find((s) => s.stateCode === 'WY');
+    expect(wy?.available).toBe(false);
 
     // A state with zero sources of any kind, e.g. Hawaii.
     const hi = body.states.find((s) => s.stateCode === 'HI');
