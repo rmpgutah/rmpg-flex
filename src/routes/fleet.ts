@@ -4652,14 +4652,17 @@ fleet.get('/:id/readiness', async (c) => {
 // of this file) — no per-route role check needed here.
 
 fleet.get('/:vehicleId{[0-9]+}/expenses', async (c) => {
-  const db = getDb(c.env);
-  const vehicleId = Number(c.req.param('vehicleId'));
-  const rows = await query(
-    db,
-    `SELECT * FROM fleet_expenses WHERE vehicle_id = ? ORDER BY expense_date DESC, id DESC`,
-    vehicleId,
-  );
-  return c.json({ data: rows });
+  try {
+    const vehicleId = Number(c.req.param('vehicleId'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const rows = await query(
+      db,
+      `SELECT * FROM fleet_expenses WHERE vehicle_id = ? ORDER BY expense_date DESC, id DESC`,
+      vehicleId,
+    );
+    return c.json({ data: rows });
+  } catch (err) { console.error('GET /fleet/:vehicleId/expenses failed:', err); return dbErrorResponse(c, err, 'Failed to fetch vehicle expenses'); }
 });
 
 export default fleet;
