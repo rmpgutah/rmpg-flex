@@ -31,6 +31,16 @@ describe('utahAdapter', () => {
     const result = utahAdapter.parseDetailPage('<html><body>Not found</body></html>');
     expect(result).toEqual({ offense: null, risk_level: null, tier: null, registration_status: null });
   });
+
+  it('treats a label with no value before the next tag/newline as not-found (null, not empty string)', () => {
+    const html = `<div class="offender-detail">
+      <p>Offense: </p>
+      <p>Risk Level: High</p>
+    </div>`;
+    const result = utahAdapter.parseDetailPage(html);
+    expect(result.offense).toBeNull();
+    expect(result.risk_level).toBe('High');
+  });
 });
 
 describe('idahoAdapter', () => {

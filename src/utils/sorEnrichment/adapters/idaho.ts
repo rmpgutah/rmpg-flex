@@ -4,7 +4,14 @@ function extractLabel(html: string, ...labels: string[]): string | null {
   for (const label of labels) {
     const re = new RegExp(`${label}\\s*:\\s*(?:<[^>]*>\\s*)?([^<\\n]+)`, 'i');
     const match = html.match(re);
-    if (match?.[1]) return match[1].trim();
+    if (match?.[1]) {
+      const value = match[1].trim();
+      // Empty string means the label matched but no real value followed (e.g. nested
+      // tags like `Offense: <b><i>Robbery</i></b>` where the regex only skips one tag
+      // and lands on whitespace between the two opens). Treat that as not-found rather
+      // than returning a misleading empty-but-present value.
+      if (value) return value;
+    }
   }
   return null;
 }

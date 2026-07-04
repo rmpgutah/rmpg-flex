@@ -9,6 +9,11 @@
 // — these were built without a live HTML sample from any of the 6 target
 // states, so precision will need tightening once real pages are captured
 // (see raw_snippet on sor_enrichment_runs, meant for exactly that).
+//
+// Current regex only handles same-line `Label: value` pairs in flat or singly-nested
+// tags — table/definition-list layouts (`<th>Label</th><td>value</td>`) are NOT yet
+// supported and will return null for those fields; tighten once real page HTML is
+// captured (see the design doc).
 
 export interface ParsedEnrichment {
   offense: string | null;
