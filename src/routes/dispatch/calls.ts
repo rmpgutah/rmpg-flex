@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -981,21 +981,29 @@ calls.post('/bulk-reassign', requireRole('admin', 'manager'), async (c) => {
     }
     priorUnitIds.delete(unitId);
 
-    let updated = 0;
-    for (const batch of chunk(callIds, D1_PARAM_CHUNK)) {
+    // Collect every write as one batch of statements so db.batch() commits
+    // them atomically — chunked sequential execute() calls left a real gap
+    // where a mid-operation failure (e.g. a later chunk throwing) could
+    // leave some calls reassigned and others not, or calls updated but
+    // units never released.
+    const stmts: { sql: string; bindings?: unknown[] }[] = [];
+    const callChunks = chunk(callIds, D1_PARAM_CHUNK);
+    for (const batch of callChunks) {
       const ph = batch.map(() => '?').join(',');
-      const res = await execute(db,
-        `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
-        JSON.stringify([unitId]), JSON.stringify([unit.call_sign]), ...batch);
-      updated += res.meta.changes ?? 0;
+      stmts.push({
+        sql: `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
+        bindings: [JSON.stringify([unitId]), JSON.stringify([unit.call_sign]), ...batch],
+      });
     }
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", callIds[0], unitId);
+    stmts.push({ sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [callIds[0], unitId] });
     if (priorUnitIds.size > 0) {
       for (const batch of chunk(Array.from(priorUnitIds), D1_PARAM_CHUNK)) {
         const ph = batch.map(() => '?').join(',');
-        await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`, ...batch);
+        stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`, bindings: batch });
       }
     }
+    const results = await executeBatch(db, stmts);
+    const updated = results.slice(0, callChunks.length).reduce((sum, r) => sum + (r.meta.changes ?? 0), 0);
     broadcastAll('dispatch_update', { action: 'bulk_reassigned', call_ids: callIds, unit_id: unitId });
     return c.json({ updated, target: unit.call_sign });
   } catch (err) {
@@ -1025,12 +1033,18 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
 
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
     const ids = open.map((r) => r.id);
+
+    // Collect every write as one batch so db.batch() commits atomically —
+    // sequential execute() calls left a gap where a mid-operation failure
+    // could close some calls without releasing their units, or vice versa.
+    const stmts: { sql: string; bindings?: unknown[] }[] = [];
     for (const batch of chunk(ids, D1_PARAM_CHUNK)) {
       const ph = batch.map(() => '?').join(',');
       const params: unknown[] = dispSql ? [disposition, ...batch] : batch;
-      await execute(db,
-        `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now')${dispSql} WHERE id IN (${ph})`,
-        ...params);
+      stmts.push({
+        sql: `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now')${dispSql} WHERE id IN (${ph})`,
+        bindings: params,
+      });
     }
 
     const unitIds = Array.from(new Set(open.flatMap((r) => {
@@ -1038,15 +1052,16 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
     })));
     for (const batch of chunk(unitIds, D1_PARAM_CHUNK)) {
       const uPh = batch.map(() => '?').join(',');
-      await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${uPh})`, ...batch);
+      stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${uPh})`, bindings: batch });
     }
     // Also release by current_call_id — mirrors the single-call handler's
     // `WHERE current_call_id = ? OR id IN (...)` since a unit can have
     // current_call_id set while missing from the JSON array.
     for (const batch of chunk(ids, D1_PARAM_CHUNK)) {
       const cPh = batch.map(() => '?').join(',');
-      await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id IN (${cPh})`, ...batch);
+      stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id IN (${cPh})`, bindings: batch });
     }
+    await executeBatch(db, stmts);
     broadcastAll('dispatch_update', { action: 'force_closed_all', call_ids: ids });
     return c.json({ closed: ids.length });
   } catch (err) {
