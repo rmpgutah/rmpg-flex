@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
+import { requireRole } from '../../middleware/auth';
 
 const panic = new Hono<Env>();
 
@@ -53,10 +54,15 @@ panic.post('/panic', async (c) => {
     db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
   );
   
-  // Dedupe: check for recent panic CAD call
+  // Dedupe: check for a recent panic CAD call, bounded to the last 30
+  // minutes so a fresh activation never silently attaches to a stale call
+  // from days/weeks ago.
   const recentCalls = await query<{ id: number }>(
     db,
-    'SELECT id FROM calls_for_service WHERE source = \'panic\' AND dispatcher_id = ? ORDER BY created_at DESC LIMIT 1',
+    `SELECT id FROM calls_for_service
+     WHERE source = 'panic' AND dispatcher_id = ?
+       AND created_at > datetime('now', '-30 minutes')
+     ORDER BY created_at DESC LIMIT 1`,
     userId,
   );
   
@@ -121,36 +127,44 @@ panic.post('/panic', async (c) => {
     sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
   }
 
-  // Automated backup dispatch: assign 2 nearest available units to the officer's location
+  // Automated backup dispatch: assign 2 nearest available units to the
+  // officer's location. Requires a real GPS fix — without one, "nearest"
+  // would silently rank units by distance to (0,0) ("null island") and
+  // could auto-dispatch units to a bogus location, so we skip entirely
+  // when latitude/longitude weren't provided.
   try {
-    const available = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
-      db,
-      `SELECT id, call_sign, latitude, longitude FROM units
-        WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
-        ORDER BY (CASE WHEN latitude IS NULL OR longitude IS NULL THEN 999
-                  ELSE ((latitude - ?) * (latitude - ?) + (longitude - ?) * (longitude - ?)) END)
-        LIMIT 2`,
-      body.latitude ?? 0, body.latitude ?? 0, body.longitude ?? 0, body.longitude ?? 0,
-    );
-    if (available.length > 0) {
-      const backupCallId = targetCallId;
-      for (const unit of available) {
+    if (body.latitude != null && body.longitude != null) {
+      const available = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
+        db,
+        `SELECT id, call_sign, latitude, longitude FROM units
+          WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
+          ORDER BY (CASE WHEN latitude IS NULL OR longitude IS NULL THEN 999
+                    ELSE ((latitude - ?) * (latitude - ?) + (longitude - ?) * (longitude - ?)) END)
+          LIMIT 2`,
+        body.latitude, body.latitude, body.longitude, body.longitude,
+      );
+      if (available.length > 0) {
+        const backupCallId = targetCallId;
+        for (const unit of available) {
+          await execute(db,
+            `UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?`,
+            backupCallId, unit.id);
+        }
         await execute(db,
-          `UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?`,
-          backupCallId, unit.id);
+          `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
+          JSON.stringify(available.map((u) => u.id)), backupCallId);
+        await execute(db,
+          `UPDATE panic_alerts SET backup_call_id = ?, backup_units = ? WHERE id = ?`,
+          backupCallId, JSON.stringify(available.map((u) => u.call_sign)), panicId);
+        broadcastAll('dispatch_update', {
+          action: 'backup_dispatched',
+          panic_id: panicId,
+          backup_call_id: backupCallId,
+          units: available.map((u) => u.call_sign),
+        });
       }
-      await execute(db,
-        `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
-        JSON.stringify(available.map((u) => u.id)), backupCallId);
-      await execute(db,
-        `UPDATE panic_alerts SET backup_call_id = ?, backup_units = ? WHERE id = ?`,
-        backupCallId, JSON.stringify(available.map((u) => u.call_sign)), panicId);
-      broadcastAll('dispatch_update', {
-        action: 'backup_dispatched',
-        panic_id: panicId,
-        backup_call_id: backupCallId,
-        units: available.map((u) => u.call_sign),
-      });
+    } else {
+      console.log('[panic] skipped auto-backup dispatch: no GPS coordinates on activation');
     }
   } catch (err) {
     console.error('[panic] auto-backup dispatch failed:', err);
@@ -164,7 +178,7 @@ panic.post('/panic/:id/acknowledge', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const userId = c.get('userId') as number;
-  await execute(
+  const result = await execute(
     db,
     `UPDATE panic_alerts
      SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = datetime('now'),
@@ -172,31 +186,42 @@ panic.post('/panic/:id/acknowledge', async (c) => {
      WHERE id = ? AND status = 'active'`,
     userId, id,
   );
+  if (result.meta.changes === 0) {
+    const exists = await queryFirst(db, 'SELECT id FROM panic_alerts WHERE id = ?', id);
+    return c.json({ error: exists ? 'Alert is not in a state that can be acknowledged' : 'Not found' }, exists ? 409 : 404);
+  }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_acknowledged', panic: updated });
   return c.json(updated);
 });
 
-// POST /dispatch/panic/:id/resolve — incident over, no further action
-panic.post('/panic/:id/resolve', async (c) => {
+// POST /dispatch/panic/:id/resolve — incident over, no further action.
+// Dismissing someone ELSE's active alert requires dispatcher-tier+.
+panic.post('/panic/:id/resolve', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ notes?: string }>().catch(() => ({} as any));
-  await execute(
+  const result = await execute(
     db,
     `UPDATE panic_alerts
      SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'),
          resolution_notes = ?, updated_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'active'`,
     userId, body.notes ?? null, id,
   );
+  if (result.meta.changes === 0) {
+    const exists = await queryFirst(db, 'SELECT id FROM panic_alerts WHERE id = ?', id);
+    return c.json({ error: exists ? 'Alert is not in a state that can be resolved' : 'Not found' }, exists ? 409 : 404);
+  }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_resolved', panic: updated });
   return c.json(updated);
 });
 
-// POST /dispatch/panic/:id/cancel — officer cancels their own alert
+// POST /dispatch/panic/:id/cancel — officer cancels their own alert.
+// No requireRole here — the ownership check below is the correct floor
+// (any role may cancel THEIR OWN alert; a role gate would be redundant).
 panic.post('/panic/:id/cancel', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
@@ -209,32 +234,39 @@ panic.post('/panic/:id/cancel', async (c) => {
   if (row.user_id !== userId) {
     return c.json({ error: 'Only the originating officer may cancel' }, 403);
   }
-  await execute(
+  const result = await execute(
     db,
     `UPDATE panic_alerts
      SET status = 'cancelled', resolved_by = ?, resolved_at = datetime('now'),
          updated_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'active'`,
     userId, id,
   );
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'Alert is not in a state that can be cancelled' }, 409);
+  }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_cancelled', panic: updated });
   return c.json(updated);
 });
 
-// POST /dispatch/panic/:id/false-alarm — supervisor marks it as false
-panic.post('/panic/:id/false-alarm', async (c) => {
+// POST /dispatch/panic/:id/false-alarm — dispatcher-tier+ marks it as false.
+panic.post('/panic/:id/false-alarm', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const userId = c.get('userId') as number;
-  await execute(
+  const result = await execute(
     db,
     `UPDATE panic_alerts
      SET status = 'false_alarm', resolved_by = ?, resolved_at = datetime('now'),
          updated_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'active'`,
     userId, id,
   );
+  if (result.meta.changes === 0) {
+    const exists = await queryFirst(db, 'SELECT id FROM panic_alerts WHERE id = ?', id);
+    return c.json({ error: exists ? 'Alert is not in a state that can be marked false-alarm' : 'Not found' }, exists ? 409 : 404);
+  }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
