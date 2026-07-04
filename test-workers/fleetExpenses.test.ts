@@ -141,3 +141,27 @@ describe('PUT /api/fleet/expenses/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('DELETE /api/fleet/expenses/:id', () => {
+  it('rejects non-manager roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/fleet/expenses/2', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('deletes an expense as manager', async () => {
+    const app = buildApp('manager');
+    const res = await app.request('/api/fleet/expenses/2', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+
+    const listRes = await app.request('/api/fleet/1/expenses', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { data: Array<{ id: number }> };
+    expect(list.data.find((r) => r.id === 2)).toBeUndefined();
+  });
+
+  it('returns 404 for a missing id', async () => {
+    const app = buildApp('manager');
+    const res = await app.request('/api/fleet/expenses/9999', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(404);
+  });
+});

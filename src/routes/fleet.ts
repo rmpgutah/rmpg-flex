@@ -4741,4 +4741,16 @@ fleet.put('/expenses/:id{[0-9]+}', async (c) => {
   }
 });
 
+fleet.delete('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  await execute(db, 'DELETE FROM fleet_expenses WHERE id = ?', id);
+  return c.json({ success: true });
+});
+
 export default fleet;
