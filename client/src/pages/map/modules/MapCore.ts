@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
+import type mapboxgl from 'mapbox-gl';
 import type { MapStyleId } from '../utils/mapConstants';
 
 export interface UseMapCoreOptions {
