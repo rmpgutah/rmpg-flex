@@ -100,6 +100,10 @@ export function dbErrorResponse(c: Context, err: unknown, fallback: string, appC
 
   const env = c.env as { DB?: D1Database } | undefined;
   if (env?.DB) {
+    // `c.executionCtx` is a Hono getter that THROWS when there is none (e.g.
+    // `app.request(...)` in tests) — guard it the same way auditLog.ts does.
+    let ctx: { waitUntil(p: Promise<unknown>): void } | undefined;
+    try { ctx = c.executionCtx; } catch { ctx = undefined; }
     logErrorToDb(env.DB, {
       severity: 'error',
       category: 'route',
@@ -107,7 +111,7 @@ export function dbErrorResponse(c: Context, err: unknown, fallback: string, appC
       traceId,
       source: c.req.path,
       statusCode: classified.status,
-    }, c.executionCtx);
+    }, ctx);
   }
 
   // `detail` (not `message`) — client/src/hooks/useApi.ts:390 reads
