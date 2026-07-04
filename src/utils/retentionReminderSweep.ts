@@ -14,12 +14,9 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { query, queryFirst } from './db';
+import { queryFirst } from './db';
 import { evaluateNotificationRules } from '../routes/notificationEngine';
-
-// Mirrors RETENTION_SCHEDULE in src/routes/records.ts (not exported from
-// there — keep these two in sync if that schedule ever changes).
-const RETENTION_SCHEDULE: Record<string, number> = { evidence: 365 * 99, incidents: 365 * 10 };
+import { RETENTION_SCHEDULE } from '../routes/records';
 
 export async function sweepRetentionReminders(
   db: D1Database,

@@ -2140,7 +2140,10 @@ records.get('/search', async (c) => {
 
 // ── Records Retention ──────────────────────────────────────────
 
-const RETENTION_SCHEDULE: Record<string, number> = {
+// Exported so src/utils/retentionReminderSweep.ts can read the same
+// schedule enforcement actually acts on, instead of a hand-copied mirror
+// that could silently drift.
+export const RETENTION_SCHEDULE: Record<string, number> = {
   evidence: 365 * 99,
   incidents: 365 * 10,
   persons: 0,

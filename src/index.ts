@@ -260,15 +260,19 @@ export default {
           }).catch((err) => console.error('Panic escalation sweep failed:', err)),
         ).catch(() => {}),
       );
-      // Daily rebalance at 04:00 America/Denver. The cron fires every minute;
-      // we gate on Denver hour == 4 and run at most once (rebalance is idempotent
-      // so a double-fire is harmless; the hour gate keeps it to ~60 runs/day).
-      const denverHour = parseInt(
-        new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false })
-          .format(new Date()),
-        10,
-      );
-      if (denverHour === 4) {
+      // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
+      // gate on BOTH Denver hour == 4 AND minute == 0 — an hour-only gate
+      // (the original approach) still fires ~60x during that hour. Harmless
+      // for the idempotent runDailyRebalance, but the notification sweeps
+      // below are NOT idempotent (fireRule inserts a fresh notifications row
+      // every call, no dedup) — an hour-only gate spammed ~60 duplicate
+      // notifications per matching record per targeted user per day.
+      const denverNow = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(new Date());
+      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10);
+      const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
+      if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
