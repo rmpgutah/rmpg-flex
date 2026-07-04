@@ -83,6 +83,7 @@ import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
 import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
+import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 import {
@@ -129,6 +130,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
+  const [showOverlaysGroup, setShowOverlaysGroup] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -1204,13 +1206,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <RefreshCw className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
-                onClick={() => setBeatsVisible(v => !v)}
-                className={`p-1.5 ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              </IconButton>
-              <IconButton
                 aria-label="Fly to my position"
                 onClick={flyToSelf}
                 className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
@@ -1218,48 +1213,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <Crosshair className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-                onClick={() => setTerrainEnabled(v => !v)}
-                className={`p-1.5 ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Mountain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
-                onClick={toggleIsochrone}
-                className={`p-1.5 ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
-                onClick={() => setSelfPosVisible(v => !v)}
-                className={`p-1.5 ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Navigation2 className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Layers panel"
                 onClick={() => setLayersPanelOpen(v => !v)}
                 className={`p-1.5 ${layersPanelOpen ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 <Layers className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
-                onClick={() => breadcrumbs.toggle()}
-                className={`p-1.5 ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="GPS Breadcrumb Trails (B)"
-              >
-                <Footprints className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
-                onClick={() => daylight.toggle()}
-                className={`p-1.5 ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Day/Night Terminator (D)"
-              >
-                <Sun className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
                 aria-label={geofenceAlerts.enabled ? 'Disable premise alerts' : 'Enable premise alerts'}
@@ -1286,22 +1244,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <Volume2 className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
-                onClick={() => coordGrid.toggle()}
-                className={`p-1.5 ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Coordinate Grid (G)"
-              >
-                <Hash className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
-                onClick={() => weatherRadar.toggle()}
-                className={`p-1.5 ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Weather Radar"
-              >
-                <CloudRain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Bookmarks"
                 onClick={() => setShowBookmarksPanel(v => !v)}
                 className={`p-1.5 ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
@@ -1316,14 +1258,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 title="Export Map as Image"
               >
                 <Download className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
-                onClick={() => setDeckEnabled(v => !v)}
-                className={`p-1.5 ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Deck.gl GPU Overlay"
-              >
-                <Zap className="w-3.5 h-3.5" />
               </IconButton>
             </div>
           </div>
@@ -1344,6 +1278,91 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           >
             <Grid3X3 className="w-4 h-4" />
           </IconButton>
+
+          <ToolbarDropdownGroup
+            icon={Layers}
+            label="Overlays"
+            open={showOverlaysGroup}
+            onToggle={() => setShowOverlaysGroup(v => !v)}
+          >
+            <IconButton
+              aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
+              onClick={() => setBeatsVisible(v => !v)}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+            >
+              {beatsVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </IconButton>
+            <IconButton
+              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
+              onClick={() => setTerrainEnabled(v => !v)}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+            >
+              <Mountain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
+              onClick={toggleIsochrone}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+            >
+              <Clock className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
+              onClick={() => setSelfPosVisible(v => !v)}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+            >
+              <Navigation2 className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
+              onClick={() => breadcrumbs.toggle()}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+              title="GPS Breadcrumb Trails (B)"
+            >
+              <Footprints className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
+              onClick={() => daylight.toggle()}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+              title="Day/Night Terminator (D)"
+            >
+              <Sun className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
+              onClick={() => coordGrid.toggle()}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+              title="Coordinate Grid (G)"
+            >
+              <Hash className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+              onClick={() => weatherRadar.toggle()}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+              title="Weather Radar"
+            >
+              <CloudRain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
+              onClick={() => setDeckEnabled(v => !v)}
+              className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              style={{ borderRadius: 2 }}
+              title="Deck.gl GPU Overlay"
+            >
+              <Zap className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
 
           {showAdvancedToolbar && (
             <>
