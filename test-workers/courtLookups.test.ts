@@ -99,3 +99,36 @@ describe('POST /api/court/lookups', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('PUT /api/court/lookups/:id', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/court/lookups/1', {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: 0 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('toggles is_active with a partial body', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups/2', {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: 1 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+
+    const listRes = await app.request('/api/court/lookups?category=court', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as Array<{ id: number; is_active: number }>;
+    expect(list.find((r) => r.id === 2)?.is_active).toBe(1);
+  });
+
+  it('returns 404 for a missing id', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups/9999', {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: 0 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(404);
+  });
+});

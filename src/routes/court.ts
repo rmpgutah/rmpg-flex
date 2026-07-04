@@ -771,4 +771,34 @@ ct.post('/lookups', async (c) => {
   return c.json({ id: result.meta.last_row_id, success: true });
 });
 
+const LOOKUP_FIELDS = ['category', 'value', 'display_label', 'meta', 'display_order', 'is_active'] as const;
+
+ct.put('/lookups/:id', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM court_lookups WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Lookup not found' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const field of LOOKUP_FIELDS) {
+    if (field in body) {
+      sets.push(`${field} = ?`);
+      values.push(field === 'is_active' ? (body[field] ? 1 : 0) : body[field]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+
+  sets.push(`updated_at = datetime('now')`);
+  values.push(id);
+  await execute(db, `UPDATE court_lookups SET ${sets.join(', ')} WHERE id = ?`, ...values);
+  return c.json({ success: true });
+});
+
 export default ct;
