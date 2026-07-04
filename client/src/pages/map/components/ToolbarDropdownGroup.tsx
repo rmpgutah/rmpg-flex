@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
+import { TOOLBAR_ITEM_CLASS } from '../utils/mapConstants';
 
 interface ToolbarDropdownGroupProps {
   icon: LucideIcon;
@@ -25,10 +26,9 @@ export default function ToolbarDropdownGroup({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={onToggle}
-        className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+        className={`${TOOLBAR_ITEM_CLASS} ${
           open ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
         }`}
-        style={{ borderRadius: 2 }}
         title={label}
       >
         <Icon className="w-4 h-4" />
