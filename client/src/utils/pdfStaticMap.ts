@@ -16,6 +16,30 @@
 
 import { getCachedMapboxAccessToken } from './mapboxApiKey';
 
+/** Contrast multiplier for the monochrome "blueprint" raster pass — see
+ *  applyBlueprintMonochrome(). Exported so its expected effect is a fixed,
+ *  documented constant rather than a magic number buried in the transform. */
+export const BLUEPRINT_MONOCHROME_CONTRAST = 1.6;
+
+/**
+ * In-place luminance grayscale + contrast stretch over an RGBA pixel buffer
+ * (e.g. from CanvasRenderingContext2D.getImageData().data). Converts a
+ * photographic map raster into flat black-line/white-field bands so it
+ * reads as a technical drawing. Alpha (every 4th byte) is left untouched.
+ *
+ * Pure and canvas-free so it's unit-testable without OffscreenCanvas, which
+ * jsdom (this repo's test environment) doesn't implement.
+ */
+export function applyBlueprintMonochrome(pixels: Uint8ClampedArray): void {
+  for (let i = 0; i < pixels.length; i += 4) {
+    const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    const v = Math.max(0, Math.min(255, (lum - 128) * BLUEPRINT_MONOCHROME_CONTRAST + 128));
+    pixels[i] = v;
+    pixels[i + 1] = v;
+    pixels[i + 2] = v;
+  }
+}
+
 /** One computed egress (exit) route from the target location. */
 export interface EgressRoute {
   label: string;            // 'A' | 'B' | 'C'
@@ -77,6 +101,13 @@ export interface LocationMapOptions {
   egressRoutes?: boolean;
   /** Also fetch a wide-area overview raster for a PiP inset. */
   overviewInset?: boolean;
+  /** Render the raster as a monochrome "technical blueprint" (grayscale +
+   *  contrast-stretched) instead of the source style's photographic color —
+   *  pairs with a clean-line base style like 'mapbox/light-v11' so building
+   *  footprints/roads read as line drawings. The tactical overlay (reticle,
+   *  compass, scale bar, range rings, hazard markers) is drawn separately
+   *  in jsPDF and is unaffected — it's already black/gray/white by design. */
+  monochrome?: boolean;
 }
 
 const isFiniteNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -545,6 +576,17 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
     const outW = bmp.width;
     const outH = bmp.height;
     bmp.close();
+
+    if (opts.monochrome) {
+      // Luminance grayscale + contrast stretch — pushes the map toward flat
+      // black-line/white-field bands so it reads as a technical drawing
+      // rather than a desaturated photo. Baked route/marker overlays (if
+      // any) go through this pass too, which is fine — they're re-drawn in
+      // full color as jsPDF vector overlays by the caller when needed.
+      const imgData = ctx.getImageData(0, 0, outW, outH);
+      applyBlueprintMonochrome(imgData.data);
+      ctx.putImageData(imgData, 0, 0);
+    }
 
     const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
     const reader = new FileReader();
