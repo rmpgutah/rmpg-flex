@@ -80,3 +80,26 @@ describe('GET /api/warrants/scrapers/health', () => {
     expect(body.healthy).toBe(2);
   });
 });
+
+describe('POST /api/warrants/scrapers/:key/trigger', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers/arcgis-arlington-tx/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown source key', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/not-a-real-source/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(404);
+  });
+
+  it('triggers the Utah source via runUtahWarrantScan', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/utah-api/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    // The real Utah poller makes a live network call, which is unavailable in
+    // Miniflare tests — accept either a successful run summary or a caught
+    // network-error response, but never a 404/403 (the key must resolve).
+    expect([200, 502]).toContain(res.status);
+  });
+});

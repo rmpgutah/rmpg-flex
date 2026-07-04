@@ -27,6 +27,10 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 import { isCircuitOpen } from '../utils/warrantSources/resilience';
+import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
+import { runFullListLeg } from '../utils/warrantSources/runScan';
 
 const scrapers = new Hono<Env>();
 
@@ -176,6 +180,49 @@ scrapers.get('/health', async (c) => {
     last_hour_runs: 0,
     last_hour_inserted: 0,
   });
+});
+
+scrapers.post('/:key/trigger', async (c) => {
+  const user = c.get('user') as { role?: string } | undefined;
+  if (!user?.role || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions' }, 403);
+  }
+
+  const db = getDb(c.env);
+  const key = c.req.param('key');
+
+  if (key === 'utah-api') {
+    try {
+      const result = await runUtahWarrantScan(db);
+      return c.json({ success: true, source_key: key, result });
+    } catch (err) {
+      return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
+    }
+  }
+
+  const codeAdapters = await getEnabledAdapters(db);
+  const codeMatch = codeAdapters.find((a) => a.meta.key === key);
+  if (codeMatch) {
+    try {
+      const summaries = await runFullListLeg(db, [codeMatch]);
+      return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
+    } catch (err) {
+      return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
+    }
+  }
+
+  const configAdapters = await getConfigAdapters(db);
+  const configMatch = configAdapters.find((a) => a.meta.key === key);
+  if (configMatch) {
+    try {
+      const summaries = await runFullListLeg(db, [configMatch]);
+      return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
+    } catch (err) {
+      return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
+    }
+  }
+
+  return c.json({ error: `Unknown source key: ${key}` }, 404);
 });
 
 export default scrapers;
