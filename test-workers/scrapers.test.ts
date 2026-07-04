@@ -185,7 +185,13 @@ describe('POST /api/warrants/scrapers/bulk', () => {
 
   it('resets consecutive_errors across both frameworks in one call', async () => {
     const app = buildApp('admin');
-    // ada-county-id starts with 6 consecutive_errors (circuit broken) per beforeAll seed.
+    // ada-county-id's consecutive_errors was already zeroed by the earlier
+    // POST /:key/reset-circuit describe block above (Vitest runs describe
+    // blocks in file order) — re-bump it here so this test actually
+    // exercises the nonzero -> zero transition, not a no-op on an
+    // already-zeroed row.
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await execute(db, `UPDATE warrant_scraper_config SET consecutive_errors = 6 WHERE source_name = 'ada-county-id'`);
     const res = await app.request('/api/warrants/scrapers/bulk', {
       method: 'POST',
       body: JSON.stringify({ action: 'reset', source_keys: ['ada-county-id', 'arcgis-arlington-tx'] }),
