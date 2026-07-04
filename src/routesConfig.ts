@@ -79,6 +79,7 @@ import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
+import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
 import offline from './routes/offline';
@@ -544,6 +545,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/intel/ai', router: intelAi, auth: 'required',
     note: 'Intel AI engine (Claude): POST /ask (NL search w/ citations), /extract (entities+links from narrative), /summarize (dossier). Gated on anthropic_api_key → 503 when unset. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
+  { prefix: '/api/intel/reports', router: intelReports, auth: 'required',
+    note: 'Intel Reports workflow (draft/evaluate/analyze/disseminate/recall/reject) - src/routes/intel/development.ts. Was fully built but never mounted; IntelReportsPage/NewIntelReportPage/IntelReportDetailPage 404d until this. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
+  { prefix: '/api/intel/sources', router: intelSources, auth: 'required',
+    note: 'Intel Sources + reliability scoring - src/routes/intel/development.ts. Same as intelReports above: built, never mounted. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
   { prefix: '/api/intel', router: intel, auth: 'required',
     note: 'Intel Search: federated FTS5 search across record types (/search, /health, /reindex) + person entity-resolution suggestions. Migration 0098; index synced by the 4-hourly cron.' },
   { prefix: '/api/interagency', router: interagency, auth: 'required',
