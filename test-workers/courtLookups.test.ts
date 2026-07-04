@@ -45,3 +45,22 @@ describe('GET /api/court/lookups/categories', () => {
     expect(judge?.count).toBe(1);
   });
 });
+
+describe('GET /api/court/lookups', () => {
+  it('returns only active items by default, ordered by display_order', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/court/lookups?category=court', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Array<{ value: string; is_active: number }>;
+    expect(body).toHaveLength(1);
+    expect(body[0].value).toBe('third-district');
+  });
+
+  it('includes inactive items when includeInactive=true', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/court/lookups?category=court&includeInactive=true', {}, env as unknown as Record<string, unknown>);
+    const body = await res.json() as Array<{ value: string }>;
+    expect(body).toHaveLength(2);
+    expect(body.map((r) => r.value)).toEqual(['third-district', 'justice-court']);
+  });
+});

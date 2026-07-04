@@ -727,4 +727,21 @@ ct.get('/lookups/categories', async (c) => {
   } catch { return c.json([]); }
 });
 
+ct.get('/lookups', async (c) => {
+  const db = getDb(c.env);
+  const category = c.req.query('category');
+  const includeInactive = c.req.query('includeInactive') === 'true';
+  if (!category) return c.json({ error: 'category query param is required' }, 400);
+
+  const sql = includeInactive
+    ? `SELECT * FROM court_lookups WHERE category = ? ORDER BY display_order, id`
+    : `SELECT * FROM court_lookups WHERE category = ? AND is_active = 1 ORDER BY display_order, id`;
+  try {
+    const rows = await query(db, sql, category);
+    return c.json(rows);
+  } catch {
+    return c.json([]);
+  }
+});
+
 export default ct;
