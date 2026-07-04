@@ -77,6 +77,14 @@ export interface MapboxTilequeryResponse {
   }>;
 }
 
+// ── Shared coordinate encoding ────────────────────────────
+// The server's directions/matrix/optimization routes all take
+// `coordinates` as a single "lng,lat;lng,lat" query string (they pass it
+// straight through to the upstream Mapbox REST path), not a JSON array.
+export function coordsToParam(coords: Array<[number, number]>): string {
+  return coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
+}
+
 // ── Forward Geocode ───────────────────────────────────────
 
 export async function mapboxForwardGeocode(
