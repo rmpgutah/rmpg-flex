@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from '../db';
 import { getAdapterForJurisdiction } from './registry';
+import { log } from '../logger';
 
 const MAX_PER_RUN = 25;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -52,6 +53,9 @@ export async function enrichPendingOffenders(db: D1Database): Promise<Enrichment
     attempted++;
     try {
       const res = await fetchWithTimeout(row.detail_url, FETCH_TIMEOUT_MS);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
       const html = await res.text();
       const parsed = adapter.parseDetailPage(html);
 
@@ -73,6 +77,7 @@ export async function enrichPendingOffenders(db: D1Database): Promise<Enrichment
       succeeded++;
     } catch (err) {
       failed++;
+      log.error('SOR enrichment row failed', { jurisdiction: row.jurisdiction, offenderId: row.id }, err);
       await execute(
         db,
         `INSERT INTO sor_enrichment_runs
