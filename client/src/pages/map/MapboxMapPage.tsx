@@ -208,7 +208,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, []);
 
   const {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
   } = useMapCore({
     preferredEngine,
     mapStyle,
@@ -569,7 +569,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || mapLibreFallback) return;
-    const token = mapboxgl.accessToken;
+    const token = mapboxToken;
     if (!token) return;
 
     // Don't double-add
@@ -595,7 +595,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       try { map.removeControl(geocoder); } catch { /* map may already be destroyed */ }
       geocoderRef.current = null;
     };
-  }, [mapLoaded, mapLibreFallback]);
+  }, [mapLoaded, mapLibreFallback, mapboxToken]);
 
   // ── Sidebar Interactions ───────────────────────────────────────────────────
 

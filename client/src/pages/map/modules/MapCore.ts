@@ -44,6 +44,8 @@ export interface UseMapCoreResult {
    * instance, it does not update the `mapStyle` option this hook was called with.
    */
   changeStyle: (styleId: MapStyleId) => void;
+  /** The server-fetched runtime Mapbox token (not the build-time `mapboxgl.accessToken` global). */
+  token: string | null;
 }
 
 export function useMapCore({
@@ -53,6 +55,7 @@ export function useMapCore({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -107,6 +110,7 @@ export function useMapCore({
           return;
         }
         tokenRef.current = tokenStatus.token;
+        setToken(tokenStatus.token);
         injectMapboxStyles();
 
         if (!mapContainerRef.current) {
@@ -287,6 +291,6 @@ export function useMapCore({
   }, [loadBeatOverlay, terrainEnabled]);
 
   return {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token,
   };
 }
