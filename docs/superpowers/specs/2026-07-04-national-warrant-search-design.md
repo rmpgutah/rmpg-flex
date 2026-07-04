@@ -92,6 +92,18 @@ into `local[]` regardless of state (they're RMPG's own jurisdiction).
 runtime — `Date.now()` is fine here, this is production route code, not a
 resumable script).
 
+**Capture all data, read-only**: each `Warrant` in the response is `SELECT *`
+from its source row (`scraped_warrants` or `warrants`) mapped to the client's
+`Warrant` type field names where they differ (e.g. `date_of_birth` → `dob`,
+`charge_description` → `charge`), plus every other column passed through
+under its own name rather than dropped — this endpoint is a pure read; it
+never sets `status`, `cleared_at`, or any other field. Clearing a warrant
+stays governed exclusively by the existing scraper's documented invariant in
+`src/utils/warrantSources/runScan.ts` ("never wrongly clear" — a source's
+clear-sweep only runs after a full, error-free scan cycle). This search route
+has no clear-sweep logic of its own and must not be given any in a later pass
+without re-deriving that same safety property.
+
 ## Testing
 
 Miniflare route tests for both endpoints: `national-coverage` seeded with a
