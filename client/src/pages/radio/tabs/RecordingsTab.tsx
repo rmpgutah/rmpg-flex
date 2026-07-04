@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bookmark, Trash2, Play, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import { SectionHeader } from '../components';
 import { AudioPlayButton, transmissionAudioUrl, transmissionAudioUrlSigned } from './LiveTab';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
@@ -34,7 +35,7 @@ export default function RecordingsTab() {
   const load = () => {
     setLoading(true);
     apiFetch<RadioRecording[]>('/radio/recordings')
-      .then(setRecordings)
+      .then((data) => setRecordings(asArray<RadioRecording>(data)))
       .catch((err) => console.error('[radio] recordings', err))
       .finally(() => setLoading(false));
   };

@@ -278,9 +278,9 @@ billing.post('/invoices/:id/items', async (c) => {
     const price = typeof b.unit_price === 'number' ? b.unit_price : 0;
     const lineTotal = Math.round(qty * price * 100) / 100;
     await execute(db,
-      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      invoiceId, b.description, qty, price, lineTotal, b.tax_applied ?? 1, b.sort_order ?? 0);
+      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      invoiceId, b.description, qty, price, lineTotal, b.tax_applied ?? 1, b.sort_order ?? 0, b.line_type ?? 'custom');
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated }, 201);
@@ -377,6 +377,42 @@ billing.post('/payments', async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to record payment' }, 500);
+  }
+});
+
+billing.delete('/payments/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const id = parseInt(c.req.param('id'), 10);
+    const payment = await queryFirst<{ invoice_id: number | null }>(db, 'SELECT invoice_id FROM payments WHERE id = ?', id);
+    if (!payment) return c.json({ error: 'Payment not found' }, 404);
+    await execute(db, 'DELETE FROM payments WHERE id = ?', id);
+    if (payment.invoice_id) {
+      const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', payment.invoice_id);
+      const inv = await queryFirst<{ total_amount: number; status: string }>(db, 'SELECT total_amount, status FROM invoices WHERE id = ?', payment.invoice_id);
+      const paid = total?.amt ?? 0;
+      // Only derive a new status from the payment-driven states (paid/partial/sent);
+      // leave draft/overdue/cancelled etc. alone — deleting a payment shouldn't
+      // silently overwrite an unrelated invoice lifecycle state.
+      const paymentDrivenStatuses = new Set(['paid', 'partial', 'sent']);
+      let status = inv?.status;
+      if (!inv || paymentDrivenStatuses.has(inv.status)) {
+        status = inv && inv.total_amount > 0 && paid >= inv.total_amount ? 'paid' : (paid > 0 ? 'partial' : 'sent');
+      }
+      await execute(db, 'UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?', paid, status, payment.invoice_id);
+    }
+    try {
+      await recordAudit(c, {
+        action: 'payment_deleted', entityType: 'payment', entityId: id,
+        details: `invoice=${payment.invoice_id ?? 'n/a'}`, actorId: userId,
+      });
+    } catch { /* best-effort */ }
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete payment' }, 500);
   }
 });
 

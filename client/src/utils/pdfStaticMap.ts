@@ -16,6 +16,46 @@
 
 import { getCachedMapboxAccessToken } from './mapboxApiKey';
 
+/**
+ * In-place luminance grayscale + AUTO-LEVELS contrast stretch over an RGBA
+ * pixel buffer (e.g. from CanvasRenderingContext2D.getImageData().data).
+ * Converts a map raster into flat black-line/white-field bands so it reads
+ * as a technical drawing. Alpha (every 4th byte) is left untouched.
+ *
+ * Auto-levels (stretch the image's OWN observed min→max luminance to the
+ * full 0-255 range) rather than a fixed pivot/multiplier — a naive fixed
+ * stretch (e.g. "(lum-128)*1.6+128") clips to solid white on an
+ * already-pale base style (regression found 2026-07-04: 'mapbox/light-v11'
+ * sits mostly in the 235-255 range, so a fixed stretch pushed nearly every
+ * pixel to 255 and wiped out the roads/building footprints entirely —
+ * "there is nothing to see" on the rendered PDF). Auto-levels instead finds
+ * whatever range the SOURCE actually uses and expands it to fill 0-255, so
+ * it works whether the source is a pale line-art style or a darker
+ * satellite photo.
+ *
+ * Pure and canvas-free so it's unit-testable without OffscreenCanvas, which
+ * jsdom (this repo's test environment) doesn't implement.
+ */
+export function applyBlueprintMonochrome(pixels: Uint8ClampedArray): void {
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    if (lum < min) min = lum;
+    if (lum > max) max = lum;
+  }
+  // Flat/blank source (min === max) — nothing to stretch; render as a
+  // uniform mid-gray rather than divide by zero.
+  const range = max - min;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    const v = range > 0 ? Math.max(0, Math.min(255, ((lum - min) / range) * 255)) : 128;
+    pixels[i] = v;
+    pixels[i + 1] = v;
+    pixels[i + 2] = v;
+  }
+}
+
 /** One computed egress (exit) route from the target location. */
 export interface EgressRoute {
   label: string;            // 'A' | 'B' | 'C'
@@ -77,6 +117,13 @@ export interface LocationMapOptions {
   egressRoutes?: boolean;
   /** Also fetch a wide-area overview raster for a PiP inset. */
   overviewInset?: boolean;
+  /** Render the raster as a monochrome "technical blueprint" (grayscale +
+   *  contrast-stretched) instead of the source style's photographic color —
+   *  pairs with a clean-line base style like 'mapbox/light-v11' so building
+   *  footprints/roads read as line drawings. The tactical overlay (reticle,
+   *  compass, scale bar, range rings, hazard markers) is drawn separately
+   *  in jsPDF and is unaffected — it's already black/gray/white by design. */
+  monochrome?: boolean;
 }
 
 const isFiniteNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -546,6 +593,17 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
     const outH = bmp.height;
     bmp.close();
 
+    if (opts.monochrome) {
+      // Luminance grayscale + contrast stretch — pushes the map toward flat
+      // black-line/white-field bands so it reads as a technical drawing
+      // rather than a desaturated photo. Baked route/marker overlays (if
+      // any) go through this pass too, which is fine — they're re-drawn in
+      // full color as jsPDF vector overlays by the caller when needed.
+      const imgData = ctx.getImageData(0, 0, outW, outH);
+      applyBlueprintMonochrome(imgData.data);
+      ctx.putImageData(imgData, 0, 0);
+    }
+
     const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
     const reader = new FileReader();
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -574,6 +632,11 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
               ictx.fillStyle = '#ffffff';
               ictx.fillRect(0, 0, ibmp.width, ibmp.height);
               ictx.drawImage(ibmp, 0, 0);
+              if (opts.monochrome) {
+                const insetImgData = ictx.getImageData(0, 0, ibmp.width, ibmp.height);
+                applyBlueprintMonochrome(insetImgData.data);
+                ictx.putImageData(insetImgData, 0, 0);
+              }
               const ib = await icv.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
               const ir = new FileReader();
               insetDataUrl = await new Promise<string>((resolve, reject) => {

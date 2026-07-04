@@ -1707,6 +1707,11 @@ async function addLocationMapSection(
     /** Incident timestamp (ISO) driving the light-condition readout —
      *  defaults to generation time. */
     eventIso?: string | null;
+    /** Render the base raster as a monochrome technical-blueprint image
+     *  instead of the source style's photographic color (see
+     *  LocationMapOptions.monochrome). The reticle/compass/scale/hazard
+     *  overlay drawn below is unaffected either way. */
+    monochrome?: boolean;
   },
   y: number,
 ): Promise<number> {
@@ -1718,6 +1723,7 @@ async function addLocationMapSection(
     zoom: opts.zoom,
     egressRoutes: true, // tactical planning overlay — best-effort, may be absent
     overviewInset: true,
+    monochrome: opts.monochrome,
   });
   if (!img) return y;
   const egress = img.egress ?? [];
@@ -1983,14 +1989,20 @@ async function addLocationMapSection(
       const hy = cym + (mercY(hz.lat) - cY) / pxPerMmY;
       const R2 = 2.6;
       if (hx < offX + R2 + 1 || hx > offX + drawW - R2 - 1 || hy < imgY + R2 + 1 || hy > imgY + drawH - R2 - 1) continue;
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(20, 20, 20);
+      // Warning-red fill (2026-07-04) — was plain white/black, which blended
+      // into the map's own black/gray/white blueprint palette and made real
+      // hazards (school/daycare/fuel proximity) easy to miss at a glance.
+      // Kept as the one deliberate color accent against the otherwise
+      // monochrome map, same "semantic color is separate from the palette"
+      // principle used for priority/severity indicators elsewhere.
+      doc.setFillColor(...COLOR.WATERMARK_VOID);
+      doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0.35);
       doc.triangle(hx, hy - R2, hx - R2, hy, hx + R2, hy, 'FD');
       doc.triangle(hx - R2, hy, hx + R2, hy, hx, hy + R2, 'FD');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(4.8);
-      doc.setTextColor(20, 20, 20);
+      doc.setTextColor(255, 255, 255);
       doc.text(hz.letter, hx, hy + 0.85, { align: 'center' });
     }
   }
@@ -6122,14 +6134,25 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // the CFS map: zoom 17 (structure + surrounding approach in frame), reticle
   // + north + scale overlay, LOCATION DATA grid below. Geocodes the full
   // address when lat/lng absent (business records store no coordinates).
+  // Rendered as a monochrome technical blueprint (2026-07-04) rather than a
+  // satellite photo — 'light-v11' gives a clean line-based base (building
+  // footprints/roads as flat shapes, no photographic texture) that posterizes
+  // well under the monochrome contrast pass; the reticle/compass/scale/hazard
+  // overlay is already black/gray/white by design and unaffected.
   y = await addLocationMapSection(doc, {
     title: 'Location Map',
     lat: data.latitude,
     lng: data.longitude,
     address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
     caption: data.address || data.name,
-    style: 'mapbox/satellite-streets-v12',
-    zoom: 17,
+    style: 'mapbox/light-v11',
+    monochrome: true,
+    // Bumped 17->18 (2026-07-04, user request): tighter on the target
+    // parcel/structure while still keeping a block or two of surrounding
+    // street context in frame (the existing range-ring/scale overlay reads
+    // ground distance regardless of zoom, so standoff distances stay
+    // accurate at the tighter framing).
+    zoom: 18,
     details: [
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },

@@ -10,6 +10,7 @@ import StatsCard from '../components/StatsCard';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export default function AlarmTrackingPage() {
   const fetchPermits = useCallback(async () => {
     setLoadingPermits(true);
     try {
-      const data = await apiFetch<AlarmPermit[]>('/api/alarm-tracking/permits');
+      const data = asArray<AlarmPermit>(await apiFetch<AlarmPermit[]>('/api/alarm-tracking/permits'));
       setPermits(data);
       setStats({
         active: data.filter(p => p.status === 'active').length,
@@ -165,7 +166,7 @@ export default function AlarmTrackingPage() {
       if (falseAlarmOnly) params.set('false_alarm', '1');
       const qs = params.toString();
       const data = await apiFetch<AlarmActivation[]>(`/api/alarm-tracking/activations${qs ? `?${qs}` : ''}`);
-      setActivations(data);
+      setActivations(asArray<AlarmActivation>(data));
     } catch {
       addToast('Failed to load activations', 'error');
     } finally {
@@ -177,7 +178,7 @@ export default function AlarmTrackingPage() {
     setLoadingPermitActivations(true);
     try {
       const data = await apiFetch<AlarmActivation[]>(`/api/alarm-tracking/permits/${permitId}/activations`);
-      setPermitActivations(data);
+      setPermitActivations(asArray<AlarmActivation>(data));
     } catch {
       addToast('Failed to load permit activations', 'error');
     } finally {

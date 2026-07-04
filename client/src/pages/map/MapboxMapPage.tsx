@@ -52,6 +52,12 @@ import { devLog, devWarn } from '../../utils/devLog';
 import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
+import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
+import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
+import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
+import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
+import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import { useMapStreetView } from '../../hooks/useMapStreetView';
@@ -244,6 +250,128 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const drawing = useMapDrawing(mapRef.current, mapLoaded);
   const clustering = useMapClustering(mapRef.current, mapLoaded);
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
+  const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
+
+  const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
+    if (mode === 'historical') {
+      try {
+        const rows = await apiFetch<Array<{ latitude: number; longitude: number; count: number }>>('/dispatch/heatmap?mode=all&days=30');
+        const maxCount = rows.reduce((m, r) => Math.max(m, r.count), 1);
+        heatmap.updatePoints(rows.map((r) => ({
+          longitude: r.longitude, latitude: r.latitude,
+          weight: Math.min(1, r.count / maxCount),
+        })));
+      } catch (err) {
+        console.warn('[Heatmap] historical fetch failed:', err);
+      }
+    } else {
+      const heatPts = calls
+        .filter((c) => c.latitude != null && c.longitude != null)
+        .map((c) => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
+      heatmap.updatePoints(heatPts);
+    }
+  }, [heatmap, calls]);
+
+  const populateAndToggleHeatmap = useCallback(async () => {
+    if (!heatmap.enabled) {
+      await refreshHeatmapPoints(heatmapMode);
+    }
+    heatmap.toggle();
+  }, [heatmap, heatmapMode, refreshHeatmapPoints]);
+
+  const incidentsLayer = useMapboxIncidents(mapLoaded ? mapRef.current : null);
+  const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
+  const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
+  const historyCalls = useMapboxHistoryCalls(mapLoaded ? mapRef.current : null);
+  const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
+  const [identifyEnabled, setIdentifyEnabled] = useState(false);
+  const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
+  const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
+  const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
+  const [incidentsEnabled, setIncidentsEnabled] = useState(false);
+  const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
+  const [safetyZonesEnabled, setSafetyZonesEnabled] = useState(false);
+  const [historyCallsEnabled, setHistoryCallsEnabled] = useState(false);
+
+  useEffect(() => {
+    if (incidentsEnabled) incidentsLayer.fetchIncidents();
+    else incidentsLayer.clear();
+  }, [incidentsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!coverageGapsEnabled || !mapRef.current) { if (!coverageGapsEnabled) coverageGaps.clear(); return; }
+    const bounds = mapRef.current.getBounds();
+    if (!bounds) return;
+    coverageGaps.computeCoverage({
+      north: bounds.getNorth(), south: bounds.getSouth(),
+      east: bounds.getEast(), west: bounds.getWest(),
+    });
+  }, [coverageGapsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recompute Coverage Gaps on pan/zoom while the layer is active — debounced
+  // since each recompute is an O(cells × units) scan over the new viewport.
+  useEffect(() => {
+    if (!coverageGapsEnabled || !mapRef.current) return;
+    const map = mapRef.current;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onMoveEnd = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        coverageGaps.computeCoverage({
+          north: bounds.getNorth(), south: bounds.getSouth(),
+          east: bounds.getEast(), west: bounds.getWest(),
+        });
+      }, 500);
+    };
+    map.on('moveend', onMoveEnd);
+    return () => { map.off('moveend', onMoveEnd); if (timer) clearTimeout(timer); };
+  }, [coverageGapsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (safetyZonesEnabled) safetyZones.fetchSafetyZones();
+    else safetyZones.clear();
+  }, [safetyZonesEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (historyCallsEnabled) historyCalls.fetchHistory();
+    else historyCalls.clear();
+  }, [historyCallsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (repeatAddressesEnabled) repeatAddresses.fetchRepeats();
+    else repeatAddresses.clear();
+  }, [repeatAddressesEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!identifyEnabled || !map) return;
+
+    const handler = async (e: mapboxgl.MapMouseEvent) => {
+      const info = await tilequery.queryFromMapClick(e);
+      if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
+      if (!info) return;
+      const lines = [
+        info.city && `City: ${info.city}`,
+        info.county && `County: ${info.county}`,
+        info.state && `State: ${info.state}`,
+        info.sectorName && `Area: ${info.sectorName}`,
+      ].filter(Boolean);
+      const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}</div>`;
+      identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(map);
+    };
+
+    map.on('click', handler);
+    return () => {
+      map.off('click', handler);
+      if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
+    };
+  }, [identifyEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const streetView = useMapStreetView(mapRef.current, mapLoaded);
@@ -290,15 +418,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // Keyboard shortcuts for map overlays
   useMapKeyboardShortcuts({
-    toggleHeatmap: () => {
-      if (!heatmap.enabled) {
-        const heatPts = calls
-          .filter(c => c.latitude != null && c.longitude != null)
-          .map(c => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
-        heatmap.updatePoints(heatPts);
-      }
-      heatmap.toggle();
-    },
+    toggleHeatmap: () => { void populateAndToggleHeatmap(); },
     toggleBreadcrumbs: () => breadcrumbs.toggle(),
     toggleClustering: () => {
       if (!clustering.enabled) {
@@ -690,7 +810,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       id: 'operational',
       label: 'Operational Overlays',
       layers: [
-        { id: 'heatmap', label: 'Crime Heatmap', active: heatmap.enabled, onToggle: heatmap.toggle, color: '#ef4444', description: 'Incident density (H)' },
+        { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
         { id: 'traffic', label: 'Live Traffic', active: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
         { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
         { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
@@ -703,6 +823,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'streetview', label: 'Street View', active: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
+        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
+        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
+        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
+        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
+        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
       ],
     },
     {
@@ -753,9 +878,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
         { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
+        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1224,19 +1350,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               {/* Heatmap */}
               <IconButton
                 aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
-                onClick={() => {
-                  if (!heatmap.enabled) {
-                    const heatPts = calls
-                      .filter(c => c.latitude != null && c.longitude != null)
-                      .map(c => ({
-                        longitude: c.longitude!,
-                        latitude: c.latitude!,
-                        weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
-                      }));
-                    heatmap.updatePoints(heatPts);
-                  }
-                  heatmap.toggle();
-                }}
+                onClick={() => { void populateAndToggleHeatmap(); }}
                 className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
@@ -1245,6 +1359,21 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               >
                 <Flame className="w-4 h-4" />
               </IconButton>
+
+              {/* Heatmap Live/Historical mode switch */}
+              <button
+                type="button"
+                className="text-[9px] px-1 py-0.5 rounded-sm"
+                style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+                onClick={() => {
+                  const next = heatmapMode === 'live' ? 'historical' : 'live';
+                  setHeatmapMode(next);
+                  if (heatmap.enabled) refreshHeatmapPoints(next);
+                }}
+                title="Switch between live (currently active calls) and historical (30-day) heatmap data"
+              >
+                {heatmapMode === 'live' ? 'LIVE' : '30D'}
+              </button>
 
               {/* Traffic */}
               <IconButton
