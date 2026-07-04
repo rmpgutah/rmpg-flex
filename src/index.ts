@@ -250,6 +250,16 @@ export default {
           ),
         ).catch(() => {}),
       );
+      // Panic alert escalation — src/routes/dispatch/panic.ts's own header
+      // comment flags this as a known gap: escalation_level existed but
+      // nothing ever advanced it or re-broadcast an unacknowledged alert.
+      ctx.waitUntil(
+        import('./utils/panicEscalationSweep').then((m) =>
+          m.sweepPanicEscalation(env.DB).then((r) => {
+            if (r.escalated > 0) console.log(`[panic-escalation] escalated ${r.escalated}`);
+          }).catch((err) => console.error('Panic escalation sweep failed:', err)),
+        ).catch(() => {}),
+      );
       // Daily rebalance at 04:00 America/Denver. The cron fires every minute;
       // we gate on Denver hour == 4 and run at most once (rebalance is idempotent
       // so a double-fire is harmless; the hour gate keeps it to ~60 runs/day).
@@ -266,6 +276,17 @@ export default {
               console.log(`[rebalance] tiers=${r.tiers_recomputed} critical=${r.tiers_promoted_critical} escalated=${r.priority_escalated}`),
             ).catch((err) => console.error('Daily rebalance failed:', err));
           }).catch(() => {}),
+        );
+        // Fleet maintenance reminders — nobody has to remember to check the
+        // maintenance schedule dashboard; fires via the notification-rule
+        // engine (no-op until a rule with trigger_event='fleet_maintenance_due'
+        // is configured in the admin notification-rules UI).
+        ctx.waitUntil(
+          import('./utils/fleetMaintenanceSweep').then((m) =>
+            m.sweepFleetMaintenanceReminders(env.DB, env).then((r) =>
+              console.log(`[fleet-maintenance] overdue=${r.overdue} critical=${r.critical} notified=${r.notified}`),
+            ).catch((err) => console.error('Fleet maintenance sweep failed:', err)),
+          ).catch(() => {}),
         );
       }
     }
