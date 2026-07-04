@@ -523,7 +523,7 @@ gps.get('/dwell-times', async (c) => {
          AND (julianday('now') - julianday(COALESCE(u.gps_updated_at, u.updated_at))) * 1440 > 5
        ORDER BY dwell_minutes DESC LIMIT 50`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /dwell-times failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-zones — recent high-speed events by zone.
@@ -537,7 +537,7 @@ gps.get('/speed-zones', async (c) => {
        WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-4 hours')
        ORDER BY g.speed DESC LIMIT 100`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-zones failed', {}, err); return c.json([]); }
 });
 
 // ── Breadcrumb trail aggregation (Map "Breadcrumbs" layer + replay panel) ──
@@ -679,7 +679,7 @@ gps.get('/units-with-trails', async (c) => {
         GROUP BY g.unit_id
         ORDER BY call_sign`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /units-with-trails failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-violations — recent speed violations for the map overlay.
@@ -700,7 +700,7 @@ gps.get('/speed-violations', async (c) => {
        WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-' || ? || ' hours')
        ORDER BY g.speed DESC LIMIT 200`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-violations failed', {}, err); return c.json([]); }
 });
 
 // POST /dispatch/gps/speed-violations/:id/acknowledge
@@ -733,7 +733,7 @@ gps.get('/pursuit-segments', async (c) => {
        GROUP BY cfs.id
        ORDER BY cfs.received_at DESC LIMIT 50`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /pursuit-segments failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-heatmap — grid-aggregated speed data for map overlay.
@@ -752,7 +752,7 @@ gps.get('/speed-heatmap', async (c) => {
        HAVING point_count >= 2
        ORDER BY avg_speed DESC LIMIT 500`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-heatmap failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units
