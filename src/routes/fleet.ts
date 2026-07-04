@@ -4749,8 +4749,12 @@ fleet.delete('/expenses/:id{[0-9]+}', async (c) => {
   const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
   if (!existing) return c.json({ error: 'Expense not found' }, 404);
 
-  await execute(db, 'DELETE FROM fleet_expenses WHERE id = ?', id);
-  return c.json({ success: true });
+  try {
+    await execute(db, 'DELETE FROM fleet_expenses WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to delete expense');
+  }
 });
 
 export default fleet;
