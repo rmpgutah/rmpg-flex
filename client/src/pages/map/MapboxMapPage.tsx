@@ -812,11 +812,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   if (mapError) {
     return (
       <div className="flex items-center justify-center bg-surface-base" style={{ position: 'absolute', inset: 0 }}>
-        <div className="bg-surface-raised border border-default p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
+        <div className="bg-surface-raised border border-border-default p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
            <AlertTriangle className="w-10 h-10 text-brand-gold-500 mx-auto mb-3" />
            <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
            <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
-           <div className="text-left bg-surface-deep border border-subtle p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
+           <div className="text-left bg-surface-deep border border-border-subtle p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
              <p className="font-semibold text-rmpg-300 mb-1">To fix this issue:</p>
              <ol className="list-decimal list-inside space-y-1">
                <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
@@ -914,7 +914,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <IconButton
           aria-label="Open sidebar"
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
+          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
           style={{ borderRadius: 2 }}
         >
           <PanelLeftOpen className="w-4 h-4" />
@@ -924,10 +924,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Sidebar */}
       {sidebarOpen && (
         <div
-          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-default backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
+          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
         >
           {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-default">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
             <div className="flex items-center gap-2">
               <RmpgLogo height={20} iconOnly />
               <span className="text-brand-gold-500 text-xs font-semibold tracking-wider">FLEX MAP</span>
@@ -942,7 +942,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-default">
+          <div className="flex border-b border-border-default">
             <button
               onClick={() => setActiveTab('units')}
               className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
@@ -1068,7 +1068,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Sidebar Footer — quick actions */}
-          <div className="border-t border-default px-3 py-2">
+          <div className="border-t border-border-default px-3 py-2">
             <div className="flex items-center gap-1 flex-wrap">
               <IconButton
                 aria-label="Refresh data"
@@ -1211,7 +1211,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Advanced map tools"
             onClick={() => setShowAdvancedToolbar(v => !v)}
-            className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+            className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
               showAdvancedToolbar ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
             }`}
             style={{ borderRadius: 2 }}
@@ -1237,7 +1237,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   }
                   heatmap.toggle();
                 }}
-                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1250,7 +1250,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
                 onClick={() => traffic.toggle()}
-                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1278,7 +1278,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   }
                   clustering.toggle();
                 }}
-                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1291,7 +1291,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
                 onClick={() => streetView.toggle()}
-                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1305,7 +1305,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Measure tool"
                   onClick={() => setShowMeasureMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                     measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -1314,7 +1314,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <Ruler className="w-4 h-4" />
                 </IconButton>
                 {showMeasureMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
@@ -1348,7 +1348,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Drawing tools"
                   onClick={() => setShowDrawMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                     drawing.mode !== 'none' ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -1357,7 +1357,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <PenTool className="w-4 h-4" />
                 </IconButton>
                 {showDrawMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
@@ -1382,7 +1382,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     >
                       ◯ Circle (perimeter)
                     </button>
-                    <div className="border-t border-default" />
+                    <div className="border-t border-border-default" />
                     <button
                       onClick={() => { drawing.undo(); }}
                       className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
@@ -1403,7 +1403,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
                 onClick={() => glDraw.toggle()}
-                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
                   glDraw.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1418,7 +1418,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Measurement Result Banner */}
       {measure.result && measure.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
           <Ruler className="w-3.5 h-3.5 text-[#3b82f6]" />
           <span className="text-rmpg-200 text-xs font-mono">
             {measure.result.distanceFormatted}
@@ -1441,7 +1441,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Drawing Shapes Count */}
       {drawing.shapes.length > 0 && drawing.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
           <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
         </div>
@@ -1458,7 +1458,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Active Route Panel */}
       {routing.activeRoute && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
           <Route className="w-4 h-4 text-brand-gold-500" />
           <div className="text-xs font-mono">
             <span className="text-rmpg-200 font-semibold">{routing.activeRoute.unitCallSign}</span>
@@ -1487,7 +1487,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Map style"
             onClick={() => setShowStyleMenu(v => !v)}
-            className="bg-surface-raised/95 border border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
+            className="bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
             style={{ borderRadius: 2 }}
           >
             <Layers className="w-4 h-4" />
@@ -1495,7 +1495,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
           {showStyleMenu && (
             <div
-              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-default w-48 overflow-hidden"
+              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-border-default w-48 overflow-hidden"
               style={{ borderRadius: 2 }}
             >
               {(Object.keys(MAP_STYLE_LABELS) as MapStyleId[]).map(id => (
@@ -1519,7 +1519,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Status Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-default backdrop-blur-sm"
+        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-border-default backdrop-blur-sm"
         style={{ height: 28 }}
       >
         <div className="flex items-center justify-between h-full px-3 text-[9px] font-mono">
@@ -1539,7 +1539,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 </span>
               );
             })}
-            <span className="text-rmpg-500 border-l border-default pl-3">
+            <span className="text-rmpg-500 border-l border-border-default pl-3">
               GPS: <span className="text-rmpg-300">{gpsUnitCount}/{units.length}</span>
             </span>
           </div>
