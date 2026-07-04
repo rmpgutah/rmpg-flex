@@ -8,6 +8,7 @@ import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 import { log } from '../../utils/logger';
+import { recordAudit } from '../../utils/auditLog';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const calls = new Hono<Env>();
@@ -619,6 +620,13 @@ calls.get('/:id', async (c) => {
       'SELECT al.*, u.full_name as user_name FROM audit_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
       'call', id);
 
+    // Prior visits (PSO/process-service redispatch chain) — attached here so
+    // dispatchMappers.ts's `visit_history: row.visit_history` mapping has
+    // something to read; the client already renders this (DispatchPage.tsx
+    // ~line 5961) but it was always empty since nothing populated it.
+    const visitHistory = await query<Record<string, unknown>>(db,
+      'SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC, id ASC LIMIT 200', id);
+
     return c.json({
       ...call,
       ...(ext || {}),
@@ -626,6 +634,7 @@ calls.get('/:id', async (c) => {
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,
+      visit_history: visitHistory,
     });
   } catch (err) {
     console.error('GET /dispatch/calls/:id failed:', err);
@@ -690,6 +699,11 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // process service
   'process_service_type', 'process_served_to', 'process_served_address',
   'process_attempts', 'process_served_at', 'process_service_result',
+  // court (added by migration 0145; this allowlist was never updated to
+  // match, so every court_name edit silently fell into the `skipped`
+  // bucket in the PUT handler below and was never written — the field
+  // "failed to save on reopening" because it was never persisted at all)
+  'court_name',
   // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
   // the 100-column D1 cap. New tactical flags should land here too.
   'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
@@ -1136,6 +1150,227 @@ calls.delete('/templates/:id', async (c) => {
     await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
     return c.json({ success: true });
   } catch { return c.json({ error: 'Delete failed' }, 500); }
+});
+
+// POST /dispatch/calls/:id/redispatch - Re-dispatch creates a NEW linked call
+// ("Schedule Return Visit" for a PSO/process-service call that already
+// cleared/closed/etc, needing a follow-up attempt). Ported from
+// legacy/server-vps/src/routes/dispatch/calls.ts — this never carried over
+// in the Cloudflare cutover, so the client's fully-built "Return Visit" /
+// "Undo Visit" / Visit History UI (DispatchPage.tsx) 404'd on every call.
+calls.post('/:id/redispatch', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const parent = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!parent) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    const parentExt = (await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id)) || {};
+
+    if (!['pso_client_request', 'process_service'].includes(String(parent.incident_type))) {
+      return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
+    }
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parent.status))) {
+      return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
+    }
+
+    const userId = (c.get('userId') as number | undefined) ?? null;
+    const currentAttempt = Number(parent.pso_attempt_number) || 1;
+    const newAttempt = currentAttempt + 1;
+
+    // Root of the chain (trace back through parent_call_id, which lives on
+    // ext — every visit_history row + the new child's parent_call_id both
+    // point at the ROOT call, not the immediately-prior visit, so the chain
+    // stays flat regardless of how many return visits deep it goes).
+    let rootId = Number(id);
+    if (parentExt.parent_call_id) {
+      const root = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', parentExt.parent_call_id as number);
+      if (root) rootId = root.id;
+    }
+
+    // Snapshot the visit being closed out into call_visit_history.
+    let assignedCallSigns: string[] = [];
+    try {
+      const parsedIds = JSON.parse(String(parent.assigned_unit_ids || '[]'));
+      const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((x: unknown) => typeof x === 'number' && Number.isFinite(x));
+      if (unitIds.length) {
+        const units = await query<{ call_sign: string }>(db, `SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`, ...unitIds);
+        assignedCallSigns = units.map((u) => u.call_sign).filter(Boolean);
+      }
+    } catch (err) { console.error('[redispatch] failed to snapshot assigned units:', err); }
+
+    await execute(db, `
+      INSERT INTO call_visit_history
+        (call_id, visit_number, status, disposition, assigned_units, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+         responding_vehicle_id, starting_mileage, ending_mileage, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      id, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
+      parent.dispatched_at ?? null, parent.enroute_at ?? null, parent.onscene_at ?? null, parent.cleared_at ?? null, parent.closed_at ?? null,
+      parent.responding_vehicle_id ?? null, parent.starting_mileage ?? null, parent.ending_mileage ?? null);
+
+    // New call number — same CFS{YY}-{NNNNN} scheme as call creation (POST /).
+    const year = new Date().getFullYear().toString().slice(-2);
+    const prefix = `CFS${year}-`;
+    const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
+    const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+    const newCallNumber = `${prefix}${seq}`;
+
+    // Carry parent notes forward (tagged so the client can badge them
+    // "carried from prior visit") + append a system note marking the
+    // re-dispatch, on both the new call and a back-link on the parent.
+    let parentNotes: Array<Record<string, unknown>> = [];
+    try { const raw = JSON.parse(String(parent.notes || '[]')); parentNotes = Array.isArray(raw) ? raw : []; } catch { parentNotes = []; }
+    const now = new Date().toISOString();
+    const ordinal = (n: number) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : (s[n % 10] || s[0])}`; };
+    const tsBase = Date.now();
+    const carriedNotes = parentNotes.map((n, idx) => ({
+      id: String(tsBase + idx),
+      author: n.author || 'System',
+      text: n.text || '',
+      timestamp: n.timestamp || now,
+      carried_from_call_number: parent.call_number,
+      carried_from_call_id: Number(id),
+      original_timestamp: n.timestamp || null,
+    }));
+    const noteText = `Re-dispatch from ${parent.call_number} — ${ordinal(newAttempt)} attempt`;
+    const allNotes = [...carriedNotes, { id: String(tsBase + carriedNotes.length), author: 'Dispatch', text: noteText, timestamp: now }];
+
+    // Schema-driven copy: read every column on both tables (except id) from
+    // the parent row, then override only the per-visit fields that must
+    // reset on a new visit. Anything added to either table in the future
+    // automatically flows through the re-dispatch chain without touching
+    // this route (mirrors the legacy VPS route's own reasoning).
+    const baseCols = (await query<{ name: string }>(db, "PRAGMA table_info('calls_for_service')")).map((r) => r.name).filter((n) => n !== 'id');
+    const baseOverrides: Record<string, unknown> = {
+      call_number: newCallNumber,
+      status: 'pending',
+      pso_attempt_number: newAttempt,
+      notes: JSON.stringify(allNotes),
+      assigned_unit_ids: null,
+      unit_call_signs: null,
+      dispatched_at: null, enroute_at: null, onscene_at: null, cleared_at: null, closed_at: null, archived_at: null,
+      disposition: null, action_taken: null, responding_officer: null, responding_vehicle_id: null,
+      starting_mileage: null, ending_mileage: null,
+      dispatcher_id: userId,
+      created_at: now, updated_at: now, received_at: now,
+      previous_status: null, status_changed_at: now,
+      overdue_notified: 0,
+    };
+    const baseValues = baseCols.map((col) => (col in baseOverrides ? baseOverrides[col] : (parent as Record<string, unknown>)[col] ?? null));
+    const insertResult = await execute(db,
+      `INSERT INTO calls_for_service (${baseCols.map((c2) => `"${c2}"`).join(', ')}) VALUES (${baseCols.map(() => '?').join(', ')})`,
+      ...baseValues);
+    const newCallId = Number(insertResult.meta.last_row_id);
+
+    // Ext row — same schema-driven copy, plus the chain link + reset
+    // per-visit-only ext fields (72hr PSO timer counts from the NEXT
+    // clear, not the prior one; hold state never carries to a fresh visit).
+    const extCols = (await query<{ name: string }>(db, "PRAGMA table_info('calls_for_service_ext')")).map((r) => r.name).filter((n) => n !== 'id');
+    const extOverrides: Record<string, unknown> = {
+      parent_call_id: rootId,
+      pso_72hr_deadline: null,
+      pso_72hr_notified: null,
+      held_at: null,
+      deleted_at: null,
+    };
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', newCallId);
+    if (extCols.length) {
+      const extValues = extCols.map((col) => (col in extOverrides ? extOverrides[col] : (parentExt as Record<string, unknown>)[col] ?? null));
+      await execute(db, `UPDATE calls_for_service_ext SET ${extCols.map((c2) => `"${c2}" = ?`).join(', ')} WHERE id = ?`, ...extValues, newCallId);
+    }
+
+    // Copy linked persons/vehicles/businesses from the parent call.
+    const linkTables: Array<[string, readonly string[]]> = [
+      ['call_persons', ['person_id', 'role', 'notes']],
+      ['call_vehicles', ['vehicle_id', 'role', 'notes']],
+      ['call_businesses', ['business_id', 'role', 'notes']],
+    ];
+    for (const [table, cols] of linkTables) {
+      try {
+        const rows = await query<Record<string, unknown>>(db, `SELECT ${cols.join(', ')} FROM ${table} WHERE call_id = ?`, id);
+        for (const r of rows) {
+          try {
+            await execute(db, `INSERT INTO ${table} (call_id, ${cols.join(', ')}) VALUES (?, ${cols.map(() => '?').join(', ')})`,
+              newCallId, ...cols.map((col) => r[col] ?? null));
+          } catch { /* skip duplicates */ }
+        }
+      } catch (err) { console.error(`[redispatch] copy ${table} failed:`, err); }
+    }
+
+    // Back-link note + notes update on the parent.
+    parentNotes.push({ id: String(Date.now() + 1), author: 'System', text: `Re-dispatched → new call ${newCallNumber}`, timestamp: now });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(parentNotes), now, id);
+
+    await recordAudit(c, {
+      action: 'CALL_REDISPATCHED', entityType: 'call', entityId: Number(id),
+      details: { new_call_id: newCallId, new_call_number: newCallNumber, attempt: newAttempt },
+    });
+    await recordAudit(c, {
+      action: 'CALL_CREATED_FROM_REDISPATCH', entityType: 'call', entityId: newCallId,
+      details: { parent_call_id: Number(id), parent_call_number: parent.call_number, attempt: newAttempt },
+    });
+
+    const newCallBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId);
+    const newCallExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
+    const merged = { ...(newCallBase || {}), ...(newCallExt || {}) };
+
+    try {
+      broadcastAll('dispatch_update', { action: 'call_created', call: merged });
+      broadcastAll('dispatch_update', { action: 'call_updated', call: { id: Number(id), notes: parentNotes } });
+    } catch { /* best-effort */ }
+
+    return c.json(merged, 201);
+  } catch (err) {
+    console.error('POST /dispatch/calls/:id/redispatch failed:', err);
+    return dbErrorResponse(c, err, 'Failed to re-dispatch call');
+  }
+});
+
+// POST /dispatch/calls/:id/undo-redispatch - delete a pending return-visit
+// child call and restore the parent (only while the child hasn't progressed
+// past 'pending' — once dispatched, undoing would strand assigned units and
+// destroy real dispatch activity, not just an accidental click).
+calls.post('/:id/undo-redispatch', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const child = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!child) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    const childExt = (await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id)) || {};
+    const parentCallId = childExt.parent_call_id as number | undefined;
+    if (!parentCallId) return c.json({ error: 'This call has no parent to restore', code: 'NOT_A_REDISPATCH' }, 400);
+    if (child.status !== 'pending') {
+      return c.json({ error: 'Only a pending return visit can be undone', code: 'CALL_MUST_BE_PENDING' }, 400);
+    }
+
+    // parent_call_id always points at the ROOT of the chain (see redispatch
+    // above), which is also where every visit_history snapshot lives — pull
+    // the most recent one back off since this undo reverses that snapshot.
+    const lastVisit = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM call_visit_history WHERE call_id = ? ORDER BY visit_number DESC, id DESC LIMIT 1', parentCallId);
+    if (lastVisit) await execute(db, 'DELETE FROM call_visit_history WHERE id = ?', lastVisit.id);
+
+    await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
+    await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
+    await execute(db, 'DELETE FROM call_businesses WHERE call_id = ?', id);
+    await execute(db, 'DELETE FROM calls_for_service_ext WHERE id = ?', id);
+    await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+
+    await recordAudit(c, { action: 'CALL_UNDO_REDISPATCH', entityType: 'call', entityId: Number(id), details: { restored_parent_id: parentCallId } });
+
+    const parentBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentCallId);
+    const parentExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentCallId);
+    const parent = { ...(parentBase || {}), ...(parentExtRow || {}) };
+
+    try {
+      broadcastAll('dispatch_update', { action: 'call_deleted', call_id: Number(id) });
+      broadcastAll('dispatch_update', { action: 'call_updated', call: parent });
+    } catch { /* best-effort */ }
+
+    return c.json({ parent });
+  } catch (err) {
+    console.error('POST /dispatch/calls/:id/undo-redispatch failed:', err);
+    return dbErrorResponse(c, err, 'Failed to undo re-dispatch');
+  }
 });
 
 export default calls;

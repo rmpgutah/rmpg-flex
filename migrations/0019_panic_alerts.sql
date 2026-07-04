@@ -37,19 +37,21 @@ CREATE TABLE IF NOT EXISTS officer_welfare (
   status TEXT NOT NULL DEFAULT 'normal'   -- normal | prompted | overdue | emergency
 );
 
--- system_config is the shared key/value bag the panic + welfare
--- engines read tunable seconds from. Pre-existing schema uses
--- (key, value) column names — keep this consistent so the legacy
--- table doesn't need a column rewrite.
-CREATE TABLE IF NOT EXISTS system_config (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-INSERT OR IGNORE INTO system_config (key, value) VALUES
-  ('panic_escalation_1_seconds', '30'),
-  ('panic_escalation_2_seconds', '60'),
-  ('panic_escalation_3_seconds', '90'),
-  ('welfare_prompt_seconds', '900'),       -- 15 min idle → prompt
-  ('welfare_overdue_seconds', '1200');     -- 20 min idle → overdue/emergency
+-- system_config is the shared key/value bag the panic + welfare engines
+-- were meant to read tunable seconds from. REMOVED 2026-07-03: two
+-- competing 0001 migrations both declare this table with different
+-- schemas (0001_initial.sql = key/value; 0001_initial_schema.sql =
+-- config_key/config_value/category/sort_order/is_active), and whichever's
+-- CREATE TABLE IF NOT EXISTS runs first on a given DB wins — live D1 has
+-- the config_key/config_value version, but a fresh local DB (migrations
+-- apply in filename order, and "0001_initial.sql" sorts before
+-- "0001_initial_schema.sql") gets the OPPOSITE one. The seed INSERT
+-- below used to hardcode (key, value) column names, which crashed with
+-- "no such column: key" on live and silently rolled back this ENTIRE
+-- migration file — wrangler runs each file in one transaction, so
+-- officer_welfare (above) never got created either despite this file
+-- showing as tracked/applied. Neither src/routes/dispatch/panic.ts nor
+-- welfare.ts actually reads these config keys (grepped — no matches), so
+-- rather than gamble on which schema wins in which environment, the seed
+-- is dropped entirely. officer_welfare was created standalone directly
+-- against live D1 as part of the same fix.

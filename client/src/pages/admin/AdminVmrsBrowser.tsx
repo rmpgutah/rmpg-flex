@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, Search, X } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 interface VmrsSystem {
   id: number;
@@ -43,9 +44,9 @@ export function AdminVmrsBrowser() {
       apiFetch<VmrsComponent[]>('/ref-data/vmrs-components'),
     ])
       .then(([sys, asm, cmp]) => {
-        setSystems(sys ?? []);
-        setAssemblies(asm ?? []);
-        setComponents(cmp ?? []);
+        setSystems(asArray(sys));
+        setAssemblies(asArray(asm));
+        setComponents(asArray(cmp));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
