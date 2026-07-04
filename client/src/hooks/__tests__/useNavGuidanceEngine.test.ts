@@ -128,6 +128,7 @@ describe('useNavGuidanceEngine', () => {
                     { valid: true, active: false, indications: ['left'] },
                     { valid: true, active: true, indications: ['straight'] },
                     { valid: false, active: false, indications: ['right'] },
+                    { active: false, indications: ['right'] } as any, // valid omitted entirely — must coerce to false, not undefined
                   ],
                 }],
               },
@@ -156,6 +157,7 @@ describe('useNavGuidanceEngine', () => {
       { valid: true, active: false, indications: ['left'] },
       { valid: true, active: true, indications: ['straight'] },
       { valid: false, active: false, indications: ['right'] },
+      { valid: false, active: false, indications: ['right'] }, // coerced: missing valid -> false
     ]);
 
     // Second step (arrive) has no intersections/lanes in the fixture — must be undefined, not [].
