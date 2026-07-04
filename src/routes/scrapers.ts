@@ -271,31 +271,91 @@ scrapers.post('/:key/reset-circuit', async (c) => {
   return c.json({ error: `Unknown source key: ${key}` }, 404);
 });
 
+type BulkAction = 'enable' | 'disable' | 'reset' | 'set_priority';
+const VALID_BULK_ACTIONS: BulkAction[] = ['enable', 'disable', 'reset', 'set_priority'];
+const MIN_PRIORITY = 1;
+const MAX_PRIORITY = 4;
+
+// Applies a single per-key UPDATE across both warrant-source frameworks —
+// try warrant_scraper_config (code-resident ADAPTERS) first, fall back to
+// national_warrant_sources (the federated Socrata/ArcGIS/PDF pull) if the
+// key didn't match there. Mirrors the dual-table fallback used by
+// POST /:key/reset-circuit above, generalized for the 4 bulk actions.
+async function applyToKey(
+  db: ReturnType<typeof getDb>,
+  key: string,
+  configSql: string,
+  nationalSql: string,
+  value: number,
+): Promise<boolean> {
+  const configResult = await execute(db, configSql, value, key);
+  if (configResult.meta.changes > 0) return true;
+
+  const nationalResult = await execute(db, nationalSql, value, key);
+  return nationalResult.meta.changes > 0;
+}
+
 scrapers.post('/bulk', async (c) => {
   const user = c.get('user') as { role?: string } | undefined;
   if (!user?.role || !['admin', 'manager'].includes(user.role)) {
     return c.json({ error: 'Insufficient permissions' }, 403);
   }
 
-  const body = await c.req.json<{ source_keys?: string[]; enabled?: boolean }>();
-  if (!Array.isArray(body.source_keys) || body.source_keys.length === 0 || typeof body.enabled !== 'boolean') {
-    return c.json({ error: 'source_keys (array) and enabled (boolean) are required' }, 400);
+  const body = await c.req.json<{ source_keys?: string[]; action?: string; priority?: number }>();
+  if (!Array.isArray(body.source_keys) || body.source_keys.length === 0) {
+    return c.json({ error: 'source_keys (non-empty array) is required' }, 400);
+  }
+  if (!body.action || !VALID_BULK_ACTIONS.includes(body.action as BulkAction)) {
+    return c.json({ error: `action must be one of: ${VALID_BULK_ACTIONS.join(', ')}` }, 400);
+  }
+  const action = body.action as BulkAction;
+
+  if (action === 'set_priority') {
+    if (typeof body.priority !== 'number' || body.priority < MIN_PRIORITY || body.priority > MAX_PRIORITY) {
+      return c.json({ error: `priority must be a number between ${MIN_PRIORITY} and ${MAX_PRIORITY}` }, 400);
+    }
   }
 
   const db = getDb(c.env);
-  const enabledVal = body.enabled ? 1 : 0;
   let affected = 0;
 
   for (const key of body.source_keys) {
-    const configResult = await execute(
-      db, `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name = ?`, enabledVal, key,
-    );
-    if (configResult.meta.changes > 0) { affected++; continue; }
-
-    const nationalResult = await execute(
-      db, `UPDATE national_warrant_sources SET enabled = ? WHERE source_key = ?`, enabledVal, key,
-    );
-    if (nationalResult.meta.changes > 0) affected++;
+    let matched = false;
+    switch (action) {
+      case 'enable':
+        matched = await applyToKey(
+          db, key,
+          `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name = ?`,
+          `UPDATE national_warrant_sources SET enabled = ? WHERE source_key = ?`,
+          1,
+        );
+        break;
+      case 'disable':
+        matched = await applyToKey(
+          db, key,
+          `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name = ?`,
+          `UPDATE national_warrant_sources SET enabled = ? WHERE source_key = ?`,
+          0,
+        );
+        break;
+      case 'reset':
+        matched = await applyToKey(
+          db, key,
+          `UPDATE warrant_scraper_config SET consecutive_errors = ? WHERE source_name = ?`,
+          `UPDATE national_warrant_sources SET consecutive_errors = ? WHERE source_key = ?`,
+          0,
+        );
+        break;
+      case 'set_priority':
+        matched = await applyToKey(
+          db, key,
+          `UPDATE warrant_scraper_config SET priority = ? WHERE source_name = ?`,
+          `UPDATE national_warrant_sources SET priority = ? WHERE source_key = ?`,
+          body.priority as number,
+        );
+        break;
+    }
+    if (matched) affected++;
   }
 
   return c.json({ success: true, affected });

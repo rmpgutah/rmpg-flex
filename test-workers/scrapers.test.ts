@@ -146,7 +146,7 @@ describe('POST /api/warrants/scrapers/bulk', () => {
     const app = buildApp('officer');
     const res = await app.request('/api/warrants/scrapers/bulk', {
       method: 'POST',
-      body: JSON.stringify({ source_keys: ['ada-county-id'], enabled: false }),
+      body: JSON.stringify({ action: 'disable', source_keys: ['ada-county-id'] }),
     }, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(403);
   });
@@ -155,7 +155,7 @@ describe('POST /api/warrants/scrapers/bulk', () => {
     const app = buildApp('admin');
     const res = await app.request('/api/warrants/scrapers/bulk', {
       method: 'POST',
-      body: JSON.stringify({ source_keys: ['ada-county-id', 'arcgis-arlington-tx'], enabled: false }),
+      body: JSON.stringify({ action: 'disable', source_keys: ['ada-county-id', 'arcgis-arlington-tx'] }),
     }, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(200);
     const body = await res.json() as { success: boolean; affected: number };
@@ -167,12 +167,86 @@ describe('POST /api/warrants/scrapers/bulk', () => {
     expect(list.sources.find((s) => s.source_key === 'arcgis-arlington-tx')?.enabled).toBe(0);
   });
 
+  it('enables sources across both frameworks in one call', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'enable', source_keys: ['ada-county-id', 'arcgis-arlington-tx'] }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { success: boolean; affected: number };
+    expect(body.affected).toBe(2);
+
+    const listRes = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { sources: Array<{ source_key: string; enabled: 0 | 1 }> };
+    expect(list.sources.find((s) => s.source_key === 'ada-county-id')?.enabled).toBe(1);
+    expect(list.sources.find((s) => s.source_key === 'arcgis-arlington-tx')?.enabled).toBe(1);
+  });
+
+  it('resets consecutive_errors across both frameworks in one call', async () => {
+    const app = buildApp('admin');
+    // ada-county-id starts with 6 consecutive_errors (circuit broken) per beforeAll seed.
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'reset', source_keys: ['ada-county-id', 'arcgis-arlington-tx'] }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { success: boolean; affected: number };
+    expect(body.affected).toBe(2);
+
+    const listRes = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { sources: Array<{ source_key: string; consecutive_errors: number; circuit_broken: 0 | 1 }> };
+    const ada = list.sources.find((s) => s.source_key === 'ada-county-id');
+    expect(ada?.consecutive_errors).toBe(0);
+    expect(ada?.circuit_broken).toBe(0);
+  });
+
+  it('sets priority across both frameworks in one call', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'set_priority', source_keys: ['ada-county-id', 'arcgis-arlington-tx'], priority: 1 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { success: boolean; affected: number };
+    expect(body.affected).toBe(2);
+
+    const listRes = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { sources: Array<{ source_key: string; priority: number }> };
+    expect(list.sources.find((s) => s.source_key === 'ada-county-id')?.priority).toBe(1);
+    expect(list.sources.find((s) => s.source_key === 'arcgis-arlington-tx')?.priority).toBe(1);
+  });
+
   it('rejects a request missing source_keys', async () => {
     const app = buildApp('admin');
     const res = await app.request('/api/warrants/scrapers/bulk', {
       method: 'POST',
-      body: JSON.stringify({ enabled: true }),
+      body: JSON.stringify({ action: 'enable' }),
     }, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(400);
+  });
+
+  it('rejects an invalid action', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', source_keys: ['ada-county-id'] }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects set_priority with a missing or out-of-range priority', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'set_priority', source_keys: ['ada-county-id'] }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+
+    const res2 = await app.request('/api/warrants/scrapers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'set_priority', source_keys: ['ada-county-id'], priority: 5 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res2.status).toBe(400);
   });
 });
