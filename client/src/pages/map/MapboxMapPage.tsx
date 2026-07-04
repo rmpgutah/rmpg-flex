@@ -1670,11 +1670,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 type="button"
                 className="text-[9px] px-1 py-0.5 rounded-sm"
                 style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
-                onClick={() => setHeatmapMode((m) => {
-                  const next = m === 'live' ? 'historical' : 'live';
+                onClick={() => {
+                  const next = heatmapMode === 'live' ? 'historical' : 'live';
+                  setHeatmapMode(next);
                   if (heatmap.enabled) refreshHeatmapPoints(next);
-                  return next;
-                })}
+                }}
                 title="Switch between live (currently active calls) and historical (30-day) heatmap data"
               >
                 {heatmapMode === 'live' ? 'LIVE' : '30D'}
