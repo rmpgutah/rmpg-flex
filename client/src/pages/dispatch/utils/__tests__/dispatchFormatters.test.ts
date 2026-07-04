@@ -49,10 +49,10 @@ describe('deriveCallWarnings', () => {
     expect(deriveCallWarnings(baseCall)).toEqual([]);
   });
 
-  it('flags weapons_involved as ARMED/critical, excluding "none"-ish values', () => {
+  it('flags weapons_involved as ARMED/critical, excluding "none"-ish values regardless of casing/whitespace', () => {
     expect(deriveCallWarnings({ ...baseCall, weapons_involved: 'handgun' }))
       .toEqual([{ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' }]);
-    for (const noneValue of ['', '0', 'none', 'None']) {
+    for (const noneValue of ['', '0', 'none', 'None', 'NONE', 'None ', ' none', 'nil', 'N/A', 'n/a']) {
       expect(deriveCallWarnings({ ...baseCall, weapons_involved: noneValue })).toEqual([]);
     }
   });

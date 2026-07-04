@@ -203,10 +203,13 @@ export function callMatchesSearch(call: CallForService, query: string): boolean 
   );
 }
 
-// Values that mean "no weapon", not "unknown weapon" — same exclusion list
-// the server's callWarnings handler (src/routes/dispatch/extensions.ts) uses
-// so a plain truthy check doesn't flag "none" as ARMED.
-const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'None']);
+// Values that mean "no weapon", not "unknown weapon" — a plain truthy check
+// would flag "none" as ARMED. Compared against a trimmed/lowercased value so
+// data-entry variants ('NONE', 'None ', etc.) are excluded too, not just the
+// exact casings the server's callWarnings handler (src/routes/dispatch/
+// extensions.ts) happens to check — that handler has the same case/whitespace
+// gap; not fixed here since this PR only touches the client.
+const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'nil', 'n/a']);
 
 /**
  * Derives CallCard's compact warning badges from fields already present on
@@ -222,7 +225,7 @@ const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'None']);
  */
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
-  if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved))) {
+  if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {
     warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
   }
   if (call.domestic_violence) {
