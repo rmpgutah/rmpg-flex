@@ -33,4 +33,21 @@ describe('ToolbarDropdownGroup', () => {
     fireEvent.click(screen.getByLabelText('Overlays'));
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it('sets aria-expanded to match the open state', () => {
+    const { unmount } = render(
+      <ToolbarDropdownGroup icon={Layers} label="Overlays" open={false} onToggle={vi.fn()}>
+        <div>child</div>
+      </ToolbarDropdownGroup>
+    );
+    expect(screen.getByLabelText('Overlays')).toHaveAttribute('aria-expanded', 'false');
+    unmount();
+
+    render(
+      <ToolbarDropdownGroup icon={Layers} label="Overlays" open={true} onToggle={vi.fn()}>
+        <div>child</div>
+      </ToolbarDropdownGroup>
+    );
+    expect(screen.getByLabelText('Overlays')).toHaveAttribute('aria-expanded', 'true');
+  });
 });

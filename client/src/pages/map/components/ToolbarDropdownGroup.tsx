@@ -17,10 +17,13 @@ interface ToolbarDropdownGroupProps {
 export default function ToolbarDropdownGroup({
   icon: Icon, label, open, onToggle, children,
 }: ToolbarDropdownGroupProps) {
+  const panelId = `toolbar-dropdown-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   return (
     <div className="flex flex-col gap-1">
       <IconButton
         aria-label={label}
+        aria-expanded={open}
+        aria-controls={panelId}
         onClick={onToggle}
         className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
           open ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
@@ -31,7 +34,7 @@ export default function ToolbarDropdownGroup({
         <Icon className="w-4 h-4" />
       </IconButton>
       {open && (
-        <div className="flex flex-col gap-1">
+        <div id={panelId} className="flex flex-col gap-1">
           {children}
         </div>
       )}
