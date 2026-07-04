@@ -114,3 +114,29 @@ describe('POST /api/warrants/scrapers/:key/trigger', () => {
     expect(body.error).toMatch(/disabled/i);
   });
 });
+
+describe('POST /api/warrants/scrapers/:key/reset-circuit', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers/ada-county-id/reset-circuit', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('zeroes consecutive_errors and closes the circuit', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/ada-county-id/reset-circuit', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+
+    const listRes = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const body = await listRes.json() as { sources: Array<{ source_key: string; circuit_broken: 0 | 1; consecutive_errors: number }> };
+    const ada = body.sources.find((s) => s.source_key === 'ada-county-id');
+    expect(ada?.consecutive_errors).toBe(0);
+    expect(ada?.circuit_broken).toBe(0);
+  });
+
+  it('returns 404 for an unknown source key', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/not-a-real-source/reset-circuit', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(404);
+  });
+});
