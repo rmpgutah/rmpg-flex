@@ -711,4 +711,18 @@ ct.get('/discovery', async (c) => {
   } catch { return c.json([]); }
 });
 
+// ── Court Lookups — editable dropdown values (2026-07-04) ─────
+// Backs AdminCourtLookupsTab.tsx. Every Court Tracker dropdown reads
+// from this table by `category`. Categories are created implicitly —
+// inserting the first row with a new category name creates it.
+
+ct.get('/lookups/categories', async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<{ category: string; count: number }>(
+    db,
+    `SELECT category, COUNT(*) as count FROM court_lookups GROUP BY category ORDER BY category`,
+  );
+  return c.json(rows);
+});
+
 export default ct;
