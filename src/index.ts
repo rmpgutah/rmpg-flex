@@ -260,15 +260,19 @@ export default {
           }).catch((err) => console.error('Panic escalation sweep failed:', err)),
         ).catch(() => {}),
       );
-      // Daily rebalance at 04:00 America/Denver. The cron fires every minute;
-      // we gate on Denver hour == 4 and run at most once (rebalance is idempotent
-      // so a double-fire is harmless; the hour gate keeps it to ~60 runs/day).
-      const denverHour = parseInt(
-        new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: '2-digit', hour12: false })
-          .format(new Date()),
-        10,
-      );
-      if (denverHour === 4) {
+      // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
+      // gate on BOTH Denver hour == 4 AND minute == 0 — an hour-only gate
+      // (the original approach) still fires ~60x during that hour. Harmless
+      // for the idempotent runDailyRebalance, but the notification sweeps
+      // below are NOT idempotent (fireRule inserts a fresh notifications row
+      // every call, no dedup) — an hour-only gate spammed ~60 duplicate
+      // notifications per matching record per targeted user per day.
+      const denverNow = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(new Date());
+      const denverHour = parseInt(denverNow.find((p) => p.type === 'hour')?.value ?? '-1', 10);
+      const denverMinute = parseInt(denverNow.find((p) => p.type === 'minute')?.value ?? '-1', 10);
+      if (denverHour === 4 && denverMinute === 0) {
         ctx.waitUntil(
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
@@ -288,7 +292,35 @@ export default {
             ).catch((err) => console.error('Fleet maintenance sweep failed:', err)),
           ).catch(() => {}),
         );
+        // Officer certification expiration reminders — same on-demand-
+        // dashboard-only gap fleet maintenance had; no-ops until a rule
+        // with trigger_event='certification_expiring' is configured.
+        ctx.waitUntil(
+          import('./utils/certExpirationSweep').then((m) =>
+            m.sweepCertExpirations(env.DB, env).then((r) =>
+              console.log(`[cert-expiration] expired=${r.expired} expiringSoon=${r.expiringSoon} notified=${r.notified}`),
+            ).catch((err) => console.error('Certification expiration sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
+    }
+
+    // ── 1st of month, 03:00 UTC ──
+    // NOTE: the schedule comment above has long documented this slot as
+    // "NHTSA vPIC refresh," but no such logic was ever implemented here —
+    // this cron fired every month and did nothing. Using it now for the
+    // records-retention reminder (a monthly cadence fits a 10-99 year
+    // retention window far better than the per-minute/4-hourly slots).
+    // The NHTSA vPIC refresh itself remains unbuilt — flagging separately
+    // rather than guessing at that integration's shape.
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        import('./utils/retentionReminderSweep').then((m) =>
+          m.sweepRetentionReminders(env.DB, env).then((r) =>
+            console.log(`[retention-reminder] eligible=${JSON.stringify(r.eligible)} notified=${r.notified}`),
+          ).catch((err) => console.error('Retention reminder sweep failed:', err)),
+        ).catch(() => {}),
+      );
     }
   },
 };
