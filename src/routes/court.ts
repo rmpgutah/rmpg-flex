@@ -801,4 +801,19 @@ ct.put('/lookups/:id', async (c) => {
   return c.json({ success: true });
 });
 
+ct.delete('/lookups/:id', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM court_lookups WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Lookup not found' }, 404);
+
+  await execute(db, 'DELETE FROM court_lookups WHERE id = ?', id);
+  return c.json({ success: true });
+});
+
 export default ct;

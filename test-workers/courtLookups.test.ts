@@ -132,3 +132,27 @@ describe('PUT /api/court/lookups/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('DELETE /api/court/lookups/:id', () => {
+  it('rejects non-admin roles', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/court/lookups/3', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('deletes the row as admin', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups/3', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+
+    const listRes = await app.request('/api/court/lookups?category=judge', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as Array<{ id: number }>;
+    expect(list.find((r) => r.id === 3)).toBeUndefined();
+  });
+
+  it('returns 404 for a missing id', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/court/lookups/9999', { method: 'DELETE' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(404);
+  });
+});
