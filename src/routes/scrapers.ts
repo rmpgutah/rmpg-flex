@@ -28,7 +28,7 @@ import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 import { isCircuitOpen } from '../utils/warrantSources/resilience';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
-import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { ADAPTERS, getEnabledAdapters } from '../utils/warrantSources/registry';
 import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
 import { runFullListLeg } from '../utils/warrantSources/runScan';
 
@@ -200,17 +200,12 @@ scrapers.post('/:key/trigger', async (c) => {
     }
   }
 
+  // getEnabledAdapters() now filters out disabled sources at the query level
+  // (WHERE enabled = 1 in warrant_scraper_config — see registry.ts), so a
+  // disabled code-resident source simply never appears in codeAdapters here.
   const codeAdapters = await getEnabledAdapters(db);
   const codeMatch = codeAdapters.find((a) => a.meta.key === key);
   if (codeMatch) {
-    const configRow = await query<{ enabled: number }>(
-      db,
-      'SELECT enabled FROM warrant_scraper_config WHERE source_name = ?',
-      key,
-    );
-    if (configRow.length > 0 && configRow[0].enabled === 0) {
-      return c.json({ error: 'This source is disabled — enable it before triggering' }, 400);
-    }
     try {
       const summaries = await runFullListLeg(db, [codeMatch]);
       return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
@@ -227,6 +222,23 @@ scrapers.post('/:key/trigger', async (c) => {
       return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
     } catch (err) {
       return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
+    }
+  }
+
+  // Key not found in either enabled adapter set. If it's a KNOWN
+  // code-resident adapter (in ADAPTERS) that's simply disabled in config,
+  // surface a clear "disabled" message instead of a generic 404 — a single
+  // lightweight lookup, only on this not-found fallback path (no duplication
+  // of the unconditional query the code used to run on every trigger).
+  const knownAdapter = ADAPTERS.find((a) => a.meta.key === key);
+  if (knownAdapter) {
+    const configRow = await query<{ enabled: number }>(
+      db,
+      'SELECT enabled FROM warrant_scraper_config WHERE source_name = ?',
+      key,
+    );
+    if (configRow.length > 0 && configRow[0].enabled === 0) {
+      return c.json({ error: 'This source is disabled — enable it before triggering' }, 400);
     }
   }
 
