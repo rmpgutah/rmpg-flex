@@ -16,24 +16,40 @@
 
 import { getCachedMapboxAccessToken } from './mapboxApiKey';
 
-/** Contrast multiplier for the monochrome "blueprint" raster pass — see
- *  applyBlueprintMonochrome(). Exported so its expected effect is a fixed,
- *  documented constant rather than a magic number buried in the transform. */
-export const BLUEPRINT_MONOCHROME_CONTRAST = 1.6;
-
 /**
- * In-place luminance grayscale + contrast stretch over an RGBA pixel buffer
- * (e.g. from CanvasRenderingContext2D.getImageData().data). Converts a
- * photographic map raster into flat black-line/white-field bands so it
- * reads as a technical drawing. Alpha (every 4th byte) is left untouched.
+ * In-place luminance grayscale + AUTO-LEVELS contrast stretch over an RGBA
+ * pixel buffer (e.g. from CanvasRenderingContext2D.getImageData().data).
+ * Converts a map raster into flat black-line/white-field bands so it reads
+ * as a technical drawing. Alpha (every 4th byte) is left untouched.
+ *
+ * Auto-levels (stretch the image's OWN observed min→max luminance to the
+ * full 0-255 range) rather than a fixed pivot/multiplier — a naive fixed
+ * stretch (e.g. "(lum-128)*1.6+128") clips to solid white on an
+ * already-pale base style (regression found 2026-07-04: 'mapbox/light-v11'
+ * sits mostly in the 235-255 range, so a fixed stretch pushed nearly every
+ * pixel to 255 and wiped out the roads/building footprints entirely —
+ * "there is nothing to see" on the rendered PDF). Auto-levels instead finds
+ * whatever range the SOURCE actually uses and expands it to fill 0-255, so
+ * it works whether the source is a pale line-art style or a darker
+ * satellite photo.
  *
  * Pure and canvas-free so it's unit-testable without OffscreenCanvas, which
  * jsdom (this repo's test environment) doesn't implement.
  */
 export function applyBlueprintMonochrome(pixels: Uint8ClampedArray): void {
+  let min = 255;
+  let max = 0;
   for (let i = 0; i < pixels.length; i += 4) {
     const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
-    const v = Math.max(0, Math.min(255, (lum - 128) * BLUEPRINT_MONOCHROME_CONTRAST + 128));
+    if (lum < min) min = lum;
+    if (lum > max) max = lum;
+  }
+  // Flat/blank source (min === max) — nothing to stretch; render as a
+  // uniform mid-gray rather than divide by zero.
+  const range = max - min;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+    const v = range > 0 ? Math.max(0, Math.min(255, ((lum - min) / range) * 255)) : 128;
     pixels[i] = v;
     pixels[i + 1] = v;
     pixels[i + 2] = v;
@@ -616,6 +632,11 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
               ictx.fillStyle = '#ffffff';
               ictx.fillRect(0, 0, ibmp.width, ibmp.height);
               ictx.drawImage(ibmp, 0, 0);
+              if (opts.monochrome) {
+                const insetImgData = ictx.getImageData(0, 0, ibmp.width, ibmp.height);
+                applyBlueprintMonochrome(insetImgData.data);
+                ictx.putImageData(insetImgData, 0, 0);
+              }
               const ib = await icv.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
               const ir = new FileReader();
               insetDataUrl = await new Promise<string>((resolve, reject) => {
