@@ -92,23 +92,29 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
   }>(db, `SELECT source_key, display_name, state, jurisdiction, format, enabled, priority, consecutive_errors
     FROM national_warrant_sources`);
 
+  // Single grouped query for all sources' active warrant counts, instead of
+  // one COUNT(*) per source row (N+1) — this file is expected to grow more
+  // routes (health/trigger/reset-circuit), so batching this now avoids the
+  // pattern getting copy-pasted forward.
+  const countRows = await query<{ source_key: string; n: number }>(
+    db, `SELECT source_key, COUNT(*) as n FROM scraped_warrants WHERE status = 'active' GROUP BY source_key`,
+  );
+  const countsByKey = new Map(countRows.map((r) => [r.source_key, r.n]));
+
   const out: MergedSource[] = [];
 
   for (const row of configRows) {
     const key = row.source_name;
-    const countRow = await query<{ n: number }>(
-      db, `SELECT COUNT(*) as n FROM scraped_warrants WHERE source_key = ? AND status = 'active'`, key,
-    );
     out.push({
       source_key: key,
-      display_name: key,
-      state: '', county: null, source_url: '',
+      display_name: key, // no human-readable name column on this table yet — intentional, not a bug
+      state: '', county: null, source_url: '', // not tracked by warrant_scraper_config today
       source_type: row.source_type ?? 'unknown',
       enabled: (row.enabled ?? 1) ? 1 : 0,
       circuit_broken: circuitOpenFromConsecutiveErrors(row.consecutive_errors) ? 1 : 0,
       priority: row.priority ?? 3,
       consecutive_errors: row.consecutive_errors,
-      warrant_count: countRow[0]?.n ?? 0,
+      warrant_count: countsByKey.get(key) ?? 0,
       last_scrape_at: row.last_run_at,
       last_success_at: row.last_success_at,
       last_error: row.last_error,
@@ -119,21 +125,18 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
   }
 
   for (const row of nationalRows) {
-    const countRow = await query<{ n: number }>(
-      db, `SELECT COUNT(*) as n FROM scraped_warrants WHERE source_key = ? AND status = 'active'`, row.source_key,
-    );
     out.push({
       source_key: row.source_key,
       display_name: row.display_name,
       state: row.state ?? '',
       county: row.jurisdiction,
-      source_url: '',
+      source_url: '', // national_warrant_sources.base_url exists but isn't a client-facing URL — left blank for now
       source_type: row.format,
       enabled: row.enabled ? 1 : 0,
       circuit_broken: circuitOpenFromConsecutiveErrors(row.consecutive_errors) ? 1 : 0,
       priority: row.priority,
       consecutive_errors: row.consecutive_errors,
-      warrant_count: countRow[0]?.n ?? 0,
+      warrant_count: countsByKey.get(row.source_key) ?? 0,
       last_scrape_at: null,
       last_success_at: null,
       last_error: null,
