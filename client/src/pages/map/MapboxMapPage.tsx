@@ -4,8 +4,9 @@
  * Renders when useMapProvider() selects 'mapbox'. Provides real-time unit tracking,
  * active call visualization, beat overlays, address search, and GPS self-positioning.
  *
- * Spillman Flex / Motorola Solutions pure black theme:
- *   #0a0a0a base · #141414 raised · #d4a017 gold accent · 2px radius everywhere
+ * Tactical surface (always night/steel-blue via `.tactical-dark`, see
+ * `utils/tacticalPalette.ts`): surface-base/surface-raised tokens, brand-gold-500
+ * accent, 2px radius everywhere.
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -78,6 +79,9 @@ import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
+import {
+  TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
+} from './utils/tacticalPalette';
 interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -808,30 +812,30 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   if (mapError) {
     return (
       <div className="flex items-center justify-center bg-surface-base" style={{ position: 'absolute', inset: 0 }}>
-        <div className="bg-surface-raised border border-[#222222] p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
-           <AlertTriangle className="w-10 h-10 text-[#d4a017] mx-auto mb-3" />
+        <div className="bg-surface-raised border border-default p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
+           <AlertTriangle className="w-10 h-10 text-brand-gold-500 mx-auto mb-3" />
            <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
            <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
-           <div className="text-left bg-[#111] border border-[#1a1a1a] p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
+           <div className="text-left bg-surface-deep border border-subtle p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
              <p className="font-semibold text-rmpg-300 mb-1">To fix this issue:</p>
              <ol className="list-decimal list-inside space-y-1">
-               <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-[#d4a017] underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
+               <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
                <li>Ensure the token has the required scopes: <span className="font-mono text-rmpg-300">styles:read</span>, <span className="font-mono text-rmpg-300">styles:tiles</span>, <span className="font-mono text-rmpg-300">fonts:read</span>.</li>
                <li>If expired or revoked, create a new public token and copy it.</li>
-               <li>Navigate to <a href="/admin?tab=integrations" className="text-[#d4a017] underline">Admin → Integrations → Mapbox</a> and paste the new token.</li>
+               <li>Navigate to <a href="/admin?tab=integrations" className="text-brand-gold-500 underline">Admin → Integrations → Mapbox</a> and paste the new token.</li>
                <li>Alternatively, set the <span className="font-mono text-rmpg-300">MAPBOX_ACCESS_TOKEN</span> environment variable on the server.</li>
              </ol>
            </div>
            <div className="flex flex-col gap-2 items-center">
              <a
                href="/admin?tab=integrations"
-               className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
+               className="text-brand-gold-500 text-xs underline hover:text-brand-gold-400"
              >
                Configure in Admin → Integrations
              </a>
              <button
                onClick={() => setRetryNonce(n => n + 1)}
-               className="text-[#d4a017] text-xs hover:text-[#e8b84a] transition-colors"
+               className="text-brand-gold-500 text-xs hover:text-brand-gold-400 transition-colors"
              >
                ↻ Retry Mapbox
              </button>
@@ -849,7 +853,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#d4a017] animate-spin" />
+            <Loader2 className="w-8 h-8 text-brand-gold-500 animate-spin" />
             <span className="text-rmpg-300 text-xs font-mono">INITIALIZING MAP…</span>
           </div>
         </div>
@@ -859,11 +863,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
 
 
-      {/* Geocoder styling override for RMPG dark theme */}
+      {/* Geocoder styling override — tactical-dark surface (always night palette,
+          see utils/tacticalPalette.ts; the geocoder is a raw Mapbox DOM control,
+          not React, so it's styled via injected CSS rather than Tailwind classes) */}
       <style>{`
         .mapboxgl-ctrl-geocoder {
-          background: #141414 !important;
-          border: 1px solid #222222 !important;
+          background: ${TACTICAL_SURFACE_RAISED} !important;
+          border: 1px solid ${TACTICAL_BORDER} !important;
           border-radius: 2px !important;
           color: #e0e0e0 !important;
           font-family: ui-monospace, monospace !important;
@@ -876,11 +882,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           font-size: 12px !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
-          color: #555 !important;
+          color: ${TACTICAL_TEXT_MUTED} !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions {
-          background: #141414 !important;
-          border: 1px solid #222222 !important;
+          background: ${TACTICAL_SURFACE_RAISED} !important;
+          border: 1px solid ${TACTICAL_BORDER} !important;
           border-radius: 2px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > li > a {
@@ -889,17 +895,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         }
         .mapboxgl-ctrl-geocoder .suggestions > .active > a,
         .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-          background: #1a1a1a !important;
-          color: #d4a017 !important;
+          background: ${TACTICAL_SURFACE_BASE} !important;
+          color: ${TACTICAL_BRAND_GOLD} !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-search {
-          fill: #d4a017 !important;
+          fill: ${TACTICAL_BRAND_GOLD} !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--button {
           background: transparent !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-close {
-          fill: #888 !important;
+          fill: ${TACTICAL_TEXT_MUTED} !important;
         }
       `}</style>
 
@@ -908,7 +914,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <IconButton
           aria-label="Open sidebar"
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-[#222222] p-2 text-rmpg-300 hover:text-[#d4a017] backdrop-blur-sm"
+          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
           style={{ borderRadius: 2 }}
         >
           <PanelLeftOpen className="w-4 h-4" />
@@ -918,13 +924,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Sidebar */}
       {sidebarOpen && (
         <div
-          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-[#222222] backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
+          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-default backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
         >
           {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-default">
             <div className="flex items-center gap-2">
               <RmpgLogo height={20} iconOnly />
-              <span className="text-[#d4a017] text-xs font-semibold tracking-wider">FLEX MAP</span>
+              <span className="text-brand-gold-500 text-xs font-semibold tracking-wider">FLEX MAP</span>
             </div>
             <IconButton
               aria-label="Close sidebar"
@@ -936,12 +942,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-[#222222]">
+          <div className="flex border-b border-default">
             <button
               onClick={() => setActiveTab('units')}
               className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
                 activeTab === 'units'
-                  ? 'text-[#d4a017] border-b-2 border-[#d4a017]'
+                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
                   : 'text-rmpg-400 hover:text-rmpg-300'
               }`}
             >
@@ -952,7 +958,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               onClick={() => setActiveTab('calls')}
               className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
                 activeTab === 'calls'
-                  ? 'text-[#d4a017] border-b-2 border-[#d4a017]'
+                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
                   : 'text-rmpg-400 hover:text-rmpg-300'
               }`}
             >
@@ -964,7 +970,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'units' && (
-              <div className="divide-y divide-[#1a1a1a]">
+              <div className="divide-y divide-border-subtle">
                 {units.length === 0 && (
                   <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No units available</div>
                 )}
@@ -977,7 +983,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       onClick={() => flyToUnit(unit)}
                       disabled={!hasGps}
                       className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-[#1a1a1a] cursor-pointer' : 'opacity-50 cursor-default'
+                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1001,7 +1007,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             )}
 
             {activeTab === 'calls' && (
-              <div className="divide-y divide-[#1a1a1a]">
+              <div className="divide-y divide-border-subtle">
                 {calls.length === 0 && (
                   <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No active calls</div>
                 )}
@@ -1015,7 +1021,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       onClick={() => flyToCall(call)}
                       disabled={!hasGps}
                       className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-[#1a1a1a] cursor-pointer' : 'opacity-50 cursor-default'
+                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1047,7 +1053,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       {hasGps && (
                         <div className="ml-4 mt-0.5">
                           <span
-                            className="text-[8px] text-rmpg-400 hover:text-[#d4a017] cursor-pointer inline-flex items-center gap-0.5"
+                            className="text-[8px] text-rmpg-400 hover:text-brand-gold-500 cursor-pointer inline-flex items-center gap-0.5"
                             onClick={(e) => { e.stopPropagation(); showNearestUnit(call); }}
                           >
                             <Locate className="w-2.5 h-2.5" /> NEAREST UNIT
@@ -1062,33 +1068,33 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Sidebar Footer — quick actions */}
-          <div className="border-t border-[#222222] px-3 py-2">
+          <div className="border-t border-default px-3 py-2">
             <div className="flex items-center gap-1 flex-wrap">
               <IconButton
                 aria-label="Refresh data"
                 onClick={silentRefresh}
-                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
                 aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
                 onClick={() => setBeatsVisible(v => !v)}
-                className={`p-1.5 ${beatsVisible ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                className={`p-1.5 ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
               </IconButton>
               <IconButton
                 aria-label="Fly to my position"
                 onClick={flyToSelf}
-                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
               >
                 <Crosshair className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
                 aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
                 onClick={() => setTerrainEnabled(v => !v)}
-                className={`p-1.5 ${terrainEnabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                className={`p-1.5 ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 <Mountain className="w-3.5 h-3.5" />
               </IconButton>
@@ -1109,7 +1115,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label="Layers panel"
                 onClick={() => setLayersPanelOpen(v => !v)}
-                className={`p-1.5 ${layersPanelOpen ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                className={`p-1.5 ${layersPanelOpen ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 <Layers className="w-3.5 h-3.5" />
               </IconButton>
@@ -1156,7 +1162,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
                 onClick={() => coordGrid.toggle()}
-                className={`p-1.5 ${coordGrid.enabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                className={`p-1.5 ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
                 title="Coordinate Grid (G)"
               >
                 <Hash className="w-3.5 h-3.5" />
@@ -1205,8 +1211,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Advanced map tools"
             onClick={() => setShowAdvancedToolbar(v => !v)}
-            className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-              showAdvancedToolbar ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+            className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+              showAdvancedToolbar ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
             }`}
             style={{ borderRadius: 2 }}
           >
@@ -1231,8 +1237,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   }
                   heatmap.toggle();
                 }}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="Crime Heatmap"
@@ -1244,8 +1250,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
                 onClick={() => traffic.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="Live Traffic"
@@ -1272,8 +1278,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   }
                   clustering.toggle();
                 }}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  clustering.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="Cluster Markers"
@@ -1285,8 +1291,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
                 onClick={() => streetView.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="Satellite Peek"
@@ -1299,8 +1305,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Measure tool"
                   onClick={() => setShowMeasureMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
                   title="Measure Distance / Area"
@@ -1308,11 +1314,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <Ruler className="w-4 h-4" />
                 </IconButton>
                 {showMeasureMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-36 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       📏 Distance
@@ -1320,7 +1326,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'area' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        measure.mode === 'area' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       📐 Area
@@ -1328,7 +1334,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     {measure.mode !== 'none' && (
                       <button
                         onClick={() => { measure.clear(); setShowMeasureMenu(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
                       >
                         ✕ Clear
                       </button>
@@ -1342,8 +1348,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Drawing tools"
                   onClick={() => setShowDrawMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                    drawing.mode !== 'none' ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                    drawing.mode !== 'none' ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
                   title="Draw Shapes"
@@ -1351,11 +1357,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <PenTool className="w-4 h-4" />
                 </IconButton>
                 {showDrawMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-40 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polygon' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'polygon' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ▬ Polygon (geofence)
@@ -1363,7 +1369,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { drawing.setMode('polyline'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polyline' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'polyline' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ╱ Polyline (route)
@@ -1371,21 +1377,21 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { drawing.setMode('circle'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'circle' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'circle' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ◯ Circle (perimeter)
                     </button>
-                    <div className="border-t border-[#222]" />
+                    <div className="border-t border-default" />
                     <button
                       onClick={() => { drawing.undo(); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
                     >
                       ↩ Undo last shape
                     </button>
                     <button
                       onClick={() => { drawing.clearAll(); drawing.setMode('none'); setShowDrawMenu(false); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-[#1a1a1a]"
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-surface-overlay"
                     >
                       ✕ Clear all shapes
                     </button>
@@ -1397,8 +1403,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
                 onClick={() => glDraw.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  glDraw.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`bg-surface-raised/95 border border-default p-2 backdrop-blur-sm ${
+                  glDraw.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="GL Draw (vertex editing)"
@@ -1412,7 +1418,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Measurement Result Banner */}
       {measure.result && measure.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
           <Ruler className="w-3.5 h-3.5 text-[#3b82f6]" />
           <span className="text-rmpg-200 text-xs font-mono">
             {measure.result.distanceFormatted}
@@ -1424,9 +1430,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Drawing Mode Indicator */}
       {drawing.mode !== 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/30 px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
-          <PenTool className="w-3.5 h-3.5 text-[#d4a017]" />
-          <span className="text-[#d4a017] text-xs font-mono">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-brand-gold-500/30 px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+          <PenTool className="w-3.5 h-3.5 text-brand-gold-500" />
+          <span className="text-brand-gold-500 text-xs font-mono">
             DRAWING: {drawing.mode.toUpperCase()} — {drawing.mode === 'circle' ? 'Click center, then edge' : 'Click to add points, double-click to finish'}
           </span>
           <button onClick={() => drawing.setMode('none')} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕ Cancel</button>
@@ -1435,7 +1441,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Drawing Shapes Count */}
       {drawing.shapes.length > 0 && drawing.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
           <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
         </div>
@@ -1443,8 +1449,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* GL Draw Feature Count */}
       {glDraw.enabled && glDraw.featureCount > 0 && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
-          <Grid3X3 className="w-3 h-3 text-[#d4a017]" />
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-brand-gold-500/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <Grid3X3 className="w-3 h-3 text-brand-gold-500" />
           <span className="text-rmpg-300 text-[10px] font-mono">{glDraw.featureCount} GL Draw feature(s)</span>
           <button onClick={() => glDraw.deleteAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
         </div>
@@ -1452,8 +1458,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Active Route Panel */}
       {routing.activeRoute && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
-          <Route className="w-4 h-4 text-[#d4a017]" />
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-default px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
+          <Route className="w-4 h-4 text-brand-gold-500" />
           <div className="text-xs font-mono">
             <span className="text-rmpg-200 font-semibold">{routing.activeRoute.unitCallSign}</span>
             <span className="text-rmpg-500 mx-1">→</span>
@@ -1481,7 +1487,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Map style"
             onClick={() => setShowStyleMenu(v => !v)}
-            className="bg-surface-raised/95 border border-[#222222] p-2 text-rmpg-300 hover:text-[#d4a017] backdrop-blur-sm"
+            className="bg-surface-raised/95 border border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
             style={{ borderRadius: 2 }}
           >
             <Layers className="w-4 h-4" />
@@ -1489,7 +1495,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
           {showStyleMenu && (
             <div
-              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-[#222222] w-48 overflow-hidden"
+              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-default w-48 overflow-hidden"
               style={{ borderRadius: 2 }}
             >
               {(Object.keys(MAP_STYLE_LABELS) as MapStyleId[]).map(id => (
@@ -1498,8 +1504,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   onClick={() => handleStyleChange(id)}
                   className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
                     mapStyle === id
-                      ? 'bg-[#1a1a1a] text-[#d4a017]'
-                      : 'text-rmpg-300 hover:bg-[#1a1a1a] hover:text-rmpg-200'
+                      ? 'bg-surface-overlay text-brand-gold-500'
+                      : 'text-rmpg-300 hover:bg-surface-overlay hover:text-rmpg-200'
                   }`}
                 >
                   <span>{MAP_STYLE_LABELS[id]}</span>
@@ -1513,7 +1519,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Status Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-[#222222] backdrop-blur-sm"
+        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-default backdrop-blur-sm"
         style={{ height: 28 }}
       >
         <div className="flex items-center justify-between h-full px-3 text-[9px] font-mono">
@@ -1533,7 +1539,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 </span>
               );
             })}
-            <span className="text-rmpg-500 border-l border-[#222222] pl-3">
+            <span className="text-rmpg-500 border-l border-default pl-3">
               GPS: <span className="text-rmpg-300">{gpsUnitCount}/{units.length}</span>
             </span>
           </div>
