@@ -271,26 +271,4 @@ scrapers.post('/:key/reset-circuit', async (c) => {
   return c.json({ error: `Unknown source key: ${key}` }, 404);
 });
 
-scrapers.post('/:key/reset-circuit', async (c) => {
-  const user = c.get('user') as { role?: string } | undefined;
-  if (!user?.role || !['admin', 'manager'].includes(user.role)) {
-    return c.json({ error: 'Insufficient permissions' }, 403);
-  }
-
-  const db = getDb(c.env);
-  const key = c.req.param('key');
-
-  const configResult = await execute(
-    db, `UPDATE warrant_scraper_config SET consecutive_errors = 0 WHERE source_name = ?`, key,
-  );
-  if (configResult.meta.changes > 0) return c.json({ success: true, source_key: key });
-
-  const nationalResult = await execute(
-    db, `UPDATE national_warrant_sources SET consecutive_errors = 0 WHERE source_key = ?`, key,
-  );
-  if (nationalResult.meta.changes > 0) return c.json({ success: true, source_key: key });
-
-  return c.json({ error: `Unknown source key: ${key}` }, 404);
-});
-
 export default scrapers;
