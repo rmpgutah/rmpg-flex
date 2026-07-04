@@ -302,6 +302,21 @@ export default {
             ).catch((err) => console.error('Certification expiration sweep failed:', err)),
           ).catch(() => {}),
         );
+        // Serve queue stale auto-close — src/routes/serveQueueEnhanced.ts's
+        // POST /auto-close-stale has existed as an admin tool with zero
+        // client callers anywhere; nothing ever invoked it. Reuses its exact
+        // logic (30-day stale window, same activity_log entry) as a real
+        // daily automation (not just a reminder, since a status flip to
+        // 'failed' is fully reversible and the route's own design already
+        // represents "just close these out") plus a notification via the
+        // existing engine so staff see it happened.
+        ctx.waitUntil(
+          import('./utils/serveStaleAutoCloseSweep').then((m) =>
+            m.sweepStaleServeJobs(env.DB, env).then((r) => {
+              if (r.closed > 0) console.log(`[serve-auto-close] closed=${r.closed}`);
+            }).catch((err) => console.error('Serve stale auto-close sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
     }
 
