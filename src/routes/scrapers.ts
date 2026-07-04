@@ -161,6 +161,12 @@ scrapers.get('/health', async (c) => {
   const circuit_broken = sources.filter((s) => s.circuit_broken === 1).length;
   const failed = sources.filter((s) => s.last_error && s.circuit_broken === 0).length;
   const healthy = sources.length - circuit_broken - failed;
+  // `failed` is always 0: distinguishing "fully dead" from "degraded but
+  // still running" needs per-run history we don't have yet (see the
+  // no-run-history-table note at the top of this file). A source with a
+  // lingering last_error that hasn't tripped the circuit breaker is
+  // reported as `degraded`, not `failed` — don't "fix" this by swapping
+  // the two without also adding the history table that would justify it.
   return c.json({
     healthy,
     degraded: failed,
