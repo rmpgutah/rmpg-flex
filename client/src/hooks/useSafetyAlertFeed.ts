@@ -15,6 +15,14 @@ export interface SafetyAlertItem {
 const SEVERITY_RANK: Record<SafetyAlertItem['severity'], number> = { critical: 0, warning: 1, info: 2 };
 const TYPE_RANK: Record<SafetyAlertItem['type'], number> = { panic: 0, welfare: 1, premise: 2 };
 
+/** Normalizes an arbitrary alert_level string (the API's field is typed
+ *  as a loose `string`, not a closed union) to a known severity, so an
+ *  unrecognized value (e.g. 'high'/'medium'/'low') can't produce an
+ *  undefined SEVERITY_RANK/SEVERITY_COLOR lookup downstream. */
+function toSeverity(level?: string): SafetyAlertItem['severity'] {
+  return level === 'critical' || level === 'warning' || level === 'info' ? level : 'info';
+}
+
 export interface UseSafetyAlertFeedResult {
   items: SafetyAlertItem[];
   count: number;
@@ -45,7 +53,7 @@ export function useSafetyAlertFeed(): UseSafetyAlertFeedResult {
     const premiseItems: SafetyAlertItem[] = premise.alerts.map(a => ({
       id: `premise-${a.id}`,
       type: 'premise',
-      severity: (a.alert_level as SafetyAlertItem['severity']) ?? 'info',
+      severity: toSeverity(a.alert_level),
       label: a.title,
       detail: a.address,
     }));

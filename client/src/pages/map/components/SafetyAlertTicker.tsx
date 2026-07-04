@@ -9,9 +9,9 @@ interface SafetyAlertTickerProps {
 }
 
 const SEVERITY_COLOR: Record<SafetyAlertItem['severity'], string> = {
-  critical: '#ef4444',
-  warning: '#f59e0b',
-  info: '#3b82f6',
+  critical: 'var(--sev-critical)',
+  warning: 'var(--sev-warn)',
+  info: 'var(--sev-info)',
 };
 
 function AlertRow({ item }: { item: SafetyAlertItem }) {
@@ -43,9 +43,9 @@ export default function SafetyAlertTicker({ items, count }: SafetyAlertTickerPro
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center gap-2 px-2 py-1.5 text-left"
       >
-        <AlertTriangle className="w-3.5 h-3.5 text-[#ef4444]" />
+        <AlertTriangle className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical)' }} />
         <span className="text-rmpg-200 text-xs font-semibold flex-1">Safety Alerts</span>
-        <span className="bg-[#ef4444] text-white text-[10px] font-bold px-1.5 rounded-sm">{count}</span>
+        <span className="text-white text-[10px] font-bold px-1.5 rounded-sm" style={{ background: 'var(--sev-critical)' }}>{count}</span>
       </button>
       <div className="flex flex-col gap-0.5 pb-1">
         {visibleItems.map(item => <AlertRow key={item.id} item={item} />)}
