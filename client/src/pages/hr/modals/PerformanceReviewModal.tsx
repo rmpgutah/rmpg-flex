@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { X, TrendingUp, Star, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
+import { asArray } from '../../../utils/asArray';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
@@ -71,8 +72,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
-    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
+    apiFetch<UserOption[]>('/hr/employees').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
+    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(d => setCycles(asArray(d))).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
     if (review) {
       setForm({
         employee_id: review.employee_id || '',

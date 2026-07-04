@@ -7,14 +7,15 @@ import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
+// Matches the real shape returned by GET /dispatch/repeat-addresses
+// (src/routes/dispatch/aggregates.ts) — a rounded lat/lng cluster, not a
+// single address record, so there's no incident_types/first_call breakdown.
 interface RepeatAddress {
-  location_address: string;
-  lat: number;
-  lng: number;
-  call_count: number;
-  incident_types: string;
-  last_call: string;
-  first_call: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  last_call_at: string;
 }
 
 const SOURCE_ID = 'rmpg-repeat-addrs-source';
@@ -46,17 +47,16 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
     clearFromMap();
     visibleRef.current = true;
 
-    const maxCount = Math.max(1, ...addrs.map((a) => a.call_count));
+    const maxCount = Math.max(1, ...addrs.map((a) => a.count));
     const features: GeoJSON.Feature[] = addrs.map((a) => ({
       type: 'Feature',
       properties: {
-        address: a.location_address,
-        call_count: a.call_count,
-        incident_types: a.incident_types,
-        last_call: a.last_call,
-        radius: 4 + (a.call_count / maxCount) * 16,
+        address: a.address,
+        call_count: a.count,
+        last_call_at: a.last_call_at,
+        radius: 4 + (a.count / maxCount) * 16,
       },
-      geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
+      geometry: { type: 'Point', coordinates: [a.longitude, a.latitude] },
     }));
 
     m.addSource(SOURCE_ID, {
