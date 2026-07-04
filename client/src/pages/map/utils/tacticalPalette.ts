@@ -21,3 +21,5 @@ export const TACTICAL_SURFACE_RAISED = '#15212e';
 export const TACTICAL_BORDER = '#2a3a4d';
 export const TACTICAL_TEXT_MUTED = '#8fa3b8';
 export const TACTICAL_BRAND_GOLD = '#d4a017';
+export const TACTICAL_TEXT_PRIMARY = '#e6edf5';
+export const TACTICAL_TEXT_DIM = '#c3d0de';

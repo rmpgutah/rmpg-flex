@@ -5,6 +5,7 @@ import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
 import {
   TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
+  TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM,
 } from './tacticalPalette';
 
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
@@ -50,7 +51,7 @@ export function buildUnitPopupHtml(unit: Unit): string {
        </div>`
     : '';
   return `
-    <div style="background:${TACTICAL_SURFACE_RAISED};color:#e0e0e0;padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
+    <div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
       <div style="font-weight:700;color:${TACTICAL_BRAND_GOLD};margin-bottom:2px;font-size:12px;">${escapeHtml(unit.call_sign)}</div>
       <div>${escapeHtml(unit.officer_name)}</div>
       <div>Status: <span style="color:${color};font-weight:600;">${escapeHtml(statusLabel)}</span></div>
@@ -87,14 +88,14 @@ export function buildCallPopupHtml(call: ActiveCall): string {
     .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
     .join('');
   return `
-    <div style="background:${TACTICAL_SURFACE_RAISED};color:#e0e0e0;padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
+    <div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
       <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
       <div style="font-weight:600;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
       <div>Priority: <span style="color:${color};font-weight:700;">P${escapeHtml(call.priority)}</span></div>
       <div>Status: ${escapeHtml(formatEnumValue(call.status))}</div>
       <div style="color:${TACTICAL_TEXT_MUTED};margin-top:2px;">${escapeHtml(call.location_address)}</div>
-      ${call.cross_street ? `<div style="color:#666;font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
-      ${call.beat_name ? `<div style="color:#666;font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
+      ${call.cross_street ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
+      ${call.beat_name ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
       ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
     </div>`;
 }

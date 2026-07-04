@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../mapMarkers';
-import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD } from '../tacticalPalette';
+import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 
 const unit: MapUnit = {
@@ -39,5 +39,6 @@ describe('mapMarkers', () => {
     const html = buildUnitPopupHtml(unit);
     expect(html).toContain(TACTICAL_SURFACE_RAISED);
     expect(html).toContain(TACTICAL_BRAND_GOLD);
+    expect(html).toContain(TACTICAL_TEXT_PRIMARY);
   });
 });
