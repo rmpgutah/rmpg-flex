@@ -267,6 +267,17 @@ export default {
             ).catch((err) => console.error('Daily rebalance failed:', err));
           }).catch(() => {}),
         );
+        // Fleet maintenance reminders — nobody has to remember to check the
+        // maintenance schedule dashboard; fires via the notification-rule
+        // engine (no-op until a rule with trigger_event='fleet_maintenance_due'
+        // is configured in the admin notification-rules UI).
+        ctx.waitUntil(
+          import('./utils/fleetMaintenanceSweep').then((m) =>
+            m.sweepFleetMaintenanceReminders(env.DB, env).then((r) =>
+              console.log(`[fleet-maintenance] overdue=${r.overdue} critical=${r.critical} notified=${r.notified}`),
+            ).catch((err) => console.error('Fleet maintenance sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
     }
   },

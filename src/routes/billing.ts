@@ -305,6 +305,45 @@ billing.delete('/invoices/:id/items/:itemId', async (c) => {
   }
 });
 
+// POST /invoices/:id/generate — AdminInvoiceTab.tsx's "Regenerate" button
+// called this and it 404'd (route never existed). Only 'flat' rate_type
+// contracts can be safely auto-priced without additional data (hourly/
+// per_call/per_officer would need real hours/call-count/officer-count
+// records this endpoint has no access to) — returns a clear 400 for those
+// rather than guessing at a wrong amount.
+billing.post('/invoices/:id/generate', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const invoiceId = parseInt(c.req.param('id'), 10);
+    const invoice = await queryFirst<{ contract_id: number | null }>(db, 'SELECT contract_id FROM invoices WHERE id = ?', invoiceId);
+    if (!invoice) return c.json({ error: 'Invoice not found' }, 404);
+    if (!invoice.contract_id) {
+      return c.json({ error: 'Invoice has no linked contract to regenerate line items from' }, 400);
+    }
+    const contract = await queryFirst<{ contract_number: string | null; billing_cycle: string; rate_amount: number | null; rate_type: string }>(
+      db, 'SELECT contract_number, billing_cycle, rate_amount, rate_type FROM client_contracts WHERE id = ?', invoice.contract_id);
+    if (!contract) return c.json({ error: 'Linked contract not found' }, 404);
+    if (contract.rate_type !== 'flat' || contract.rate_amount == null) {
+      return c.json({
+        error: `Cannot auto-regenerate line items for rate_type '${contract.rate_type}' — only 'flat' contracts can be priced without additional usage data (hours/calls/officers). Add line items manually.`,
+      }, 400);
+    }
+    await execute(db, 'DELETE FROM invoice_line_items WHERE invoice_id = ?', invoiceId);
+    const description = `${contract.billing_cycle} service${contract.contract_number ? ` — ${contract.contract_number}` : ''}`;
+    await execute(db,
+      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+       VALUES (?, ?, 1, ?, ?, 1, 0, 'contract')`,
+      invoiceId, description, contract.rate_amount, contract.rate_amount);
+    await recalcInvoiceTotal(db, invoiceId);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
+    return c.json({ data: updated });
+  } catch (err) {
+    return c.json({ error: 'Failed to regenerate line items' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // PAYMENTS
 // ═══════════════════════════════════════════════════════════════

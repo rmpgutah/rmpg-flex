@@ -54,6 +54,24 @@ const POLICY_TOTALS = { vacation: 80, sick: 40, personal: 24 };
 
 function nowIso() { return new Date().toISOString(); }
 
+const OVERTIME_THRESHOLD_HOURS = 40;
+
+// Auto-split regular hours over the weekly OT threshold into overtime, but
+// only when the caller didn't explicitly supply overtime_hours themselves —
+// a manager who deliberately typed both fields (e.g. correcting a prior
+// entry) is trusted over the auto-split. Previously regular_hours and
+// overtime_hours were both just whatever a manager typed with no threshold
+// check at all.
+function applyOvertimeThreshold(
+  regularHours: number,
+  overtimeHours: number | undefined | null,
+): { regular_hours: number; overtime_hours: number } {
+  if (overtimeHours != null || !Number.isFinite(regularHours) || regularHours <= OVERTIME_THRESHOLD_HOURS) {
+    return { regular_hours: regularHours, overtime_hours: overtimeHours ?? 0 };
+  }
+  return { regular_hours: OVERTIME_THRESHOLD_HOURS, overtime_hours: regularHours - OVERTIME_THRESHOLD_HOURS };
+}
+
 function isManager(role: string) {
   return (MANAGER_ROLES as readonly string[]).includes(role);
 }
@@ -554,6 +572,27 @@ hr.put('/disciplinary/:id', requireRole(...MANAGER_ROLES), async (c) => {
   }
 });
 
+// POST /disciplinary/bulk-status {ids: number[], status} — bulk status
+// transition (e.g. close out a batch at once) instead of one PUT per record.
+hr.post('/disciplinary/bulk-status', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json();
+    const ids: number[] = Array.isArray(body?.ids) ? body.ids.map(Number).filter(Number.isFinite) : [];
+    const status = body?.status;
+    if (!ids.length) return c.json({ error: 'ids required' }, 400);
+    if (!DISC_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
+    const placeholders = ids.map(() => '?').join(',');
+    const res = await execute(db,
+      `UPDATE disciplinary_records SET status = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      status, nowIso(), ...ids);
+    return c.json({ success: true, updated: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[hr] POST /disciplinary/bulk-status', err);
+    return c.json({ error: 'Failed to bulk-update disciplinary records', code: 'HR_DISC_BULK_ERR' }, 500);
+  }
+});
+
 // DELETE /hr/disciplinary/:id
 hr.delete('/disciplinary/:id', requireRole(...MANAGER_ROLES), async (c) => {
   try {
@@ -959,8 +998,9 @@ hr.post('/payroll/entries', requireRole(...MANAGER_ROLES), async (c) => {
     const rate = payRate?.rate ?? 0;
     const otMult = payRate?.overtime_rate ?? 1.5;
     const holMult = payRate?.holiday_rate ?? 1.5;
-    const regHrs = regular_hours ?? 0;
-    const otHrs = overtime_hours ?? 0;
+    const split = applyOvertimeThreshold(regular_hours ?? 0, overtime_hours);
+    const regHrs = split.regular_hours;
+    const otHrs = split.overtime_hours;
     const holHrs = holiday_hours ?? 0;
     const basePay = regHrs * rate;
     const overtimePay = otHrs * rate * otMult;
@@ -1002,8 +1042,11 @@ hr.put('/payroll/entries/:id', requireRole(...MANAGER_ROLES), async (c) => {
     const rate = payRate?.rate ?? 0;
     const otMult = payRate?.overtime_rate ?? 1.5;
     const holMult = payRate?.holiday_rate ?? 1.5;
-    const regHrs = regular_hours ?? existing.regular_hours;
-    const otHrs = overtime_hours ?? existing.overtime_hours;
+    const split = regular_hours != null
+      ? applyOvertimeThreshold(regular_hours, overtime_hours)
+      : { regular_hours: existing.regular_hours, overtime_hours: overtime_hours ?? existing.overtime_hours };
+    const regHrs = split.regular_hours;
+    const otHrs = split.overtime_hours;
     const holHrs = holiday_hours ?? existing.holiday_hours;
     const basePay = regHrs * rate;
     const overtimePay = otHrs * rate * otMult;
@@ -1227,6 +1270,30 @@ hr.put('/grievances/:id', requireRole(...MANAGER_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] PUT /grievances/:id', err);
     return c.json({ error: 'Failed to update grievance', code: 'HR_GRIEV_UPDATE_ERR' }, 500);
+  }
+});
+
+// POST /grievances/bulk-status {ids: number[], status} — bulk status
+// transition (e.g. dismiss a batch of stale filed grievances at once)
+// instead of one PUT per record.
+hr.post('/grievances/bulk-status', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json();
+    const ids: number[] = Array.isArray(body?.ids) ? body.ids.map(Number).filter(Number.isFinite) : [];
+    const status = body?.status;
+    if (!ids.length) return c.json({ error: 'ids required' }, 400);
+    if (!GRIEVANCE_STATUSES.has(status)) return c.json({ error: 'Invalid status' }, 400);
+    const now = nowIso();
+    const resolvedAt = (status === 'resolved' || status === 'dismissed') ? now : null;
+    const placeholders = ids.map(() => '?').join(',');
+    await execute(db,
+      `UPDATE hr_grievances SET status = ?, resolved_at = COALESCE(?, resolved_at), updated_at = ? WHERE id IN (${placeholders})`,
+      status, resolvedAt, now, ...ids);
+    return c.json({ success: true, updated: ids.length });
+  } catch (err) {
+    console.error('[hr] POST /grievances/bulk-status', err);
+    return c.json({ error: 'Failed to bulk-update grievances', code: 'HR_GRIEV_BULK_ERR' }, 500);
   }
 });
 

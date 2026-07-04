@@ -275,7 +275,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     if (!selectedInvoice) return;
     setSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/generate`, { method: 'POST' });
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/generate`, { method: 'POST' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
     } catch (e: any) { setError(e.message); }
