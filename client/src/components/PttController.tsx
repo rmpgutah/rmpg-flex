@@ -22,6 +22,7 @@ import { useVoiceChannel, type DispatchRecordRef } from '../pages/radio/useVoice
 import DispatchRecordPanel from './DispatchRecordPanel';
 import type { RadioChannel } from '../pages/radio/types';
 import { getPttPrefs, keyCodeLabel, PTT_PREFS_EVENT, type PttPreferences } from '../utils/pttPreferences';
+import { asArray } from '../utils/asArray';
 
 // Keyboard-keycap chip — renders the PTT key (e.g. "Backspace") as a small
 // button-like cap so the binding reads as a command, not prose.
@@ -85,7 +86,7 @@ export default function PttController() {
   // Load channels once (for auto-pick + name display). Best-effort.
   useEffect(() => {
     if (!user) return;
-    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(() => { /* offline */ });
+    apiFetch<RadioChannel[]>('/radio/channels').then(d => setChannels(asArray(d))).catch(() => { /* offline */ });
   }, [user]);
 
   // Resolve the channel to transmit on: explicit pref, else first active.

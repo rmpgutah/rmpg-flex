@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
+import { asArray } from '../../../utils/asArray';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
@@ -78,7 +79,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
+    apiFetch<UserOption[]>('/hr/employees').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
   }, []);
 
   useEffect(() => {
