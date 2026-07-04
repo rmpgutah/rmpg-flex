@@ -42,6 +42,21 @@ export interface RouteStep {
   maneuverType: string;
   /** Mapbox maneuver modifier: left | right | straight | … (optional). */
   modifier?: string;
+  /**
+   * Lane guidance for this step's upcoming maneuver, if Mapbox provided it
+   * (only present at multi-lane decision points — absent on most steps).
+   */
+  lanes?: RouteStepLane[];
+}
+
+/** One lane's guidance state at a maneuver. */
+export interface RouteStepLane {
+  /** Whether this lane can be used to complete the upcoming maneuver. */
+  valid: boolean;
+  /** Mapbox's recommended lane, when provided. */
+  active: boolean;
+  /** Directions this lane permits, e.g. ["straight", "left"]. */
+  indications: string[];
 }
 
 export interface RouteInfo {
