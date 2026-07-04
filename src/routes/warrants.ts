@@ -9,6 +9,8 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { US_STATES } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
 
@@ -306,4 +308,72 @@ warrants.post('/search-all', async (c) => {
   if (response.scraped.length) response.meta.sources.push('scraped');
   return c.json(response);
 });
+// GET /national-coverage — per-state source/warrant counts for the
+// NationalWarrantSearchPage coverage map. A state counts as 'active' if it
+// has at least one enabled source, from EITHER national_warrant_sources
+// (config-driven) or the code-resident ADAPTERS registry (excluding the
+// FBI adapter's state:'US' — that's federal, not state-specific coverage).
+warrants.get('/national-coverage', async (c) => {
+  const db = getDb(c.env);
+
+  const configRows = await query<{ state: string | null; enabled: number }>(
+    db, `SELECT state, enabled FROM national_warrant_sources WHERE enabled = 1`,
+  );
+  const codeAdapters = await getEnabledAdapters(db);
+
+  const stateSources = new Map<string, number>();
+  for (const row of configRows) {
+    if (!row.state) continue;
+    const code = row.state.toUpperCase();
+    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
+  }
+  for (const adapter of codeAdapters) {
+    if (adapter.meta.state === 'US') continue;
+    const code = adapter.meta.state.toUpperCase();
+    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
+  }
+
+  const warrantCountRows = await query<{ state: string | null; n: number }>(
+    db, `SELECT state, COUNT(*) as n FROM scraped_warrants WHERE status = 'active' GROUP BY state`,
+  );
+  const stateWarrants = new Map<string, number>();
+  for (const row of warrantCountRows) {
+    if (!row.state) continue;
+    stateWarrants.set(row.state.toUpperCase(), row.n);
+  }
+
+  const state_sources: Record<string, number> = {};
+  const state_warrants: Record<string, number> = {};
+  const state_status: Record<string, string> = {};
+  const states = US_STATES.map(({ code, name }) => {
+    const sourceCount = stateSources.get(code) ?? 0;
+    const warrantCount = stateWarrants.get(code) ?? 0;
+    const available = sourceCount > 0;
+    state_sources[code] = sourceCount;
+    state_warrants[code] = warrantCount;
+    state_status[code] = available ? 'active' : 'disabled';
+    return {
+      stateCode: code,
+      stateName: name,
+      available,
+      ...(available ? {} : { message: 'No active sources configured' }),
+    };
+  });
+
+  const states_covered = states.filter((s) => s.available).length;
+  const sources = Object.values(state_sources).reduce((a, b) => a + b, 0);
+  const active_warrants = Object.values(state_warrants).reduce((a, b) => a + b, 0);
+
+  return c.json({
+    states,
+    updatedAt: new Date().toISOString(),
+    sources,
+    states_covered,
+    active_warrants,
+    state_status,
+    state_sources,
+    state_warrants,
+  });
+});
+
 export default warrants;
