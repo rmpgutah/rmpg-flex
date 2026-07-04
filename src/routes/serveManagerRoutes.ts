@@ -14,6 +14,58 @@ import { pollServeManagerJobs } from '../utils/serveManagerPoller';
 
 const sm = new Hono<Env>();
 
+// GET /servemanager/status — top-level integration status card on
+// AdminServeManagerTab. Distinct from /poller/status (auto-poller config);
+// this is "is the API key set + how did the last sync go + cache size".
+sm.get('/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const keyRow = await queryFirst<{ config_value: string }>(db,
+      "SELECT config_value FROM system_config WHERE config_key = 'servemanager_api_key' AND category = 'integrations' AND is_active = 1 LIMIT 1");
+    const lastSync = await queryFirst<Record<string, unknown>>(db,
+      'SELECT id, sync_type, status, jobs_synced, attempts_synced, error_message, started_at, completed_at FROM sm_sync_log ORDER BY started_at DESC LIMIT 1');
+    const jobsCount = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM sm_jobs');
+    const attemptsCount = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM sm_attempts');
+    return c.json({
+      configured: !!keyRow?.config_value,
+      last_sync: lastSync || null,
+      cached_jobs: jobsCount?.n ?? 0,
+      cached_attempts: attemptsCount?.n ?? 0,
+    });
+  } catch {
+    return c.json({ configured: false, last_sync: null, cached_jobs: 0, cached_attempts: 0 });
+  }
+});
+
+// POST /servemanager/sync {type: 'full'|'incremental'} — manual sync
+// trigger from the admin tab. Logs a sm_sync_log row (the poller's
+// /poller/poll-now does not log), reusing the same poll logic.
+sm.post('/sync', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const type = body?.type === 'full' ? 'full' : 'incremental';
+  const db = getDb(c.env);
+  const inserted = await execute(db,
+    "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now','localtime'))",
+    type);
+  const syncId = inserted.meta?.last_row_id;
+  try {
+    const result = await pollServeManagerJobs(c.env as any);
+    await execute(db,
+      "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+      result.error ? 'failed' : 'completed', result.synced, 0, result.error || null, syncId);
+    return c.json({
+      success: !result.error, sync_id: syncId, type,
+      jobs_synced: result.synced, attempts_synced: 0,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Sync failed';
+    await execute(db,
+      "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+      message, syncId);
+    return c.json({ success: false, sync_id: syncId, type, jobs_synced: 0, attempts_synced: 0, error: message }, 500);
+  }
+});
+
 sm.get('/sync/log', async (c) => {
   try {
     const db = getDb(c.env);
