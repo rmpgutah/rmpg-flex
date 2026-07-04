@@ -5,7 +5,7 @@
 // as an admin-triggerable tool since it was built, but has zero client
 // callers anywhere - no UI button, no automation, nothing ever invoked
 // it. Reuses that route's exact logic (same query, same 30-day default,
-// same activity_log entry) as a monthly cron sweep instead, since the
+// same activity_log entry) as a daily cron sweep instead, since the
 // route's own design already represents "just close these out" (a
 // reversible status flip to 'failed', not permanent data destruction
 // like evidence retention/disposal - so unlike that sweep, this one
