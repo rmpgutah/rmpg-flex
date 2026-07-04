@@ -229,6 +229,17 @@ export default {
           }).catch((err) => console.error('[sm-poller] failed:', err)),
         ).catch(() => {}),
       );
+      // SOR per-state detail-page enrichment — backfills offense/risk_level
+      // for national_sex_offenders rows in the 6 supported states.
+      ctx.waitUntil(
+        import('./utils/sorEnrichment/runner').then((m) =>
+          m.enrichPendingOffenders(env.DB).then((r) => {
+            if (r.attempted > 0) {
+              console.log(`[sor-enrich] attempted ${r.attempted}, succeeded ${r.succeeded}, failed ${r.failed}`);
+            }
+          }).catch((err) => console.error('[sor-enrich] failed:', err)),
+        ).catch(() => {}),
+      );
     }
 
     // ── Every minute ──
