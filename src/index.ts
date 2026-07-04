@@ -250,6 +250,16 @@ export default {
           ),
         ).catch(() => {}),
       );
+      // Panic alert escalation — src/routes/dispatch/panic.ts's own header
+      // comment flags this as a known gap: escalation_level existed but
+      // nothing ever advanced it or re-broadcast an unacknowledged alert.
+      ctx.waitUntil(
+        import('./utils/panicEscalationSweep').then((m) =>
+          m.sweepPanicEscalation(env.DB).then((r) => {
+            if (r.escalated > 0) console.log(`[panic-escalation] escalated ${r.escalated}`);
+          }).catch((err) => console.error('Panic escalation sweep failed:', err)),
+        ).catch(() => {}),
+      );
       // Daily rebalance at 04:00 America/Denver. The cron fires every minute;
       // we gate on Denver hour == 4 and run at most once (rebalance is idempotent
       // so a double-fire is harmless; the hour gate keeps it to ~60 runs/day).
