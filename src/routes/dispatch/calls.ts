@@ -932,6 +932,144 @@ calls.post('/:id/status', async (c) => {
   }
 });
 
+// D1 caps bound parameters per query at 100. Both bulk routes below can
+// operate on arbitrarily many rows (that's the whole point of an
+// emergency bulk tool), so every IN(...) update must be chunked rather
+// than built as one query — a single-query version throws once the id
+// list (plus any extra bound params) crosses the limit, exactly when
+// the bulk tool is most needed (many open calls at once).
+const D1_PARAM_CHUNK = 90;
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+// POST /dispatch/calls/bulk-reassign — AdminGodModeTab emergency tool.
+// Its own code comment claimed this was "Mounted at /api/dispatch/calls" but
+// the route never actually existed - every click 404'd. Reassigns a batch of
+// calls to a single unit (assigned_unit_ids is a JSON array column, so this
+// REPLACES each call's assignment list with just the target unit, matching
+// the tool's "emergency reassign" intent rather than appending).
+calls.post('/bulk-reassign', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ call_ids: unknown; unit_id: unknown }>();
+    const callIds = Array.isArray(body.call_ids)
+      ? body.call_ids.map(Number).filter((n) => Number.isInteger(n))
+      : [];
+    const unitId = typeof body.unit_id === 'number' && Number.isInteger(body.unit_id) ? body.unit_id : Number(body.unit_id);
+    if (callIds.length === 0 || !Number.isInteger(unitId)) {
+      return c.json({ error: 'call_ids and unit_id required' }, 400);
+    }
+    const unit = await queryFirst<{ call_sign: string }>(db, 'SELECT call_sign FROM units WHERE id = ?', unitId);
+    if (!unit) return c.json({ error: 'Unit not found' }, 404);
+
+    // Collect units currently assigned to these calls BEFORE overwriting, so
+    // any unit that's losing this call (i.e. isn't the new target) can be
+    // released — otherwise it's stuck 'dispatched' with a dangling
+    // current_call_id, exactly the bug the per-call status handler above
+    // documents and fixes for the single-call path.
+    const priorUnitIds = new Set<number>();
+    for (const batch of chunk(callIds, D1_PARAM_CHUNK)) {
+      const ph = batch.map(() => '?').join(',');
+      const rows = await query<{ assigned_unit_ids: string | null }>(db,
+        `SELECT assigned_unit_ids FROM calls_for_service WHERE id IN (${ph})`, ...batch);
+      for (const r of rows) {
+        try { (JSON.parse(r.assigned_unit_ids || '[]') as number[]).forEach((id) => priorUnitIds.add(id)); } catch { /* ignore */ }
+      }
+    }
+    priorUnitIds.delete(unitId);
+
+    // Collect every write as one batch of statements so db.batch() commits
+    // them atomically — chunked sequential execute() calls left a real gap
+    // where a mid-operation failure (e.g. a later chunk throwing) could
+    // leave some calls reassigned and others not, or calls updated but
+    // units never released.
+    const stmts: { sql: string; bindings?: unknown[] }[] = [];
+    const callChunks = chunk(callIds, D1_PARAM_CHUNK);
+    for (const batch of callChunks) {
+      const ph = batch.map(() => '?').join(',');
+      stmts.push({
+        sql: `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
+        bindings: [JSON.stringify([unitId]), JSON.stringify([unit.call_sign]), ...batch],
+      });
+    }
+    stmts.push({ sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [callIds[0], unitId] });
+    if (priorUnitIds.size > 0) {
+      for (const batch of chunk(Array.from(priorUnitIds), D1_PARAM_CHUNK)) {
+        const ph = batch.map(() => '?').join(',');
+        stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`, bindings: batch });
+      }
+    }
+    const results = await executeBatch(db, stmts);
+    const updated = results.slice(0, callChunks.length).reduce((sum, r) => sum + (r.meta.changes ?? 0), 0);
+    broadcastAll('dispatch_update', { action: 'bulk_reassigned', call_ids: callIds, unit_id: unitId });
+    return c.json({ updated, target: unit.call_sign });
+  } catch (err) {
+    log.error('POST /dispatch/calls/bulk-reassign failed', {}, err as Error);
+    return c.json({ error: 'Failed to bulk-reassign calls' }, 500);
+  }
+});
+
+// POST /dispatch/calls/force-close-all — AdminGodModeTab emergency tool.
+// Same "documented as fixed but never built" defect as bulk-reassign above.
+// Closes every non-terminal call with the given disposition and releases
+// their assigned units (mirrors the per-call terminal-transition logic in
+// POST /:id/status above, including releasing by current_call_id in
+// addition to the JSON array — a unit's current_call_id can be set while
+// it's absent from that array, so JSON-only release misses it). Deliberately
+// does NOT run the PSO-crosslink side effect that single-call close does -
+// firing that for potentially hundreds of calls at once in an emergency-
+// close scenario risks flooding serve_queue with unintended jobs; a genuine
+// PSO close should still go through the normal per-call flow.
+calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { disposition } = await c.req.json<{ disposition?: string }>().catch(() => ({}) as { disposition?: string });
+    const open = await query<{ id: number; assigned_unit_ids: string | null }>(db,
+      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`);
+    if (open.length === 0) return c.json({ closed: 0 });
+
+    const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
+    const ids = open.map((r) => r.id);
+
+    // Collect every write as one batch so db.batch() commits atomically —
+    // sequential execute() calls left a gap where a mid-operation failure
+    // could close some calls without releasing their units, or vice versa.
+    const stmts: { sql: string; bindings?: unknown[] }[] = [];
+    for (const batch of chunk(ids, D1_PARAM_CHUNK)) {
+      const ph = batch.map(() => '?').join(',');
+      const params: unknown[] = dispSql ? [disposition, ...batch] : batch;
+      stmts.push({
+        sql: `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now')${dispSql} WHERE id IN (${ph})`,
+        bindings: params,
+      });
+    }
+
+    const unitIds = Array.from(new Set(open.flatMap((r) => {
+      try { return JSON.parse(r.assigned_unit_ids || '[]') as number[]; } catch { return []; }
+    })));
+    for (const batch of chunk(unitIds, D1_PARAM_CHUNK)) {
+      const uPh = batch.map(() => '?').join(',');
+      stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${uPh})`, bindings: batch });
+    }
+    // Also release by current_call_id — mirrors the single-call handler's
+    // `WHERE current_call_id = ? OR id IN (...)` since a unit can have
+    // current_call_id set while missing from the JSON array.
+    for (const batch of chunk(ids, D1_PARAM_CHUNK)) {
+      const cPh = batch.map(() => '?').join(',');
+      stmts.push({ sql: `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id IN (${cPh})`, bindings: batch });
+    }
+    await executeBatch(db, stmts);
+    broadcastAll('dispatch_update', { action: 'force_closed_all', call_ids: ids });
+    return c.json({ closed: ids.length });
+  } catch (err) {
+    log.error('POST /dispatch/calls/force-close-all failed', {}, err as Error);
+    return c.json({ error: 'Failed to force-close all calls' }, 500);
+  }
+});
+
 // POST /dispatch/calls/:id/archive
 calls.post('/:id/archive', async (c) => {
   try {
