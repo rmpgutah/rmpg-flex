@@ -80,3 +80,18 @@ describe('mapboxOptimization', () => {
     expect(vi.mocked(apiFetch).mock.calls[0][1]).toBeUndefined();
   });
 });
+
+import { mapboxMapMatch } from '../mapboxApiService';
+
+describe('mapboxMapMatch', () => {
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
+
+  it('POSTs to /mapbox/map-matching, not /mapbox/map-match', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ matchings: [], tracepoints: [] });
+
+    await mapboxMapMatch([[-111.891, 40.7608], [-111.9, 40.75]]);
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0];
+    expect(url).toBe('/mapbox/map-matching');
+  });
+});

@@ -190,7 +190,7 @@ export async function mapboxMapMatch(
   coordinates: Array<[number, number]>,
   options?: { profile?: string; timestamps?: number[]; radiuses?: number[] }
 ): Promise<MapboxMapMatchResponse> {
-  return apiFetch<MapboxMapMatchResponse>('/mapbox/map-match', {
+  return apiFetch<MapboxMapMatchResponse>('/mapbox/map-matching', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ coordinates, ...options }),
