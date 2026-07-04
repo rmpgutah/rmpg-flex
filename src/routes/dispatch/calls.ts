@@ -932,6 +932,73 @@ calls.post('/:id/status', async (c) => {
   }
 });
 
+// POST /dispatch/calls/bulk-reassign — AdminGodModeTab emergency tool.
+// Its own code comment claimed this was "Mounted at /api/dispatch/calls" but
+// the route never actually existed - every click 404'd. Reassigns a batch of
+// calls to a single unit (assigned_unit_ids is a JSON array column, so this
+// REPLACES each call's assignment list with just the target unit, matching
+// the tool's "emergency reassign" intent rather than appending).
+calls.post('/bulk-reassign', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { call_ids, unit_id } = await c.req.json<{ call_ids: number[]; unit_id: number }>();
+    if (!Array.isArray(call_ids) || call_ids.length === 0 || !unit_id) {
+      return c.json({ error: 'call_ids and unit_id required' }, 400);
+    }
+    const unit = await queryFirst<{ call_sign: string }>(db, 'SELECT call_sign FROM units WHERE id = ?', unit_id);
+    if (!unit) return c.json({ error: 'Unit not found' }, 404);
+
+    const placeholders = call_ids.map(() => '?').join(',');
+    const res = await execute(db,
+      `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+      JSON.stringify([unit_id]), JSON.stringify([unit.call_sign]), ...call_ids);
+    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_ids[0], unit_id);
+    broadcastAll('dispatch_update', { action: 'bulk_reassigned', call_ids, unit_id });
+    return c.json({ updated: res.meta.changes ?? 0, target: unit.call_sign });
+  } catch (err) {
+    return c.json({ error: 'Failed to bulk-reassign calls' }, 500);
+  }
+});
+
+// POST /dispatch/calls/force-close-all — AdminGodModeTab emergency tool.
+// Same "documented as fixed but never built" defect as bulk-reassign above.
+// Closes every non-terminal call with the given disposition and releases
+// their assigned units (mirrors the per-call terminal-transition logic in
+// POST /:id/status above). Deliberately does NOT run the PSO-crosslink side
+// effect that single-call close does - firing that for potentially hundreds
+// of calls at once in an emergency-close scenario risks flooding serve_queue
+// with unintended jobs; a genuine PSO close should still go through the
+// normal per-call flow.
+calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { disposition } = await c.req.json<{ disposition?: string }>().catch(() => ({}) as { disposition?: string });
+    const open = await query<{ id: number; assigned_unit_ids: string | null }>(db,
+      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`);
+    if (open.length === 0) return c.json({ closed: 0 });
+
+    const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
+    const ids = open.map((r) => r.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const params: unknown[] = dispSql ? [disposition, ...ids] : ids;
+    await execute(db,
+      `UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, datetime('now')), updated_at = datetime('now')${dispSql} WHERE id IN (${placeholders})`,
+      ...params);
+
+    const unitIds = Array.from(new Set(open.flatMap((r) => {
+      try { return JSON.parse(r.assigned_unit_ids || '[]') as number[]; } catch { return []; }
+    })));
+    if (unitIds.length > 0) {
+      const uPlaceholders = unitIds.map(() => '?').join(',');
+      await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${uPlaceholders})`, ...unitIds);
+    }
+    broadcastAll('dispatch_update', { action: 'force_closed_all', call_ids: ids });
+    return c.json({ closed: ids.length });
+  } catch (err) {
+    return c.json({ error: 'Failed to force-close all calls' }, 500);
+  }
+});
+
 // POST /dispatch/calls/:id/archive
 calls.post('/:id/archive', async (c) => {
   try {
