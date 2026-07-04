@@ -96,6 +96,7 @@ import properties from './routes/properties';
 import geocode from './routes/geocode';
 import crime from './routes/crime';
 import warrants from './routes/warrants';
+import scrapers from './routes/scrapers';
 import workOrders from './routes/workOrders';
 import inspectionTemplates from './routes/inspectionTemplates';
 import fleetViz from './routes/fleetViz';
@@ -645,6 +646,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Serves /api/downloads/info + /api/downloads/check for the public download page. Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
+  { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
+    note: 'Warrant scraper ops: list/health (both warrant_scraper_config + national_warrant_sources frameworks), on-demand trigger, circuit reset, bulk enable/disable/reset/set_priority. Backs ScrapersTab.tsx + AdminWarrantScrapersTab.tsx, both previously unbacked (2026-07-04).' },
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
   // ── Work orders — Fleet.io PR 5 subsystem ─────────────────
   { prefix: '/api/work-orders', router: workOrders, auth: 'required',
