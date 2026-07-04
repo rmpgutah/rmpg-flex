@@ -4706,4 +4706,39 @@ fleet.post('/:vehicleId{[0-9]+}/expenses', async (c) => {
   }
 });
 
+const EXPENSE_FIELDS = [
+  'expense_date', 'category', 'amount', 'vendor', 'description', 'receipt_path',
+  'odometer_reading', 'recurring', 'recurring_frequency', 'notes',
+] as const;
+
+fleet.put('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const field of EXPENSE_FIELDS) {
+    if (field in body) {
+      sets.push(`${field} = ?`);
+      values.push(field === 'recurring' ? (body[field] ? 1 : 0) : body[field]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+
+  sets.push(`updated_at = datetime('now')`);
+  values.push(id);
+  try {
+    await execute(db, `UPDATE fleet_expenses SET ${sets.join(', ')} WHERE id = ?`, ...values);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] update failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to update expense');
+  }
+});
+
 export default fleet;
