@@ -6147,7 +6147,12 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caption: data.address || data.name,
     style: 'mapbox/light-v11',
     monochrome: true,
-    zoom: 17,
+    // Bumped 17->18 (2026-07-04, user request): tighter on the target
+    // parcel/structure while still keeping a block or two of surrounding
+    // street context in frame (the existing range-ring/scale overlay reads
+    // ground distance regardless of zoom, so standoff distances stay
+    // accurate at the tighter framing).
+    zoom: 18,
     details: [
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
