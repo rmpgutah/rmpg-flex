@@ -55,7 +55,6 @@ import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import { useMapStreetView } from '../../hooks/useMapStreetView';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
-import { useMapDaylight } from '../../hooks/useMapDaylight';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
 import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
@@ -72,11 +71,6 @@ import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
-import { useMapProjection } from '../../hooks/useMapProjection';
-import { useMapAtmosphere } from '../../hooks/useMapAtmosphere';
-import { useMapCameraAnimation } from '../../hooks/useMapCameraAnimation';
-import { useMapSnapshot } from '../../hooks/useMapSnapshot';
-import { useMapOptimization } from '../../hooks/useMapOptimization';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
@@ -209,6 +203,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const {
     mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
+    daylight, projection, atmosphere, cameraAnimation, snapshot, optimization,
   } = useMapCore({
     preferredEngine,
     mapStyle,
@@ -258,7 +253,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, [units]);
   const unitIds = useMemo(() => units.map(u => u.id), [units]);
   const breadcrumbs = useMapBreadcrumbs(mapRef.current, mapLoaded, unitIds, unitColorMap);
-  const daylight = useMapDaylight(mapRef.current, mapLoaded);
   const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
@@ -272,11 +266,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
-  const projection = useMapProjection(mapRef.current, mapLoaded);
-  const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
-  const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
-  const snapshot = useMapSnapshot();
-  const optimization = useMapOptimization(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
   const [buildings3dEnabled, setBuildings3dEnabled] = usePersistedState('rmpg_mapbox_3d_buildings', true);

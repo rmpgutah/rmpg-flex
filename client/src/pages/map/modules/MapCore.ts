@@ -7,6 +7,12 @@ import {
 import { getMapboxTokenStatus } from '../../../utils/mapboxApiKey';
 import { devLog, devWarn } from '../../../utils/devLog';
 import type { MapStyleId } from '../utils/mapConstants';
+import { useMapDaylight, type UseMapDaylightResult } from '../../../hooks/useMapDaylight';
+import { useMapProjection } from '../../../hooks/useMapProjection';
+import { useMapAtmosphere } from '../../../hooks/useMapAtmosphere';
+import { useMapCameraAnimation } from '../../../hooks/useMapCameraAnimation';
+import { useMapSnapshot } from '../../../hooks/useMapSnapshot';
+import { useMapOptimization } from '../../../hooks/useMapOptimization';
 
 const DARK_STYLES: MapStyleId[] = ['dark', 'night_nav'];
 
@@ -46,6 +52,12 @@ export interface UseMapCoreResult {
   changeStyle: (styleId: MapStyleId) => void;
   /** The server-fetched runtime Mapbox token (not the build-time `mapboxgl.accessToken` global). */
   token: string | null;
+  daylight: UseMapDaylightResult;
+  projection: ReturnType<typeof useMapProjection>;
+  atmosphere: ReturnType<typeof useMapAtmosphere>;
+  cameraAnimation: ReturnType<typeof useMapCameraAnimation>;
+  snapshot: ReturnType<typeof useMapSnapshot>;
+  optimization: ReturnType<typeof useMapOptimization>;
 }
 
 export function useMapCore({
@@ -290,7 +302,15 @@ export function useMapCore({
     });
   }, [loadBeatOverlay, terrainEnabled]);
 
+  const daylight = useMapDaylight(mapRef.current, mapLoaded);
+  const projection = useMapProjection(mapRef.current, mapLoaded);
+  const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
+  const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
+  const snapshot = useMapSnapshot();
+  const optimization = useMapOptimization(mapRef.current, mapLoaded);
+
   return {
     mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token,
+    daylight, projection, atmosphere, cameraAnimation, snapshot, optimization,
   };
 }
