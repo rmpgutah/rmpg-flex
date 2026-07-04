@@ -137,11 +137,11 @@ export async function mapboxMatrix(
   coordinates: Array<[number, number]>,
   options?: { profile?: string; sources?: number[]; destinations?: number[] }
 ): Promise<MapboxMatrixResponse> {
-  return apiFetch<MapboxMatrixResponse>('/mapbox/matrix', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ coordinates, ...options }),
-  });
+  const params = new URLSearchParams({ coordinates: coordsToParam(coordinates) });
+  if (options?.profile) params.set('profile', options.profile);
+  if (options?.sources?.length) params.set('sources', options.sources.join(','));
+  if (options?.destinations?.length) params.set('destinations', options.destinations.join(','));
+  return apiFetch<MapboxMatrixResponse>(`/mapbox/matrix?${params}`);
 }
 
 // ── Static Image URL ──────────────────────────────────────

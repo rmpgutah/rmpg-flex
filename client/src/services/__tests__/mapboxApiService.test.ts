@@ -37,3 +37,24 @@ describe('mapboxDirections', () => {
     expect(url).toContain('alternatives=true');
   });
 });
+
+import { mapboxMatrix } from '../mapboxApiService';
+
+describe('mapboxMatrix', () => {
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
+
+  it('issues a GET with comma-separated sources/destinations, not a POST body', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ durations: [[100]], distances: [[500]], sources: [], destinations: [] });
+
+    await mapboxMatrix(
+      [[-111.891, 40.7608], [-111.9, 40.75], [-111.95, 40.8]],
+      { sources: [0], destinations: [1, 2] },
+    );
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0];
+    expect(url).toContain('/mapbox/matrix?');
+    expect(url).toContain('sources=0');
+    expect(url).toContain('destinations=1%2C2');
+    expect(vi.mocked(apiFetch).mock.calls[0][1]).toBeUndefined();
+  });
+});
