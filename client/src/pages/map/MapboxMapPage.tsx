@@ -85,6 +85,8 @@ import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxL
 import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
 import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
+import SafetyAlertTicker from './components/SafetyAlertTicker';
+import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 import {
@@ -380,6 +382,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const streetView = useMapStreetView(mapRef.current, mapLoaded);
   const gps = useGpsTracking();
+  const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
   const unitColorMap = useMemo(() => {
@@ -1620,6 +1623,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <button onClick={() => routing.clearRoute()} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
         </div>
       )}
+
+      {/* Safety Alert Ticker — unified panic/welfare/premise-alert feed */}
+      <SafetyAlertTicker
+        items={safetyAlertFeed.items}
+        count={safetyAlertFeed.count}
+        loading={safetyAlertFeed.loading}
+      />
 
       {/* Layers Panel */}
       <MapOverlaysPanel
