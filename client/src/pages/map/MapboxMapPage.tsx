@@ -14,14 +14,14 @@ import mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import {
-  Shield, AlertTriangle, Layers, MapPin, Navigation2,
+  Shield, AlertTriangle, Layers, Layers3, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
   Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
   Clock, Locate, Flame, Car, Ruler, Satellite, PenTool, Hexagon,
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash,
+  Navigation, Globe, Zap, Hash, BarChart3,
 } from 'lucide-react';
 
 import {
@@ -40,6 +40,7 @@ import {
   MapUnit as Unit, ActiveCall, MapProperty as Property,
   UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS,
   MAP_STYLE_LABELS,
+  TOOLBAR_ITEM_CLASS,
   type MapStyleId,
 } from './utils/mapConstants';
 import { formatIncidentType } from '../../utils/caseNumbers';
@@ -83,6 +84,7 @@ import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
 import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
+import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 import {
@@ -129,6 +131,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
+  const [showOverlaysGroup, setShowOverlaysGroup] = useState(false);
+  const [showAnalysisGroup, setShowAnalysisGroup] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -1204,13 +1208,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <RefreshCw className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
-                onClick={() => setBeatsVisible(v => !v)}
-                className={`p-1.5 ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              </IconButton>
-              <IconButton
                 aria-label="Fly to my position"
                 onClick={flyToSelf}
                 className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
@@ -1218,48 +1215,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <Crosshair className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-                onClick={() => setTerrainEnabled(v => !v)}
-                className={`p-1.5 ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Mountain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
-                onClick={toggleIsochrone}
-                className={`p-1.5 ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
-                onClick={() => setSelfPosVisible(v => !v)}
-                className={`p-1.5 ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Navigation2 className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Layers panel"
                 onClick={() => setLayersPanelOpen(v => !v)}
                 className={`p-1.5 ${layersPanelOpen ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 <Layers className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
-                onClick={() => breadcrumbs.toggle()}
-                className={`p-1.5 ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="GPS Breadcrumb Trails (B)"
-              >
-                <Footprints className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
-                onClick={() => daylight.toggle()}
-                className={`p-1.5 ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Day/Night Terminator (D)"
-              >
-                <Sun className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
                 aria-label={geofenceAlerts.enabled ? 'Disable premise alerts' : 'Enable premise alerts'}
@@ -1286,22 +1246,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <Volume2 className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
-                onClick={() => coordGrid.toggle()}
-                className={`p-1.5 ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Coordinate Grid (G)"
-              >
-                <Hash className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
-                onClick={() => weatherRadar.toggle()}
-                className={`p-1.5 ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Weather Radar"
-              >
-                <CloudRain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Bookmarks"
                 onClick={() => setShowBookmarksPanel(v => !v)}
                 className={`p-1.5 ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
@@ -1317,14 +1261,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               >
                 <Download className="w-3.5 h-3.5" />
               </IconButton>
-              <IconButton
-                aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
-                onClick={() => setDeckEnabled(v => !v)}
-                className={`p-1.5 ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Deck.gl GPU Overlay"
-              >
-                <Zap className="w-3.5 h-3.5" />
-              </IconButton>
             </div>
           </div>
         </div>
@@ -1337,90 +1273,172 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Advanced map tools"
             onClick={() => setShowAdvancedToolbar(v => !v)}
-            className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+            className={`${TOOLBAR_ITEM_CLASS} ${
               showAdvancedToolbar ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
             }`}
-            style={{ borderRadius: 2 }}
           >
             <Grid3X3 className="w-4 h-4" />
           </IconButton>
 
+          <ToolbarDropdownGroup
+            icon={Layers3}
+            label="Overlays"
+            open={showOverlaysGroup}
+            onToggle={() => setShowOverlaysGroup(v => !v)}
+          >
+            <IconButton
+              aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
+              onClick={() => setBeatsVisible(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              {beatsVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </IconButton>
+            <IconButton
+              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
+              onClick={() => setTerrainEnabled(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Mountain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
+              onClick={toggleIsochrone}
+              className={`${TOOLBAR_ITEM_CLASS} ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Clock className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
+              onClick={() => setSelfPosVisible(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Navigation2 className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
+              onClick={() => breadcrumbs.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="GPS Breadcrumb Trails (B)"
+            >
+              <Footprints className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
+              onClick={() => daylight.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Day/Night Terminator (D)"
+            >
+              <Sun className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
+              onClick={() => coordGrid.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Coordinate Grid (G)"
+            >
+              <Hash className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+              onClick={() => weatherRadar.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Weather Radar"
+            >
+              <CloudRain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
+              onClick={() => setDeckEnabled(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Deck.gl GPU Overlay"
+            >
+              <Zap className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
+
+          <ToolbarDropdownGroup
+            icon={BarChart3}
+            label="Analysis"
+            open={showAnalysisGroup}
+            onToggle={() => setShowAnalysisGroup(v => !v)}
+          >
+            {/* Heatmap */}
+            <IconButton
+              aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
+              onClick={() => { void populateAndToggleHeatmap(); }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Crime Heatmap"
+            >
+              <Flame className="w-4 h-4" />
+            </IconButton>
+
+            {/* Heatmap Live/Historical mode switch */}
+            <button
+              type="button"
+              className="text-[9px] px-1 py-0.5 rounded-sm"
+              style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+              onClick={() => {
+                const next = heatmapMode === 'live' ? 'historical' : 'live';
+                setHeatmapMode(next);
+                if (heatmap.enabled) refreshHeatmapPoints(next);
+              }}
+              title="Switch between live (currently active calls) and historical (30-day) heatmap data"
+            >
+              {heatmapMode === 'live' ? 'LIVE' : '30D'}
+            </button>
+
+            {/* Traffic */}
+            <IconButton
+              aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
+              onClick={() => traffic.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Live Traffic"
+            >
+              <Car className="w-4 h-4" />
+            </IconButton>
+
+            {/* Clustering */}
+            <IconButton
+              aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
+              onClick={() => {
+                if (!clustering.enabled) {
+                  const clPts = calls
+                    .filter(c => c.latitude != null && c.longitude != null)
+                    .map(c => ({
+                      id: c.id,
+                      longitude: c.longitude!,
+                      latitude: c.latitude!,
+                      priority: c.priority,
+                      label: c.call_number,
+                      color: PRIORITY_COLORS[c.priority] || '#888',
+                    }));
+                  clustering.updatePoints(clPts);
+                }
+                clustering.toggle();
+              }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Cluster Markers"
+            >
+              <Hexagon className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
+
           {showAdvancedToolbar && (
             <>
-              {/* Heatmap */}
-              <IconButton
-                aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
-                onClick={() => { void populateAndToggleHeatmap(); }}
-                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
-                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Crime Heatmap"
-              >
-                <Flame className="w-4 h-4" />
-              </IconButton>
-
-              {/* Heatmap Live/Historical mode switch */}
-              <button
-                type="button"
-                className="text-[9px] px-1 py-0.5 rounded-sm"
-                style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
-                onClick={() => {
-                  const next = heatmapMode === 'live' ? 'historical' : 'live';
-                  setHeatmapMode(next);
-                  if (heatmap.enabled) refreshHeatmapPoints(next);
-                }}
-                title="Switch between live (currently active calls) and historical (30-day) heatmap data"
-              >
-                {heatmapMode === 'live' ? 'LIVE' : '30D'}
-              </button>
-
-              {/* Traffic */}
-              <IconButton
-                aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
-                onClick={() => traffic.toggle()}
-                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
-                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Live Traffic"
-              >
-                <Car className="w-4 h-4" />
-              </IconButton>
-
-              {/* Clustering */}
-              <IconButton
-                aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
-                onClick={() => {
-                  if (!clustering.enabled) {
-                    const clPts = calls
-                      .filter(c => c.latitude != null && c.longitude != null)
-                      .map(c => ({
-                        id: c.id,
-                        longitude: c.longitude!,
-                        latitude: c.latitude!,
-                        priority: c.priority,
-                        label: c.call_number,
-                        color: PRIORITY_COLORS[c.priority] || '#888',
-                      }));
-                    clustering.updatePoints(clPts);
-                  }
-                  clustering.toggle();
-                }}
-                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
-                  clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Cluster Markers"
-              >
-                <Hexagon className="w-4 h-4" />
-              </IconButton>
-
               {/* Satellite Peek (Street View equivalent) */}
               <IconButton
                 aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
                 onClick={() => streetView.toggle()}
-                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+                className={`${TOOLBAR_ITEM_CLASS} ${
                   streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
@@ -1434,7 +1452,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Measure tool"
                   onClick={() => setShowMeasureMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+                  className={`${TOOLBAR_ITEM_CLASS} ${
                     measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -1477,7 +1495,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Drawing tools"
                   onClick={() => setShowDrawMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+                  className={`${TOOLBAR_ITEM_CLASS} ${
                     drawing.mode !== 'none' ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -1532,7 +1550,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
                 onClick={() => glDraw.toggle()}
-                className={`bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm ${
+                className={`${TOOLBAR_ITEM_CLASS} ${
                   glDraw.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
