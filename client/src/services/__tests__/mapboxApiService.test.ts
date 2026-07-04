@@ -95,3 +95,50 @@ describe('mapboxMapMatch', () => {
     expect(url).toBe('/mapbox/map-matching');
   });
 });
+
+import { mapboxForwardGeocode, mapboxReverseGeocode } from '../mapboxApiService';
+
+const FAKE_FEATURE = {
+  place_name: '123 Main St, Salt Lake City, UT 84111',
+  text: '123 Main St',
+  center: [-111.891, 40.7608] as [number, number],
+  place_type: ['address'],
+  relevance: 0.98,
+};
+
+describe('mapboxForwardGeocode', () => {
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
+
+  it('calls GET /mapbox/geocode and maps the features array', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ features: [FAKE_FEATURE] });
+
+    const results = await mapboxForwardGeocode('123 Main St');
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0];
+    expect(url).toContain('/mapbox/geocode?');
+    expect(url).not.toContain('/geocode/forward');
+    expect(results).toEqual([{
+      name: '123 Main St',
+      full_address: '123 Main St, Salt Lake City, UT 84111',
+      latitude: 40.7608,
+      longitude: -111.891,
+      place_type: 'address',
+      relevance: 0.98,
+    }]);
+  });
+});
+
+describe('mapboxReverseGeocode', () => {
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
+
+  it('calls GET /mapbox/reverse-geocode and maps the features array', async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ features: [FAKE_FEATURE] });
+
+    const results = await mapboxReverseGeocode(-111.891, 40.7608);
+
+    const [url] = vi.mocked(apiFetch).mock.calls[0];
+    expect(url).toContain('/mapbox/reverse-geocode?');
+    expect(url).not.toContain('/geocode/reverse');
+    expect(results[0].name).toBe('123 Main St');
+  });
+});

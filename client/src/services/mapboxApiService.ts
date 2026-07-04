@@ -85,6 +85,25 @@ export function coordsToParam(coords: Array<[number, number]>): string {
   return coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
 }
 
+interface RawMapboxFeature {
+  place_name: string;
+  text: string;
+  center: [number, number];
+  place_type: string[];
+  relevance: number;
+}
+
+function mapRawFeature(f: RawMapboxFeature): MapboxGeocodingResult {
+  return {
+    name: f.text || f.place_name || '',
+    full_address: f.place_name || '',
+    latitude: f.center?.[1] ?? 0,
+    longitude: f.center?.[0] ?? 0,
+    place_type: (f.place_type || [])[0] || '',
+    relevance: f.relevance ?? 0,
+  };
+}
+
 // ── Forward Geocode ───────────────────────────────────────
 
 export async function mapboxForwardGeocode(
@@ -96,10 +115,8 @@ export async function mapboxForwardGeocode(
   if (options?.proximity) params.set('proximity', options.proximity.join(','));
   if (options?.country) params.set('country', options.country);
 
-  const data = await apiFetch<{ results: MapboxGeocodingResult[] }>(
-    `/mapbox/geocode/forward?${params}`
-  );
-  return data.results;
+  const data = await apiFetch<{ features: RawMapboxFeature[] }>(`/mapbox/geocode?${params}`);
+  return (data.features || []).map(mapRawFeature);
 }
 
 // ── Reverse Geocode ───────────────────────────────────────
@@ -112,10 +129,8 @@ export async function mapboxReverseGeocode(
   if (options?.types) params.set('types', options.types);
   if (options?.limit) params.set('limit', String(options.limit));
 
-  const data = await apiFetch<{ results: MapboxGeocodingResult[] }>(
-    `/mapbox/geocode/reverse?${params}`
-  );
-  return data.results;
+  const data = await apiFetch<{ features: RawMapboxFeature[] }>(`/mapbox/reverse-geocode?${params}`);
+  return (data.features || []).map(mapRawFeature);
 }
 
 // ── Isochrone ─────────────────────────────────────────────
