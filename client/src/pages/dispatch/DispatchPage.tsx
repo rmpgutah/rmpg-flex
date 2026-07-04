@@ -62,7 +62,7 @@ import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings, type FilterTab,
 } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
@@ -3790,6 +3790,7 @@ export default function DispatchPage() {
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}
                     hasIntelHit={hitCallIds.has(call.id)}
+                    warnings={deriveCallWarnings(call)}
                     onTogglePin={handleTogglePin}
                     signalInfo={signalLookup(call.incident_type || '') || null}
                   />
