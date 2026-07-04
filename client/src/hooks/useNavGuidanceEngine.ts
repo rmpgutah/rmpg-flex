@@ -196,12 +196,19 @@ export function useNavGuidanceEngine() {
       const steps: RouteStep[] = ((route.legs?.[0]?.steps ?? []) as any[]).map((s) => {
         const man = s.maneuver || {};
         const meters = typeof s.distance === 'number' ? s.distance : 0;
+        const rawLanes = s.intersections?.[0]?.lanes as
+          { valid?: boolean; active?: boolean; indications?: string[] }[] | undefined;
         return {
           instruction: man.instruction || s.name || 'Continue',
           distanceMeters: Math.round(meters),
           distanceText: fmtStepDist(meters),
           maneuverType: man.type || '',
           modifier: man.modifier,
+          lanes: rawLanes?.map((l) => ({
+            valid: l.valid === true,
+            active: l.active === true,
+            indications: Array.isArray(l.indications) ? l.indications : [],
+          })),
         };
       });
 
