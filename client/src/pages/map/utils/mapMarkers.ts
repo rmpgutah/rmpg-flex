@@ -3,6 +3,9 @@ import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from './mapCo
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { formatEnumValue } from '../../../utils/formatters';
 import { escapeHtml } from '../../../utils/sanitize';
+import {
+  TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
+} from './tacticalPalette';
 
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
   { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
@@ -23,7 +26,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   el.className = 'rmpg-mbx-unit';
   el.style.cssText = `
     width:32px;height:32px;border-radius:2px;
-    background:${color};border:2px solid #d4a017;
+    background:${color};border:2px solid ${TACTICAL_BRAND_GOLD};
     display:flex;align-items:center;justify-content:center;
     font-size:9px;font-weight:700;color:#fff;
     font-family:ui-monospace,monospace;cursor:pointer;
@@ -40,18 +43,18 @@ export function buildUnitPopupHtml(unit: Unit): string {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
   const callInfo = unit.current_call_type
-    ? `<div style="margin-top:4px;border-top:1px solid #222;padding-top:4px;">
-         <div style="color:#d4a017;font-size:9px;">ASSIGNED CALL</div>
+    ? `<div style="margin-top:4px;border-top:1px solid ${TACTICAL_BORDER};padding-top:4px;">
+         <div style="color:${TACTICAL_BRAND_GOLD};font-size:9px;">ASSIGNED CALL</div>
          <div>${escapeHtml(unit.call_number)} — ${escapeHtml(formatIncidentType(unit.current_call_type))}</div>
-         <div style="color:#888;">${escapeHtml(unit.current_call_location)}</div>
+         <div style="color:${TACTICAL_TEXT_MUTED};">${escapeHtml(unit.current_call_location)}</div>
        </div>`
     : '';
   return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
-      <div style="font-weight:700;color:#d4a017;margin-bottom:2px;font-size:12px;">${escapeHtml(unit.call_sign)}</div>
+    <div style="background:${TACTICAL_SURFACE_RAISED};color:#e0e0e0;padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
+      <div style="font-weight:700;color:${TACTICAL_BRAND_GOLD};margin-bottom:2px;font-size:12px;">${escapeHtml(unit.call_sign)}</div>
       <div>${escapeHtml(unit.officer_name)}</div>
       <div>Status: <span style="color:${color};font-weight:600;">${escapeHtml(statusLabel)}</span></div>
-      ${unit.vehicle ? `<div style="color:#888;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
+      ${unit.vehicle ? `<div style="color:${TACTICAL_TEXT_MUTED};">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
       ${callInfo}
     </div>`;
 }
@@ -84,12 +87,12 @@ export function buildCallPopupHtml(call: ActiveCall): string {
     .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
     .join('');
   return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
+    <div style="background:${TACTICAL_SURFACE_RAISED};color:#e0e0e0;padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
       <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
       <div style="font-weight:600;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
       <div>Priority: <span style="color:${color};font-weight:700;">P${escapeHtml(call.priority)}</span></div>
       <div>Status: ${escapeHtml(formatEnumValue(call.status))}</div>
-      <div style="color:#888;margin-top:2px;">${escapeHtml(call.location_address)}</div>
+      <div style="color:${TACTICAL_TEXT_MUTED};margin-top:2px;">${escapeHtml(call.location_address)}</div>
       ${call.cross_street ? `<div style="color:#666;font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
       ${call.beat_name ? `<div style="color:#666;font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
       ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
