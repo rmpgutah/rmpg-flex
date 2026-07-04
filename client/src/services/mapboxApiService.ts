@@ -177,11 +177,11 @@ export async function mapboxDirections(
   coordinates: Array<[number, number]>,
   options?: { profile?: string; steps?: boolean; alternatives?: boolean }
 ): Promise<MapboxDirectionsResponse> {
-  return apiFetch<MapboxDirectionsResponse>('/mapbox/directions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ coordinates, ...options }),
-  });
+  const params = new URLSearchParams({ coordinates: coordsToParam(coordinates) });
+  if (options?.profile) params.set('profile', options.profile);
+  if (options?.alternatives != null) params.set('alternatives', String(options.alternatives));
+  if (options?.steps != null) params.set('steps', String(options.steps));
+  return apiFetch<MapboxDirectionsResponse>(`/mapbox/directions?${params}`);
 }
 
 // ── Map Matching ──────────────────────────────────────────
