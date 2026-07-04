@@ -336,6 +336,7 @@ export function HudNextManeuver({
               data-testid="lane-icon"
               data-lane-valid={lane.valid}
               data-lane-active={lane.active}
+              aria-hidden="true"
               className="w-3 h-3"
               style={{
                 color: lane.valid ? '#d4a017' : 'var(--rmpg-700)',
@@ -350,10 +351,14 @@ export function HudNextManeuver({
   );
 }
 
-/** Rough rotation for a lane's primary indication — good enough for a small icon strip. */
+/** Rough rotation for a lane's primary indication — good enough for a small icon strip.
+ * Priority: hard turns > straight > slight turns. A lane valid for both "straight" and a
+ * slight variant renders upright, not tilted, so officers don't read a mandatory-turn cue
+ * where none exists. */
 function laneRotation(indications: string[]): string {
   if (indications.includes('left')) return 'rotate(-45deg)';
   if (indications.includes('right')) return 'rotate(45deg)';
+  if (indications.includes('straight')) return 'rotate(0deg)';
   if (indications.includes('slight left')) return 'rotate(-22deg)';
   if (indications.includes('slight right')) return 'rotate(22deg)';
   return 'rotate(0deg)';

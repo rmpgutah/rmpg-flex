@@ -44,4 +44,18 @@ describe('HudNextManeuver', () => {
     expect(lanes[0]).toHaveAttribute('data-lane-active', 'false');
     expect(lanes[1]).toHaveAttribute('data-lane-active', 'true');
   });
+
+  it('renders a lane with multiple indications upright when straight is among them, even with a slight-turn indication', () => {
+    render(
+      <HudNextManeuver
+        {...baseProps}
+        lanes={[
+          { valid: true, active: false, indications: ['straight', 'slight right'] },
+        ]}
+      />
+    );
+    const lane = screen.getByTestId('lane-icon');
+    // Straight should win over the slight-turn indication — expect no rotation applied.
+    expect(lane).toHaveStyle({ transform: 'rotate(0deg)' });
+  });
 });
