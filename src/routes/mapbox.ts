@@ -267,6 +267,63 @@ mapbox.get('/static-map', async (c) => {
   return c.json({ url, attribution: '© Mapbox © OpenStreetMap' });
 });
 
+// ── Static image (binary proxy) ───────────────────────────
+// GET /api/mapbox/static/image?lng=&lat=&zoom=&width=&height=&style=&retina=&markers=
+//   → binary image bytes (image/png), Mapbox token never reaches the browser.
+// Backs client/src/hooks/useMapStreetView.ts (SAT PEEK popup),
+// client/src/utils/pdfImageHelpers.ts, and client/src/services/staticMapPreview.ts —
+// all three already called this path; it just never existed server-side, so every
+// request 404'd and rendered as "Image failed to load".
+mapbox.get('/static/image', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const zoom = c.req.query('zoom') || '14';
+  const width = c.req.query('width') || '600';
+  const height = c.req.query('height') || '400';
+  const style = c.req.query('style') || 'mapbox/dark-v11';
+  const retina = c.req.query('retina') === 'true';
+  const markersParam = c.req.query('markers');
+
+  let overlay = '';
+  if (markersParam) {
+    const pins = markersParam.split(';').filter(Boolean).map((entry) => {
+      const [mLng, mLat, mColor, mLabel] = entry.split(',');
+      const color = (mColor || 'd4a017').replace(/^#/, '');
+      const label = mLabel ? `-${encodeURIComponent(mLabel).slice(0, 1)}` : '';
+      return `pin-s${label}+${color}(${encodeURIComponent(mLng)},${encodeURIComponent(mLat)})`;
+    });
+    overlay = `${pins.join(',')}/`;
+  }
+
+  const at = retina ? '@2x' : '';
+  const url = `${MB}/styles/v1/${style}/static/${overlay}${encodeURIComponent(lng)},${encodeURIComponent(lat)},${zoom}/${width}x${height}${at}?access_token=${encodeURIComponent(tk)}`;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(t);
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      const status = resp.status >= 400 && resp.status < 600 ? resp.status : 502;
+      return c.json({ error: 'Mapbox static image failed', code: 'MAPBOX_UPSTREAM_ERROR', detail: detail.slice(0, 300) }, status as any);
+    }
+    const buf = await resp.arrayBuffer();
+    return new Response(buf, {
+      status: 200,
+      headers: {
+        'Content-Type': resp.headers.get('content-type') || 'image/png',
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  } catch (err: any) {
+    clearTimeout(t);
+    return fail(c, err, 'static image');
+  }
+});
+
 // ── Token status ───────────────────────────────────────────
 // GET /api/mapbox/token-status  → { configured, valid, tokenPrefix }
 mapbox.get('/token-status', async (c) => {
