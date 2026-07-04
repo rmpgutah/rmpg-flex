@@ -718,10 +718,11 @@ aggregates.get('/repeat-addresses', async (c) => {
 aggregates.get('/call-volume', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ date: string; count: number }>(db,
       `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY DATE(created_at) ORDER BY date`);
     return c.json({ by_day: rows, days });
   } catch { return c.json({ by_day: [], days: 7 }); }
@@ -731,10 +732,11 @@ aggregates.get('/call-volume', async (c) => {
 aggregates.get('/by-zone', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ zone: string; count: number }>(db,
       `SELECT COALESCE(dispatch_zone, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY dispatch_zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
   } catch { return c.json({ by_zone: [], days: 7 }); }
