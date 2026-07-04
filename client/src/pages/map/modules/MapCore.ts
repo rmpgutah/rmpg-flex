@@ -13,6 +13,12 @@ export interface UseMapCoreOptions {
   preferredEngine: 'mapbox' | 'maplibre';
   mapStyle: MapStyleId;
   retryNonce: number;
+  /**
+   * `onStyleFallback`, `onRetryNonceRequest`, and `loadBeatOverlay` must be stable
+   * references across renders (e.g. wrapped in `useCallback`) — the internal init
+   * effect closes over them without listing them as dependencies, so a new inline
+   * function on every render will be captured as a stale closure.
+   */
   /** Called to switch the persisted map style (used on style-not-found retry). */
   onStyleFallback: (style: MapStyleId) => void;
   /** Called to bump the caller-owned retryNonce (used on style-not-found retry). */
