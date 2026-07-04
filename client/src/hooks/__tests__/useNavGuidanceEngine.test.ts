@@ -109,6 +109,60 @@ describe('useNavGuidanceEngine', () => {
     expect(result.current.activeRoute).toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it('parses lane guidance from intersections[0].lanes when present, and leaves it undefined when absent', async () => {
+    function directionsResponseWithLanes() {
+      return {
+        routes: [{
+          duration: 300,
+          distance: 2224,
+          geometry: { type: 'LineString', coordinates: COORDS },
+          legs: [{
+            annotation: { congestion: ['low', 'moderate', 'heavy'] },
+            steps: [
+              {
+                maneuver: { instruction: 'Turn left onto S Main St', type: 'turn', modifier: 'left' },
+                distance: 1112,
+                intersections: [{
+                  lanes: [
+                    { valid: true, active: false, indications: ['left'] },
+                    { valid: true, active: true, indications: ['straight'] },
+                    { valid: false, active: false, indications: ['right'] },
+                    { active: false, indications: ['right'] } as any, // valid omitted entirely — must coerce to false, not undefined
+                  ],
+                }],
+              },
+              { maneuver: { instruction: 'Arrive', type: 'arrive' }, distance: 1112 },
+            ],
+          }],
+        }],
+      };
+    }
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => directionsResponseWithLanes(),
+    }) as any;
+
+    const { result } = renderHook(() => useNavGuidanceEngine());
+    await act(async () => {
+      await result.current.startGuidance('NAV', 'dest', 40.760, -111.891, 40.780, -111.891);
+    });
+
+    const steps = result.current.activeRoute?.steps;
+    expect(steps).toHaveLength(2);
+
+    // First step has lane data.
+    expect(steps![0].lanes).toEqual([
+      { valid: true, active: false, indications: ['left'] },
+      { valid: true, active: true, indications: ['straight'] },
+      { valid: false, active: false, indications: ['right'] },
+      { valid: false, active: false, indications: ['right'] }, // coerced: missing valid -> false
+    ]);
+
+    // Second step (arrive) has no intersections/lanes in the fixture — must be undefined, not [].
+    expect(steps![1].lanes).toBeUndefined();
+  });
 });
 
 describe('buildCongestionGradient', () => {
