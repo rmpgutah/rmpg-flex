@@ -37,10 +37,13 @@ beforeAll(async () => {
 
   await execute(db, `INSERT INTO warrant_scraper_config
     (source_name, last_error, source_type, priority, last_success_at, enabled, consecutive_errors)
-    VALUES ('utah-api', NULL, 'api', 1, '2026-07-03 12:00:00', 1, 0)`);
+    VALUES ('utah-warrant-watch', NULL, 'api', 1, '2026-07-03 12:00:00', 1, 0)`);
   await execute(db, `INSERT INTO warrant_scraper_config
     (source_name, last_error, source_type, priority, last_success_at, enabled, consecutive_errors)
     VALUES ('ada-county-id', 'timeout', 'html', 2, '2026-06-01 00:00:00', 1, 6)`);
+  await execute(db, `INSERT INTO warrant_scraper_config
+    (source_name, last_error, source_type, priority, last_success_at, enabled, consecutive_errors)
+    VALUES ('natrona-county-wy', NULL, 'html', 3, NULL, 0, 0)`);
 
   await execute(db, `INSERT INTO national_warrant_sources
     (source_key, family, display_name, state, jurisdiction, format, enabled, priority, consecutive_errors)
@@ -56,9 +59,9 @@ describe('GET /api/warrants/scrapers', () => {
     const res = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(200);
     const body = await res.json() as { sources: Array<{ source_key: string; circuit_broken: 0 | 1; warrant_count: number; enabled: 0 | 1 }> };
-    expect(body.sources).toHaveLength(3);
+    expect(body.sources).toHaveLength(4);
 
-    const utah = body.sources.find((s) => s.source_key === 'utah-api');
+    const utah = body.sources.find((s) => s.source_key === 'utah-warrant-watch');
     expect(utah?.circuit_broken).toBe(0);
 
     const ada = body.sources.find((s) => s.source_key === 'ada-county-id');
@@ -75,9 +78,9 @@ describe('GET /api/warrants/scrapers/health', () => {
     const res = await app.request('/api/warrants/scrapers/health', {}, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(200);
     const body = await res.json() as { total: number; circuit_broken: number; healthy: number };
-    expect(body.total).toBe(3);
+    expect(body.total).toBe(4);
     expect(body.circuit_broken).toBe(1); // ada-county-id
-    expect(body.healthy).toBe(2);
+    expect(body.healthy).toBe(3);
   });
 });
 
@@ -96,10 +99,18 @@ describe('POST /api/warrants/scrapers/:key/trigger', () => {
 
   it('triggers the Utah source via runUtahWarrantScan', async () => {
     const app = buildApp('admin');
-    const res = await app.request('/api/warrants/scrapers/utah-api/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    const res = await app.request('/api/warrants/scrapers/utah-warrant-watch/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
     // The real Utah poller makes a live network call, which is unavailable in
     // Miniflare tests — accept either a successful run summary or a caught
     // network-error response, but never a 404/403 (the key must resolve).
     expect([200, 502]).toContain(res.status);
+  });
+
+  it('blocks triggering a source that is disabled in warrant_scraper_config', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/natrona-county-wy/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toMatch(/disabled/i);
   });
 });

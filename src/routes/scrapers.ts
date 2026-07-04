@@ -191,7 +191,7 @@ scrapers.post('/:key/trigger', async (c) => {
   const db = getDb(c.env);
   const key = c.req.param('key');
 
-  if (key === 'utah-api') {
+  if (key === 'utah-warrant-watch') {
     try {
       const result = await runUtahWarrantScan(db);
       return c.json({ success: true, source_key: key, result });
@@ -203,6 +203,14 @@ scrapers.post('/:key/trigger', async (c) => {
   const codeAdapters = await getEnabledAdapters(db);
   const codeMatch = codeAdapters.find((a) => a.meta.key === key);
   if (codeMatch) {
+    const configRow = await query<{ enabled: number }>(
+      db,
+      'SELECT enabled FROM warrant_scraper_config WHERE source_name = ?',
+      key,
+    );
+    if (configRow.length > 0 && configRow[0].enabled === 0) {
+      return c.json({ error: 'This source is disabled — enable it before triggering' }, 400);
+    }
     try {
       const summaries = await runFullListLeg(db, [codeMatch]);
       return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
