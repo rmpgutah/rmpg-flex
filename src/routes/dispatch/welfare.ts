@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute, query } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 import {
   broadcastDispatchUpdate,
   broadcastPanic,
@@ -58,7 +59,8 @@ welfare.post('/welfare/help', async (c) => {
   // Same shape as a panic so the dispatcher screen treats it identically.
   await execute(
     db,
-    `INSERT INTO panic_alerts (user_id, unit_id, call_id, source) VALUES (?, ?, ?, 'welfare')`,
+    `INSERT INTO panic_alerts (user_id, unit_id, call_id, source, status, created_at, updated_at)
+     VALUES (?, ?, ?, 'welfare', 'active', datetime('now'), datetime('now'))`,
     userId, unit?.id ?? null, unit?.current_call_id ?? null,
   );
   await execute(db, `UPDATE officer_welfare SET status = 'emergency' WHERE user_id = ?`, userId);
@@ -101,8 +103,9 @@ welfare.get('/welfare/status', async (c) => {
   } catch { return c.json([]); }
 });
 
-// ── POST /welfare/escalate — manually escalate welfare stage ──
-welfare.post('/welfare/escalate', async (c) => {
+// ── POST /welfare/escalate — manually escalate welfare stage.
+// Escalates someone ELSE's welfare status by user_id — dispatcher-tier+ only.
+welfare.post('/welfare/escalate', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { user_id, stage, reason } = await c.req.json<{ user_id: number; stage: number; reason?: string }>();

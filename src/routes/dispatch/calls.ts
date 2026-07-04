@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -978,10 +978,10 @@ calls.post('/:id/resume', async (c) => {
 });
 
 // POST /dispatch/calls/:id/assign-unit
-calls.post('/:id/assign-unit', async (c) => {
+calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     const { unit_id } = await c.req.json<{ unit_id: number }>();
     const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
@@ -1002,8 +1002,29 @@ calls.post('/:id/assign-unit', async (c) => {
       }, 409);
     }
 
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
+    // Reject double-dispatching a unit that's already committed to a
+    // DIFFERENT still-open call — prevents a lost-update race where two
+    // dispatchers assign the same unit to two calls simultaneously.
+    const unitRow = await queryFirst<{ current_call_id: number | null }>(
+      db, 'SELECT current_call_id FROM units WHERE id = ?', unit_id,
+    );
+    if (unitRow?.current_call_id != null && String(unitRow.current_call_id) !== String(id)) {
+      const conflictingCall = await queryFirst<{ call_number: string; status: string }>(
+        db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
+      );
+      if (conflictingCall && conflictingCall.status !== 'closed' && conflictingCall.status !== 'cancelled') {
+        return c.json({
+          error: 'unit_already_dispatched',
+          message: `Unit is already assigned to call ${conflictingCall.call_number}. Unassign it there first.`,
+          code: 'UNIT_ALREADY_DISPATCHED',
+        }, 409);
+      }
+    }
+
+    await executeBatch(db, [
+      { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
+      { sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
+    ]);
 
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
@@ -1049,7 +1070,7 @@ calls.post('/:id/assign-unit', async (c) => {
 });
 
 // POST /dispatch/calls/:id/unassign-unit
-calls.post('/:id/unassign-unit', async (c) => {
+calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1064,10 +1085,10 @@ calls.post('/:id/unassign-unit', async (c) => {
 });
 
 // POST /dispatch/calls/:id/dispatch - Multi-unit dispatch
-calls.post('/:id/dispatch', async (c) => {
+calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     const { unit_ids } = await c.req.json<{ unit_ids: number[] }>();
     if (!unit_ids?.length) return c.json({ error: 'No units specified' }, 400);
 
@@ -1092,10 +1113,10 @@ calls.post('/:id/dispatch', async (c) => {
 });
 
 // POST /dispatch/calls/:id/split — split a call into multiple child CFS records
-calls.post('/:id/split', async (c) => {
+calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '', 10);
     const parent = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!parent) return c.json({ error: 'Parent call not found' }, 404);
     const { splits } = await c.req.json<{ splits: Array<{ incident_type: string; description?: string; location_address?: string }> }>();
@@ -1158,7 +1179,7 @@ calls.delete('/templates/:id', async (c) => {
 // legacy/server-vps/src/routes/dispatch/calls.ts — this never carried over
 // in the Cloudflare cutover, so the client's fully-built "Return Visit" /
 // "Undo Visit" / Visit History UI (DispatchPage.tsx) 404'd on every call.
-calls.post('/:id/redispatch', async (c) => {
+calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1329,7 +1350,7 @@ calls.post('/:id/redispatch', async (c) => {
 // child call and restore the parent (only while the child hasn't progressed
 // past 'pending' — once dispatched, undoing would strand assigned units and
 // destroy real dispatch activity, not just an accidental click).
-calls.post('/:id/undo-redispatch', async (c) => {
+calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
