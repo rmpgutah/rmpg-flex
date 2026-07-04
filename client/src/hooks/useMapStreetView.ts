@@ -13,7 +13,7 @@ import { mapboxReverseGeocode } from '../services/mapboxApiService';
 import { devLog } from '../utils/devLog';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER,
-  TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_DIM,
+  TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
 } from '../pages/map/utils/tacticalPalette';
 
 // ── Types ─────────────────────────────────────────────────
@@ -112,7 +112,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
             </div>
           </div>
         </div>
-        <div style="padding:4px 8px;font-size:8px;color:${TACTICAL_TEXT_DIM};font-family:ui-monospace,monospace;">
+        <div style="padding:4px 8px;font-size:8px;color:${TACTICAL_TEXT_MUTED};font-family:ui-monospace,monospace;">
           Click map for another location
         </div>
       </div>`;

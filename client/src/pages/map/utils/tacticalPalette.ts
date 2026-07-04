@@ -22,4 +22,10 @@ export const TACTICAL_BORDER = '#2a3a4d';
 export const TACTICAL_TEXT_MUTED = '#8fa3b8';
 export const TACTICAL_BRAND_GOLD = '#d4a017';
 export const TACTICAL_TEXT_PRIMARY = '#e6edf5';
+// NOTE: despite the name, this is NOT darker/dimmer than TACTICAL_TEXT_MUTED —
+// it mirrors CSS `--text-secondary`, which is actually the BRIGHTER of the two
+// text tokens (TACTICAL_TEXT_MUTED mirrors `--text-muted`, the darker one).
+// Pick based on the actual hex/CSS source values below, not the constant's
+// name, when you need the more de-emphasized (dimmer) of the two options —
+// that's TACTICAL_TEXT_MUTED, not this one.
 export const TACTICAL_TEXT_DIM = '#c3d0de';
