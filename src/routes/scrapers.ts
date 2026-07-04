@@ -155,4 +155,21 @@ scrapers.get('/', async (c) => {
   return c.json({ sources });
 });
 
+scrapers.get('/health', async (c) => {
+  const db = getDb(c.env);
+  const sources = await getMergedSources(db);
+  const circuit_broken = sources.filter((s) => s.circuit_broken === 1).length;
+  const failed = sources.filter((s) => s.last_error && s.circuit_broken === 0).length;
+  const healthy = sources.length - circuit_broken - failed;
+  return c.json({
+    healthy,
+    degraded: failed,
+    failed: 0,
+    circuit_broken,
+    total: sources.length,
+    last_hour_runs: 0,
+    last_hour_inserted: 0,
+  });
+});
+
 export default scrapers;

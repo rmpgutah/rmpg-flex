@@ -68,3 +68,15 @@ describe('GET /api/warrants/scrapers', () => {
     expect(arcgis?.warrant_count).toBe(2);
   });
 });
+
+describe('GET /api/warrants/scrapers/health', () => {
+  it('returns rollup counts derived from the merged source list', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers/health', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { total: number; circuit_broken: number; healthy: number };
+    expect(body.total).toBe(3);
+    expect(body.circuit_broken).toBe(1); // ada-county-id
+    expect(body.healthy).toBe(2);
+  });
+});
