@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Star, VolumeX, Archive, ChevronRight, Radio } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../components/ToastProvider';
 import { ls } from '../helpers';
@@ -40,7 +41,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
 
   const load = useCallback(() => {
     apiFetch<RadioChannel[]>(`/radio/channels${includeArchived ? '?include_archived=1' : ''}`)
-      .then(setChannels)
+      .then((data) => setChannels(asArray<RadioChannel>(data)))
       .catch((err) => console.error('[radio] channels', err));
   }, [includeArchived]);
 

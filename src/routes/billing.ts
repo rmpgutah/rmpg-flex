@@ -278,9 +278,9 @@ billing.post('/invoices/:id/items', async (c) => {
     const price = typeof b.unit_price === 'number' ? b.unit_price : 0;
     const lineTotal = Math.round(qty * price * 100) / 100;
     await execute(db,
-      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      invoiceId, b.description, qty, price, lineTotal, b.tax_applied ?? 1, b.sort_order ?? 0);
+      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied, sort_order, line_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      invoiceId, b.description, qty, price, lineTotal, b.tax_applied ?? 1, b.sort_order ?? 0, b.line_type ?? 'custom');
     await recalcInvoiceTotal(db, invoiceId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated }, 201);
@@ -392,9 +392,16 @@ billing.delete('/payments/:id', async (c) => {
     await execute(db, 'DELETE FROM payments WHERE id = ?', id);
     if (payment.invoice_id) {
       const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', payment.invoice_id);
-      const inv = await queryFirst<{ total_amount: number }>(db, 'SELECT total_amount FROM invoices WHERE id = ?', payment.invoice_id);
+      const inv = await queryFirst<{ total_amount: number; status: string }>(db, 'SELECT total_amount, status FROM invoices WHERE id = ?', payment.invoice_id);
       const paid = total?.amt ?? 0;
-      const status = inv && inv.total_amount > 0 && paid >= inv.total_amount ? 'paid' : (paid > 0 ? 'partial' : 'sent');
+      // Only derive a new status from the payment-driven states (paid/partial/sent);
+      // leave draft/overdue/cancelled etc. alone — deleting a payment shouldn't
+      // silently overwrite an unrelated invoice lifecycle state.
+      const paymentDrivenStatuses = new Set(['paid', 'partial', 'sent']);
+      let status = inv?.status;
+      if (!inv || paymentDrivenStatuses.has(inv.status)) {
+        status = inv && inv.total_amount > 0 && paid >= inv.total_amount ? 'paid' : (paid > 0 ? 'partial' : 'sent');
+      }
       await execute(db, 'UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?', paid, status, payment.invoice_id);
     }
     try {
