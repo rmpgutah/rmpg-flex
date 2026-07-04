@@ -21,7 +21,7 @@ import {
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash,
+  Navigation, Globe, Zap, Hash, BarChart3,
 } from 'lucide-react';
 
 import {
@@ -132,6 +132,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
   const [showOverlaysGroup, setShowOverlaysGroup] = useState(false);
+  const [showAnalysisGroup, setShowAnalysisGroup] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -1355,77 +1356,84 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             </IconButton>
           </ToolbarDropdownGroup>
 
+          <ToolbarDropdownGroup
+            icon={BarChart3}
+            label="Analysis"
+            open={showAnalysisGroup}
+            onToggle={() => setShowAnalysisGroup(v => !v)}
+          >
+            {/* Heatmap */}
+            <IconButton
+              aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
+              onClick={() => { void populateAndToggleHeatmap(); }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Crime Heatmap"
+            >
+              <Flame className="w-4 h-4" />
+            </IconButton>
+
+            {/* Heatmap Live/Historical mode switch */}
+            <button
+              type="button"
+              className="text-[9px] px-1 py-0.5 rounded-sm"
+              style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+              onClick={() => {
+                const next = heatmapMode === 'live' ? 'historical' : 'live';
+                setHeatmapMode(next);
+                if (heatmap.enabled) refreshHeatmapPoints(next);
+              }}
+              title="Switch between live (currently active calls) and historical (30-day) heatmap data"
+            >
+              {heatmapMode === 'live' ? 'LIVE' : '30D'}
+            </button>
+
+            {/* Traffic */}
+            <IconButton
+              aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
+              onClick={() => traffic.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Live Traffic"
+            >
+              <Car className="w-4 h-4" />
+            </IconButton>
+
+            {/* Clustering */}
+            <IconButton
+              aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
+              onClick={() => {
+                if (!clustering.enabled) {
+                  const clPts = calls
+                    .filter(c => c.latitude != null && c.longitude != null)
+                    .map(c => ({
+                      id: c.id,
+                      longitude: c.longitude!,
+                      latitude: c.latitude!,
+                      priority: c.priority,
+                      label: c.call_number,
+                      color: PRIORITY_COLORS[c.priority] || '#888',
+                    }));
+                  clustering.updatePoints(clPts);
+                }
+                clustering.toggle();
+              }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Cluster Markers"
+            >
+              <Hexagon className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
+
           {showAdvancedToolbar && (
             <>
-              {/* Heatmap */}
-              <IconButton
-                aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
-                onClick={() => { void populateAndToggleHeatmap(); }}
-                className={`${TOOLBAR_ITEM_CLASS} ${
-                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Crime Heatmap"
-              >
-                <Flame className="w-4 h-4" />
-              </IconButton>
-
-              {/* Heatmap Live/Historical mode switch */}
-              <button
-                type="button"
-                className="text-[9px] px-1 py-0.5 rounded-sm"
-                style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
-                onClick={() => {
-                  const next = heatmapMode === 'live' ? 'historical' : 'live';
-                  setHeatmapMode(next);
-                  if (heatmap.enabled) refreshHeatmapPoints(next);
-                }}
-                title="Switch between live (currently active calls) and historical (30-day) heatmap data"
-              >
-                {heatmapMode === 'live' ? 'LIVE' : '30D'}
-              </button>
-
-              {/* Traffic */}
-              <IconButton
-                aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
-                onClick={() => traffic.toggle()}
-                className={`${TOOLBAR_ITEM_CLASS} ${
-                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Live Traffic"
-              >
-                <Car className="w-4 h-4" />
-              </IconButton>
-
-              {/* Clustering */}
-              <IconButton
-                aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
-                onClick={() => {
-                  if (!clustering.enabled) {
-                    const clPts = calls
-                      .filter(c => c.latitude != null && c.longitude != null)
-                      .map(c => ({
-                        id: c.id,
-                        longitude: c.longitude!,
-                        latitude: c.latitude!,
-                        priority: c.priority,
-                        label: c.call_number,
-                        color: PRIORITY_COLORS[c.priority] || '#888',
-                      }));
-                    clustering.updatePoints(clPts);
-                  }
-                  clustering.toggle();
-                }}
-                className={`${TOOLBAR_ITEM_CLASS} ${
-                  clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Cluster Markers"
-              >
-                <Hexagon className="w-4 h-4" />
-              </IconButton>
-
               {/* Satellite Peek (Street View equivalent) */}
               <IconButton
                 aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
