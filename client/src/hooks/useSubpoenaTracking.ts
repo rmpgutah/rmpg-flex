@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
 import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 101: Subpoena Tracking Workflow ───────────────
@@ -47,7 +48,7 @@ export function useSubpoenaTracking() {
       if (params?.caseNumber) query.set('caseNumber', params.caseNumber);
       if (params?.status) query.set('status', params.status);
       const result = await apiFetch<Subpoena[]>(`/court/subpoenas?${query}`);
-      if (result) setSubpoenas(result);
+      setSubpoenas(asArray<Subpoena>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -212,7 +213,7 @@ export function useCourtAppearances() {
       if (params?.date) query.set('date', params.date);
       if (params?.officerId) query.set('officerId', params.officerId);
       const result = await apiFetch<CourtAppearance[]>(`/court/appearances?${query}`);
-      if (result) setAppearances(result);
+      setAppearances(asArray<CourtAppearance>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -313,7 +314,7 @@ export function useDiscoveryManagement() {
     try {
       const query = caseNumber ? `?caseNumber=${caseNumber}` : '';
       const result = await apiFetch<DiscoveryObligation[]>(`/court/discovery${query}`);
-      if (result) setObligations(result);
+      setObligations(asArray<DiscoveryObligation>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -350,7 +351,7 @@ export function useEvidenceSubpoena() {
     setLoading(true);
     try {
       const result = await apiFetch<EvidenceSubpoena[]>('/court/evidence-subpoenas');
-      if (result) setSubpoenas(result);
+      setSubpoenas(asArray<EvidenceSubpoena>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -383,7 +384,7 @@ export function useWitnessAvailability() {
     try {
       const query = caseNumber ? `?caseNumber=${caseNumber}` : '';
       const result = await apiFetch<WitnessAvailability[]>(`/court/witness-availability${query}`);
-      if (result) setWitnesses(result);
+      setWitnesses(asArray<WitnessAvailability>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);

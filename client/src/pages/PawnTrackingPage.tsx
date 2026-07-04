@@ -7,6 +7,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import StatsCard from '../components/StatsCard';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
 interface PawnTransaction {
@@ -111,7 +112,7 @@ export default function PawnTrackingPage() {
       if (searchQuery) params.set('search', searchQuery);
       const qs = params.toString();
       const rows = await apiFetch<PawnTransaction[]>(`/pawn${qs ? `?${qs}` : ''}`);
-      setTransactions(rows);
+      setTransactions(asArray<PawnTransaction>(rows));
     } catch (err: any) {
       setError(err?.message || 'Failed to load pawn transactions');
     } finally {
@@ -202,7 +203,7 @@ export default function PawnTrackingPage() {
     setStolenLoading(true);
     try {
       const matches = await apiFetch<PawnTransaction[]>('/pawn/search/stolen');
-      setStolenMatches(matches);
+      setStolenMatches(asArray<PawnTransaction>(matches));
     } catch (err: any) {
       setError(err?.message || 'Cross-reference failed');
     } finally {

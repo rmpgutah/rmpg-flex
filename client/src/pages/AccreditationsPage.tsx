@@ -17,6 +17,7 @@ import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export default function AccreditationsPage() {
       if (expiringFilter) params.set('expiring_within_days', expiringFilter);
       const qs = params.toString();
       const data = await apiFetch<Accreditation[]>(`/api/accreditations${qs ? `?${qs}` : ''}`);
-      setRecords(data);
+      setRecords(asArray<Accreditation>(data));
     } catch {
       addToast('Failed to load accreditations', 'error');
     } finally {
@@ -131,7 +132,7 @@ export default function AccreditationsPage() {
   const fetchOfficers = useCallback(async () => {
     try {
       const data = await apiFetch<Officer[]>('/api/users?role=officer');
-      setOfficers(data);
+      setOfficers(asArray<Officer>(data));
     } catch { /* non-critical */ }
   }, []);
 
