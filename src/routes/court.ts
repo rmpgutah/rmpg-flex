@@ -717,12 +717,14 @@ ct.get('/discovery', async (c) => {
 // inserting the first row with a new category name creates it.
 
 ct.get('/lookups/categories', async (c) => {
-  const db = getDb(c.env);
-  const rows = await query<{ category: string; count: number }>(
-    db,
-    `SELECT category, COUNT(*) as count FROM court_lookups GROUP BY category ORDER BY category`,
-  );
-  return c.json(rows);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ category: string; count: number }>(
+      db,
+      `SELECT category, COUNT(*) as count FROM court_lookups GROUP BY category ORDER BY category`,
+    );
+    return c.json(rows);
+  } catch { return c.json([]); }
 });
 
 export default ct;
