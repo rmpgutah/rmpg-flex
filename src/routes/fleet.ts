@@ -4646,4 +4646,20 @@ fleet.get('/:id/readiness', async (c) => {
   }
 });
 
+// ── Fleet Expenses — per-vehicle expense tracking (2026-07-04) ──
+// Backs FleetExpensesTab.tsx. Registration/tolls/parking/tickets/etc.
+// Manager-tier write gate already applied at the router level (top
+// of this file) — no per-route role check needed here.
+
+fleet.get('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  const db = getDb(c.env);
+  const vehicleId = Number(c.req.param('vehicleId'));
+  const rows = await query(
+    db,
+    `SELECT * FROM fleet_expenses WHERE vehicle_id = ? ORDER BY expense_date DESC, id DESC`,
+    vehicleId,
+  );
+  return c.json({ data: rows });
+});
+
 export default fleet;
