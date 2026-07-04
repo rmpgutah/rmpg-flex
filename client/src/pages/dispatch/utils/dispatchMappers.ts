@@ -255,6 +255,11 @@ export function mapDbCall(row: any): CallForService {
       pso_72hr_notified: row.pso_72hr_notified || undefined,
       dispatcher_name: row.dispatcher_name || undefined,
       case_id: row.case_id ?? undefined,
+      // Redispatch chain linkage (calls_for_service_ext.parent_call_id) — the
+      // "Undo Return Visit" button gates on this via `(selectedCall as any)
+      // .parent_call_id`; without mapping it here it's always undefined and
+      // the button never shows even once the server persists the value.
+      parent_call_id: row.parent_call_id ?? undefined,
     } as any),
   };
 }

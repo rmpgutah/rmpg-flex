@@ -21,6 +21,7 @@ import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DocumentViewer from '../components/DocumentViewer';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
@@ -2261,7 +2262,7 @@ export default function EmailPage() {
   const debouncedFolderRefresh = useCallback(() => {
     if (folderRefreshTimerRef.current) clearTimeout(folderRefreshTimerRef.current);
     folderRefreshTimerRef.current = setTimeout(() => {
-      apiFetch<EmailFolder[]>('/email/folders').then(setFolders).catch((err) => { console.warn('[EmailPage] refresh folders failed:', err); });
+      apiFetch<EmailFolder[]>('/email/folders').then(d => setFolders(asArray(d))).catch((err) => { console.warn('[EmailPage] refresh folders failed:', err); });
     }, 500);
   }, []);
 

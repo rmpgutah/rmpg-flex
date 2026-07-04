@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { asArray } from '../../../utils/asArray';
 
 interface GpsPosition { lat: number; lng: number; timestamp: string; speed?: number; heading?: number; }
 interface UnitOption { unit_id: number; call_sign: string; officer_name?: string; badge_number?: string; }
@@ -37,7 +38,7 @@ export default function GpsReplayTool({ map, onClose }: Props) {
 
   // Load units with trail data on mount
   useEffect(() => {
-    apiFetch<UnitOption[]>('/dispatch/gps/units-with-trails').then(setUnits).catch(() => {});
+    apiFetch<UnitOption[]>('/dispatch/gps/units-with-trails').then(d => setUnits(asArray(d))).catch(() => {});
   }, []);
 
   // Setup map sources/layers

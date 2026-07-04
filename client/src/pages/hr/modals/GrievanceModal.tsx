@@ -8,6 +8,7 @@ import { X, FileWarning, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
+import { asArray } from '../../../utils/asArray';
 
 interface UserOption {
   id: string;
@@ -73,7 +74,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
+    apiFetch<UserOption[]>('/hr/employees').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
     if (grievance) {
       setForm({
         against_user_id: grievance.against_user_id || '',

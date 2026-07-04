@@ -17,6 +17,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import type { EventClickArg, EventDropArg } from '@fullcalendar/core';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -81,7 +82,7 @@ export default function SchedulerPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    apiFetch<Officer[]>('/personnel?status=active').then(setOfficers).catch(() => setOfficers([]));
+    apiFetch<Officer[]>('/personnel?status=active').then(d => setOfficers(asArray(d))).catch(() => setOfficers([]));
   }, []);
   useEffect(() => {
     if (searchParams.get('call_id') || searchParams.get('serve_queue_id')) setShowCreate(true);

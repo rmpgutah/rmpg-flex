@@ -196,7 +196,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     if (!selectedInvoice) return;
     setSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/status`, {
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}`, {
         method: 'PUT',
         body: JSON.stringify({ status }),
       });
@@ -211,7 +211,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     if (!selectedInvoice || !itemForm.description) return;
     setSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items`, {
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items`, {
         method: 'POST',
         body: JSON.stringify({
           line_type: itemForm.line_type,
@@ -231,7 +231,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const handleDeleteLineItem = async (itemId: string) => {
     if (!selectedInvoice) return;
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/line-items/${itemId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}/items/${itemId}`, { method: 'DELETE' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
     } catch (e: any) { setError(e.message); }
@@ -241,9 +241,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     if (!selectedInvoice || !payForm.amount) return;
     setSaving(true);
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments`, {
+      await apiFetch(`/billing/payments`, {
         method: 'POST',
         body: JSON.stringify({
+          invoice_id: selectedInvoice.id,
           amount: parseFloat(payForm.amount),
           payment_date: payForm.payment_date,
           payment_method: payForm.payment_method,
@@ -263,7 +264,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const handleDeletePayment = async (paymentId: string) => {
     if (!selectedInvoice) return;
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}/payments/${paymentId}`, { method: 'DELETE' });
+      await apiFetch(`/billing/payments/${paymentId}`, { method: 'DELETE' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchInvoices();
       fetchStats();
@@ -284,9 +285,9 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const handleSaveNotes = async (notes: string) => {
     if (!selectedInvoice) return;
     try {
-      await apiFetch(`/invoices/${selectedInvoice.id}`, {
+      await apiFetch(`/billing/invoices/${selectedInvoice.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ internal_notes: notes }),
+        body: JSON.stringify({ notes }),
       });
     } catch (e: any) {
       // Audit caught (2026-06-21): autosave handler for collection notes /

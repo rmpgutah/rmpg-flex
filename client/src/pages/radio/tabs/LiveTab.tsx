@@ -13,6 +13,7 @@ import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls';
+import { asArray } from '../../../utils/asArray';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
@@ -79,7 +80,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const lastSeenIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(err => console.warn('[LiveTab] channels load failed:', err));
+    apiFetch<RadioChannel[]>('/radio/channels').then(d => setChannels(asArray(d))).catch(err => console.warn('[LiveTab] channels load failed:', err));
   }, []);
 
   // Reset the new-TX baseline whenever the feed query changes, so

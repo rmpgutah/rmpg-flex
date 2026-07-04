@@ -380,6 +380,35 @@ billing.post('/payments', async (c) => {
   }
 });
 
+billing.delete('/payments/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'contract_manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const id = parseInt(c.req.param('id'), 10);
+    const payment = await queryFirst<{ invoice_id: number | null }>(db, 'SELECT invoice_id FROM payments WHERE id = ?', id);
+    if (!payment) return c.json({ error: 'Payment not found' }, 404);
+    await execute(db, 'DELETE FROM payments WHERE id = ?', id);
+    if (payment.invoice_id) {
+      const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', payment.invoice_id);
+      const inv = await queryFirst<{ total_amount: number }>(db, 'SELECT total_amount FROM invoices WHERE id = ?', payment.invoice_id);
+      const paid = total?.amt ?? 0;
+      const status = inv && inv.total_amount > 0 && paid >= inv.total_amount ? 'paid' : (paid > 0 ? 'partial' : 'sent');
+      await execute(db, 'UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?', paid, status, payment.invoice_id);
+    }
+    try {
+      await recordAudit(c, {
+        action: 'payment_deleted', entityType: 'payment', entityId: id,
+        details: `invoice=${payment.invoice_id ?? 'n/a'}`, actorId: userId,
+      });
+    } catch { /* best-effort */ }
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete payment' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // EXPENSE REPORTS
 // ═══════════════════════════════════════════════════════════════

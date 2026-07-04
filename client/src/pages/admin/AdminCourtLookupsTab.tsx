@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Gavel, Plus, Pencil, Trash2, Save, X, Eye, EyeOff, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 // AdminCourtLookupsTab — manages every editable dropdown in the Court Tracker.
 //
@@ -46,7 +47,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
 
   const loadCategories = useCallback(async () => {
     try {
-      const cats = await apiFetch<CategoryRow[]>('/api/court/lookups/categories');
+      const cats = asArray<CategoryRow>(await apiFetch<CategoryRow[]>('/api/court/lookups/categories'));
       setCategories(cats);
       if (!activeCategory && cats.length > 0) setActiveCategory(cats[0].category);
     } catch (err) { setOuterError?.(err instanceof Error ? err.message : 'Failed to load categories'); }
@@ -59,7 +60,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
       const params = new URLSearchParams({ category: cat });
       if (showInactive) params.set('includeInactive', 'true');
       const data = await apiFetch<Lookup[]>(`/api/court/lookups?${params}`);
-      setItems(data);
+      setItems(asArray<Lookup>(data));
     } catch (err) {
       setOuterError?.(err instanceof Error ? err.message : 'Failed to load lookups');
     } finally { setLoading(false); }
