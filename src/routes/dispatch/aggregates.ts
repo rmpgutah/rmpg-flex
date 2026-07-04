@@ -704,7 +704,8 @@ aggregates.get('/repeat-addresses', async (c) => {
       LIMIT ?
     `, `-${days} days`, minCount, limit);
 
-    return c.json({ addresses: rows, total: rows.length });
+    const addresses = filterValidLatLng(rows);
+    return c.json({ addresses, total: addresses.length });
   } catch (err) {
     log.error('GET /dispatch/repeat-addresses failed', {}, err);
     return c.json({ addresses: [], total: 0 });

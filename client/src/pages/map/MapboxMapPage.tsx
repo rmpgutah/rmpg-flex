@@ -251,28 +251,32 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
   const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
 
+  const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
+    if (mode === 'historical') {
+      try {
+        const rows = await apiFetch<Array<{ latitude: number; longitude: number; count: number }>>('/dispatch/heatmap?mode=all&days=30');
+        const maxCount = rows.reduce((m, r) => Math.max(m, r.count), 1);
+        heatmap.updatePoints(rows.map((r) => ({
+          longitude: r.longitude, latitude: r.latitude,
+          weight: Math.min(1, r.count / maxCount),
+        })));
+      } catch (err) {
+        console.warn('[Heatmap] historical fetch failed:', err);
+      }
+    } else {
+      const heatPts = calls
+        .filter((c) => c.latitude != null && c.longitude != null)
+        .map((c) => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
+      heatmap.updatePoints(heatPts);
+    }
+  }, [heatmap, calls]);
+
   const populateAndToggleHeatmap = useCallback(async () => {
     if (!heatmap.enabled) {
-      if (heatmapMode === 'historical') {
-        try {
-          const rows = await apiFetch<Array<{ latitude: number; longitude: number; count: number }>>('/dispatch/heatmap?mode=all&days=30');
-          const maxCount = Math.max(1, ...rows.map((r) => r.count));
-          heatmap.updatePoints(rows.map((r) => ({
-            longitude: r.longitude, latitude: r.latitude,
-            weight: Math.min(1, r.count / maxCount),
-          })));
-        } catch (err) {
-          console.warn('[Heatmap] historical fetch failed:', err);
-        }
-      } else {
-        const heatPts = calls
-          .filter((c) => c.latitude != null && c.longitude != null)
-          .map((c) => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
-        heatmap.updatePoints(heatPts);
-      }
+      await refreshHeatmapPoints(heatmapMode);
     }
     heatmap.toggle();
-  }, [heatmap, heatmapMode, calls]);
+  }, [heatmap, heatmapMode, refreshHeatmapPoints]);
 
   const incidentsLayer = useMapboxIncidents(mapLoaded ? mapRef.current : null);
   const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
@@ -1666,7 +1670,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 type="button"
                 className="text-[9px] px-1 py-0.5 rounded-sm"
                 style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
-                onClick={() => setHeatmapMode((m) => (m === 'live' ? 'historical' : 'live'))}
+                onClick={() => setHeatmapMode((m) => {
+                  const next = m === 'live' ? 'historical' : 'live';
+                  if (heatmap.enabled) refreshHeatmapPoints(next);
+                  return next;
+                })}
                 title="Switch between live (currently active calls) and historical (30-day) heatmap data"
               >
                 {heatmapMode === 'live' ? 'LIVE' : '30D'}
