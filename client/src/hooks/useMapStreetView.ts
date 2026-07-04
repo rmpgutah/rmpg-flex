@@ -11,6 +11,10 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxReverseGeocode } from '../services/mapboxApiService';
 import { devLog } from '../utils/devLog';
+import {
+  TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER,
+  TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_DIM,
+} from '../pages/map/utils/tacticalPalette';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -74,7 +78,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
     })
       .setLngLat([lng, lat])
       .setHTML(`
-        <div style="background:#141414;padding:12px;border:1px solid #222;border-radius:2px;color:#d4a017;font-size:10px;font-family:ui-monospace,monospace;text-align:center;width:340px;">
+        <div style="background:${TACTICAL_SURFACE_RAISED};padding:12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;color:${TACTICAL_BRAND_GOLD};font-size:10px;font-family:ui-monospace,monospace;text-align:center;width:340px;">
           Loading satellite view…
         </div>`)
       .addTo(map);
@@ -94,21 +98,21 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
     const satSrc = buildImageSrc(lng, lat, activeZoom, 640, 400, 'mapbox/satellite-v9', true, markers);
 
     const html = `
-      <div style="background:#141414;border:1px solid #222;border-radius:2px;overflow:hidden;width:340px;">
-        <div style="padding:4px 8px;font-size:9px;color:#888;font-family:ui-monospace,monospace;border-bottom:1px solid #222;display:flex;gap:4px;align-items:center;">
-          <span style="color:#d4a017;font-weight:600;">SAT PEEK</span>
+      <div style="background:${TACTICAL_SURFACE_RAISED};border:1px solid ${TACTICAL_BORDER};border-radius:2px;overflow:hidden;width:340px;">
+        <div style="padding:4px 8px;font-size:9px;color:${TACTICAL_TEXT_MUTED};font-family:ui-monospace,monospace;border-bottom:1px solid ${TACTICAL_BORDER};display:flex;gap:4px;align-items:center;">
+          <span style="color:${TACTICAL_BRAND_GOLD};font-weight:600;">SAT PEEK</span>
         </div>
         <div style="position:relative;">
           <img src="${satSrc}" alt="Satellite view"
-            style="width:340px;height:213px;object-fit:cover;display:block;background:#0a0a0a;"
+            style="width:340px;height:213px;object-fit:cover;display:block;background:${TACTICAL_SURFACE_BASE};"
             onerror="this.parentElement.innerHTML='<div style=\\'padding:40px;color:#ef4444;text-align:center;font-size:10px;font-family:ui-monospace,monospace;\\'>Image failed to load</div>'" />
-          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,#0a0a0aCC);padding:6px 8px;">
-            <div style="color:#d4a017;font-size:9px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,${TACTICAL_SURFACE_BASE}CC);padding:6px 8px;">
+            <div style="color:${TACTICAL_BRAND_GOLD};font-size:9px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
               ${address}
             </div>
           </div>
         </div>
-        <div style="padding:4px 8px;font-size:8px;color:#555;font-family:ui-monospace,monospace;">
+        <div style="padding:4px 8px;font-size:8px;color:${TACTICAL_TEXT_DIM};font-family:ui-monospace,monospace;">
           Click map for another location
         </div>
       </div>`;
