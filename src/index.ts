@@ -288,7 +288,35 @@ export default {
             ).catch((err) => console.error('Fleet maintenance sweep failed:', err)),
           ).catch(() => {}),
         );
+        // Officer certification expiration reminders — same on-demand-
+        // dashboard-only gap fleet maintenance had; no-ops until a rule
+        // with trigger_event='certification_expiring' is configured.
+        ctx.waitUntil(
+          import('./utils/certExpirationSweep').then((m) =>
+            m.sweepCertExpirations(env.DB, env).then((r) =>
+              console.log(`[cert-expiration] expired=${r.expired} expiringSoon=${r.expiringSoon} notified=${r.notified}`),
+            ).catch((err) => console.error('Certification expiration sweep failed:', err)),
+          ).catch(() => {}),
+        );
       }
+    }
+
+    // ── 1st of month, 03:00 UTC ──
+    // NOTE: the schedule comment above has long documented this slot as
+    // "NHTSA vPIC refresh," but no such logic was ever implemented here —
+    // this cron fired every month and did nothing. Using it now for the
+    // records-retention reminder (a monthly cadence fits a 10-99 year
+    // retention window far better than the per-minute/4-hourly slots).
+    // The NHTSA vPIC refresh itself remains unbuilt — flagging separately
+    // rather than guessing at that integration's shape.
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        import('./utils/retentionReminderSweep').then((m) =>
+          m.sweepRetentionReminders(env.DB, env).then((r) =>
+            console.log(`[retention-reminder] eligible=${JSON.stringify(r.eligible)} notified=${r.notified}`),
+          ).catch((err) => console.error('Retention reminder sweep failed:', err)),
+        ).catch(() => {}),
+      );
     }
   },
 };
