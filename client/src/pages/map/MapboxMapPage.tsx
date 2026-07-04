@@ -844,7 +844,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
+    <div className="tactical-dark relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
