@@ -58,3 +58,49 @@ describe('GET /api/fleet/:vehicleId/expenses', () => {
     expect(body.data).toEqual([]);
   });
 });
+
+describe('POST /api/fleet/:vehicleId/expenses', () => {
+  it('rejects non-manager roles (router-level write gate)', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/fleet/1/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ expense_date: '2026-07-01', category: 'towing', amount: 150 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(403);
+  });
+
+  it('creates an expense as manager', async () => {
+    const app = buildApp('manager');
+    const res = await app.request('/api/fleet/1/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ expense_date: '2026-07-01', category: 'towing', amount: 150, vendor: 'AAA' }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { id: number };
+    expect(typeof body.id).toBe('number');
+
+    const listRes = await app.request('/api/fleet/1/expenses', {}, env as unknown as Record<string, unknown>);
+    const list = await listRes.json() as { data: Array<{ category: string; created_by: number | null }> };
+    expect(list.data.map((r) => r.category)).toContain('towing');
+    const created = list.data.find((r) => r.category === 'towing');
+    expect(created?.created_by).toBe(1);
+  });
+
+  it('rejects an invalid category', async () => {
+    const app = buildApp('manager');
+    const res = await app.request('/api/fleet/1/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ expense_date: '2026-07-01', category: 'not_a_real_category', amount: 10 }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(500);
+  });
+
+  it('rejects a request missing amount', async () => {
+    const app = buildApp('manager');
+    const res = await app.request('/api/fleet/1/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ expense_date: '2026-07-01', category: 'misc' }),
+    }, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(400);
+  });
+});

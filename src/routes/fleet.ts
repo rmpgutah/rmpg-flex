@@ -4665,4 +4665,45 @@ fleet.get('/:vehicleId{[0-9]+}/expenses', async (c) => {
   } catch (err) { console.error('GET /fleet/:vehicleId/expenses failed:', err); return dbErrorResponse(c, err, 'Failed to fetch vehicle expenses'); }
 });
 
+fleet.post('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  const db = getDb(c.env);
+  const vehicleId = Number(c.req.param('vehicleId'));
+  if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+
+  const user = c.get('user') as { id: number } | undefined;
+  const body = await c.req.json<{
+    expense_date?: string; category?: string; amount?: number; vendor?: string | null;
+    description?: string | null; receipt_path?: string | null; odometer_reading?: number | null;
+    recurring?: boolean; recurring_frequency?: string | null; notes?: string | null;
+  }>();
+  if (!body.expense_date || !body.category || body.amount === undefined) {
+    return c.json({ error: 'expense_date, category, and amount are required' }, 400);
+  }
+
+  try {
+    const result = await execute(
+      db,
+      `INSERT INTO fleet_expenses
+       (vehicle_id, expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      vehicleId,
+      body.expense_date,
+      body.category,
+      body.amount,
+      body.vendor ?? null,
+      body.description ?? null,
+      body.receipt_path ?? null,
+      body.odometer_reading ?? null,
+      body.recurring ? 1 : 0,
+      body.recurring_frequency ?? null,
+      body.notes ?? null,
+      user?.id ?? null,
+    );
+    return c.json({ id: result.meta.last_row_id, success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] create failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to create expense');
+  }
+});
+
 export default fleet;
