@@ -49,7 +49,7 @@ import {
 } from './navigation/hud/hudUnits';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
-import { snapToRoute, type RouteStepLane } from '../hooks/useMapRouting';
+import { snapToRoute, type RouteStep } from '../hooks/useMapRouting';
 import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
 import { useNavTrip } from '../context/NavTripContext';
 import { whenStyleReady } from './map/utils/safeAddSource';
@@ -104,7 +104,7 @@ function maneuverIcon(type: string, modifier?: string): LucideIcon {
 }
 
 /** Pick the maneuver the unit is currently approaching from route progress. */
-function pickCurrentStep(steps: { instruction: string; distanceMeters: number; distanceText: string; maneuverType: string; modifier?: string; lanes?: RouteStepLane[] }[] | undefined, fraction: number, totalMeters: number) {
+function pickCurrentStep(steps: RouteStep[] | undefined, fraction: number, totalMeters: number) {
   if (!steps || steps.length === 0) return null;
   const doneMeters = Math.max(0, Math.min(1, fraction)) * totalMeters;
   let acc = 0;
