@@ -43,6 +43,7 @@ import {
 } from '../utils/mapPreferences';
 import { MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, type MapStyleId } from './map/utils/mapConstants';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import type { RadioChannel } from './radio/types';
 import { getPttPrefs, setPttPrefs, keyCodeLabel, type PttPreferences } from '../utils/pttPreferences';
 import { saveAsOrgDefault } from '../utils/settingsSync';
@@ -358,7 +359,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setPttChannelsLoading(true);
     apiFetch<RadioChannel[]>('/radio/channels')
-      .then(setPttChannels)
+      .then((data) => setPttChannels(asArray<RadioChannel>(data)))
       .catch(() => { /* offline */ })
       .finally(() => setPttChannelsLoading(false));
   }, []);
