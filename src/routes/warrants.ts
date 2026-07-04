@@ -10,7 +10,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 import { getEnabledAdapters } from '../utils/warrantSources/registry';
-import { US_STATES } from '../utils/warrantNationalSearch';
+import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
 
@@ -388,6 +388,71 @@ warrants.get('/national-coverage', async (c) => {
     state_status,
     state_sources,
     state_warrants,
+  });
+});
+
+// POST /national-search — federated search across scraped_warrants +
+// local warrants, with strict DOB/age match confirmation. Read-only: never
+// sets status/cleared_at — clearing stays governed exclusively by
+// src/utils/warrantSources/runScan.ts's "never wrongly clear" invariant.
+warrants.post('/national-search', async (c) => {
+  const startedAt = Date.now();
+  type NationalSearchBody = {
+    first_name?: string; last_name?: string; dob?: string; state?: string;
+    offense_level?: string; warrant_type?: string; charge_keyword?: string;
+  };
+  const body = await c.req.json<NationalSearchBody>().catch(() => ({} as NationalSearchBody));
+
+  if (!body.first_name && !body.last_name && !body.state) {
+    return c.json({ error: 'At least one of first_name, last_name, or state is required' }, 400);
+  }
+
+  const db = getDb(c.env);
+  const queryDob = body.dob ?? null;
+
+  const scrapedWhere: string[] = [];
+  const scrapedParams: unknown[] = [];
+  if (body.first_name) { scrapedWhere.push('first_name LIKE ?'); scrapedParams.push(`%${body.first_name}%`); }
+  if (body.last_name) { scrapedWhere.push('last_name LIKE ?'); scrapedParams.push(`%${body.last_name}%`); }
+  if (body.state) { scrapedWhere.push('UPPER(state) = ?'); scrapedParams.push(body.state.toUpperCase()); }
+  if (body.offense_level) { scrapedWhere.push('UPPER(offense_level) = ?'); scrapedParams.push(body.offense_level.toUpperCase()); }
+  if (body.warrant_type) { scrapedWhere.push('UPPER(warrant_type) = ?'); scrapedParams.push(body.warrant_type.toUpperCase()); }
+  if (body.charge_keyword) { scrapedWhere.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge_keyword}%`); }
+
+  const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ' WHERE ' + scrapedWhere.join(' AND ') : ''}`;
+  const scrapedRows = await query<Record<string, unknown>>(db, scrapedSql, ...scrapedParams);
+
+  const by_state: Record<string, ReturnType<typeof mapScrapedWarrantRow>[]> = {};
+  for (const row of scrapedRows) {
+    if (!matchesDobOrAge(queryDob, { dob: (row.date_of_birth as string) ?? null, age: (row.age as number) ?? null })) continue;
+    const mapped = mapScrapedWarrantRow(row);
+    const stateKey = ((row.state as string) ?? 'UNKNOWN').toUpperCase();
+    if (!by_state[stateKey]) by_state[stateKey] = [];
+    by_state[stateKey].push(mapped);
+  }
+
+  const localWhere: string[] = [];
+  const localParams: unknown[] = [];
+  if (body.first_name) { localWhere.push('subject_first_name LIKE ?'); localParams.push(`%${body.first_name}%`); }
+  if (body.last_name) { localWhere.push('subject_last_name LIKE ?'); localParams.push(`%${body.last_name}%`); }
+  if (body.offense_level) { localWhere.push('UPPER(offense_level) = ?'); localParams.push(body.offense_level.toUpperCase()); }
+  if (body.warrant_type) { localWhere.push("UPPER(COALESCE(warrant_type, type)) = ?"); localParams.push(body.warrant_type.toUpperCase()); }
+  if (body.charge_keyword) { localWhere.push('COALESCE(charge_description, offense_description, offense) LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
+
+  const localSql = `SELECT * FROM warrants${localWhere.length ? ' WHERE ' + localWhere.join(' AND ') : ''}`;
+  const localRows = await query<Record<string, unknown>>(db, localSql, ...localParams);
+
+  const local = localRows
+    .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
+    .map(mapLocalWarrantRow);
+
+  const total = Object.values(by_state).reduce((a, arr) => a + arr.length, 0) + local.length;
+
+  return c.json({
+    total,
+    search_time_ms: Date.now() - startedAt,
+    by_state,
+    local,
   });
 });
 
