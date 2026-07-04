@@ -659,13 +659,20 @@ export function drawNibrsHeader(
       doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
       const maxLabelTextW = Math.max(...rows.map((r) => doc.getTextWidth(r.label)));
       const labelW = Math.min(34, Math.max(20, maxLabelTextW + 3.5));
-      doc.setDrawColor(...COLOR.RULE_STRONG);
+      // Border/rules recolored navy 2026-07-03 (letterhead program) — was
+      // COLOR.RULE_STRONG (near-black), which read as a mismatched dark
+      // line against the navy rules bracketing this same header.
+      doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
       doc.setLineWidth(0.3);
       doc.rect(boxX, y, boxW, boxH);
       rows.forEach((row, i) => {
         const ry = y + i * rowH;
         if (i > 0) doc.line(boxX, ry, boxX + boxW, ry);
-        doc.setFillColor(238, 238, 238);
+        // Reuses COLOR.BG_TABLE_HDR (the light-gray table-header tone from
+        // today's tone-reconfig) instead of a bespoke flat gray literal —
+        // ties this label strip into the same light-structural-band family
+        // as every table header in the report body.
+        doc.setFillColor(...COLOR.BG_TABLE_HDR);
         doc.rect(boxX, ry, labelW, rowH, 'F');
         doc.setFont(FONT_FAMILY, 'bold');
         doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -696,9 +703,13 @@ export function drawNibrsHeader(
     doc.setLineWidth(0.6);
     doc.line(margin, y, margin + contentW, y);
 
-    // Report-type band — gray fill, centered bold report type.
+    // Report-type band — light-gray fill, centered bold report type.
+    // Recolored 2026-07-03: was a flat neutral (235,235,235) sandwiched
+    // between two now-navy rules (the identity-zone rule above, the
+    // closing rule below) — reuses COLOR.BG_TABLE_HDR for the same reason
+    // the metadata box's label column does, above.
     const bandH = 6.4;
-    doc.setFillColor(235, 235, 235);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
     doc.rect(margin, y, contentW, bandH, 'F');
     doc.setFont(FONT_FAMILY, 'bold');
     doc.setFontSize(FONT.SIZE_REPORT_TYPE + 4);

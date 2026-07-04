@@ -24,7 +24,7 @@ export const COLOR = {
   TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
-  TEXT_SUBHEAD_INVERTED: [128, 128, 128] as const,  // #808080 mid grey (was #b8b8b8 light-medium grey, reconfigured 2026-07-03) — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
+  TEXT_SUBHEAD_INVERTED: [190, 200, 215] as const,  // pale steel-blue-grey — retuned 2026-07-03 (was #808080 mid grey) after BG_SECTION_HDR became navy #1a2f5c (letterhead/color-restoration program): the mid-grey value was tuned against the OLD #333 charcoal header and read muddy/low-contrast against navy. Cool-tinted to sit in the same palette family as the navy header rather than a flat neutral. SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
   TEXT_CAPTION:    [120, 120, 120]  as const,  // Image captions, provenance labels
   TEXT_PLACEHOLDER: [180, 180, 180] as const,  // Empty state, placeholder text
