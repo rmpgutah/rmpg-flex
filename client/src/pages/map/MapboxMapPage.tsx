@@ -24,11 +24,10 @@ import {
 } from 'lucide-react';
 
 import {
-  createMapboxMap, destroyMapboxMap, setMapboxStyle,
-  injectMapboxStyles, addMapbox3DBuildings,
+  addMapbox3DBuildings,
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
-import { getMapboxTokenStatus, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
+import { getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -83,23 +82,14 @@ import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
 import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
+import { useMapCore } from './modules/MapCore';
+import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 12;
 const REFRESH_INTERVAL_MS = 30_000;
-const DARK_STYLES: MapStyleId[] = ['dark', 'night_nav'];
-
-const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
-  { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
-  { key: 'weapons_involved',       label: 'WEAPONS',        color: '#ef4444' },
-  { key: 'felony_in_progress',     label: 'FELONY',         color: '#f97316' },
-  { key: 'domestic_violence',      label: 'DV',             color: '#f59e0b' },
-  { key: 'hazmat',                 label: 'HAZMAT',         color: '#f59e0b' },
-  { key: 'mental_health_crisis',   label: 'MH CRISIS',     color: '#a855f7' },
-  { key: 'gang_related',           label: 'GANG',           color: '#ef4444' },
-];
 
 // Inject GPS self-position pulse animation (module-scope, runs once)
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
@@ -107,88 +97,6 @@ if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css'
   css.id = 'rmpg-pulse-css';
   css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}`;
   document.head.appendChild(css);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/** Build HTML for a unit marker element. */
-function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
-  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-  const el = document.createElement('div');
-  el.className = 'rmpg-mbx-unit';
-  el.style.cssText = `
-    width:32px;height:32px;border-radius:2px;
-    background:${color};border:2px solid #d4a017;
-    display:flex;align-items:center;justify-content:center;
-    font-size:9px;font-weight:700;color:#fff;
-    font-family:ui-monospace,monospace;cursor:pointer;
-    box-shadow:0 0 6px ${color}80;
-    transition:box-shadow .2s;
-  `;
-  el.textContent = unit.call_sign.slice(0, 4);
-  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`;
-  return el;
-}
-
-/** Build HTML popup content for a unit. */
-function buildUnitPopupHtml(unit: Unit): string {
-  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-  const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
-  const callInfo = unit.current_call_type
-    ? `<div style="margin-top:4px;border-top:1px solid #222;padding-top:4px;">
-         <div style="color:#d4a017;font-size:9px;">ASSIGNED CALL</div>
-         <div>${escapeHtml(unit.call_number)} — ${escapeHtml(formatIncidentType(unit.current_call_type))}</div>
-         <div style="color:#888;">${escapeHtml(unit.current_call_location)}</div>
-       </div>`
-    : '';
-  return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
-      <div style="font-weight:700;color:#d4a017;margin-bottom:2px;font-size:12px;">${escapeHtml(unit.call_sign)}</div>
-      <div>${escapeHtml(unit.officer_name)}</div>
-      <div>Status: <span style="color:${color};font-weight:600;">${escapeHtml(statusLabel)}</span></div>
-      ${unit.vehicle ? `<div style="color:#888;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
-      ${callInfo}
-    </div>`;
-}
-
-/** Build HTML for a call marker element. */
-function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
-  const el = document.createElement('div');
-  el.className = 'rmpg-mbx-call';
-  el.style.cssText = `
-    width:22px;height:22px;
-    background:${color};border:2px solid ${color};
-    transform:rotate(45deg);border-radius:2px;
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;box-shadow:0 0 8px ${color}99;
-  `;
-  const inner = document.createElement('span');
-  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:#fff;font-family:ui-monospace,monospace;`;
-  inner.textContent = `P${call.priority}`;
-  el.appendChild(inner);
-  el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;
-  return el;
-}
-
-/** Build HTML popup for a call. */
-function buildCallPopupHtml(call: ActiveCall): string {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
-  const flags = HAZARD_FLAGS
-    .filter(f => (call as any)[f.key])
-    .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
-    .join('');
-  return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
-      <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
-      <div style="font-weight:600;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
-      <div>Priority: <span style="color:${color};font-weight:700;">P${escapeHtml(call.priority)}</span></div>
-      <div>Status: ${escapeHtml(formatEnumValue(call.status))}</div>
-      <div style="color:#888;margin-top:2px;">${escapeHtml(call.location_address)}</div>
-      ${call.cross_street ? `<div style="color:#666;font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
-      ${call.beat_name ? `<div style="color:#666;font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
-      ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
-    </div>`;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -202,11 +110,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [units, setUnits]           = useState<Unit[]>([]);
   const [calls, setCalls]           = useState<ActiveCall[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [mapError, setMapError]     = useState<string | null>(null);
-  const [mapLoaded, setMapLoaded]   = useState(false);
-  const mapLibreFallback = false;
-  const setMapLibreFallback = (_val: boolean) => {};
   const [retryNonce, setRetryNonce] = useState(0);
 
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
@@ -225,14 +128,113 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
-  const mapContainerRef  = useRef<HTMLDivElement>(null);
-  const mapRef           = useRef<mapboxgl.Map | null>(null);
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
-  const tokenRef         = useRef<string | null>(null);
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // searchTimeoutRef removed — geocoder plugin handles debounce internally
+
+  // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────
+  // Defined before useMapCore() below because it's passed in as loadBeatOverlay
+  // and must be a stable (useCallback) reference — see MapCore.ts's JSDoc.
+
+  const loadBeatOverlay = useCallback(async (map: mapboxgl.Map) => {
+    try {
+      const resp = await fetch('/beats.geojson');
+      if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
+      const geojson = await resp.json();
+
+      // Remove existing beat layers/source if present (e.g. after style change)
+      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      if (map.getSource('beats')) map.removeSource('beats');
+
+      map.addSource('beats', { type: 'geojson', data: geojson });
+
+      map.addLayer({
+        id: 'beats-fill',
+        type: 'fill',
+        source: 'beats',
+        paint: {
+          'fill-color': '#d4a017',
+          'fill-opacity': 0.04,
+        },
+      });
+
+      map.addLayer({
+        id: 'beats-border',
+        type: 'line',
+        source: 'beats',
+        paint: {
+          'line-color': '#d4a017',
+          'line-opacity': 0.35,
+          'line-width': 1,
+        },
+      });
+
+      map.addLayer({
+        id: 'beats-label',
+        type: 'symbol',
+        source: 'beats',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': 10,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#d4a017',
+          'text-opacity': 0.5,
+          'text-halo-color': '#000',
+          'text-halo-width': 1,
+        },
+        minzoom: 13,
+      });
+
+      devLog('[MapboxMap] beat overlay added');
+    } catch (err) {
+      devWarn('[MapboxMap] beat overlay failed', err);
+    }
+  }, []);
+
+  // ── Map Core (init, token fetch, MapLibre fallback, style switching) ──────
+
+  const onStyleFallback = useCallback((style: MapStyleId) => {
+    setMapStyleId(style);
+  }, [setMapStyleId]);
+
+  const onRetryNonceRequest = useCallback(() => {
+    setRetryNonce(n => n + 1);
+  }, []);
+
+  const {
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle,
+  } = useMapCore({
+    preferredEngine,
+    mapStyle,
+    retryNonce,
+    onStyleFallback,
+    onRetryNonceRequest,
+    loadBeatOverlay,
+    terrainEnabled,
+  });
+
+  // Clean up unit/call/self markers and the geocoder control whenever the
+  // underlying map instance is re-created (retry/fallback) or the component
+  // unmounts — mirrors the cleanup that used to live inline in the map-init
+  // effect's own return function. Keyed the same way useMapCore's internal
+  // init effect is (mapLibreFallback/retryNonce), so it tears down in step
+  // with the map instance itself.
+  useEffect(() => {
+    return () => {
+      unitMarkersRef.current.forEach(m => m.remove());
+      unitMarkersRef.current.clear();
+      callMarkersRef.current.forEach(m => m.remove());
+      callMarkersRef.current.clear();
+      selfMarkerRef.current?.remove();
+      geocoderRef.current = null;
+    };
+  }, [mapLibreFallback, retryNonce]);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const isMobile    = useIsMobile();
@@ -392,297 +394,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const silentRefresh = useCallback(() => { fetchData(); }, [fetchData]);
 
   useLiveSync('dispatch', silentRefresh);
-
-  // ── Map Initialization ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (preferredEngine === 'maplibre' && !mapLibreFallback) {
-      setMapError(null);
-      setMapLibreFallback(true);
-      setLoading(false);
-    }
-  }, [preferredEngine, mapLibreFallback]);
-
-  useEffect(() => {
-    if (mapLibreFallback) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-
-     async function initMap() {
-      try {
-        // Timeout token fetch to avoid infinite hang if server is unreachable
-        const tokenStatusPromise = getMapboxTokenStatus(retryNonce > 0);
-        const timeoutPromise = new Promise<null>((_resolve) => setTimeout(() => _resolve(null), 10_000));
-        const tokenStatus = await Promise.race([tokenStatusPromise, timeoutPromise]);
-        if (cancelled) return;
-        if (!tokenStatus?.token) {
-          if (tokenStatus?.errorKind === 'auth') {
-            setMapError('Unable to access Mapbox token due to authentication/session failure. Please sign in again, then retry.');
-          } else if (tokenStatus?.errorKind === 'network') {
-            setMapError('Unable to fetch Mapbox token due to a network/connectivity error. Check connectivity, then retry.');
-          } else if (tokenStatus?.errorKind === 'server') {
-            setMapError(`Failed to fetch Mapbox token from server: ${tokenStatus.errorMessage || 'unknown error'}`);
-          } else if (tokenStatus?.errorKind === 'client') {
-            setMapError(`Mapbox token fetch failed on client side: ${tokenStatus.errorMessage || 'unknown client error'}`);
-          } else if (tokenStatus?.errorKind === 'none' || tokenStatus?.errorKind === 'unconfigured') {
-            setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
-          } else {
-            setMapError('Mapbox token is unavailable. Using MapLibre fallback.');
-          }
-          devLog('[MapboxMap] Mapbox token unavailable, activating MapLibre GL fallback', tokenStatus);
-          setMapLibreFallback(true);
-          setLoading(false);
-          return;
-        }
-        tokenRef.current = tokenStatus.token;
-        injectMapboxStyles();
-
-        if (!mapContainerRef.current) {
-          // Container not yet mounted — wait a tick and retry
-          await new Promise((r) => setTimeout(r, 100));
-          if (cancelled || !mapContainerRef.current) {
-            setMapError('Map container failed to mount');
-            setLoading(false);
-            return;
-          }
-        }
-
-        const map = createMapboxMap(
-          mapContainerRef.current!,
-          tokenRef.current!,
-          mapStyle,
-        );
-        mapRef.current = map;
-
-        // Track whether the map has successfully loaded at least once.
-        // Individual tile/source errors after successful load should NOT
-        // trigger full MapLibre fallback — only fatal init errors should.
-        let mapDidLoad = false;
-
-        // Timeout map load to prevent infinite "Initializing" state
-        const loadTimeout = setTimeout(() => {
-          if (!cancelled && !mapRef.current?.loaded()) {
-            devWarn('[MapboxMap] map load timed out after 15s');
-            setLoading(false);
-            // Map may still be loading — don't set error, just remove overlay
-          }
-        }, 15_000);
-
-        map.on('load', () => {
-          clearTimeout(loadTimeout);
-          if (cancelled) return;
-          mapDidLoad = true;
-          // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
-          // are already added by createMapboxMap() — don't duplicate them here.
-          if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
-          loadBeatOverlay(map);
-          setMapLoaded(true);
-          setLoading(false);
-          devLog('[MapboxMap] map loaded');
-        });
-
-        map.on('error', (e) => {
-          devWarn('[MapboxMap] map error', e);
-          if (cancelled) return;
-
-          const msg = e.error?.message || 'Mapbox map error';
-          const status = (e.error as any)?.status;
-          const msgLower = msg.toLowerCase();
-
-          // Broad auth-error detection: catch 401, 403, style-fetch
-           // failures, and common auth messages from Mapbox API.
-           // NOTE: 'failed to fetch' is a network/CORS error, NOT an auth error —
-           // triggering full fallback for transient network blips is wrong.
-           const isNetworkErr =
-            msgLower.includes('failed to fetch') ||
-            msgLower.includes('networkerror') ||
-            msgLower.includes('network request failed');
-
-           const isAuthErr =
-            status === 401 || status === 403 ||
-            msgLower.includes('access token') ||
-            msgLower.includes('not authorized') ||
-            msgLower.includes('unauthorized') ||
-            msgLower.includes('forbidden') ||
-            msgLower.includes('invalid token') ||
-            msgLower.includes('token is not authorized') ||
-            msgLower.includes('not configured') ||
-            msgLower.includes('error status 4');
-
-           const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
-
-           // A style/sprite/glyph fetch that returns HTML instead of JSON —
-           // Mapbox's API itself always answers style requests with JSON (even
-           // its error bodies), so this specific SyntaxError almost always
-           // means the request to api.mapbox.com never reached Mapbox at all:
-           // either the configured token is invalid/expired/domain-restricted
-           // (Mapbox's CDN edge serves an HTML error page for some rejected
-           // requests instead of the usual JSON 401), or something on this
-           // network path (VPN, corporate proxy, ad-blocker) is intercepting
-           // requests to api.mapbox.com. Neither classifies as isAuthErr
-           // (no 401/403 status, no "unauthorized" keyword) or isNetworkErr
-           // (no "failed to fetch") — without this it fell through to the
-           // generic fatal-error branch and showed a raw, unhelpful
-           // "Unexpected token '<'" SyntaxError to the officer.
-           const isHtmlResponseErr =
-            msgLower.includes('unexpected token') && msgLower.includes('doctype');
-
-          if (isNetworkErr && !mapDidLoad) {
-            // Network error during init — don't fall back immediately;
-            // Mapbox GL retries tile fetches internally. Only log it.
-            devLog('[MapboxMap] Network error during init (will retry):', msg);
-            return;
-          }
-
-          // Style not found — retry with built-in dark style instead of
-          // falling all the way back to MapLibre. Custom style may have
-          // been deleted from the Mapbox account.
-          if (isStyleErr && !mapDidLoad) {
-            devLog('[MapboxMap] Custom style not found, retrying with default dark style');
-            clearTimeout(loadTimeout);
-            cancelled = true;
-            setTimeout(() => {
-              destroyMapboxMap(); mapRef.current = null;
-              setMapStyleId('dark' as MapStyleId);
-              setRetryNonce(n => n + 1);
-            }, 0);
-            return;
-          }
-
-          if (isAuthErr) {
-            // Auth failure — defer destroy to next tick so Mapbox finishes
-            // its error dispatch before we remove the map instance. Destroying
-            // mid-callback leaves stale DOM in the container that blocks MapLibre.
-            devLog('[MapboxMap] Mapbox auth error, activating MapLibre GL fallback');
-            clearTimeout(loadTimeout);
-            cancelled = true;
-            setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
-            setMapError(msg);
-            setMapLibreFallback(true);
-            setLoading(false);
-            return;
-          }
-
-          // After successful load, ignore non-fatal errors (individual tile
-          // fails, transient network blips) — Mapbox GL handles retries internally
-          if (mapDidLoad) {
-            devLog('[MapboxMap] Non-fatal post-load error (ignored):', msg);
-            return;
-          }
-
-          // Fatal pre-load error (style fetch failed, GL context lost, etc.)
-          // — fall back to MapLibre (defer destroy same as above)
-          clearTimeout(loadTimeout);
-          devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
-          cancelled = true;
-          setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
-          setMapError(isHtmlResponseErr
-            ? 'Mapbox returned an unexpected (non-JSON) response while loading the map style. This usually means the configured Mapbox token is invalid, expired, or domain-restricted — or a network filter (VPN, corporate proxy, ad-blocker) is blocking api.mapbox.com. Verify the token at account.mapbox.com/access-tokens and re-check Admin → Integrations → Mapbox.'
-            : msg);
-          setMapLibreFallback(true);
-          setLoading(false);
-        });
-      } catch (err) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Failed to initialize Mapbox map';
-          devLog('[MapboxMap] Mapbox init exception, activating MapLibre GL fallback');
-          setMapError(msg);
-          setMapLibreFallback(true);
-          setLoading(false);
-        }
-      }
-    }
-
-    initMap();
-
-    return () => {
-      cancelled = true;
-      destroyMapboxMap();
-      mapRef.current = null;
-      unitMarkersRef.current.forEach(m => m.remove());
-      unitMarkersRef.current.clear();
-      callMarkersRef.current.forEach(m => m.remove());
-      callMarkersRef.current.clear();
-      selfMarkerRef.current?.remove();
-      geocoderRef.current = null;
-    };
-   // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
-
-  // ── Retry Mapbox handler ──────────────────────────────────────────────────
-
-  const retryMapbox = useCallback(() => {
-    // Reset state to trigger Mapbox re-init
-    setMapError(null);
-    setMapLoaded(false);
-    setLoading(true);
-
-    // Trigger in-component re-init without full page reload
-    setRetryNonce((n) => n + 1);
-  }, []);
-
-  // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────
-
-  const loadBeatOverlay = useCallback(async (map: mapboxgl.Map) => {
-    try {
-      const resp = await fetch('/beats.geojson');
-      if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
-      const geojson = await resp.json();
-
-      // Remove existing beat layers/source if present (e.g. after style change)
-      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
-      });
-      if (map.getSource('beats')) map.removeSource('beats');
-
-      map.addSource('beats', { type: 'geojson', data: geojson });
-
-      map.addLayer({
-        id: 'beats-fill',
-        type: 'fill',
-        source: 'beats',
-        paint: {
-          'fill-color': '#d4a017',
-          'fill-opacity': 0.04,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-border',
-        type: 'line',
-        source: 'beats',
-        paint: {
-          'line-color': '#d4a017',
-          'line-opacity': 0.35,
-          'line-width': 1,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-label',
-        type: 'symbol',
-        source: 'beats',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 10,
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': '#d4a017',
-          'text-opacity': 0.5,
-          'text-halo-color': '#000',
-          'text-halo-width': 1,
-        },
-        minzoom: 13,
-      });
-
-      devLog('[MapboxMap] beat overlay added');
-    } catch (err) {
-      devWarn('[MapboxMap] beat overlay failed', err);
-    }
-  }, []);
 
   // Toggle beat visibility
   useEffect(() => {
@@ -848,28 +559,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Map Style Switch ───────────────────────────────────────────────────────
 
   const handleStyleChange = useCallback((styleId: MapStyleId) => {
-    const map = mapRef.current;
-    if (!map) return;
-    setMapboxStyle(map, styleId);
+    changeStyle(styleId);
     setMapStyleId(styleId);
     setShowStyleMenu(false);
-
-    // Re-add 3D buildings for dark styles after style loads
-    map.once('style.load', () => {
-      if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
-      // Re-add beat overlay (GeoJSON is local, doesn't need token)
-      loadBeatOverlay(map);
-      // Re-apply 3D terrain if it was enabled before the style switch
-      if (terrainEnabled) addMapboxTerrain(map);
-    });
-  }, [setMapStyleId, loadBeatOverlay, terrainEnabled]);
+  }, [changeStyle, setMapStyleId]);
 
   // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || mapLibreFallback) return;
-    const token = tokenRef.current;
+    const token = mapboxgl.accessToken;
     if (!token) return;
 
     // Don't double-add
@@ -1141,7 +841,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                Configure in Admin → Integrations
              </a>
              <button
-               onClick={() => { setRetryNonce(n => n + 1); setMapError(null); setLoading(true); }}
+               onClick={() => setRetryNonce(n => n + 1)}
                className="text-[#d4a017] text-xs hover:text-[#e8b84a] transition-colors"
              >
                ↻ Retry Mapbox

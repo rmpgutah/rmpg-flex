@@ -75,6 +75,12 @@ export function useMapCore({
     let cancelled = false;
 
     async function initMap() {
+      // Reset error/loading state at the top of every (re-)run so the
+      // "Retry Mapbox" button (and any other retryNonce bump) clears a
+      // previous error and shows the loading overlay again, instead of
+      // requiring the caller to manage that state itself.
+      setMapError(null);
+      setLoading(true);
       try {
         // Timeout token fetch to avoid infinite hang if server is unreachable
         const tokenStatusPromise = getMapboxTokenStatus(retryNonce > 0);
