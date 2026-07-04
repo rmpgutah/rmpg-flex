@@ -92,7 +92,9 @@ describe('POST /api/fleet/:vehicleId/expenses', () => {
       method: 'POST',
       body: JSON.stringify({ expense_date: '2026-07-01', category: 'not_a_real_category', amount: 10 }),
     }, env as unknown as Record<string, unknown>);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(409);
+    const body = await res.json() as { code?: string };
+    expect(body.code).toBe('db_constraint');
   });
 
   it('rejects a request missing amount', async () => {
