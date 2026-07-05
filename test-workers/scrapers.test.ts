@@ -120,6 +120,20 @@ describe('POST /api/warrants/scrapers/:key/trigger', () => {
     expect(rows.results.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('triggers a config-driven (national_warrant_sources) source via runFullListLeg', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/arcgis-arlington-tx/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    // The real ArcGIS fetch is unavailable in Miniflare — accept either a
+    // successful run summary or a caught network-error response.
+    expect([200, 502]).toContain(res.status);
+
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const rows = await db.prepare(
+      `SELECT * FROM scraper_runs WHERE source_key = 'arcgis-arlington-tx' AND trigger = 'manual'`,
+    ).all();
+    expect(rows.results.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('blocks triggering a source that is disabled in warrant_scraper_config', async () => {
     const app = buildApp('admin');
     const res = await app.request('/api/warrants/scrapers/natrona-county-wy/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);

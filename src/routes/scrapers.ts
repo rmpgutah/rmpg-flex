@@ -31,29 +31,25 @@ import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 import { ADAPTERS, getEnabledAdapters } from '../utils/warrantSources/registry';
 import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
 import { runFullListLeg } from '../utils/warrantSources/runScan';
+import { insertScraperRunRow } from '../utils/warrantSources/logScanResult';
 
 const scrapers = new Hono<Env>();
 
 // Best-effort scraper_runs INSERT for a single manual trigger attempt — logging
 // must never break the trigger response, matching the pattern established for
-// the cron path's logScanResult.ts (Task 3). NOT routed through logScanResult()
-// itself: that helper is shaped for the cron sweep's AllSourceScanResult (Utah +
-// array of scraped summaries), whereas a manual trigger only ever scans ONE
-// source per request.
+// the cron path's logScanResult.ts (Task 3). Shares its row-insert SQL with
+// logScanResult via insertScraperRunRow() so the two paths can't drift out of
+// sync on column list/order or the success-derivation rule. NOT routed through
+// logScanResult() itself: that helper is shaped for the cron sweep's
+// AllSourceScanResult (Utah + array of scraped summaries), whereas a manual
+// trigger only ever scans ONE source per request.
 async function logManualRun(
   db: D1Database,
   sourceKey: string,
   counts: { checked: number; found: number; cleared: number; errors: number },
 ): Promise<void> {
   try {
-    const now = new Date().toISOString();
-    await execute(
-      db,
-      `INSERT INTO scraper_runs (source_key, started_at, finished_at, success, checked, found, cleared, errors, trigger)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-      sourceKey, now, now, counts.errors === 0 ? 1 : 0,
-      counts.checked, counts.found, counts.cleared, counts.errors,
-    );
+    await insertScraperRunRow(db, sourceKey, counts, 'manual');
   } catch (err) {
     console.error(`scraper_runs insert failed for ${sourceKey}:`, err instanceof Error ? err.message : String(err));
   }
