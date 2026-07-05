@@ -56,6 +56,14 @@ describe('computeHealthGrade', () => {
     expect(computeHealthGrade(runs)).toBe('F');
   });
 
+  it('divides by the actual run count, not the 20-run window, when a source has fewer than 20 runs', () => {
+    // 2/3 = 66.7% -> D (>=50%, <70%). If the implementation mistakenly
+    // divided by MAX_RUNS_CONSIDERED (20) instead of the actual considered
+    // length (3), this would wrongly compute 2/20 = 10% -> F instead.
+    const runs = [{ success: true }, { success: true }, { success: false }];
+    expect(computeHealthGrade(runs)).toBe('D');
+  });
+
   it('only considers the most recent 20 runs when more are provided', () => {
     // 25 failures followed by 20 successes — if the function only looks at
     // the last 20 (the 20 successes), this is an A; if it wrongly averaged
