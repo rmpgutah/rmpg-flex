@@ -3984,8 +3984,22 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
+                {/* Row 2: Action buttons — separate row to prevent cramping. This row
+                    scrolls horizontally (it can hold 15+ buttons depending on call
+                    state), but the scrollbar-dark thumb is low-contrast against
+                    dark surfaces (dark gray thumb on a transparent track) — the
+                    mask-image fade below gives a visual cue that more buttons
+                    exist to the right, instead of the row silently truncating
+                    with no affordance. No extra wrapper element needed: the mask
+                    applies to this div's own painted content. */}
+                <div
+                  className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark"
+                  style={{
+                    background: 'var(--surface-deep)',
+                    WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                    maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                  }}
+                >
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
