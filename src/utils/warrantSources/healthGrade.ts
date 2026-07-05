@@ -9,7 +9,11 @@
 // 3+ days of 4-hourly cron runs — small enough to react to recent behavior,
 // large enough that one bad run doesn't swing a grade from A to F.
 
-const MAX_RUNS_CONSIDERED = 20;
+// Exported so callers (src/routes/scrapers.ts) can slice scraper_runs to the
+// same window before computing total_runs/success_rate — otherwise those
+// fields and health_grade could silently disagree if this constant ever
+// changed without updating the caller's own hardcoded slice length.
+export const MAX_RUNS_CONSIDERED = 20;
 
 export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F';
 

@@ -32,7 +32,7 @@ import { ADAPTERS, getEnabledAdapters } from '../utils/warrantSources/registry';
 import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
 import { runFullListLeg } from '../utils/warrantSources/runScan';
 import { insertScraperRunRow } from '../utils/warrantSources/logScanResult';
-import { computeHealthGrade, type HealthGrade } from '../utils/warrantSources/healthGrade';
+import { computeHealthGrade, MAX_RUNS_CONSIDERED, type HealthGrade } from '../utils/warrantSources/healthGrade';
 
 const scrapers = new Hono<Env>();
 
@@ -212,7 +212,7 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
       last_error: row.last_error,
       avg_parse_count: row.avg_parse_count,
       p95_latency_ms: row.p95_latency_ms,
-      metrics_24h: buildMetrics(key, (runsByKey.get(key) ?? []).slice(0, 20), row.last_error, row.last_success_at),
+      metrics_24h: buildMetrics(key, (runsByKey.get(key) ?? []).slice(0, MAX_RUNS_CONSIDERED), row.last_error, row.last_success_at),
     });
   }
 
@@ -234,7 +234,7 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
       last_error: null,
       avg_parse_count: null,
       p95_latency_ms: null,
-      metrics_24h: buildMetrics(row.source_key, (runsByKey.get(row.source_key) ?? []).slice(0, 20), null, null),
+      metrics_24h: buildMetrics(row.source_key, (runsByKey.get(row.source_key) ?? []).slice(0, MAX_RUNS_CONSIDERED), null, null),
     });
   }
 
