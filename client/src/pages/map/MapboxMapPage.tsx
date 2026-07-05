@@ -241,9 +241,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // marker+popup once the map has finished loading; runs once per page
   // load (searchParams don't change after initial navigation here).
   const [searchParams] = useSearchParams();
-  const deepLinkAppliedRef = useRef(false);
+  const lastDeepLinkKeyRef = useRef('');
   useEffect(() => {
-    if (!mapLoaded || !mapRef.current || deepLinkAppliedRef.current) return;
+    if (!mapLoaded || !mapRef.current) return;
+    const deepLinkKey = searchParams.toString();
+    if (!deepLinkKey || lastDeepLinkKeyRef.current === deepLinkKey) return;
 
     const dropDeepLinkPin = (lat: number, lng: number, label: string) => {
       const map = mapRef.current;
@@ -263,15 +265,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     const label = searchParams.get('label') || '';
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      deepLinkAppliedRef.current = true;
+      lastDeepLinkKeyRef.current = deepLinkKey;
       dropDeepLinkPin(lat, lng, label);
       return;
     }
 
     const address = searchParams.get('address');
     if (address) {
-      deepLinkAppliedRef.current = true;
-      mapboxForwardGeocode(address, { limit: 1 })
+      lastDeepLinkKeyRef.current = deepLinkKey;
+      mapboxForwardGeocode(address, { limit: 1, proximity: SLC_CENTER, country: 'us' })
         .then((results) => {
           const hit = results[0];
           if (hit) dropDeepLinkPin(hit.latitude, hit.longitude, label || hit.full_address);
