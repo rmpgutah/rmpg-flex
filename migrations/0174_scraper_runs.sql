@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS scraper_runs (
   cleared INTEGER NOT NULL DEFAULT 0,
   errors INTEGER NOT NULL DEFAULT 0,
   duration_ms INTEGER,
-  trigger TEXT NOT NULL
+  trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_scraper_runs_source_key ON scraper_runs(source_key, started_at);
