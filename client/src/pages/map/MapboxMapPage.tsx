@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
@@ -46,7 +47,7 @@ import {
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { formatEnumValue } from '../../utils/formatters';
 import { escapeHtml } from '../../utils/sanitize';
-import { mapboxIsochrone, findNearestUnits } from '../../services/mapboxApiService';
+import { mapboxIsochrone, findNearestUnits, mapboxForwardGeocode } from '../../services/mapboxApiService';
 import RmpgLogo from '../../components/RmpgLogo';
 import IconButton from '../../components/IconButton';
 import { devLog, devWarn } from '../../utils/devLog';
@@ -91,6 +92,7 @@ import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
+  TACTICAL_TEXT_PRIMARY,
 } from './utils/tacticalPalette';
 interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
@@ -229,6 +231,55 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     loadBeatOverlay,
     terrainEnabled,
   });
+
+  // Deep-link support: other pages' "View on map" links (ViewOnMapLink.tsx)
+  // navigate here as /map?lat=&lng=&label= (known coordinates) or
+  // /map?address=&label= (text address only — most pages that link here
+  // store an address string with no stored lat/lng, so it's forward-
+  // geocoded on arrival), so a record's location (no dedicated call/unit
+  // of its own) can still be shown. Flies to the point and drops a one-off
+  // marker+popup once the map has finished loading; runs once per page
+  // load (searchParams don't change after initial navigation here).
+  const [searchParams] = useSearchParams();
+  const deepLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current || deepLinkAppliedRef.current) return;
+
+    const dropDeepLinkPin = (lat: number, lng: number, label: string) => {
+      const map = mapRef.current;
+      if (!map) return;
+      map.flyTo({ center: [lng, lat], zoom: 16, duration: 800 });
+      const popup = new mapboxgl.Popup({ offset: 12 })
+        .setLngLat([lng, lat])
+        .setHTML(
+          `<div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">${escapeHtml(label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)}</div>`
+        )
+        .addTo(map);
+      new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD }).setLngLat([lng, lat]).addTo(map);
+    };
+
+    const lat = Number.parseFloat(searchParams.get('lat') || '');
+    const lng = Number.parseFloat(searchParams.get('lng') || '');
+    const label = searchParams.get('label') || '';
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      deepLinkAppliedRef.current = true;
+      dropDeepLinkPin(lat, lng, label);
+      return;
+    }
+
+    const address = searchParams.get('address');
+    if (address) {
+      deepLinkAppliedRef.current = true;
+      mapboxForwardGeocode(address, { limit: 1 })
+        .then((results) => {
+          const hit = results[0];
+          if (hit) dropDeepLinkPin(hit.latitude, hit.longitude, label || hit.full_address);
+          else addToast?.(`Could not locate "${address}" on the map`, 'warning');
+        })
+        .catch(() => addToast?.(`Could not locate "${address}" on the map`, 'warning'));
+    }
+  }, [mapLoaded, searchParams]);
 
   // Clean up unit/call/self markers and the geocoder control whenever the
   // underlying map instance is re-created (retry/fallback) or the component
