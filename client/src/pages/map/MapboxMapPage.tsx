@@ -242,6 +242,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // load (searchParams don't change after initial navigation here).
   const [searchParams] = useSearchParams();
   const lastDeepLinkKeyRef = useRef('');
+  const deepLinkMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const deepLinkPopupRef = useRef<mapboxgl.Popup | null>(null);
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
     const deepLinkKey = searchParams.toString();
@@ -250,14 +252,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     const dropDeepLinkPin = (lat: number, lng: number, label: string) => {
       const map = mapRef.current;
       if (!map) return;
+      deepLinkMarkerRef.current?.remove();
+      deepLinkPopupRef.current?.remove();
       map.flyTo({ center: [lng, lat], zoom: 16, duration: 800 });
-      const popup = new mapboxgl.Popup({ offset: 12 })
+      deepLinkPopupRef.current = new mapboxgl.Popup({ offset: 12 })
         .setLngLat([lng, lat])
         .setHTML(
           `<div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">${escapeHtml(label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)}</div>`
         )
         .addTo(map);
-      new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD }).setLngLat([lng, lat]).addTo(map);
+      deepLinkMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD }).setLngLat([lng, lat]).addTo(map);
     };
 
     const lat = Number.parseFloat(searchParams.get('lat') || '');
