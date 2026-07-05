@@ -70,6 +70,21 @@ beforeAll(async () => {
       VALUES ('utah-warrant-watch', '2026-07-0${(i % 9) + 1} 00:00:00', '2026-07-0${(i % 9) + 1} 00:01:00', ?, 10, 1, 0, ?, 1000, 'cron')`,
       success, success ? 0 : 1);
   }
+
+  // Seed 25 rows for natrona-county-wy — the oldest 5 (by started_at) are
+  // failures, the newest 20 are all successes. Proves the 20-run cap
+  // actually truncates by started_at rather than merely tolerating it:
+  // if the route's .slice(0, 20) were off-by-one or missing, the 5 old
+  // failures would leak in and success_rate would read 20/25=80% (C)
+  // instead of 20/20=100% (A).
+  for (let i = 0; i < 25; i++) {
+    const success = i < 5 ? 0 : 1;
+    const day = String(i + 1).padStart(2, '0');
+    await execute(db, `INSERT INTO scraper_runs
+      (source_key, started_at, finished_at, success, checked, found, cleared, errors, duration_ms, trigger)
+      VALUES ('natrona-county-wy', '2026-06-${day} 00:00:00', '2026-06-${day} 00:01:00', ?, 5, 0, 0, ?, 500, 'cron')`,
+      success, success ? 0 : 1);
+  }
 });
 
 describe('GET /api/warrants/scrapers', () => {
@@ -114,6 +129,27 @@ describe('GET /api/warrants/scrapers', () => {
     const arcgis = body.sources.find((s) => s.source_key === 'arcgis-arlington-tx');
     expect(arcgis?.metrics_24h.total_runs).toBe(0);
     expect(arcgis?.metrics_24h.health_grade).toBeNull();
+  });
+
+  it('caps run-history metrics to the newest 20 rows, excluding older overflow', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const body = await res.json() as {
+      sources: Array<{
+        source_key: string;
+        metrics_24h: { health_grade: string | null; total_runs: number; successful_runs: number; success_rate: number };
+      }>;
+    };
+
+    // natrona-county-wy has 25 seeded rows: the oldest 5 (by started_at) are
+    // failures, the newest 20 are all successes. If the 20-run cap didn't
+    // truncate correctly, the 5 old failures would leak in (20/25=80% -> C);
+    // capped correctly, only the newest 20 (all success) count (100% -> A).
+    const natrona = body.sources.find((s) => s.source_key === 'natrona-county-wy');
+    expect(natrona?.metrics_24h.total_runs).toBe(20);
+    expect(natrona?.metrics_24h.successful_runs).toBe(20);
+    expect(natrona?.metrics_24h.success_rate).toBeCloseTo(1);
+    expect(natrona?.metrics_24h.health_grade).toBe('A');
   });
 });
 
