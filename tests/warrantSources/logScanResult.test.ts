@@ -36,4 +36,51 @@ describe('logScanResult', () => {
 
     expect(calls[0].args).toContain('manual');
   });
+
+  it('inserts only the Utah row when there are no scraped sources', async () => {
+    const { db, calls } = recordingDb();
+
+    await logScanResult(db, {
+      utah: { run_id: 'r1', status: 'completed', persons_checked: 1, new_warrants_found: 0, warrants_cleared: 0, errors: 0 },
+      scraped: [],
+    }, 'cron');
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toContain('utah-warrant-watch');
+  });
+
+  it('still records the remaining sources when one insert rejects', async () => {
+    const calls: { sql: string; args: unknown[] }[] = [];
+    let call = 0;
+    const db = {
+      prepare: (sql: string) => {
+        call += 1;
+        const shouldFail = call === 2;
+        let args: unknown[] = [];
+        const stmt: any = {
+          bind: (...a: unknown[]) => { args = a; return stmt; },
+          run: async () => {
+            if (shouldFail) throw new Error('transient D1 error');
+            calls.push({ sql, args });
+            return { meta: { changes: 1, last_row_id: calls.length } };
+          },
+        };
+        return stmt;
+      },
+    } as unknown as import('@cloudflare/workers-types').D1Database;
+
+    await logScanResult(db, {
+      utah: { run_id: 'r1', status: 'completed', persons_checked: 0, new_warrants_found: 0, warrants_cleared: 0, errors: 0 },
+      scraped: [
+        { source_key: 'ada-county-id', checked: 1, found: 0, cleared: 0, errors: 0 },
+        { source_key: 'natrona-county-wy', checked: 1, found: 0, cleared: 0, errors: 0 },
+      ],
+    }, 'cron');
+
+    // Row 2 (ada-county-id) rejects, but row 1 (utah) and row 3
+    // (natrona-county-wy) must still be recorded — one bad row can't be
+    // allowed to silently drop the rest of the audit trail.
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => c.args[0])).toEqual(['utah-warrant-watch', 'natrona-county-wy']);
+  });
 });
