@@ -57,6 +57,19 @@ beforeAll(async () => {
 
   await execute(db, `INSERT INTO scraped_warrants (source_key, status) VALUES ('arcgis-arlington-tx', 'active')`);
   await execute(db, `INSERT INTO scraped_warrants (source_key, status) VALUES ('arcgis-arlington-tx', 'active')`);
+
+  // Seed scraper_runs history for utah-warrant-watch only — 18/20 successes
+  // (90% => grade B) — so we can assert real health_grade/total_runs/
+  // success_rate computation, while ada-county-id/natrona-county-wy/
+  // arcgis-arlington-tx have zero scraper_runs rows and must still show
+  // health_grade: null (no data yet, never defaulted to 'F').
+  for (let i = 0; i < 20; i++) {
+    const success = i < 18 ? 1 : 0;
+    await execute(db, `INSERT INTO scraper_runs
+      (source_key, started_at, finished_at, success, checked, found, cleared, errors, duration_ms, trigger)
+      VALUES ('utah-warrant-watch', '2026-07-0${(i % 9) + 1} 00:00:00', '2026-07-0${(i % 9) + 1} 00:01:00', ?, 10, 1, 0, ?, 1000, 'cron')`,
+      success, success ? 0 : 1);
+  }
 });
 
 describe('GET /api/warrants/scrapers', () => {
@@ -75,6 +88,32 @@ describe('GET /api/warrants/scrapers', () => {
 
     const arcgis = body.sources.find((s) => s.source_key === 'arcgis-arlington-tx');
     expect(arcgis?.warrant_count).toBe(2);
+  });
+
+  it('computes real health_grade/total_runs/success_rate from scraper_runs history', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const body = await res.json() as {
+      sources: Array<{
+        source_key: string;
+        metrics_24h: { health_grade: string | null; total_runs: number; successful_runs: number; success_rate: number };
+      }>;
+    };
+
+    const utah = body.sources.find((s) => s.source_key === 'utah-warrant-watch');
+    expect(utah?.metrics_24h.total_runs).toBe(20);
+    expect(utah?.metrics_24h.successful_runs).toBe(18);
+    expect(utah?.metrics_24h.success_rate).toBeCloseTo(0.9);
+    expect(utah?.metrics_24h.health_grade).toBe('B'); // 90% => B (>=85%, <95%)
+
+    // Sources with zero scraper_runs rows must show null, not a defaulted 'F'.
+    const ada = body.sources.find((s) => s.source_key === 'ada-county-id');
+    expect(ada?.metrics_24h.total_runs).toBe(0);
+    expect(ada?.metrics_24h.health_grade).toBeNull();
+
+    const arcgis = body.sources.find((s) => s.source_key === 'arcgis-arlington-tx');
+    expect(arcgis?.metrics_24h.total_runs).toBe(0);
+    expect(arcgis?.metrics_24h.health_grade).toBeNull();
   });
 });
 

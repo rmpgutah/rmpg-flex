@@ -32,6 +32,7 @@ import { ADAPTERS, getEnabledAdapters } from '../utils/warrantSources/registry';
 import { getConfigAdapters } from '../utils/warrantSources/configRegistry';
 import { runFullListLeg } from '../utils/warrantSources/runScan';
 import { insertScraperRunRow } from '../utils/warrantSources/logScanResult';
+import { computeHealthGrade, type HealthGrade } from '../utils/warrantSources/healthGrade';
 
 const scrapers = new Hono<Env>();
 
@@ -90,16 +91,63 @@ interface MergedSource {
     unchanged_runs: number; failed_runs: number; success_rate: number; avg_duration_ms: number;
     p50_duration_ms: number; p95_duration_ms: number; avg_parsed: number; total_inserted: number;
     total_updated: number; last_error: string | null; last_error_at: string | null;
-    last_success_at: string | null; status_distribution: Record<string, number>; health_grade: null;
+    last_success_at: string | null; status_distribution: Record<string, number>; health_grade: HealthGrade | null;
   };
 }
 
-function zeroedMetrics(sourceKey: string, lastError: string | null, lastSuccessAt: string | null): MergedSource['metrics_24h'] {
+interface ScraperRunRow {
+  source_key: string;
+  success: number;
+  checked: number;
+  found: number;
+  cleared: number;
+  errors: number;
+  duration_ms: number | null;
+  started_at: string;
+  finished_at: string;
+}
+
+// Builds real metrics_24h from a source's own run-history slice (already
+// ordered newest-first and capped to the last 20 by the caller). Replaces
+// the old zeroedMetrics() placeholder now that scraper_runs exists — see
+// docs/superpowers/specs/2026-07-04-scraper-health-grades-design.md.
+function buildMetrics(
+  sourceKey: string,
+  runs: ScraperRunRow[],
+  lastError: string | null,
+  lastSuccessAt: string | null,
+): MergedSource['metrics_24h'] {
+  const totalRuns = runs.length;
+  const successfulRuns = runs.filter((r) => r.success === 1).length;
+  const failedRuns = totalRuns - successfulRuns;
+  const successRate = totalRuns === 0 ? 0 : successfulRuns / totalRuns;
+
+  const durations = runs
+    .map((r) => r.duration_ms)
+    .filter((d): d is number => d != null);
+  const avgDurationMs = durations.length === 0
+    ? 0
+    : durations.reduce((sum, d) => sum + d, 0) / durations.length;
+
   return {
-    source_key: sourceKey, window_hours: 24, total_runs: 0, successful_runs: 0, unchanged_runs: 0,
-    failed_runs: 0, success_rate: 0, avg_duration_ms: 0, p50_duration_ms: 0, p95_duration_ms: 0,
-    avg_parsed: 0, total_inserted: 0, total_updated: 0, last_error: lastError,
-    last_error_at: null, last_success_at: lastSuccessAt, status_distribution: {}, health_grade: null,
+    source_key: sourceKey,
+    window_hours: 24,
+    total_runs: totalRuns,
+    successful_runs: successfulRuns,
+    unchanged_runs: 0,
+    failed_runs: failedRuns,
+    success_rate: successRate,
+    avg_duration_ms: avgDurationMs,
+    p50_duration_ms: 0,
+    p95_duration_ms: 0,
+    avg_parsed: 0,
+    total_inserted: 0,
+    total_updated: 0,
+    last_error: lastError,
+    last_error_at: null,
+    last_success_at: lastSuccessAt,
+    status_distribution: {},
+    health_grade: computeHealthGrade(runs.map((r) => ({ success: r.success === 1 }))),
   };
 }
 
@@ -126,6 +174,25 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
   );
   const countsByKey = new Map(countRows.map((r) => [r.source_key, r.n]));
 
+  // Single batched query for ALL scraper_runs, grouped client-side per
+  // source_key — same anti-N+1 pattern as countRows above. Ordered
+  // source_key, started_at DESC so each source's array is already
+  // newest-first; sliced to the last 20 entries per source below before
+  // being handed to computeHealthGrade/buildMetrics.
+  const runRows = await query<ScraperRunRow>(
+    db, `SELECT source_key, success, checked, found, cleared, errors, duration_ms, started_at, finished_at
+      FROM scraper_runs ORDER BY source_key, started_at DESC`,
+  );
+  const runsByKey = new Map<string, ScraperRunRow[]>();
+  for (const row of runRows) {
+    const list = runsByKey.get(row.source_key);
+    if (list) {
+      list.push(row);
+    } else {
+      runsByKey.set(row.source_key, [row]);
+    }
+  }
+
   const out: MergedSource[] = [];
 
   for (const row of configRows) {
@@ -145,7 +212,7 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
       last_error: row.last_error,
       avg_parse_count: row.avg_parse_count,
       p95_latency_ms: row.p95_latency_ms,
-      metrics_24h: zeroedMetrics(key, row.last_error, row.last_success_at),
+      metrics_24h: buildMetrics(key, (runsByKey.get(key) ?? []).slice(0, 20), row.last_error, row.last_success_at),
     });
   }
 
@@ -167,7 +234,7 @@ async function getMergedSources(db: D1Database): Promise<MergedSource[]> {
       last_error: null,
       avg_parse_count: null,
       p95_latency_ms: null,
-      metrics_24h: zeroedMetrics(row.source_key, null, null),
+      metrics_24h: buildMetrics(row.source_key, (runsByKey.get(row.source_key) ?? []).slice(0, 20), null, null),
     });
   }
 
