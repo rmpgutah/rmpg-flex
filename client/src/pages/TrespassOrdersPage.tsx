@@ -9,6 +9,7 @@ import type { TrespassOrder, TrespassOrderType } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -793,7 +794,7 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-rmpg-100 font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-rmpg-100">{selectedOrder.property_name || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100">{formatAddressDisplay(selectedOrder.location)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100 flex items-center gap-1.5">{formatAddressDisplay(selectedOrder.location)}<ViewOnMapLink address={selectedOrder.location} label={selectedOrder.property_name} /></div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>

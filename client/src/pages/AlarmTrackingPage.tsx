@@ -7,6 +7,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import StatsCard from '../components/StatsCard';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
@@ -331,7 +332,10 @@ export default function AlarmTrackingPage() {
           <div className="bg-[#141414] border border-[#222222] p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Location</p>
             <p className="text-[11px] text-gray-200">{selectedPermit.location_name}</p>
-            <p className="text-[10px] text-gray-400">{selectedPermit.location_address}</p>
+            <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
+              {selectedPermit.location_address}
+              <ViewOnMapLink address={selectedPermit.location_address} label={selectedPermit.location_name} />
+            </p>
           </div>
           <div className="bg-[#141414] border border-[#222222] p-3">
             <p className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">Alarm Company</p>

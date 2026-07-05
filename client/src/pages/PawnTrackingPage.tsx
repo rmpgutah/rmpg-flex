@@ -6,6 +6,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatsCard from '../components/StatsCard';
 import IconButton from '../components/IconButton';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 
@@ -390,7 +391,10 @@ export default function PawnTrackingPage() {
                 <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Shop Information</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <FormField label="Shop Name *" value={formData.shop_name} onChange={v => setField('shop_name', v)} required />
-                  <FormField label="Shop Address" value={formData.shop_address} onChange={v => setField('shop_address', v)} />
+                  <div>
+                    <FormField label="Shop Address" value={formData.shop_address} onChange={v => setField('shop_address', v)} />
+                    <ViewOnMapLink address={formData.shop_address} label={formData.shop_name} className="mt-1" />
+                  </div>
                 </div>
               </fieldset>
 
@@ -460,7 +464,10 @@ export default function PawnTrackingPage() {
                   <FormField label="ID Number" value={formData.seller_id_number} onChange={v => setField('seller_id_number', v)} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <FormField label="Address" value={formData.seller_address} onChange={v => setField('seller_address', v)} />
+                  <div>
+                    <FormField label="Address" value={formData.seller_address} onChange={v => setField('seller_address', v)} />
+                    <ViewOnMapLink address={formData.seller_address} label={`${formData.seller_first_name} ${formData.seller_last_name}`.trim()} className="mt-1" />
+                  </div>
                   <FormField label="Phone" value={formData.seller_phone} onChange={v => setField('seller_phone', v)} />
                 </div>
               </fieldset>
