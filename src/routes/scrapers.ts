@@ -34,6 +34,31 @@ import { runFullListLeg } from '../utils/warrantSources/runScan';
 
 const scrapers = new Hono<Env>();
 
+// Best-effort scraper_runs INSERT for a single manual trigger attempt — logging
+// must never break the trigger response, matching the pattern established for
+// the cron path's logScanResult.ts (Task 3). NOT routed through logScanResult()
+// itself: that helper is shaped for the cron sweep's AllSourceScanResult (Utah +
+// array of scraped summaries), whereas a manual trigger only ever scans ONE
+// source per request.
+async function logManualRun(
+  db: D1Database,
+  sourceKey: string,
+  counts: { checked: number; found: number; cleared: number; errors: number },
+): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    await execute(
+      db,
+      `INSERT INTO scraper_runs (source_key, started_at, finished_at, success, checked, found, cleared, errors, trigger)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+      sourceKey, now, now, counts.errors === 0 ? 1 : 0,
+      counts.checked, counts.found, counts.cleared, counts.errors,
+    );
+  } catch (err) {
+    console.error(`scraper_runs insert failed for ${sourceKey}:`, err instanceof Error ? err.message : String(err));
+  }
+}
+
 // isCircuitOpen() expects a trailing per-run error-count history (newest
 // first) and counts a *consecutive* streak of failed runs from the front of
 // the array. We don't have per-run history yet (see design doc) — only a
@@ -194,8 +219,13 @@ scrapers.post('/:key/trigger', async (c) => {
   if (key === 'utah-warrant-watch') {
     try {
       const result = await runUtahWarrantScan(db);
+      await logManualRun(db, key, {
+        checked: result.persons_checked, found: result.new_warrants_found,
+        cleared: result.warrants_cleared, errors: result.errors,
+      });
       return c.json({ success: true, source_key: key, result });
     } catch (err) {
+      await logManualRun(db, key, { checked: 0, found: 0, cleared: 0, errors: 1 });
       return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
     }
   }
@@ -208,8 +238,15 @@ scrapers.post('/:key/trigger', async (c) => {
   if (codeMatch) {
     try {
       const summaries = await runFullListLeg(db, [codeMatch]);
-      return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
+      const result = summaries[0] ?? null;
+      if (result) {
+        await logManualRun(db, key, {
+          checked: result.checked, found: result.found, cleared: result.cleared, errors: result.errors,
+        });
+      }
+      return c.json({ success: true, source_key: key, result });
     } catch (err) {
+      await logManualRun(db, key, { checked: 0, found: 0, cleared: 0, errors: 1 });
       return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
     }
   }
@@ -219,8 +256,15 @@ scrapers.post('/:key/trigger', async (c) => {
   if (configMatch) {
     try {
       const summaries = await runFullListLeg(db, [configMatch]);
-      return c.json({ success: true, source_key: key, result: summaries[0] ?? null });
+      const result = summaries[0] ?? null;
+      if (result) {
+        await logManualRun(db, key, {
+          checked: result.checked, found: result.found, cleared: result.cleared, errors: result.errors,
+        });
+      }
+      return c.json({ success: true, source_key: key, result });
     } catch (err) {
+      await logManualRun(db, key, { checked: 0, found: 0, cleared: 0, errors: 1 });
       return c.json({ error: 'Trigger failed', detail: (err as Error).message }, 502);
     }
   }

@@ -34,6 +34,12 @@ beforeAll(async () => {
   await execute(db, `CREATE TABLE IF NOT EXISTS scraped_warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT, status TEXT
   )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS scraper_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL, success INTEGER NOT NULL, checked INTEGER NOT NULL DEFAULT 0,
+    found INTEGER NOT NULL DEFAULT 0, cleared INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER, trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual'))
+  )`);
 
   await execute(db, `INSERT INTO warrant_scraper_config
     (source_name, last_error, source_type, priority, last_success_at, enabled, consecutive_errors)
@@ -104,6 +110,14 @@ describe('POST /api/warrants/scrapers/:key/trigger', () => {
     // Miniflare tests — accept either a successful run summary or a caught
     // network-error response, but never a 404/403 (the key must resolve).
     expect([200, 502]).toContain(res.status);
+
+    // Whether the live Utah poller succeeded or threw, the manual trigger
+    // must always leave a scraper_runs audit row behind (trigger='manual').
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const rows = await db.prepare(
+      `SELECT * FROM scraper_runs WHERE source_key = 'utah-warrant-watch' AND trigger = 'manual'`,
+    ).all();
+    expect(rows.results.length).toBeGreaterThanOrEqual(1);
   });
 
   it('blocks triggering a source that is disabled in warrant_scraper_config', async () => {
