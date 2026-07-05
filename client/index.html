@@ -13,7 +13,9 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
       // Synchronously apply theme before React loads to prevent flash-of-wrong-theme (FOUC).
-      // Resolution order: legacy flag → blue-silver flag → manual override →
+      // Resolution order: legacy flag → blue-silver (DEFAULT ON as of 2026-07-04's
+      // app-wide blue/silver/white/red re-theme; set rmpg_theme_blue_silver='0' to
+      // opt back out to the retired gold day/night scheme) → manual override →
       // time-of-day schedule (06:00–18:00 day).
       // Keep storage keys + valid values in sync with client/src/utils/theme.ts.
       (function () {
@@ -23,7 +25,7 @@
           try { legacy = localStorage.getItem('rmpg_theme_legacy') === '1'; } catch (e) {}
           var blueSilver = false;
           if (!legacy) {
-            try { blueSilver = localStorage.getItem('rmpg_theme_blue_silver') === '1'; } catch (e) {}
+            try { blueSilver = localStorage.getItem('rmpg_theme_blue_silver') !== '0'; } catch (e) { blueSilver = true; }
           }
 
           var theme;
