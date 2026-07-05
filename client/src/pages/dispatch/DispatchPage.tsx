@@ -3986,8 +3986,8 @@ export default function DispatchPage() {
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping. This row
                     scrolls horizontally (it can hold 15+ buttons depending on call
-                    state), but the scrollbar-dark thumb is barely visible against
-                    dark surfaces (#2e2e2e thumb on a transparent track) — the
+                    state), but the scrollbar-dark thumb is low-contrast against
+                    dark surfaces (dark gray thumb on a transparent track) — the
                     mask-image fade below gives a visual cue that more buttons
                     exist to the right, instead of the row silently truncating
                     with no affordance. No extra wrapper element needed: the mask
