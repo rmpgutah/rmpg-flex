@@ -17,15 +17,17 @@ export function isLegacyBlackForced(): boolean {
   }
 }
 
-/** When set, force the Blue & Silver full-override palette (html.theme-blue-silver).
- *  Same tier as the legacy kill-switch — an independent forced theme, not part
- *  of the day/night schedule. Legacy takes precedence if both are somehow set. */
+/** Blue & Silver is the app-wide DEFAULT theme as of the 2026-07-04 re-theme
+ *  (replacing the gold-accent day/night scheme). Same tier as the legacy
+ *  kill-switch — an independent forced theme, not part of the day/night
+ *  schedule. Legacy takes precedence if both are somehow set. Set
+ *  BLUE_SILVER_FLAG_KEY to '0' to opt back out to the retired gold scheme. */
 export function isBlueSilverForced(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
-    return !isLegacyBlackForced() && localStorage.getItem(BLUE_SILVER_FLAG_KEY) === '1';
+    return !isLegacyBlackForced() && localStorage.getItem(BLUE_SILVER_FLAG_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 

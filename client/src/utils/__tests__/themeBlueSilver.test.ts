@@ -7,13 +7,18 @@ import {
 describe('Blue & Silver full-override theme', () => {
   beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
 
-  it('is off by default', () => {
-    expect(isBlueSilverForced()).toBe(false);
+  it('is ON by default (app-wide default theme as of the 2026-07-04 re-theme)', () => {
+    expect(isBlueSilverForced()).toBe(true);
   });
 
-  it('is on when the flag is set to "1"', () => {
+  it('stays on when the flag is explicitly set to "1"', () => {
     localStorage.setItem(BLUE_SILVER_FLAG_KEY, '1');
     expect(isBlueSilverForced()).toBe(true);
+  });
+
+  it('is off only when explicitly opted out via "0"', () => {
+    localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0');
+    expect(isBlueSilverForced()).toBe(false);
   });
 
   it('legacy pure-black takes precedence if both flags are somehow set', () => {
@@ -34,7 +39,8 @@ describe('Blue & Silver full-override theme', () => {
     expect(html.style.backgroundColor.replace(/\s/g, '')).toBe('rgb(12,26,43)');
   });
 
-  it('does not apply when off', () => {
+  it('does not apply when explicitly opted out via "0"', () => {
+    localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0');
     applyThemePreference('light', { persist: false, syncNative: false });
     const html = document.documentElement;
     expect(html.classList.contains('theme-blue-silver')).toBe(false);

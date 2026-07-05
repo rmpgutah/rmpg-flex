@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readThemeOverride, writeThemeOverride, resolveCurrentTheme, THEME_OVERRIDE_KEY, LEGACY_FLAG_KEY } from '../theme';
+import { readThemeOverride, writeThemeOverride, resolveCurrentTheme, THEME_OVERRIDE_KEY, LEGACY_FLAG_KEY, BLUE_SILVER_FLAG_KEY } from '../theme';
 
 describe('theme override storage', () => {
   beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
@@ -29,7 +29,12 @@ describe('theme override storage', () => {
 });
 
 describe('resolveCurrentTheme', () => {
-  beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+  // Blue & Silver defaults ON as of the 2026-07-04 re-theme and would
+  // otherwise force 'dark' regardless of the override/schedule under test
+  // here — opt out so these tests exercise that logic in isolation.
+  beforeEach(() => {
+    try { localStorage.clear(); localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0'); } catch { /* ignore */ }
+  });
 
   it('returns dark when legacy flag is set (ignores everything else)', () => {
     localStorage.setItem(LEGACY_FLAG_KEY, '1');
