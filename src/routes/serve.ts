@@ -217,10 +217,14 @@ sv.get('/deadlines', async (c) => {
   return c.json(await query(getDb(c.env), sql, days));
 });
 
-// GET /success-rates — per-officer success aggregations
+// GET /success-rates?days=N — per-officer success aggregations
 sv.get('/success-rates', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
+  // The client's period selector (30/60/90 days — PerformanceTab.tsx) sends
+  // ?days=N, but this query never read it and always aggregated all-time
+  // data, so every period selection showed the identical lifetime rate.
+  const days = parseInt(c.req.query('days') || '90', 10);
   const rows = await query<{ officer_id: number; full_name: string; total: number; served: number; failed: number }>(
     getDb(c.env),
     `SELECT u.id AS officer_id, u.full_name,
@@ -229,8 +233,10 @@ sv.get('/success-rates', async (c) => {
             SUM(CASE WHEN q.status='failed' THEN 1 ELSE 0 END) AS failed
        FROM serve_queue q LEFT JOIN users u ON u.id = q.officer_id
        WHERE q.officer_id IS NOT NULL
+         AND q.created_at >= datetime('now', '-' || ? || ' days')
        GROUP BY q.officer_id, u.full_name
        ORDER BY total DESC LIMIT 100`,
+    days,
   );
   return c.json({
     officers: rows.map((r) => ({

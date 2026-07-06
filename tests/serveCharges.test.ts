@@ -45,6 +45,18 @@ describe('computeServeCharges', () => {
     expect(r.subtotal).toBe(95);
   });
 
+  it('honors a contract-specific extra_attempt_included override instead of the global pricing default', () => {
+    // Global default (PRICING) includes 3 free attempts; this contract
+    // negotiated 1 free attempt, so attempt 5 should bill 4 extra, not 2.
+    const r = computeServeCharges(
+      JOB({ attempt_count: 5 }),
+      TERMS({ extra_attempt_included: 1 }),
+      PRICING,
+    );
+    const extra = r.lines.find(l => l.pricing_code === 'extra_attempt');
+    expect(extra).toMatchObject({ quantity: 4, unit_price: 15, line_total: 60 });
+  });
+
   it('adds skip trace, mileage, and wait when present', () => {
     const r = computeServeCharges(JOB({ has_skip_trace: true, mileage: 10, wait_hours: 2 }), TERMS(), PRICING);
     expect(r.lines.find(l => l.pricing_code === 'skip_trace')?.line_total).toBe(25);
