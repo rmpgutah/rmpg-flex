@@ -211,6 +211,12 @@ describe('flex_events SQL builders', () => {
     expect(sql).toContain('GROUP BY label, priority');
   });
 
+  it('buildCfsTrendsSql deduplicates by entity_id so retried emissions cannot inflate call counts', () => {
+    const sql = buildCfsTrendsSql({ sinceIso });
+    expect(sql).toContain('COUNT(DISTINCT entity_id) AS calls');
+    expect(sql).not.toContain('COUNT(*) AS calls');
+  });
+
   it('buildGpsCoverageSql aggregates pings per unit', () => {
     const sql = buildGpsCoverageSql({ sinceIso });
     expect(sql).toContain("event_type = 'gps_ping'");
