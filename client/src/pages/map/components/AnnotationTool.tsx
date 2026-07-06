@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../../../utils/mapboxSafeLayer';
 
 interface Annotation {
   id: number;
@@ -46,15 +47,15 @@ export default function AnnotationTool({ map, onClose }: Props) {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    const source = map.getSource(SOURCE_ID) as any;
+    const source = getSourceSafe(map, SOURCE_ID);
     if (!source) {
-      if (!map.getSource(SOURCE_ID)) {
+      if (!hasSource(map, SOURCE_ID)) {
         map.addSource(SOURCE_ID, {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] },
         });
       }
-      if (!map.getLayer(LAYER_ID)) {
+      if (!hasLayer(map, LAYER_ID)) {
         map.addLayer({
           id: LAYER_ID,
           type: 'circle',
@@ -78,8 +79,8 @@ export default function AnnotationTool({ map, onClose }: Props) {
       });
     }
     return () => {
-      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, LAYER_ID);
+      safeRemoveSource(map, SOURCE_ID);
     };
   }, [map, annotations]);
 

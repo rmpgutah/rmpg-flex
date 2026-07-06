@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import turfCircle from '@turf/circle';
 import type mapboxgl from 'mapbox-gl';
+import { safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface Ring { id: string; lat: number; lng: number; radiusM: number; color: string; }
 interface Props { map: mapboxgl.Map; onClose: () => void; }
@@ -45,9 +46,9 @@ export default function BufferRingTool({ map, onClose }: Props) {
   }, [map, radius, unit, color, opacity]);
 
   const removeRing = (r: Ring) => {
-    if (map.getLayer(`${r.id}-fill`)) map.removeLayer(`${r.id}-fill`);
-    if (map.getLayer(`${r.id}-line`)) map.removeLayer(`${r.id}-line`);
-    if (map.getSource(r.id)) map.removeSource(r.id);
+    safeRemoveLayer(map, `${r.id}-fill`);
+    safeRemoveLayer(map, `${r.id}-line`);
+    safeRemoveSource(map, r.id);
     setRings(prev => prev.filter(x => x.id !== r.id));
   };
 
