@@ -85,6 +85,7 @@ interface PsoStats {
 interface DashboardApiResponse {
   activeCalls: number;
   todayCalls: number;
+  incidentsToday: number;
   unitsOnDuty: number;
   totalUnits: number;
   pendingReports: number;
@@ -231,10 +232,6 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
     count: hourMap.get(i) ?? 0,
   }));
 
-  // Count incidents_today from callsByStatus (submitted + under_review items are pending reports)
-  // The backend doesn't return incidents_today directly, so we default to pendingReports
-  const incidentsToday = raw.pendingReports ?? 0;
-
   return {
     active_calls: raw.activeCalls ?? 0,
     calls_by_priority: {
@@ -248,7 +245,7 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
     open_incidents: raw.pendingReports ?? 0,
     avg_response_time_minutes: raw.avgResponseMinutes ?? 0,
     calls_today: raw.todayCalls ?? 0,
-    incidents_today: incidentsToday,
+    incidents_today: raw.incidentsToday ?? 0,
     active_bolos: raw.activeBolos ?? 0,
     officers_on_duty: Array.isArray(raw.officersOnDuty)
       ? raw.officersOnDuty.length
