@@ -48,22 +48,17 @@ export default function ConfirmDialog({
   const onConfirmRef = useRef(onConfirm);
   onConfirmRef.current = onConfirm;
 
-  // Body scroll lock — prevent background scrolling when dialog is open
+  // Body scroll lock — prevent background scrolling when dialog is open.
+  // Position/top/width + scroll-position preservation now live inside
+  // lockBodyScroll/unlockBodyScroll (reference-counted, nesting-safe) — see
+  // bodyScrollLock.ts for why that state can't be owned per-component (two
+  // modals open at once, e.g. this ConfirmDialog launched from inside
+  // another open modal, used to stomp on each other's document.body styles).
   useEffect(() => {
-    if (isOpen) {
-      const scrollY = window.scrollY;
-      lockBodyScroll();
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-      document.body.style.top = `-${scrollY}px`;
-    }
+    if (!isOpen) return;
+    lockBodyScroll();
     return () => {
-      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       unlockBodyScroll();
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.top = '';
-      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
