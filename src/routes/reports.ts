@@ -44,6 +44,24 @@ function clampDays(raw: string | undefined, fallback: number): number {
   return Math.min(n, 365);
 }
 
+// created_at is stored UTC, but "today"/"yesterday" dashboard tiles mean
+// Mountain Time. `datetime('now','start of day')` and `DATE('now')` both
+// resolve in UTC, so a call made at, say, 11pm MDT (05:00 UTC the NEXT
+// day) was silently excluded from "today," or a call from just after UTC
+// midnight (still yesterday evening in MT) was counted as "today." Shift
+// both sides of every DATE(...)/datetime(...) day comparison by the
+// current MT UTC offset so they compare in Denver-local calendar days.
+// Single current-moment offset (not per-row DST-aware) — see the
+// shift-comparison endpoint's identical tradeoff note below.
+function denverDateExpr(column: string): string {
+  const offset = denverOffsetHours();
+  return `DATE(${column}, '${offset} hours')`;
+}
+function denverNowDateExpr(modifier?: string): string {
+  const offset = denverOffsetHours();
+  return modifier ? `DATE('now', '${modifier}', '${offset} hours')` : `DATE('now', '${offset} hours')`;
+}
+
 // GET /api/reports/incidents-summary?days=30
 reports.get('/incidents-summary', async (c) => {
   try {
@@ -620,12 +638,12 @@ reports.get('/dashboard', async (c) => {
       query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
     ]);
-    const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    const todayCalls = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
     // incidents_today was never computed server-side — the client defaulted it
     // to pendingReports (open_incidents), so the dashboard tile showed "all
     // open incidents" under a "today" label regardless of when they were
     // created. Real count, incidents table.
-    const incidentsToday = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','start of day')");
+    const incidentsToday = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
     // Secondary stat-card metrics (added 2026-06-21 — the DashboardPage Status
     // Summary row reads these but they were never returned, so 3 of 4 cards
     // permanently showed 0). Tolerant of missing tables/cols on dev/empty
@@ -1234,14 +1252,14 @@ reports.get('/dashboard-weekly-trend', async (c) => {
   try {
     const db = getDb(c.env);
     const daily = await query<{ date: string; count: number }>(db,
-      `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
+      `SELECT ${denverDateExpr('created_at')} AS date, COUNT(*) AS count FROM calls_for_service
        WHERE created_at >= datetime('now','-14 days') GROUP BY date ORDER BY date`);
     const todayN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`))?.n ?? 0;
     const yesterdayN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-1 day')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr('-1 day')}`))?.n ?? 0;
     const lastWeekN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-7 days')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr('-7 days')}`))?.n ?? 0;
     return c.json({ dailyTrend: daily, today: todayN, yesterday: yesterdayN, lastWeekSameDay: lastWeekN });
   } catch { return c.json({ dailyTrend: [], today: 0, yesterday: 0, lastWeekSameDay: 0 }); }
 });
@@ -1252,7 +1270,7 @@ reports.get('/dashboard-calls-by-type', async (c) => {
     const db = getDb(c.env);
     const rows = await query<{ type: string; count: number }>(db,
       `SELECT incident_type AS type, COUNT(*) AS count FROM calls_for_service
-       WHERE DATE(created_at) = DATE('now') GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
+       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()} GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
     return c.json(rows);
   } catch { return c.json([]); }
 });
