@@ -287,6 +287,24 @@ export function buildPlateHistorySql(opts: { plate: string; sinceIso: string; li
   ].join(' ');
 }
 
+/**
+ * True distinct-plate and distinct-hit-plate counts since <sinceIso> —
+ * unbounded by LIMIT, unlike buildAlprSummarySql's top-N-by-volume rows.
+ * The AnalyticsPage "Distinct plates" / "Plates with a hit" cards used to
+ * read `summary.length` / a filter over the top-100-by-volume rows, so a
+ * less-frequent plate ranked 101st+ (including one that hit) was silently
+ * excluded from what the UI presented as a total count.
+ */
+export function buildAlprDistinctCountSql(opts: { sinceIso: string }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  return [
+    'SELECT COUNT(DISTINCT plate) AS distinct_plates,',
+    'COUNT(DISTINCT CASE WHEN critical_hit THEN plate END) AS distinct_hit_plates',
+    `FROM ${ANALYTICS_NAMESPACE}.${ALPR_TABLE}`,
+    `WHERE occurred_at >= '${since}'`,
+  ].join(' ');
+}
+
 /** Top plates by read volume since <sinceIso>, flagging any that ever hit. */
 export function buildAlprSummarySql(opts: { sinceIso: string; limit?: number }): string {
   const since = escapeSqlLiteral(opts.sinceIso);
