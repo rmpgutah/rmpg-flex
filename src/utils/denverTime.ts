@@ -58,3 +58,26 @@ export function nowDualStamp(d: Date = new Date()): DualStamp {
     local: toDenverWallClock(d),
   };
 }
+
+/**
+ * Current America/Denver UTC offset in whole hours (-6 MDT / -7 MST),
+ * DST-aware via Intl. D1/SQLite has no timezone data of its own — several
+ * report queries need to bucket UTC-stored `created_at` timestamps into
+ * Denver-local hours/shifts/days (e.g. "which shift did this call fall in"),
+ * and were doing so by running strftime('%H', created_at) directly, which
+ * reads the UTC hour and silently mislabels every row by 6-7 hours.
+ *
+ * This returns a single offset for the CURRENT moment, suitable for
+ * `datetime(created_at, '<offset> hours')` in a query — a query spanning a
+ * DST transition will be off by 1 hour for rows on the far side of the flip,
+ * which is a large improvement over the prior 6-7 hour UTC/MT conflation.
+ */
+export function denverOffsetHours(d: Date = new Date()): number {
+  const utcHour = d.getUTCHours() + d.getUTCMinutes() / 60;
+  const local = toDenverWallClock(d);
+  const localHour = parseInt(local.slice(11, 13), 10) + parseInt(local.slice(14, 16), 10) / 60;
+  let diff = Math.round(localHour - utcHour);
+  if (diff > 12) diff -= 24;
+  if (diff < -12) diff += 24;
+  return diff;
+}

@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
+import { denverOffsetHours } from '../utils/denverTime';
 import type { Env } from '../types';
 
 const reports = new Hono<Env>();
@@ -620,6 +621,11 @@ reports.get('/dashboard', async (c) => {
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
     ]);
     const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    // incidents_today was never computed server-side — the client defaulted it
+    // to pendingReports (open_incidents), so the dashboard tile showed "all
+    // open incidents" under a "today" label regardless of when they were
+    // created. Real count, incidents table.
+    const incidentsToday = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','start of day')");
     // Secondary stat-card metrics (added 2026-06-21 — the DashboardPage Status
     // Summary row reads these but they were never returned, so 3 of 4 cards
     // permanently showed 0). Tolerant of missing tables/cols on dev/empty
@@ -636,6 +642,7 @@ reports.get('/dashboard', async (c) => {
     return c.json({
       activeCalls: calls?.n ?? 0,
       todayCalls: todayCalls?.n ?? 0,
+      incidentsToday: incidentsToday?.n ?? 0,
       unitsOnDuty: unitsOn?.n ?? 0,
       totalUnits: totalUnits?.n ?? 0,
       pendingReports: pending?.n ?? 0,
@@ -1270,10 +1277,18 @@ reports.get('/shift-comparison', async (c) => {
   try {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
-    // Shift hours: Day=0600-1359, Swing=1400-2159, Night=2200-0559
+    // Shift hours (Day=0600-1359, Swing=1400-2159, Night=2200-0559) are Mountain
+    // Time, but created_at is stored UTC and strftime('%H', created_at) read the
+    // UTC hour directly — a call at 13:00 UTC (06:00 MDT, start of Day shift)
+    // was bucketed as Night. Shift the timestamp into Denver wall-clock before
+    // extracting the hour. Single current-moment offset (denverOffsetHours),
+    // not per-row DST-aware — rows on the far side of a DST flip within the
+    // `days` window can be off by 1 hour, versus the prior 6-7 hour UTC/MT bug.
+    const offset = denverOffsetHours();
+    const shiftedHour = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
     const rows = await query<{ shift: string; calls: number; incidents: number; avg_resp_min: number; hours: number }>(db,
-      `SELECT CASE WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 6 AND 13 THEN 'Day'
-                   WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 14 AND 21 THEN 'Swing'
+      `SELECT CASE WHEN ${shiftedHour} BETWEEN 6 AND 13 THEN 'Day'
+                   WHEN ${shiftedHour} BETWEEN 14 AND 21 THEN 'Swing'
                    ELSE 'Night' END AS shift,
               COUNT(*) AS calls,
               COALESCE(SUM(CASE WHEN incident_type IS NOT NULL THEN 1 ELSE 0 END), 0) AS incidents,
