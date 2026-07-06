@@ -1060,6 +1060,14 @@ export default function DashboardPage() {
           onClick={() => navigate('/dispatch')}
           sparklineData={chartData.slice(-12).map(d => d.count)}
         />
+        {/* Units Available / Open Incidents / Avg Response have no
+            server-side historical series to chart (unlike Active Calls
+            above, which slices real chartData) — these three previously
+            rendered hardcoded decorative arrays as if they were real
+            trends, sliced to the current value's length to look
+            plausible. Omitting sparklineData hides the sparkline
+            (StatsCard already does this for falsy/undefined data) rather
+            than show fabricated history. */}
         <StatsCard
           icon={Users}
           label="Units Available"
@@ -1069,7 +1077,6 @@ export default function DashboardPage() {
           trendColor="green"
           trend="flat"
           onClick={() => navigate('/personnel')}
-          sparklineData={[2, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8].slice(0, Math.min(stats.units_available, 12))}
         />
         <StatsCard
           icon={FileText}
@@ -1080,7 +1087,6 @@ export default function DashboardPage() {
           trendColor="gray"
           trend="flat"
           onClick={() => navigate('/incidents')}
-          sparklineData={[1, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7].slice(0, Math.min(stats.open_incidents || 1, 12))}
         />
         <StatsCard
           icon={Clock}
@@ -1091,7 +1097,6 @@ export default function DashboardPage() {
           trendColor={stats.avg_response_time_minutes ? 'green' : 'gray'}
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
           onClick={() => navigate('/reports')}
-          sparklineData={stats.avg_response_time_minutes ? [12, 11, 10, 9, 8, 10, 7, 8, 6, 7, 5, stats.avg_response_time_minutes] : undefined}
         />
       </div>
 
