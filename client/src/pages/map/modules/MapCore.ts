@@ -230,7 +230,7 @@ export function useMapCore({
             clearTimeout(loadTimeout);
             cancelled = true;
             setTimeout(() => {
-              destroyMapboxMap(); mapRef.current = null;
+              destroyMapboxMap(mapRef.current); mapRef.current = null;
               onStyleFallback('dark' as MapStyleId);
               onRetryNonceRequest();
             }, 0);
@@ -244,7 +244,7 @@ export function useMapCore({
             devLog('[MapCore] Mapbox auth error, activating MapLibre GL fallback');
             clearTimeout(loadTimeout);
             cancelled = true;
-            setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
+            setTimeout(() => { destroyMapboxMap(mapRef.current); mapRef.current = null; }, 0);
             setMapError(msg);
             setMapLibreFallback(true);
             setLoading(false);
@@ -263,7 +263,7 @@ export function useMapCore({
           clearTimeout(loadTimeout);
           devLog('[MapCore] Mapbox init failed, activating MapLibre GL fallback');
           cancelled = true;
-          setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
+          setTimeout(() => { destroyMapboxMap(mapRef.current); mapRef.current = null; }, 0);
           setMapError(isHtmlResponseErr
             ? 'Mapbox returned an unexpected (non-JSON) response while loading the map style. This usually means the configured Mapbox token is invalid, expired, or domain-restricted — or a network filter (VPN, corporate proxy, ad-blocker) is blocking api.mapbox.com. Verify the token at account.mapbox.com/access-tokens and re-check Admin → Integrations → Mapbox.'
             : msg);
@@ -285,7 +285,7 @@ export function useMapCore({
 
     return () => {
       cancelled = true;
-      destroyMapboxMap();
+      destroyMapboxMap(mapRef.current);
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
