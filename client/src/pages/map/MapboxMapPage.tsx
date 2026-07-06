@@ -620,7 +620,24 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   useEffect(() => {
     const unsub1 = subscribe('unit_update', () => { fetchData(); });
     const unsub2 = subscribe('dispatch_update', () => { fetchData(); });
-    return () => { unsub1(); unsub2(); };
+    // gps.ts fans every breadcrumb batch out as a FLAT 'unit_position' frame
+    // ({ unit_id, latitude, longitude, ... }) via AlertHubDO — distinct from
+    // 'unit_update'/'dispatch_update' above, which only fire on status/roster
+    // changes. Without this, unit dots on the map only moved on the
+    // REFRESH_INTERVAL_MS poll instead of gliding live. Mirrors the handler
+    // DispatchPage.tsx already has for the same frame.
+    const unsub3 = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, fetchData]);
 
   // ── Unit Markers ───────────────────────────────────────────────────────────
