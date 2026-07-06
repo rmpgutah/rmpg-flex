@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
@@ -523,7 +523,7 @@ export default function AnalyticsTab() {
             </thead>
             <tbody>
               {workload!.servers.map((s) => (
-                <>
+                <Fragment key={s.officer_id}>
                   <tr
                     key={s.officer_id}
                     className={`border-b border-rmpg-800 cursor-pointer hover:bg-surface-base/60 ${s.over_capacity ? 'bg-red-950/20' : ''}`}
@@ -549,7 +549,7 @@ export default function AnalyticsTab() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
