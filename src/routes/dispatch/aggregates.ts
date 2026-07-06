@@ -547,7 +547,14 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
           SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
           SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
+          -- Excludes negative deltas (odometer reset / data-entry error) —
+          -- unvalidated, a single bad row could swing the average sharply.
+          -- Note: pools every incident_type together (a 5-mile traffic stop
+          -- next to a 50-mile pursuit); this field isn't currently rendered
+          -- anywhere in the client, so left un-segmented rather than
+          -- redesigning an unused response shape.
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
+               AND ending_mileage >= starting_mileage
                THEN ending_mileage - starting_mileage END) as avg_call_miles
         FROM calls_for_service
         WHERE created_at >= datetime('now', '-24 hours')`),
@@ -709,17 +716,25 @@ aggregates.get('/repeat-addresses', async (c) => {
     const limit = Number.isFinite(limitRaw) ? Math.min(1000, Math.max(1, Math.floor(limitRaw))) : 200;
 
     const db = getDb(c.env);
+    // Grid precision: 3 decimal degrees (~111m) merged distinct nearby
+    // addresses (e.g. two adjacent buildings 11m apart) into one cluster,
+    // and MAX(location_address) then picked an arbitrary alphabetically-
+    // last address to represent the whole merged group, silently hiding
+    // that it wasn't actually one location. 4 decimals (~11m) tightens the
+    // grid to roughly building-scale, and GROUP_CONCAT surfaces every
+    // distinct address string actually seen in a cell instead of
+    // pretending there was only one.
     const rows = await query<Record<string, unknown>>(db, `
       SELECT
-        MAX(location_address) AS address,
-        ROUND(latitude, 3)    AS latitude,
-        ROUND(longitude, 3)   AS longitude,
+        GROUP_CONCAT(DISTINCT location_address) AS address,
+        ROUND(latitude, 4)    AS latitude,
+        ROUND(longitude, 4)   AS longitude,
         COUNT(*)              AS count,
         MAX(created_at)       AS last_call_at
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         AND created_at >= datetime('now', ?)
-      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)
       HAVING COUNT(*) >= ?
       ORDER BY count DESC
       LIMIT ?
