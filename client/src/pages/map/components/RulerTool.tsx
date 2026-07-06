@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import turfLength from '@turf/length';
 import type mapboxgl from 'mapbox-gl';
-import { hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface Props { map: mapboxgl.Map; onClose: () => void; }
 
@@ -22,8 +22,8 @@ export default function RulerTool({ map, onClose }: Props) {
   const pointsRef = useRef<[number, number][]>([]);
 
   const updateSources = (pts: [number, number][]) => {
-    const ptSource = map.getSource(SOURCE_POINTS) as any;
-    const lineSource = map.getSource(SOURCE_LINE) as any;
+    const ptSource = getSourceSafe<any>(map, SOURCE_POINTS);
+    const lineSource = getSourceSafe<any>(map, SOURCE_LINE);
     if (ptSource) ptSource.setData?.({
       type: 'FeatureCollection',
       features: pts.map(p => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: {} })),

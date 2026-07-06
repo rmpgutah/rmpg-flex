@@ -1,5 +1,5 @@
 import mapboxgl from 'mapbox-gl';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 export interface CircleOptions {
   fillColor?: string;
@@ -42,7 +42,7 @@ export class MapboxOverlayManager {
   }
 
   updateSource(id: string, data: GeoJSON.GeoJSON): void {
-    const src = this.map.getSource(id) as any;
+    const src = getSourceSafe<any>(this.map, id);
     if (src) {
       src.setData(data);
     } else {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface Step { maneuver: { instruction: string }; distance: number; duration: number; }
 interface Route { geometry: { coordinates: [number, number][] }; legs: { steps: Step[] }[]; duration: number; distance: number; }
@@ -32,14 +33,14 @@ export default function NavOverlayTool({ map, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!map.getSource(SOURCE_ROUTE)) {
+    if (!hasSource(map, SOURCE_ROUTE)) {
       map.addSource(SOURCE_ROUTE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: LAYER_ROUTE, type: 'line', source: SOURCE_ROUTE,
         paint: { 'line-color': '#1e5a9e', 'line-width': 5, 'line-opacity': 0.9 } });
     }
     return () => {
-      try { if (map.getLayer(LAYER_ROUTE)) map.removeLayer(LAYER_ROUTE); } catch {}
-      try { if (map.getSource(SOURCE_ROUTE)) map.removeSource(SOURCE_ROUTE); } catch {}
+      safeRemoveLayer(map, LAYER_ROUTE);
+      safeRemoveSource(map, SOURCE_ROUTE);
     };
   }, [map]);
 
@@ -59,12 +60,10 @@ export default function NavOverlayTool({ map, onClose }: Props) {
       const r = data?.routes?.[0] ?? null;
       setRoute(r);
       if (r) {
-        try {
-          (map.getSource(SOURCE_ROUTE) as any)?.setData({
-            type: 'FeatureCollection',
-            features: [{ type: 'Feature', geometry: r.geometry, properties: {} }],
-          });
-        } catch {}
+        getSourceSafe<any>(map, SOURCE_ROUTE)?.setData({
+          type: 'FeatureCollection',
+          features: [{ type: 'Feature', geometry: r.geometry, properties: {} }],
+        });
       }
     } catch {
       setError('Failed to get route');
