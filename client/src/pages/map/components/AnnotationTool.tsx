@@ -41,7 +41,10 @@ export default function AnnotationTool({ map, onClose }: Props) {
       : '';
     apiFetch<Annotation[]>(`/map/annotations${bboxParam}`)
       .then(setAnnotations)
-      .catch(() => {});
+      .catch((err) => {
+        console.error('[AnnotationTool] failed to load annotations:', err);
+        setError('Could not load annotations — try again');
+      });
   }, [map]);
 
   useEffect(() => { load(); }, [load]);

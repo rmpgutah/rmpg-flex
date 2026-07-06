@@ -30,6 +30,7 @@ export default function GpsReplayTool({ map, onClose }: Props) {
   const [speed, setSpeed] = useState(1);
   const [autoFollow, setAutoFollow] = useState(true);
   const [hoursBack, setHoursBack] = useState(8);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const posRef = useRef<GpsPosition[]>([]);
   const autoFollowRef = useRef(autoFollow);
@@ -39,7 +40,12 @@ export default function GpsReplayTool({ map, onClose }: Props) {
 
   // Load units with trail data on mount
   useEffect(() => {
-    apiFetch<UnitOption[]>('/dispatch/gps/units-with-trails').then(d => setUnits(asArray(d))).catch(() => {});
+    apiFetch<UnitOption[]>('/dispatch/gps/units-with-trails')
+      .then(d => setUnits(asArray(d)))
+      .catch((err) => {
+        console.error('[GpsReplayTool] failed to load units with trails:', err);
+        setLoadError('Could not load units — try reopening the replay tool');
+      });
   }, []);
 
   // Setup map sources/layers
@@ -175,6 +181,9 @@ export default function GpsReplayTool({ map, onClose }: Props) {
       )}
       {positions.length === 0 && selectedUnit && (
         <div className="text-rmpg-400 text-[10px] text-center py-1">No GPS data for selected unit</div>
+      )}
+      {loadError && (
+        <div className="text-red-400 text-[10px] text-center py-1">{loadError}</div>
       )}
       <label className="flex items-center gap-1 cursor-pointer">
         <input type="checkbox" checked={autoFollow} onChange={e => setAutoFollow(e.target.checked)} />
