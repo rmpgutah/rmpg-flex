@@ -20,22 +20,46 @@ const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
 
 export { HAZARD_FLAGS };
 
-/** Build HTML for a unit marker element. */
+/** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-unit';
   el.style.cssText = `
-    width:32px;height:32px;border-radius:2px;
-    background:${color};border:2px solid ${TACTICAL_BRAND_GOLD};
-    display:flex;align-items:center;justify-content:center;
-    font-size:9px;font-weight:700;color:#fff;
-    font-family:ui-monospace,monospace;cursor:pointer;
-    box-shadow:0 0 6px ${color}80;
-    transition:box-shadow .2s;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
   `;
-  el.textContent = unit.call_sign.slice(0, 4);
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`;
+
+  const photoFrame = document.createElement('div');
+  photoFrame.style.cssText = `
+    width:40px;height:40px;border-radius:4px;overflow:hidden;
+    border:3px solid ${color};box-shadow:0 0 6px ${color}80;
+    background:#0d1520;
+  `;
+  const img = document.createElement('img');
+  img.src = '/icons/unit-vehicle.png';
+  img.alt = '';
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+  // Fallback: if the photo fails to load (bad connectivity, missing asset),
+  // never leave a broken-image icon on the map — swap to a plain
+  // status-colored square instead.
+  img.onerror = () => {
+    photoFrame.style.background = color;
+    img.remove();
+  };
+  photoFrame.appendChild(img);
+  el.appendChild(photoFrame);
+
+  const label = document.createElement('div');
+  label.style.cssText = `
+    background:#101820;border:1.2px solid ${color};border-radius:2px;
+    padding:1px 6px;font-size:9px;font-weight:700;color:${color};
+    font-family:ui-monospace,monospace;white-space:nowrap;
+  `;
+  label.textContent = unit.call_sign.slice(0, 6);
+  el.appendChild(label);
+
   return el;
 }
 
