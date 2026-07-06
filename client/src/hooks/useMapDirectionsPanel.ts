@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxDirections, type MapboxDirectionsResponse } from '../services/mapboxApiService';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -145,8 +146,8 @@ export function useMapDirectionsPanel(
         geometry: { type: 'LineString', coordinates: route.geometry.coordinates },
       };
 
-      if (map.getSource(SOURCE_ID)) {
-        (map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource).setData(geojson);
+      if (hasSource(map, SOURCE_ID)) {
+        getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID)?.setData(geojson);
       } else {
         map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
         map.addLayer({
@@ -175,8 +176,8 @@ export function useMapDirectionsPanel(
 
   const clearDirections = useCallback(() => {
     if (map) {
-      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, LAYER_ID);
+      safeRemoveSource(map, SOURCE_ID);
     }
     originMarkerRef.current?.remove();
     originMarkerRef.current = null;

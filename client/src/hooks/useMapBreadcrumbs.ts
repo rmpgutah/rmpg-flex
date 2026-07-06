@@ -11,6 +11,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { devLog, devWarn } from '../utils/devLog';
+import { safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -121,9 +122,9 @@ export function useMapBreadcrumbs(
     activeSourcesRef.current.forEach(srcId => {
       const lineId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_LAYER_PREFIX);
       const dotsId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX);
-      if (map.getLayer(lineId)) map.removeLayer(lineId);
-      if (map.getLayer(dotsId)) map.removeLayer(dotsId);
-      if (map.getSource(srcId)) map.removeSource(srcId);
+      safeRemoveLayer(map, lineId);
+      safeRemoveLayer(map, dotsId);
+      safeRemoveSource(map, srcId);
     });
     activeSourcesRef.current.clear();
 
@@ -195,9 +196,9 @@ export function useMapBreadcrumbs(
       activeSourcesRef.current.forEach(srcId => {
         const lineId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_LAYER_PREFIX);
         const dotsId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX);
-        if (map.getLayer(lineId)) map.removeLayer(lineId);
-        if (map.getLayer(dotsId)) map.removeLayer(dotsId);
-        if (map.getSource(srcId)) map.removeSource(srcId);
+        safeRemoveLayer(map, lineId);
+        safeRemoveLayer(map, dotsId);
+        safeRemoveSource(map, srcId);
       });
       activeSourcesRef.current.clear();
     };
