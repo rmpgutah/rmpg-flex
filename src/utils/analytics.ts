@@ -341,7 +341,11 @@ export function buildCfsTrendsSql(opts: { sinceIso: string; limit?: number }): s
   const since = escapeSqlLiteral(opts.sinceIso);
   const limit = clampInt(opts.limit, 1, 200, 50);
   return [
-    'SELECT label AS call_type, priority, COUNT(*) AS calls',
+    // COUNT(DISTINCT entity_id), not COUNT(*): flex_events is an append-only
+    // warehouse with no dedup on write, so a retried/replayed cfs_created
+    // emission (network retry, webhook redelivery) would otherwise inflate
+    // this chart's call-volume numbers past the real count of distinct calls.
+    'SELECT label AS call_type, priority, COUNT(DISTINCT entity_id) AS calls',
     `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
     `WHERE event_type = 'cfs_created' AND occurred_at >= '${since}'`,
     'GROUP BY label, priority ORDER BY calls DESC',
