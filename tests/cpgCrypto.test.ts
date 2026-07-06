@@ -31,9 +31,16 @@ describe('cpgCrypto', () => {
   it('throws on a tampered ciphertext', async () => {
     const enc = await encryptSecret('hunter2', KEY);
     const parts = enc.split(':');
-    // Flip the last base64 char of the ciphertext segment.
-    const last = parts[2];
-    parts[2] = last.slice(0, -2) + (last.slice(-2, -1) === 'A' ? 'B' : 'A') + last.slice(-1);
+    // Flip the FIRST base64 char of the ciphertext segment — guaranteed to
+    // fall inside a full 4-char/3-byte group, so it always changes a real
+    // ciphertext/tag byte. Flipping near the END (as this test originally
+    // did) is flaky: a fixed-length payload's tail group can have unused
+    // padding bits (e.g. 23 bytes -> a final partial group whose last
+    // char's low 2 bits are always-zero filler, not real byte content), so
+    // some random ciphertexts/tags produce a byte-identical decode despite
+    // a different base64 string, letting decryption spuriously succeed.
+    const first = parts[2];
+    parts[2] = (first.slice(0, 1) === 'A' ? 'B' : 'A') + first.slice(1);
     await expect(decryptSecret(parts.join(':'), KEY)).rejects.toBeInstanceOf(CpgCryptoError);
   });
 
