@@ -37,6 +37,10 @@ const GRADE_COLORS: Record<ScraperHealthGrade, string> = {
   F: 'text-red-400',
 };
 
+// Neutral color for sources with no run history yet — must NOT read as "bad"
+// like F does; matches the muted rmpg-* tone used elsewhere in this table.
+const NA_GRADE_COLOR = 'text-rmpg-500';
+
 const TIER_LABELS: Record<number, string> = {
   1: 'CRIT',
   2: 'HIGH',
@@ -276,7 +280,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
               </tr>
             ) : (
               filtered.map((s) => {
-                const grade = s.metrics_24h?.health_grade || 'F';
+                const grade = s.metrics_24h?.health_grade ?? null;
                 const isSelected = selected.has(s.source_key);
                 return (
                   <tr
@@ -309,8 +313,8 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
                         <span className="text-red-500 ml-1" title="Circuit broken">✕</span>
                       ) : null}
                     </td>
-                    <td className={`p-2 text-center font-bold ${GRADE_COLORS[grade]}`}>
-                      {grade}
+                    <td className={`p-2 text-center font-bold ${grade === null ? NA_GRADE_COLOR : GRADE_COLORS[grade]}`}>
+                      {grade === null ? 'N/A' : grade}
                     </td>
                     <td className="p-2 text-right text-rmpg-400">
                       {s.metrics_24h?.total_runs ?? 0}

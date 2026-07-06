@@ -34,6 +34,12 @@ beforeAll(async () => {
   await execute(db, `CREATE TABLE IF NOT EXISTS scraped_warrants (
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT, status TEXT
   )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS scraper_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL, success INTEGER NOT NULL, checked INTEGER NOT NULL DEFAULT 0,
+    found INTEGER NOT NULL DEFAULT 0, cleared INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER, trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual'))
+  )`);
 
   await execute(db, `INSERT INTO warrant_scraper_config
     (source_name, last_error, source_type, priority, last_success_at, enabled, consecutive_errors)
@@ -51,6 +57,34 @@ beforeAll(async () => {
 
   await execute(db, `INSERT INTO scraped_warrants (source_key, status) VALUES ('arcgis-arlington-tx', 'active')`);
   await execute(db, `INSERT INTO scraped_warrants (source_key, status) VALUES ('arcgis-arlington-tx', 'active')`);
+
+  // Seed scraper_runs history for utah-warrant-watch only — 18/20 successes
+  // (90% => grade B) — so we can assert real health_grade/total_runs/
+  // success_rate computation, while ada-county-id/natrona-county-wy/
+  // arcgis-arlington-tx have zero scraper_runs rows and must still show
+  // health_grade: null (no data yet, never defaulted to 'F').
+  for (let i = 0; i < 20; i++) {
+    const success = i < 18 ? 1 : 0;
+    await execute(db, `INSERT INTO scraper_runs
+      (source_key, started_at, finished_at, success, checked, found, cleared, errors, duration_ms, trigger)
+      VALUES ('utah-warrant-watch', '2026-07-0${(i % 9) + 1} 00:00:00', '2026-07-0${(i % 9) + 1} 00:01:00', ?, 10, 1, 0, ?, 1000, 'cron')`,
+      success, success ? 0 : 1);
+  }
+
+  // Seed 25 rows for natrona-county-wy — the oldest 5 (by started_at) are
+  // failures, the newest 20 are all successes. Proves the 20-run cap
+  // actually truncates by started_at rather than merely tolerating it:
+  // if the route's .slice(0, 20) were off-by-one or missing, the 5 old
+  // failures would leak in and success_rate would read 20/25=80% (C)
+  // instead of 20/20=100% (A).
+  for (let i = 0; i < 25; i++) {
+    const success = i < 5 ? 0 : 1;
+    const day = String(i + 1).padStart(2, '0');
+    await execute(db, `INSERT INTO scraper_runs
+      (source_key, started_at, finished_at, success, checked, found, cleared, errors, duration_ms, trigger)
+      VALUES ('natrona-county-wy', '2026-06-${day} 00:00:00', '2026-06-${day} 00:01:00', ?, 5, 0, 0, ?, 500, 'cron')`,
+      success, success ? 0 : 1);
+  }
 });
 
 describe('GET /api/warrants/scrapers', () => {
@@ -69,6 +103,53 @@ describe('GET /api/warrants/scrapers', () => {
 
     const arcgis = body.sources.find((s) => s.source_key === 'arcgis-arlington-tx');
     expect(arcgis?.warrant_count).toBe(2);
+  });
+
+  it('computes real health_grade/total_runs/success_rate from scraper_runs history', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const body = await res.json() as {
+      sources: Array<{
+        source_key: string;
+        metrics_24h: { health_grade: string | null; total_runs: number; successful_runs: number; success_rate: number };
+      }>;
+    };
+
+    const utah = body.sources.find((s) => s.source_key === 'utah-warrant-watch');
+    expect(utah?.metrics_24h.total_runs).toBe(20);
+    expect(utah?.metrics_24h.successful_runs).toBe(18);
+    expect(utah?.metrics_24h.success_rate).toBeCloseTo(0.9);
+    expect(utah?.metrics_24h.health_grade).toBe('B'); // 90% => B (>=85%, <95%)
+
+    // Sources with zero scraper_runs rows must show null, not a defaulted 'F'.
+    const ada = body.sources.find((s) => s.source_key === 'ada-county-id');
+    expect(ada?.metrics_24h.total_runs).toBe(0);
+    expect(ada?.metrics_24h.health_grade).toBeNull();
+
+    const arcgis = body.sources.find((s) => s.source_key === 'arcgis-arlington-tx');
+    expect(arcgis?.metrics_24h.total_runs).toBe(0);
+    expect(arcgis?.metrics_24h.health_grade).toBeNull();
+  });
+
+  it('caps run-history metrics to the newest 20 rows, excluding older overflow', async () => {
+    const app = buildApp('officer');
+    const res = await app.request('/api/warrants/scrapers', {}, env as unknown as Record<string, unknown>);
+    const body = await res.json() as {
+      sources: Array<{
+        source_key: string;
+        metrics_24h: { health_grade: string | null; total_runs: number; successful_runs: number; success_rate: number };
+      }>;
+    };
+
+    // natrona-county-wy has 25 seeded rows: the oldest 5 (by started_at) are
+    // failures, the newest 20 are all successes. If the 20-run cap didn't
+    // truncate correctly, the 5 old failures would leak in (20/25=80% -> C);
+    // capped correctly, only the newest 20 (all success) count (100% -> A).
+    const natrona = body.sources.find((s) => s.source_key === 'natrona-county-wy');
+    expect(natrona?.metrics_24h.total_runs).toBe(20);
+    expect(natrona?.metrics_24h.successful_runs).toBe(20);
+    expect(natrona?.metrics_24h.success_rate).toBeCloseTo(1);
+    expect(natrona?.metrics_24h.health_grade).toBe('A');
   });
 });
 
@@ -104,6 +185,28 @@ describe('POST /api/warrants/scrapers/:key/trigger', () => {
     // Miniflare tests — accept either a successful run summary or a caught
     // network-error response, but never a 404/403 (the key must resolve).
     expect([200, 502]).toContain(res.status);
+
+    // Whether the live Utah poller succeeded or threw, the manual trigger
+    // must always leave a scraper_runs audit row behind (trigger='manual').
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const rows = await db.prepare(
+      `SELECT * FROM scraper_runs WHERE source_key = 'utah-warrant-watch' AND trigger = 'manual'`,
+    ).all();
+    expect(rows.results.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('triggers a config-driven (national_warrant_sources) source via runFullListLeg', async () => {
+    const app = buildApp('admin');
+    const res = await app.request('/api/warrants/scrapers/arcgis-arlington-tx/trigger', { method: 'POST' }, env as unknown as Record<string, unknown>);
+    // The real ArcGIS fetch is unavailable in Miniflare — accept either a
+    // successful run summary or a caught network-error response.
+    expect([200, 502]).toContain(res.status);
+
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const rows = await db.prepare(
+      `SELECT * FROM scraper_runs WHERE source_key = 'arcgis-arlington-tx' AND trigger = 'manual'`,
+    ).all();
+    expect(rows.results.length).toBeGreaterThanOrEqual(1);
   });
 
   it('blocks triggering a source that is disabled in warrant_scraper_config', async () => {

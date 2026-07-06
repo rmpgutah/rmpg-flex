@@ -64,9 +64,14 @@ const GRADE_BADGE_CLASSES: Record<ScraperHealthGrade, string> = {
   F: 'text-red-400 bg-red-900/20 border-red-800',
 };
 
+// Neutral/muted badge for sources with no run history yet — must read as
+// "unknown", not "bad" (that's what F is for). Matches the muted rmpg-*
+// tokens used elsewhere in this file (e.g. the "dark" StatusLed variant).
+const NA_BADGE_CLASSES = 'text-rmpg-500 bg-rmpg-900/40 border-rmpg-700';
+
 // ── Helpers ─────────────────────────────────────────────────
 
-type GradeFilter = 'all' | ScraperHealthGrade;
+type GradeFilter = 'all' | 'na' | ScraperHealthGrade;
 
 interface LiveFeedEntry {
   id: number; // monotonic local counter for React keys
@@ -214,10 +219,13 @@ function ScraperHealthDistribution({
 }: {
   sources: ScraperSource[];
 }) {
-  const counts: Record<ScraperHealthGrade, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+  const counts: Record<ScraperHealthGrade, number> & { NA: number } = {
+    A: 0, B: 0, C: 0, D: 0, F: 0, NA: 0,
+  };
   for (const s of sources) {
-    const g = s.metrics_24h?.health_grade || 'F';
-    counts[g]++;
+    const g = s.metrics_24h?.health_grade ?? null;
+    if (g === null) counts.NA++;
+    else counts[g]++;
   }
   const total = sources.length || 1;
   const grades: ScraperHealthGrade[] = ['A', 'B', 'C', 'D', 'F'];
@@ -245,6 +253,18 @@ function ScraperHealthDistribution({
             </div>
           );
         })}
+        <div className="flex items-center gap-2">
+          <span className="w-4 text-xs font-mono font-bold text-rmpg-500">—</span>
+          <div className="flex-1 h-4 bg-rmpg-900 border border-rmpg-700 relative">
+            <div
+              className="h-full bg-rmpg-700"
+              style={{ width: `${(counts.NA / total) * 100}%` }}
+            />
+          </div>
+          <span className="w-10 text-right text-xs font-mono text-rmpg-400">
+            {counts.NA}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -291,7 +311,7 @@ function ScraperSourceCard({
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const menu = useMenuActions();
-  const grade = source.metrics_24h?.health_grade || 'F';
+  const grade = source.metrics_24h?.health_grade ?? null;
   const m = source.metrics_24h;
 
   const trigger = async () => {
@@ -340,9 +360,9 @@ function ScraperSourceCard({
         <span className="text-xs text-rmpg-100 min-w-0 flex-1 truncate">{source.display_name}</span>
         <span className="text-[10px] text-rmpg-500 w-10 text-right">{source.state}</span>
         <span
-          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border w-6 text-center ${GRADE_BADGE_CLASSES[grade]}`}
+          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border w-8 text-center ${grade === null ? NA_BADGE_CLASSES : GRADE_BADGE_CLASSES[grade]}`}
         >
-          {grade}
+          {grade === null ? 'N/A' : grade}
         </span>
         <span className="text-[10px] text-rmpg-500 w-16 text-right font-mono">
           {m ? `${Math.round(m.success_rate * 100)}%` : '—'}
@@ -496,7 +516,14 @@ export default function ScrapersTab() {
   const filtered = useMemo(() => {
     return sources.filter((s) => {
       if (stateFilter !== 'all' && s.state !== stateFilter) return false;
-      if (gradeFilter !== 'all' && s.metrics_24h?.health_grade !== gradeFilter) return false;
+      if (gradeFilter !== 'all') {
+        const g = s.metrics_24h?.health_grade ?? null;
+        if (gradeFilter === 'na') {
+          if (g !== null) return false;
+        } else if (g !== gradeFilter) {
+          return false;
+        }
+      }
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -561,6 +588,7 @@ export default function ScrapersTab() {
           <option value="C">C</option>
           <option value="D">D</option>
           <option value="F">F</option>
+          <option value="na">N/A</option>
         </select>
         <button
           onClick={fetchAll}

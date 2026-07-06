@@ -28,7 +28,6 @@ import { DeepResearchDO } from './durable-objects/DeepResearchDO';
 import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
-import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
@@ -197,9 +196,17 @@ export default {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
     if (event.cron === '0 */4 * * *') {
       ctx.waitUntil(
-        runUtahWarrantScan(env.DB).catch((err) => {
-          console.error('Utah warrant scheduled scan failed:', err);
-        }),
+        import('./utils/warrantSources/runScan').then((m) =>
+          m.runAllSourceScans(env.DB).then((result) =>
+            import('./utils/warrantSources/logScanResult').then((log) =>
+              log.logScanResult(env.DB, result, 'cron').catch((err) =>
+                console.error('scraper_runs logging failed:', err),
+              ),
+            ),
+          ).catch((err) => {
+            console.error('Warrant source scheduled scan failed:', err);
+          }),
+        ).catch(() => {}),
       );
       ctx.waitUntil(
         detectDispatchAnomalies(env.DB)
