@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../mapMarkers';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../mapMarkers';
 import { TACTICAL_SURFACE_RAISED, TACTICAL_BRAND_GOLD, TACTICAL_TEXT_PRIMARY } from '../tacticalPalette';
 import type { MapUnit, ActiveCall } from '../mapConstants';
 
@@ -40,5 +40,35 @@ describe('mapMarkers', () => {
     expect(html).toContain(TACTICAL_SURFACE_RAISED);
     expect(html).toContain(TACTICAL_BRAND_GOLD);
     expect(html).toContain(TACTICAL_TEXT_PRIMARY);
+  });
+
+  it('dims and dashes a unit marker once its GPS fix goes stale/lost', () => {
+    const fresh = buildUnitMarkerEl({ ...unit, gps_updated_at: new Date().toISOString() } as MapUnit);
+    expect(fresh.style.opacity).toBe('1');
+
+    const staleTs = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    const stale = buildUnitMarkerEl({ ...unit, gps_updated_at: staleTs } as MapUnit);
+    expect(stale.style.opacity).toBe('0.7');
+    expect(stale.title).toContain('GPS stale');
+
+    const lostTs = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    const lost = buildUnitMarkerEl({ ...unit, gps_updated_at: lostTs } as MapUnit);
+    expect(lost.style.opacity).toBe('0.45');
+    expect(lost.title).toContain('GPS lost');
+  });
+
+  it('applyUnitMarkerState updates an existing marker element without destroying its children', () => {
+    const el = buildUnitMarkerEl(unit);
+    const photoFrameBefore = el.querySelector('[data-role="photo-frame"]');
+    const labelBefore = el.querySelector('[data-role="label"]');
+    expect(photoFrameBefore).not.toBeNull();
+    expect(labelBefore).not.toBeNull();
+
+    applyUnitMarkerState(el, { ...unit, call_sign: 'B99', status: 'dispatched' } as MapUnit);
+
+    // Same DOM node identity — this is the whole point of the fix.
+    expect(el.querySelector('[data-role="photo-frame"]')).toBe(photoFrameBefore);
+    expect(el.querySelector('[data-role="label"]')).toBe(labelBefore);
+    expect(el.querySelector('[data-role="label"]')?.textContent).toBe('B99');
   });
 });

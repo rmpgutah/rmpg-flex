@@ -23,8 +23,11 @@ function isOnFoot(unit: Unit): boolean {
   return unit.on_foot === 1 || unit.on_foot === true;
 }
 
-// Feature 2: GPS stale indicator thresholds
-function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
+// Feature 2: GPS stale indicator thresholds. Exported so other unit-marker
+// surfaces (e.g. MapboxMapPage) apply the exact same >2min/>5min thresholds
+// instead of re-deriving their own — a unit reads "stale" the same way
+// everywhere in the app.
+export function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
   if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
   const elapsed = Date.now() - parseTimestamp(unit.gps_updated_at).getTime();
   if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)

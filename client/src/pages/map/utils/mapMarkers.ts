@@ -20,21 +20,42 @@ const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
 
 export { HAZARD_FLAGS };
 
+// GPS staleness thresholds — must stay in sync with getGpsStaleStatus in
+// UnitStatusBoard.tsx (>2min = stale/amber, >5min = lost/gray). Duplicated
+// here rather than imported because that's a full React component file and
+// this module is a headless DOM-builder; MapUnit's shape also differs
+// slightly from the board's Unit type. A unit that stopped reporting GPS
+// previously stayed full-brightness on the map indefinitely — operators had
+// no way to tell a live position from a dot frozen since last contact.
+function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
+  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
+  const elapsed = Date.now() - new Date(unit.gps_updated_at.replace(' ', 'T') + (unit.gps_updated_at.includes('Z') ? '' : 'Z')).getTime();
+  if (elapsed > 5 * 60 * 1000) return 'lost';
+  if (elapsed > 2 * 60 * 1000) return 'stale';
+  return 'ok';
+}
+
 /** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
+  const staleness = getMapUnitGpsStaleness(unit);
   const el = document.createElement('div');
   el.className = 'rmpg-mbx-unit';
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;gap:2px;
     cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+    opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
   `;
-  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`;
+  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
+    + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
 
   const photoFrame = document.createElement('div');
+  photoFrame.setAttribute('data-role', 'photo-frame');
+  const ringColor = staleness === 'ok' ? color : '#6b7280';
   photoFrame.style.cssText = `
     width:40px;height:40px;border-radius:4px;overflow:hidden;
-    border:3px solid ${color};box-shadow:0 0 6px ${color}80;
+    border:3px ${staleness === 'ok' ? 'solid' : 'dashed'} ${ringColor};
+    box-shadow:0 0 6px ${ringColor}80;
     background:#0d1520;
   `;
   const img = document.createElement('img');
@@ -52,6 +73,7 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   el.appendChild(photoFrame);
 
   const label = document.createElement('div');
+  label.setAttribute('data-role', 'label');
   label.style.cssText = `
     background:#101820;border:1.2px solid ${color};border-radius:2px;
     padding:1px 6px;font-size:9px;font-weight:700;color:${color};
@@ -61,6 +83,37 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   el.appendChild(label);
 
   return el;
+}
+
+/**
+ * Update an existing marker's root element in place to reflect the unit's
+ * current status/GPS-staleness, without touching its child node identity
+ * (mapboxgl.Marker writes position transforms onto the exact root element
+ * it was constructed with — replacing or clearing its children breaks that).
+ */
+export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
+  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
+  const staleness = getMapUnitGpsStaleness(unit);
+  el.style.opacity = String(staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1);
+  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
+    + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
+
+  const ringColor = staleness === 'ok' ? color : '#6b7280';
+  const photoFrame = el.querySelector<HTMLElement>('[data-role="photo-frame"]');
+  if (photoFrame) {
+    photoFrame.style.border = `3px ${staleness === 'ok' ? 'solid' : 'dashed'} ${ringColor}`;
+    photoFrame.style.boxShadow = `0 0 6px ${ringColor}80`;
+    // Only touch background if the photo already fell back to a solid swatch
+    // (img.onerror already removed the <img>) — otherwise leave the photo alone.
+    if (!photoFrame.querySelector('img')) photoFrame.style.background = color;
+  }
+
+  const label = el.querySelector<HTMLElement>('[data-role="label"]');
+  if (label) {
+    label.style.border = `1.2px solid ${color}`;
+    label.style.color = color;
+    label.textContent = unit.call_sign.slice(0, 6);
+  }
 }
 
 /** Build HTML popup content for a unit. */
