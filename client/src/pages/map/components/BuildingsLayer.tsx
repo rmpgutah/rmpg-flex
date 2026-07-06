@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { loadMapPref, saveMapPref } from '../../../utils/mapPreferences';
+import { hasLayer, safeRemoveLayer } from '../../../utils/mapboxSafeLayer';
 
 const LAYER_ID = 'rmpg-3d-buildings';
 
@@ -10,7 +11,7 @@ export function useBuildingsLayer(map: mapboxgl.Map | null) {
   useEffect(() => {
     if (!map) return;
     const addBuildings = () => {
-      if (map.getLayer(LAYER_ID)) return;
+      if (hasLayer(map, LAYER_ID)) return;
       map.addLayer({
         id: LAYER_ID,
         source: 'composite',
@@ -26,7 +27,7 @@ export function useBuildingsLayer(map: mapboxgl.Map | null) {
       });
     };
     const removeBuildings = () => {
-      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+      safeRemoveLayer(map, LAYER_ID);
     };
 
     if (enabled) {

@@ -133,11 +133,11 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
   const stopDrawingListeners = useCallback(() => {
     if (!map) return;
     if (drawLayerIdRef.current) {
-      try { map.removeLayer(drawLayerIdRef.current); } catch {}
+      safeRemoveLayer(map, drawLayerIdRef.current);
       drawLayerIdRef.current = null;
     }
     if (drawSourceIdRef.current) {
-      try { map.removeSource(drawSourceIdRef.current); } catch {}
+      safeRemoveSource(map, drawSourceIdRef.current);
       drawSourceIdRef.current = null;
     }
     drawPointsRef.current = [];
@@ -315,10 +315,8 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
     markersRef.current = [];
     if (map) {
       for (const lid of layerIdsRef.current) {
-        try {
-          if (map.getLayer(lid)) map.removeLayer(lid);
-          if (map.getSource(lid)) map.removeSource(lid);
-        } catch { /* ignore */ }
+        safeRemoveLayer(map, lid);
+        safeRemoveSource(map, lid);
       }
     }
     layerIdsRef.current = [];

@@ -8,6 +8,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { hasLayer, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -51,10 +52,8 @@ export function useMapWeatherRadar(
     if (!map || !activeRef.current) return;
     const config = WEATHER_LAYERS[activeRef.current];
     if (!config) return;
-    try {
-      if (map.getLayer(config.id)) map.removeLayer(config.id);
-      if (map.getSource(config.id)) map.removeSource(config.id);
-    } catch { /* safe */ }
+    safeRemoveLayer(map, config.id);
+    safeRemoveSource(map, config.id);
     activeRef.current = null;
   }, [map]);
 
@@ -109,7 +108,7 @@ export function useMapWeatherRadar(
   useEffect(() => {
     if (!map || !activeRef.current) return;
     const config = WEATHER_LAYERS[activeRef.current];
-    if (config && map.getLayer(config.id)) {
+    if (config && hasLayer(map, config.id)) {
       map.setPaintProperty(config.id, 'raster-opacity', opacity);
     }
   }, [map, opacity]);

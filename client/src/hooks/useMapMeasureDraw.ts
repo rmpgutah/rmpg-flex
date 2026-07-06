@@ -133,10 +133,8 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
   useEffect(() => {
     if (!map) return;
     return () => {
-      try {
-        [L_VERT, L_LINE, L_FILL].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource(SRC)) map.removeSource(SRC);
-      } catch { /* style already torn down */ }
+      [L_VERT, L_LINE, L_FILL].forEach((id) => safeRemoveLayer(map, id));
+      safeRemoveSource(map, SRC);
     };
   }, [map]);
 

@@ -12,6 +12,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -59,12 +60,12 @@ export function useMapHeatmap(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     if (!map || !mapLoaded) return;
 
     if (!enabled) {
-      if (map.getLayer(HEAT_LAYER)) map.removeLayer(HEAT_LAYER);
-      if (map.getSource(HEAT_SOURCE)) map.removeSource(HEAT_SOURCE);
+      safeRemoveLayer(map, HEAT_LAYER);
+      safeRemoveSource(map, HEAT_SOURCE);
       return;
     }
 
-    if (!map.getSource(HEAT_SOURCE)) {
+    if (!hasSource(map, HEAT_SOURCE)) {
       map.addSource(HEAT_SOURCE, { type: 'geojson', data: heatGeoJSON(points) });
 
       map.addLayer({
@@ -116,15 +117,15 @@ export function useMapHeatmap(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     }
 
     return () => {
-      if (map.getLayer(HEAT_LAYER)) map.removeLayer(HEAT_LAYER);
-      if (map.getSource(HEAT_SOURCE)) map.removeSource(HEAT_SOURCE);
+      safeRemoveLayer(map, HEAT_LAYER);
+      safeRemoveSource(map, HEAT_SOURCE);
     };
   }, [map, mapLoaded, enabled, points, intensity, radius]);
 
   // Sync data changes
   useEffect(() => {
     if (!map || !mapLoaded || !enabled) return;
-    const src = map.getSource(HEAT_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+    const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, HEAT_SOURCE);
     if (src) src.setData(heatGeoJSON(points));
   }, [map, mapLoaded, enabled, points]);
 

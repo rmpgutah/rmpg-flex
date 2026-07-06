@@ -9,6 +9,7 @@
 import { useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxOptimization, type MapboxOptimizationResponse } from '../services/mapboxApiService';
+import { getSourceSafe, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -102,8 +103,9 @@ export function useMapOptimization(
         geometry: { type: 'LineString', coordinates: trip.geometry.coordinates },
       };
 
-      if (map.getSource(SOURCE_ID)) {
-        (map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource).setData(routeGeoJson);
+      const existingRouteSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
+      if (existingRouteSource) {
+        existingRouteSource.setData(routeGeoJson);
       } else {
         map.addSource(SOURCE_ID, { type: 'geojson', data: routeGeoJson });
         map.addLayer({
@@ -129,8 +131,9 @@ export function useMapOptimization(
         })),
       };
 
-      if (map.getSource(STOPS_SOURCE)) {
-        (map.getSource(STOPS_SOURCE) as mapboxgl.GeoJSONSource).setData(stopsGeoJson);
+      const existingStopsSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, STOPS_SOURCE);
+      if (existingStopsSource) {
+        existingStopsSource.setData(stopsGeoJson);
       } else {
         map.addSource(STOPS_SOURCE, { type: 'geojson', data: stopsGeoJson });
         map.addLayer({
@@ -166,12 +169,8 @@ export function useMapOptimization(
 
   const clear = useCallback(() => {
     if (!map) return;
-    [STOPS_LABEL_LAYER, STOPS_LAYER, LAYER_ID].forEach(id => {
-      try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* safe */ }
-    });
-    [STOPS_SOURCE, SOURCE_ID].forEach(id => {
-      try { if (map.getSource(id)) map.removeSource(id); } catch { /* safe */ }
-    });
+    [STOPS_LABEL_LAYER, STOPS_LAYER, LAYER_ID].forEach(id => safeRemoveLayer(map, id));
+    [STOPS_SOURCE, SOURCE_ID].forEach(id => safeRemoveSource(map, id));
     setResult(null);
   }, [map]);
 

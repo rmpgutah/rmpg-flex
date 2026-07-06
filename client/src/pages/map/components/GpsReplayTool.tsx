@@ -3,6 +3,7 @@ import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { asArray } from '../../../utils/asArray';
+import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface GpsPosition { lat: number; lng: number; timestamp: string; speed?: number; heading?: number; }
 interface UnitOption { unit_id: number; call_sign: string; officer_name?: string; badge_number?: string; }
@@ -43,12 +44,12 @@ export default function GpsReplayTool({ map, onClose }: Props) {
 
   // Setup map sources/layers
   const setupSources = useCallback(() => {
-    if (!map.getSource(SOURCE_TRAIL)) {
+    if (!hasSource(map, SOURCE_TRAIL)) {
       map.addSource(SOURCE_TRAIL, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: LAYER_TRAIL, type: 'line', source: SOURCE_TRAIL,
         paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.8 } });
     }
-    if (!map.getSource(SOURCE_MARKER)) {
+    if (!hasSource(map, SOURCE_MARKER)) {
       map.addSource(SOURCE_MARKER, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: LAYER_MARKER, type: 'circle', source: SOURCE_MARKER,
         paint: { 'circle-radius': 8, 'circle-color': '#d4a017',
@@ -60,8 +61,8 @@ export default function GpsReplayTool({ map, onClose }: Props) {
     setupSources();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      [LAYER_TRAIL, LAYER_MARKER].forEach(l => { try { if (map.getLayer(l)) map.removeLayer(l); } catch {} });
-      [SOURCE_TRAIL, SOURCE_MARKER].forEach(s => { try { if (map.getSource(s)) map.removeSource(s); } catch {} });
+      [LAYER_TRAIL, LAYER_MARKER].forEach(l => safeRemoveLayer(map, l));
+      [SOURCE_TRAIL, SOURCE_MARKER].forEach(s => safeRemoveSource(map, s));
     };
   }, [map, setupSources]);
 
@@ -71,19 +72,17 @@ export default function GpsReplayTool({ map, onClose }: Props) {
     const clamped = Math.min(idx, pts.length - 1);
     const trail = pts.slice(0, clamped + 1);
     const marker = pts[clamped];
-    try {
-      (map.getSource(SOURCE_TRAIL) as any)?.setData({
-        type: 'FeatureCollection',
-        features: [{ type: 'Feature', geometry: { type: 'LineString',
-          coordinates: trail.map(p => [p.lng, p.lat]) }, properties: {} }],
-      });
-      (map.getSource(SOURCE_MARKER) as any)?.setData({
-        type: 'FeatureCollection',
-        features: [{ type: 'Feature', geometry: { type: 'Point',
-          coordinates: [marker.lng, marker.lat] }, properties: {} }],
-      });
-      if (autoFollowRef.current) map.flyTo({ center: [marker.lng, marker.lat], speed: 0.5 });
-    } catch {}
+    getSourceSafe<any>(map, SOURCE_TRAIL)?.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'LineString',
+        coordinates: trail.map(p => [p.lng, p.lat]) }, properties: {} }],
+    });
+    getSourceSafe<any>(map, SOURCE_MARKER)?.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'Point',
+        coordinates: [marker.lng, marker.lat] }, properties: {} }],
+    });
+    if (autoFollowRef.current) map.flyTo({ center: [marker.lng, marker.lat], speed: 0.5 });
   }, [map]);
 
   const loadPositions = async (unitId: number, hours: number) => {

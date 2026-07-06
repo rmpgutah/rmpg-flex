@@ -377,7 +377,7 @@ export function useGeoJsonLayers({
       // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
       if (!hasLayer(map, getFillLayerId(cfg.id)) && !hasLayer(map, getLineLayerId(cfg.id))) {
         // Let it fall through or clean up the source first to re-add safely
-        try { map.removeSource(sourceId); } catch { /* ignore */ }
+        safeRemoveSource(map, sourceId);
       } else {
         // Already fully loaded — just set visibility
         setLayerStates(prev => ({ ...prev, [cfg.id]: { ...prev[cfg.id], visible: true } }));

@@ -26,7 +26,7 @@ import type mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -487,7 +487,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
         const ensureRouteLayer = () => {
           if (!map) return;
-          if (!map.getSource(SOURCE_ID)) {
+          if (!hasSource(map, SOURCE_ID)) {
             try {
               map.addSource(SOURCE_ID, {
                 type: 'geojson',
@@ -495,7 +495,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
               });
             } catch { /* ignore */ }
           }
-          if (!map.getLayer(LAYER_ID)) {
+          if (!hasLayer(map, LAYER_ID)) {
             try {
               map.addLayer({
                 id: LAYER_ID,
@@ -508,7 +508,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         };
         ensureRouteLayer();
 
-        const geojsonSource = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+        const geojsonSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
         if (geojsonSource) {
           geojsonSource.setData({
             type: 'Feature',

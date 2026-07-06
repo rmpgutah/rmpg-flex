@@ -11,6 +11,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -89,9 +90,10 @@ export function useMapDaylight(map: mapboxgl.Map | null, mapLoaded: boolean): Us
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const updateTerminator = useCallback(() => {
-    if (!map || !map.getSource(DAYLIGHT_SOURCE)) return;
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, DAYLIGHT_SOURCE);
+    if (!source) return;
     const feature = generateTerminatorPolygon(new Date());
-    (map.getSource(DAYLIGHT_SOURCE) as mapboxgl.GeoJSONSource).setData({
+    source.setData({
       type: 'FeatureCollection',
       features: [feature],
     });
@@ -101,16 +103,16 @@ export function useMapDaylight(map: mapboxgl.Map | null, mapLoaded: boolean): Us
     if (!map || !mapLoaded) return;
 
     if (!enabled) {
-      if (map.getLayer(DAYLIGHT_LINE)) map.removeLayer(DAYLIGHT_LINE);
-      if (map.getLayer(DAYLIGHT_FILL)) map.removeLayer(DAYLIGHT_FILL);
-      if (map.getSource(DAYLIGHT_SOURCE)) map.removeSource(DAYLIGHT_SOURCE);
+      safeRemoveLayer(map, DAYLIGHT_LINE);
+      safeRemoveLayer(map, DAYLIGHT_FILL);
+      safeRemoveSource(map, DAYLIGHT_SOURCE);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       return;
     }
 
     const feature = generateTerminatorPolygon(new Date());
 
-    if (!map.getSource(DAYLIGHT_SOURCE)) {
+    if (!hasSource(map, DAYLIGHT_SOURCE)) {
       map.addSource(DAYLIGHT_SOURCE, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [feature] },
@@ -146,9 +148,9 @@ export function useMapDaylight(map: mapboxgl.Map | null, mapLoaded: boolean): Us
 
     return () => {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-      if (map.getLayer(DAYLIGHT_LINE)) map.removeLayer(DAYLIGHT_LINE);
-      if (map.getLayer(DAYLIGHT_FILL)) map.removeLayer(DAYLIGHT_FILL);
-      if (map.getSource(DAYLIGHT_SOURCE)) map.removeSource(DAYLIGHT_SOURCE);
+      safeRemoveLayer(map, DAYLIGHT_LINE);
+      safeRemoveLayer(map, DAYLIGHT_FILL);
+      safeRemoveSource(map, DAYLIGHT_SOURCE);
     };
   }, [map, mapLoaded, enabled, updateTerminator]);
 

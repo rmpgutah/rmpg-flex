@@ -1,4 +1,5 @@
 import mapboxgl from 'mapbox-gl';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 export interface CircleOptions {
   fillColor?: string;
@@ -35,13 +36,13 @@ export class MapboxOverlayManager {
 
   addSource(id: string, data: GeoJSON.GeoJSON): void {
     this.cleanupSource(id);
-    if (this.map.getSource(id)) return;
+    if (hasSource(this.map, id)) return;
     this.map.addSource(id, { type: 'geojson', data });
     this.sources.add(id);
   }
 
   updateSource(id: string, data: GeoJSON.GeoJSON): void {
-    const src = this.map.getSource(id) as any;
+    const src = getSourceSafe<any>(this.map, id);
     if (src) {
       src.setData(data);
     } else {
@@ -50,37 +51,33 @@ export class MapboxOverlayManager {
   }
 
   removeSource(id: string): void {
-    if (this.map.getSource(id)) {
-      this.map.removeSource(id);
-    }
+    safeRemoveSource(this.map, id);
     this.sources.delete(id);
   }
 
   addLayer(id: string, source: string, type: 'fill' | 'line' | 'circle' | 'symbol' | 'heatmap', paint: any, layout?: any): void {
     this.cleanupLayer(id);
-    if (this.map.getLayer(id)) return;
+    if (hasLayer(this.map, id)) return;
     this.map.addLayer({ id, source, type, paint, layout });
     this.layers.add(id);
   }
 
   removeLayer(id: string): void {
-    if (this.map.getLayer(id)) {
-      this.map.removeLayer(id);
-    }
+    safeRemoveLayer(this.map, id);
     this.layers.delete(id);
   }
 
   private cleanupSource(id: string): void {
     for (const lid of this.layers) {
-      try { if (this.map.getLayer(lid)) this.map.removeLayer(lid); } catch {}
+      safeRemoveLayer(this.map, lid);
     }
     this.layers.clear();
-    try { if (this.map.getSource(id)) this.map.removeSource(id); } catch {}
+    safeRemoveSource(this.map, id);
     this.sources.clear();
   }
 
   private cleanupLayer(id: string): void {
-    try { if (this.map.getLayer(id)) this.map.removeLayer(id); } catch {}
+    safeRemoveLayer(this.map, id);
     this.layers.delete(id);
   }
 
@@ -108,11 +105,11 @@ export class MapboxOverlayManager {
 
   removeAll(): void {
     for (const lid of [...this.layers]) {
-      try { if (this.map.getLayer(lid)) this.map.removeLayer(lid); } catch {}
+      safeRemoveLayer(this.map, lid);
     }
     this.layers.clear();
     for (const sid of [...this.sources]) {
-      try { if (this.map.getSource(sid)) this.map.removeSource(sid); } catch {}
+      safeRemoveSource(this.map, sid);
     }
     this.sources.clear();
     this.markers.forEach(m => m.remove());

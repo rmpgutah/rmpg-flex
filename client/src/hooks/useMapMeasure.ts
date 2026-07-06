@@ -10,6 +10,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const syncSource = useCallback((pts: [number, number][], m: MeasureMode) => {
-    if (!map || !map.getSource(MEAS_SOURCE)) return;
+    if (!map || !hasSource(map, MEAS_SOURCE)) return;
     const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
     if (pts.length >= 2) {
@@ -121,7 +122,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
         geometry: { type: 'MultiPoint', coordinates: pts },
       });
     }
-    (map.getSource(MEAS_SOURCE) as mapboxgl.GeoJSONSource).setData(fc);
+    getSourceSafe<mapboxgl.GeoJSONSource>(map, MEAS_SOURCE)?.setData(fc);
   }, [map]);
 
   const computeResult = useCallback((pts: [number, number][], m: MeasureMode): MeasureResult => {
@@ -144,7 +145,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     if (!map || !mapLoaded) return;
     const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
-    if (!map.getSource(MEAS_SOURCE)) {
+    if (!hasSource(map, MEAS_SOURCE)) {
       map.addSource(MEAS_SOURCE, { type: 'geojson', data: empty });
       map.addLayer({
         id: MEAS_FILL, type: 'fill', source: MEAS_SOURCE,
@@ -164,9 +165,9 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
     return () => {
       [MEAS_POINTS, MEAS_LINE, MEAS_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(MEAS_SOURCE)) map.removeSource(MEAS_SOURCE);
+      safeRemoveSource(map, MEAS_SOURCE);
       popupRef.current?.remove();
     };
   }, [map, mapLoaded]);
@@ -222,9 +223,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     setResult(null);
     popupRef.current?.remove();
     popupRef.current = null;
-    if (map && map.getSource(MEAS_SOURCE)) {
-      (map.getSource(MEAS_SOURCE) as mapboxgl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
-    }
+    getSourceSafe<mapboxgl.GeoJSONSource>(map, MEAS_SOURCE)?.setData({ type: 'FeatureCollection', features: [] });
     setModeState(m);
   }, [map]);
 
@@ -233,9 +232,7 @@ export function useMapMeasure(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     setResult(null);
     popupRef.current?.remove();
     popupRef.current = null;
-    if (map && map.getSource(MEAS_SOURCE)) {
-      (map.getSource(MEAS_SOURCE) as mapboxgl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
-    }
+    getSourceSafe<mapboxgl.GeoJSONSource>(map, MEAS_SOURCE)?.setData({ type: 'FeatureCollection', features: [] });
     setModeState('none');
   }, [map]);
 
