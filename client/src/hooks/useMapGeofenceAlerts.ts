@@ -13,6 +13,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
+import { asArray } from '../utils/asArray';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -103,8 +104,10 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
   // Fetch geofence zones
   const refreshGeofences = useCallback(async () => {
     try {
-      const data = await apiFetch<GeofenceZone[]>('/dispatch/geography/geofences');
-      if (data) setGeofences(data);
+      // The geofences CRUD lives on callActions (mounted at /api/dispatch/calls),
+      // not the geography router — '/dispatch/geography/geofences' 404s.
+      const data = await apiFetch<GeofenceZone[]>('/dispatch/calls/geofences');
+      setGeofences(asArray(data));
     } catch (err) {
       devWarn('[GeofenceAlerts] Failed to fetch geofences', err);
     }

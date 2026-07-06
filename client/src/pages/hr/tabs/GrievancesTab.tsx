@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, AlertOctagon, CheckCircle, Search, Loader2, Eye, SearchCheck, XCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
@@ -112,7 +113,7 @@ export default function GrievancesTab() {
     try {
       const params = filterStatus !== 'all' ? `?status=${filterStatus}` : '';
       const data = await apiFetch<Grievance[]>(`/hr/grievances${params}`);
-      setGrievances(data);
+      setGrievances(asArray<Grievance>(data));
     } catch { /* handled */ } finally { setLoading(false); }
   };
 

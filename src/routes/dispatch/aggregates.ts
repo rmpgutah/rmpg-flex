@@ -673,16 +673,56 @@ aggregates.get('/history-map', async (c) => {
   }
 });
 
+// GET /dispatch/repeat-addresses?days=30&min_count=3&limit=200
+// Locations with 3+ calls in the window — repeat-call hotspots for patrol
+// planning. Groups by rounded lat/lng (matches the /heatmap convention just
+// above) rather than raw location_address text, since address strings vary
+// in formatting for the same physical location.
+aggregates.get('/repeat-addresses', async (c) => {
+  try {
+    const daysRaw = Number(c.req.query('days') ?? 30);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 30;
+    const minCountRaw = Number(c.req.query('min_count') ?? 3);
+    const minCount = Number.isFinite(minCountRaw) ? Math.max(1, Math.floor(minCountRaw)) : 3;
+    const limitRaw = Number(c.req.query('limit') ?? 200);
+    const limit = Number.isFinite(limitRaw) ? Math.min(1000, Math.max(1, Math.floor(limitRaw))) : 200;
+
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        MAX(location_address) AS address,
+        ROUND(latitude, 3)    AS latitude,
+        ROUND(longitude, 3)   AS longitude,
+        COUNT(*)              AS count,
+        MAX(created_at)       AS last_call_at
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', ?)
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= ?
+      ORDER BY count DESC
+      LIMIT ?
+    `, `-${days} days`, minCount, limit);
+
+    const addresses = filterValidLatLng(rows);
+    return c.json({ addresses, total: addresses.length });
+  } catch (err) {
+    log.error('GET /dispatch/repeat-addresses failed', {}, err);
+    return c.json({ addresses: [], total: 0 });
+  }
+});
+
 // ── Dashboard chart data supplements ──
 
 // GET /dispatch/aggregates/call-volume?days=7
 aggregates.get('/call-volume', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ date: string; count: number }>(db,
       `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY DATE(created_at) ORDER BY date`);
     return c.json({ by_day: rows, days });
   } catch { return c.json({ by_day: [], days: 7 }); }
@@ -692,10 +732,11 @@ aggregates.get('/call-volume', async (c) => {
 aggregates.get('/by-zone', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ zone: string; count: number }>(db,
       `SELECT COALESCE(dispatch_zone, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY dispatch_zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
   } catch { return c.json({ by_zone: [], days: 7 }); }

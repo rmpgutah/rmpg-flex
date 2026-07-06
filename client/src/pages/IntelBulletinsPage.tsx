@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
@@ -101,7 +102,7 @@ export default function IntelBulletinsPage() {
       if (searchQuery) params.set('q', searchQuery);
       const query = params.toString();
       const data = await apiFetch<Bulletin[]>(`/intel-bulletins${query ? '?' + query : ''}`);
-      setBulletins(data);
+      setBulletins(asArray<Bulletin>(data));
     } catch (err) {
       console.error('Failed to fetch bulletins', err);
     } finally {

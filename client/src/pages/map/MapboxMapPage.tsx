@@ -4,31 +4,35 @@
  * Renders when useMapProvider() selects 'mapbox'. Provides real-time unit tracking,
  * active call visualization, beat overlays, address search, and GPS self-positioning.
  *
- * Spillman Flex / Motorola Solutions pure black theme:
- *   #0a0a0a base · #141414 raised · #d4a017 gold accent · 2px radius everywhere
+ * Tactical surface (always night/steel-blue via `.tactical-dark`, see
+ * `utils/tacticalPalette.ts`): surface-base/surface-raised tokens, brand-gold-500
+ * accent, 2px radius everywhere.
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import {
-  Shield, AlertTriangle, Layers, MapPin, Navigation2,
+  Shield, AlertTriangle, Layers, Layers3, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
   Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
   Clock, Locate, Flame, Car, Ruler, Satellite, PenTool, Hexagon,
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash,
+  Navigation, Globe, Zap, Hash, BarChart3,
 } from 'lucide-react';
 
 import {
-  createMapboxMap, destroyMapboxMap, setMapboxStyle,
-  injectMapboxStyles, addMapbox3DBuildings,
+  addMapbox3DBuildings, removeMapbox3DBuildings,
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
-import { getMapboxTokenStatus, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
+import {
+  hasLayer, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource,
+} from '../../utils/mapboxSafeLayer';
+import { getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useWebSocket } from '../../context/WebSocketContext';
@@ -40,23 +44,29 @@ import {
   MapUnit as Unit, ActiveCall, MapProperty as Property,
   UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS,
   MAP_STYLE_LABELS,
+  TOOLBAR_ITEM_CLASS,
   type MapStyleId,
 } from './utils/mapConstants';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { formatEnumValue } from '../../utils/formatters';
 import { escapeHtml } from '../../utils/sanitize';
-import { mapboxIsochrone, findNearestUnits } from '../../services/mapboxApiService';
+import { mapboxIsochrone, findNearestUnits, mapboxForwardGeocode } from '../../services/mapboxApiService';
 import RmpgLogo from '../../components/RmpgLogo';
 import IconButton from '../../components/IconButton';
 import { devLog, devWarn } from '../../utils/devLog';
 import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
+import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
+import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
+import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
+import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
+import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import { useMapStreetView } from '../../hooks/useMapStreetView';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
-import { useMapDaylight } from '../../hooks/useMapDaylight';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
 import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
@@ -73,33 +83,26 @@ import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
-import { useMapProjection } from '../../hooks/useMapProjection';
-import { useMapAtmosphere } from '../../hooks/useMapAtmosphere';
-import { useMapCameraAnimation } from '../../hooks/useMapCameraAnimation';
-import { useMapSnapshot } from '../../hooks/useMapSnapshot';
-import { useMapOptimization } from '../../hooks/useMapOptimization';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import type { IncidentPoint, UnitPosition } from '../../integrations/deckMapboxLayers';
 import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
+import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
+import SafetyAlertTicker from './components/SafetyAlertTicker';
+import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
+import { useMapCore } from './modules/MapCore';
+import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
+import {
+  TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
+  TACTICAL_TEXT_PRIMARY,
+} from './utils/tacticalPalette';
 interface LayerGroup { id: string; label: string; layers: OverlayToggle[]; }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 12;
 const REFRESH_INTERVAL_MS = 30_000;
-const DARK_STYLES: MapStyleId[] = ['dark', 'night_nav'];
-
-const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
-  { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
-  { key: 'weapons_involved',       label: 'WEAPONS',        color: '#ef4444' },
-  { key: 'felony_in_progress',     label: 'FELONY',         color: '#f97316' },
-  { key: 'domestic_violence',      label: 'DV',             color: '#f59e0b' },
-  { key: 'hazmat',                 label: 'HAZMAT',         color: '#f59e0b' },
-  { key: 'mental_health_crisis',   label: 'MH CRISIS',     color: '#a855f7' },
-  { key: 'gang_related',           label: 'GANG',           color: '#ef4444' },
-];
 
 // Inject GPS self-position pulse animation (module-scope, runs once)
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
@@ -107,88 +110,6 @@ if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css'
   css.id = 'rmpg-pulse-css';
   css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}`;
   document.head.appendChild(css);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/** Build HTML for a unit marker element. */
-function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
-  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-  const el = document.createElement('div');
-  el.className = 'rmpg-mbx-unit';
-  el.style.cssText = `
-    width:32px;height:32px;border-radius:2px;
-    background:${color};border:2px solid #d4a017;
-    display:flex;align-items:center;justify-content:center;
-    font-size:9px;font-weight:700;color:#fff;
-    font-family:ui-monospace,monospace;cursor:pointer;
-    box-shadow:0 0 6px ${color}80;
-    transition:box-shadow .2s;
-  `;
-  el.textContent = unit.call_sign.slice(0, 4);
-  el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`;
-  return el;
-}
-
-/** Build HTML popup content for a unit. */
-function buildUnitPopupHtml(unit: Unit): string {
-  const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-  const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
-  const callInfo = unit.current_call_type
-    ? `<div style="margin-top:4px;border-top:1px solid #222;padding-top:4px;">
-         <div style="color:#d4a017;font-size:9px;">ASSIGNED CALL</div>
-         <div>${escapeHtml(unit.call_number)} — ${escapeHtml(formatIncidentType(unit.current_call_type))}</div>
-         <div style="color:#888;">${escapeHtml(unit.current_call_location)}</div>
-       </div>`
-    : '';
-  return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">
-      <div style="font-weight:700;color:#d4a017;margin-bottom:2px;font-size:12px;">${escapeHtml(unit.call_sign)}</div>
-      <div>${escapeHtml(unit.officer_name)}</div>
-      <div>Status: <span style="color:${color};font-weight:600;">${escapeHtml(statusLabel)}</span></div>
-      ${unit.vehicle ? `<div style="color:#888;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
-      ${callInfo}
-    </div>`;
-}
-
-/** Build HTML for a call marker element. */
-function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
-  const el = document.createElement('div');
-  el.className = 'rmpg-mbx-call';
-  el.style.cssText = `
-    width:22px;height:22px;
-    background:${color};border:2px solid ${color};
-    transform:rotate(45deg);border-radius:2px;
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;box-shadow:0 0 8px ${color}99;
-  `;
-  const inner = document.createElement('span');
-  inner.style.cssText = `transform:rotate(-45deg);font-size:8px;font-weight:700;color:#fff;font-family:ui-monospace,monospace;`;
-  inner.textContent = `P${call.priority}`;
-  el.appendChild(inner);
-  el.title = `${call.call_number} — ${formatIncidentType(call.incident_type)}`;
-  return el;
-}
-
-/** Build HTML popup for a call. */
-function buildCallPopupHtml(call: ActiveCall): string {
-  const color = PRIORITY_COLORS[call.priority] || '#888888';
-  const flags = HAZARD_FLAGS
-    .filter(f => (call as any)[f.key])
-    .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
-    .join('');
-  return `
-    <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
-      <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
-      <div style="font-weight:600;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
-      <div>Priority: <span style="color:${color};font-weight:700;">P${escapeHtml(call.priority)}</span></div>
-      <div>Status: ${escapeHtml(formatEnumValue(call.status))}</div>
-      <div style="color:#888;margin-top:2px;">${escapeHtml(call.location_address)}</div>
-      ${call.cross_street ? `<div style="color:#666;font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
-      ${call.beat_name ? `<div style="color:#666;font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
-      ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
-    </div>`;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -202,11 +123,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [units, setUnits]           = useState<Unit[]>([]);
   const [calls, setCalls]           = useState<ActiveCall[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [mapError, setMapError]     = useState<string | null>(null);
-  const [mapLoaded, setMapLoaded]   = useState(false);
-  const mapLibreFallback = false;
-  const setMapLibreFallback = (_val: boolean) => {};
   const [retryNonce, setRetryNonce] = useState(0);
 
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
@@ -222,17 +138,174 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
+  const [showOverlaysGroup, setShowOverlaysGroup] = useState(false);
+  const [showAnalysisGroup, setShowAnalysisGroup] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
-  const mapContainerRef  = useRef<HTMLDivElement>(null);
-  const mapRef           = useRef<mapboxgl.Map | null>(null);
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
-  const tokenRef         = useRef<string | null>(null);
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // searchTimeoutRef removed — geocoder plugin handles debounce internally
+
+  // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────
+  // Defined before useMapCore() below because it's passed in as loadBeatOverlay
+  // and must be a stable (useCallback) reference — see MapCore.ts's JSDoc.
+
+  const loadBeatOverlay = useCallback(async (map: mapboxgl.Map) => {
+    try {
+      const resp = await fetch('/beats.geojson');
+      if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
+      const geojson = await resp.json();
+
+      // Remove existing beat layers/source if present (e.g. after style change)
+      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
+        safeRemoveLayer(map, id);
+      });
+      safeRemoveSource(map, 'beats');
+
+      upsertGeoJsonSource(map, 'beats', geojson);
+
+      map.addLayer({
+        id: 'beats-fill',
+        type: 'fill',
+        source: 'beats',
+        paint: {
+          'fill-color': '#d4a017',
+          'fill-opacity': 0.04,
+        },
+      });
+
+      map.addLayer({
+        id: 'beats-border',
+        type: 'line',
+        source: 'beats',
+        paint: {
+          'line-color': '#d4a017',
+          'line-opacity': 0.35,
+          'line-width': 1,
+        },
+      });
+
+      map.addLayer({
+        id: 'beats-label',
+        type: 'symbol',
+        source: 'beats',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': 10,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#d4a017',
+          'text-opacity': 0.5,
+          'text-halo-color': '#000',
+          'text-halo-width': 1,
+        },
+        minzoom: 13,
+      });
+
+      devLog('[MapboxMap] beat overlay added');
+    } catch (err) {
+      devWarn('[MapboxMap] beat overlay failed', err);
+    }
+  }, []);
+
+  // ── Map Core (init, token fetch, MapLibre fallback, style switching) ──────
+
+  const onStyleFallback = useCallback((style: MapStyleId) => {
+    setMapStyleId(style);
+  }, [setMapStyleId]);
+
+  const onRetryNonceRequest = useCallback(() => {
+    setRetryNonce(n => n + 1);
+  }, []);
+
+  const {
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
+    daylight, projection, atmosphere, cameraAnimation, snapshot, optimization,
+  } = useMapCore({
+    preferredEngine,
+    mapStyle,
+    retryNonce,
+    onStyleFallback,
+    onRetryNonceRequest,
+    loadBeatOverlay,
+    terrainEnabled,
+  });
+
+  // Deep-link support: other pages' "View on map" links (ViewOnMapLink.tsx)
+  // navigate here as /map?lat=&lng=&label= (known coordinates) or
+  // /map?address=&label= (text address only — most pages that link here
+  // store an address string with no stored lat/lng, so it's forward-
+  // geocoded on arrival), so a record's location (no dedicated call/unit
+  // of its own) can still be shown. Flies to the point and drops a one-off
+  // marker+popup once the map has finished loading; runs once per page
+  // load (searchParams don't change after initial navigation here).
+  const [searchParams] = useSearchParams();
+  const lastDeepLinkKeyRef = useRef('');
+  const deepLinkMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const deepLinkPopupRef = useRef<mapboxgl.Popup | null>(null);
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return;
+    const deepLinkKey = searchParams.toString();
+    if (!deepLinkKey || lastDeepLinkKeyRef.current === deepLinkKey) return;
+
+    const dropDeepLinkPin = (lat: number, lng: number, label: string) => {
+      const map = mapRef.current;
+      if (!map) return;
+      deepLinkMarkerRef.current?.remove();
+      deepLinkPopupRef.current?.remove();
+      map.flyTo({ center: [lng, lat], zoom: 16, duration: 800 });
+      deepLinkPopupRef.current = new mapboxgl.Popup({ offset: 12 })
+        .setLngLat([lng, lat])
+        .setHTML(
+          `<div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">${escapeHtml(label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)}</div>`
+        )
+        .addTo(map);
+      deepLinkMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD }).setLngLat([lng, lat]).addTo(map);
+    };
+
+    const lat = Number.parseFloat(searchParams.get('lat') || '');
+    const lng = Number.parseFloat(searchParams.get('lng') || '');
+    const label = searchParams.get('label') || '';
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      lastDeepLinkKeyRef.current = deepLinkKey;
+      dropDeepLinkPin(lat, lng, label);
+      return;
+    }
+
+    const address = searchParams.get('address');
+    if (address) {
+      lastDeepLinkKeyRef.current = deepLinkKey;
+      mapboxForwardGeocode(address, { limit: 1, proximity: SLC_CENTER, country: 'us' })
+        .then((results) => {
+          const hit = results[0];
+          if (hit) dropDeepLinkPin(hit.latitude, hit.longitude, label || hit.full_address);
+          else addToast?.(`Could not locate "${address}" on the map`, 'warning');
+        })
+        .catch(() => addToast?.(`Could not locate "${address}" on the map`, 'warning'));
+    }
+  }, [mapLoaded, searchParams]);
+
+  // Clean up unit/call/self markers and the geocoder control whenever the
+  // underlying map instance is re-created (retry/fallback) or the component
+  // unmounts — mirrors the cleanup that used to live inline in the map-init
+  // effect's own return function. Keyed the same way useMapCore's internal
+  // init effect is (mapLibreFallback/retryNonce), so it tears down in step
+  // with the map instance itself.
+  useEffect(() => {
+    return () => {
+      unitMarkersRef.current.forEach(m => m.remove());
+      unitMarkersRef.current.clear();
+      callMarkersRef.current.forEach(m => m.remove());
+      callMarkersRef.current.clear();
+      selfMarkerRef.current?.remove();
+      geocoderRef.current = null;
+    };
+  }, [mapLibreFallback, retryNonce]);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const isMobile    = useIsMobile();
@@ -243,10 +316,133 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const drawing = useMapDrawing(mapRef.current, mapLoaded);
   const clustering = useMapClustering(mapRef.current, mapLoaded);
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
+  const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
+
+  const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
+    if (mode === 'historical') {
+      try {
+        const rows = await apiFetch<Array<{ latitude: number; longitude: number; count: number }>>('/dispatch/heatmap?mode=all&days=30');
+        const maxCount = rows.reduce((m, r) => Math.max(m, r.count), 1);
+        heatmap.updatePoints(rows.map((r) => ({
+          longitude: r.longitude, latitude: r.latitude,
+          weight: Math.min(1, r.count / maxCount),
+        })));
+      } catch (err) {
+        console.warn('[Heatmap] historical fetch failed:', err);
+      }
+    } else {
+      const heatPts = calls
+        .filter((c) => c.latitude != null && c.longitude != null)
+        .map((c) => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
+      heatmap.updatePoints(heatPts);
+    }
+  }, [heatmap, calls]);
+
+  const populateAndToggleHeatmap = useCallback(async () => {
+    if (!heatmap.enabled) {
+      await refreshHeatmapPoints(heatmapMode);
+    }
+    heatmap.toggle();
+  }, [heatmap, heatmapMode, refreshHeatmapPoints]);
+
+  const incidentsLayer = useMapboxIncidents(mapLoaded ? mapRef.current : null);
+  const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
+  const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
+  const historyCalls = useMapboxHistoryCalls(mapLoaded ? mapRef.current : null);
+  const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
+  const [identifyEnabled, setIdentifyEnabled] = useState(false);
+  const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
+  const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
+  const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
+  const [incidentsEnabled, setIncidentsEnabled] = useState(false);
+  const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
+  const [safetyZonesEnabled, setSafetyZonesEnabled] = useState(false);
+  const [historyCallsEnabled, setHistoryCallsEnabled] = useState(false);
+
+  useEffect(() => {
+    if (incidentsEnabled) incidentsLayer.fetchIncidents();
+    else incidentsLayer.clear();
+  }, [incidentsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!coverageGapsEnabled || !mapRef.current) { if (!coverageGapsEnabled) coverageGaps.clear(); return; }
+    const bounds = mapRef.current.getBounds();
+    if (!bounds) return;
+    coverageGaps.computeCoverage({
+      north: bounds.getNorth(), south: bounds.getSouth(),
+      east: bounds.getEast(), west: bounds.getWest(),
+    });
+  }, [coverageGapsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recompute Coverage Gaps on pan/zoom while the layer is active — debounced
+  // since each recompute is an O(cells × units) scan over the new viewport.
+  useEffect(() => {
+    if (!coverageGapsEnabled || !mapRef.current) return;
+    const map = mapRef.current;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onMoveEnd = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        coverageGaps.computeCoverage({
+          north: bounds.getNorth(), south: bounds.getSouth(),
+          east: bounds.getEast(), west: bounds.getWest(),
+        });
+      }, 500);
+    };
+    map.on('moveend', onMoveEnd);
+    return () => { map.off('moveend', onMoveEnd); if (timer) clearTimeout(timer); };
+  }, [coverageGapsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (safetyZonesEnabled) safetyZones.fetchSafetyZones();
+    else safetyZones.clear();
+  }, [safetyZonesEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (historyCallsEnabled) historyCalls.fetchHistory();
+    else historyCalls.clear();
+  }, [historyCallsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (repeatAddressesEnabled) repeatAddresses.fetchRepeats();
+    else repeatAddresses.clear();
+  }, [repeatAddressesEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!identifyEnabled || !map) return;
+
+    const handler = async (e: mapboxgl.MapMouseEvent) => {
+      const info = await tilequery.queryFromMapClick(e);
+      if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
+      if (!info) return;
+      const lines = [
+        info.city && `City: ${info.city}`,
+        info.county && `County: ${info.county}`,
+        info.state && `State: ${info.state}`,
+        info.sectorName && `Area: ${info.sectorName}`,
+      ].filter(Boolean);
+      const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}</div>`;
+      identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(map);
+    };
+
+    map.on('click', handler);
+    return () => {
+      map.off('click', handler);
+      if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
+    };
+  }, [identifyEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const streetView = useMapStreetView(mapRef.current, mapLoaded);
   const gps = useGpsTracking();
+  const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
   const unitColorMap = useMemo(() => {
@@ -256,7 +452,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, [units]);
   const unitIds = useMemo(() => units.map(u => u.id), [units]);
   const breadcrumbs = useMapBreadcrumbs(mapRef.current, mapLoaded, unitIds, unitColorMap);
-  const daylight = useMapDaylight(mapRef.current, mapLoaded);
   const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
@@ -270,11 +465,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
-  const projection = useMapProjection(mapRef.current, mapLoaded);
-  const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
-  const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
-  const snapshot = useMapSnapshot();
-  const optimization = useMapOptimization(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
   const [buildings3dEnabled, setBuildings3dEnabled] = usePersistedState('rmpg_mapbox_3d_buildings', true);
@@ -295,15 +485,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   // Keyboard shortcuts for map overlays
   useMapKeyboardShortcuts({
-    toggleHeatmap: () => {
-      if (!heatmap.enabled) {
-        const heatPts = calls
-          .filter(c => c.latitude != null && c.longitude != null)
-          .map(c => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
-        heatmap.updatePoints(heatPts);
-      }
-      heatmap.toggle();
-    },
+    toggleHeatmap: () => { void populateAndToggleHeatmap(); },
     toggleBreadcrumbs: () => breadcrumbs.toggle(),
     toggleClustering: () => {
       if (!clustering.enabled) {
@@ -393,304 +575,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   useLiveSync('dispatch', silentRefresh);
 
-  // ── Map Initialization ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (preferredEngine === 'maplibre' && !mapLibreFallback) {
-      setMapError(null);
-      setMapLibreFallback(true);
-      setLoading(false);
-    }
-  }, [preferredEngine, mapLibreFallback]);
-
-  useEffect(() => {
-    if (mapLibreFallback) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-
-     async function initMap() {
-      try {
-        // Timeout token fetch to avoid infinite hang if server is unreachable
-        const tokenStatusPromise = getMapboxTokenStatus(retryNonce > 0);
-        const timeoutPromise = new Promise<null>((_resolve) => setTimeout(() => _resolve(null), 10_000));
-        const tokenStatus = await Promise.race([tokenStatusPromise, timeoutPromise]);
-        if (cancelled) return;
-        if (!tokenStatus?.token) {
-          if (tokenStatus?.errorKind === 'auth') {
-            setMapError('Unable to access Mapbox token due to authentication/session failure. Please sign in again, then retry.');
-          } else if (tokenStatus?.errorKind === 'network') {
-            setMapError('Unable to fetch Mapbox token due to a network/connectivity error. Check connectivity, then retry.');
-          } else if (tokenStatus?.errorKind === 'server') {
-            setMapError(`Failed to fetch Mapbox token from server: ${tokenStatus.errorMessage || 'unknown error'}`);
-          } else if (tokenStatus?.errorKind === 'client') {
-            setMapError(`Mapbox token fetch failed on client side: ${tokenStatus.errorMessage || 'unknown client error'}`);
-          } else if (tokenStatus?.errorKind === 'none' || tokenStatus?.errorKind === 'unconfigured') {
-            setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
-          } else {
-            setMapError('Mapbox token is unavailable. Using MapLibre fallback.');
-          }
-          devLog('[MapboxMap] Mapbox token unavailable, activating MapLibre GL fallback', tokenStatus);
-          setMapLibreFallback(true);
-          setLoading(false);
-          return;
-        }
-        tokenRef.current = tokenStatus.token;
-        injectMapboxStyles();
-
-        if (!mapContainerRef.current) {
-          // Container not yet mounted — wait a tick and retry
-          await new Promise((r) => setTimeout(r, 100));
-          if (cancelled || !mapContainerRef.current) {
-            setMapError('Map container failed to mount');
-            setLoading(false);
-            return;
-          }
-        }
-
-        const map = createMapboxMap(
-          mapContainerRef.current!,
-          tokenRef.current!,
-          mapStyle,
-        );
-        mapRef.current = map;
-
-        // Track whether the map has successfully loaded at least once.
-        // Individual tile/source errors after successful load should NOT
-        // trigger full MapLibre fallback — only fatal init errors should.
-        let mapDidLoad = false;
-
-        // Timeout map load to prevent infinite "Initializing" state
-        const loadTimeout = setTimeout(() => {
-          if (!cancelled && !mapRef.current?.loaded()) {
-            devWarn('[MapboxMap] map load timed out after 15s');
-            setLoading(false);
-            // Map may still be loading — don't set error, just remove overlay
-          }
-        }, 15_000);
-
-        map.on('load', () => {
-          clearTimeout(loadTimeout);
-          if (cancelled) return;
-          mapDidLoad = true;
-          // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
-          // are already added by createMapboxMap() — don't duplicate them here.
-          if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
-          loadBeatOverlay(map);
-          setMapLoaded(true);
-          setLoading(false);
-          devLog('[MapboxMap] map loaded');
-        });
-
-        map.on('error', (e) => {
-          devWarn('[MapboxMap] map error', e);
-          if (cancelled) return;
-
-          const msg = e.error?.message || 'Mapbox map error';
-          const status = (e.error as any)?.status;
-          const msgLower = msg.toLowerCase();
-
-          // Broad auth-error detection: catch 401, 403, style-fetch
-           // failures, and common auth messages from Mapbox API.
-           // NOTE: 'failed to fetch' is a network/CORS error, NOT an auth error —
-           // triggering full fallback for transient network blips is wrong.
-           const isNetworkErr =
-            msgLower.includes('failed to fetch') ||
-            msgLower.includes('networkerror') ||
-            msgLower.includes('network request failed');
-
-           const isAuthErr =
-            status === 401 || status === 403 ||
-            msgLower.includes('access token') ||
-            msgLower.includes('not authorized') ||
-            msgLower.includes('unauthorized') ||
-            msgLower.includes('forbidden') ||
-            msgLower.includes('invalid token') ||
-            msgLower.includes('token is not authorized') ||
-            msgLower.includes('not configured') ||
-            msgLower.includes('error status 4');
-
-           const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
-
-           // A style/sprite/glyph fetch that returns HTML instead of JSON —
-           // Mapbox's API itself always answers style requests with JSON (even
-           // its error bodies), so this specific SyntaxError almost always
-           // means the request to api.mapbox.com never reached Mapbox at all:
-           // either the configured token is invalid/expired/domain-restricted
-           // (Mapbox's CDN edge serves an HTML error page for some rejected
-           // requests instead of the usual JSON 401), or something on this
-           // network path (VPN, corporate proxy, ad-blocker) is intercepting
-           // requests to api.mapbox.com. Neither classifies as isAuthErr
-           // (no 401/403 status, no "unauthorized" keyword) or isNetworkErr
-           // (no "failed to fetch") — without this it fell through to the
-           // generic fatal-error branch and showed a raw, unhelpful
-           // "Unexpected token '<'" SyntaxError to the officer.
-           const isHtmlResponseErr =
-            msgLower.includes('unexpected token') && msgLower.includes('doctype');
-
-          if (isNetworkErr && !mapDidLoad) {
-            // Network error during init — don't fall back immediately;
-            // Mapbox GL retries tile fetches internally. Only log it.
-            devLog('[MapboxMap] Network error during init (will retry):', msg);
-            return;
-          }
-
-          // Style not found — retry with built-in dark style instead of
-          // falling all the way back to MapLibre. Custom style may have
-          // been deleted from the Mapbox account.
-          if (isStyleErr && !mapDidLoad) {
-            devLog('[MapboxMap] Custom style not found, retrying with default dark style');
-            clearTimeout(loadTimeout);
-            cancelled = true;
-            setTimeout(() => {
-              destroyMapboxMap(); mapRef.current = null;
-              setMapStyleId('dark' as MapStyleId);
-              setRetryNonce(n => n + 1);
-            }, 0);
-            return;
-          }
-
-          if (isAuthErr) {
-            // Auth failure — defer destroy to next tick so Mapbox finishes
-            // its error dispatch before we remove the map instance. Destroying
-            // mid-callback leaves stale DOM in the container that blocks MapLibre.
-            devLog('[MapboxMap] Mapbox auth error, activating MapLibre GL fallback');
-            clearTimeout(loadTimeout);
-            cancelled = true;
-            setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
-            setMapError(msg);
-            setMapLibreFallback(true);
-            setLoading(false);
-            return;
-          }
-
-          // After successful load, ignore non-fatal errors (individual tile
-          // fails, transient network blips) — Mapbox GL handles retries internally
-          if (mapDidLoad) {
-            devLog('[MapboxMap] Non-fatal post-load error (ignored):', msg);
-            return;
-          }
-
-          // Fatal pre-load error (style fetch failed, GL context lost, etc.)
-          // — fall back to MapLibre (defer destroy same as above)
-          clearTimeout(loadTimeout);
-          devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
-          cancelled = true;
-          setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
-          setMapError(isHtmlResponseErr
-            ? 'Mapbox returned an unexpected (non-JSON) response while loading the map style. This usually means the configured Mapbox token is invalid, expired, or domain-restricted — or a network filter (VPN, corporate proxy, ad-blocker) is blocking api.mapbox.com. Verify the token at account.mapbox.com/access-tokens and re-check Admin → Integrations → Mapbox.'
-            : msg);
-          setMapLibreFallback(true);
-          setLoading(false);
-        });
-      } catch (err) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Failed to initialize Mapbox map';
-          devLog('[MapboxMap] Mapbox init exception, activating MapLibre GL fallback');
-          setMapError(msg);
-          setMapLibreFallback(true);
-          setLoading(false);
-        }
-      }
-    }
-
-    initMap();
-
-    return () => {
-      cancelled = true;
-      destroyMapboxMap();
-      mapRef.current = null;
-      unitMarkersRef.current.forEach(m => m.remove());
-      unitMarkersRef.current.clear();
-      callMarkersRef.current.forEach(m => m.remove());
-      callMarkersRef.current.clear();
-      selfMarkerRef.current?.remove();
-      geocoderRef.current = null;
-    };
-   // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
-
-  // ── Retry Mapbox handler ──────────────────────────────────────────────────
-
-  const retryMapbox = useCallback(() => {
-    // Reset state to trigger Mapbox re-init
-    setMapError(null);
-    setMapLoaded(false);
-    setLoading(true);
-
-    // Trigger in-component re-init without full page reload
-    setRetryNonce((n) => n + 1);
-  }, []);
-
-  // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────
-
-  const loadBeatOverlay = useCallback(async (map: mapboxgl.Map) => {
-    try {
-      const resp = await fetch('/beats.geojson');
-      if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
-      const geojson = await resp.json();
-
-      // Remove existing beat layers/source if present (e.g. after style change)
-      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
-      });
-      if (map.getSource('beats')) map.removeSource('beats');
-
-      map.addSource('beats', { type: 'geojson', data: geojson });
-
-      map.addLayer({
-        id: 'beats-fill',
-        type: 'fill',
-        source: 'beats',
-        paint: {
-          'fill-color': '#d4a017',
-          'fill-opacity': 0.04,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-border',
-        type: 'line',
-        source: 'beats',
-        paint: {
-          'line-color': '#d4a017',
-          'line-opacity': 0.35,
-          'line-width': 1,
-        },
-      });
-
-      map.addLayer({
-        id: 'beats-label',
-        type: 'symbol',
-        source: 'beats',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 10,
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': '#d4a017',
-          'text-opacity': 0.5,
-          'text-halo-color': '#000',
-          'text-halo-width': 1,
-        },
-        minzoom: 13,
-      });
-
-      devLog('[MapboxMap] beat overlay added');
-    } catch (err) {
-      devWarn('[MapboxMap] beat overlay failed', err);
-    }
-  }, []);
-
   // Toggle beat visibility
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     const vis = beatsVisible ? 'visible' : 'none';
     ['beats-fill', 'beats-border', 'beats-label'].forEach(id => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+      if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis);
     });
   }, [beatsVisible, mapLoaded]);
 
@@ -701,7 +592,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (buildings3dEnabled) {
       addMapbox3DBuildings(map);
     } else {
-      if (map.getLayer('3d-buildings')) map.removeLayer('3d-buildings');
+      removeMapbox3DBuildings(map);
     }
   }, [buildings3dEnabled, mapLoaded]);
 
@@ -848,28 +739,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Map Style Switch ───────────────────────────────────────────────────────
 
   const handleStyleChange = useCallback((styleId: MapStyleId) => {
-    const map = mapRef.current;
-    if (!map) return;
-    setMapboxStyle(map, styleId);
+    changeStyle(styleId);
     setMapStyleId(styleId);
     setShowStyleMenu(false);
-
-    // Re-add 3D buildings for dark styles after style loads
-    map.once('style.load', () => {
-      if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
-      // Re-add beat overlay (GeoJSON is local, doesn't need token)
-      loadBeatOverlay(map);
-      // Re-apply 3D terrain if it was enabled before the style switch
-      if (terrainEnabled) addMapboxTerrain(map);
-    });
-  }, [setMapStyleId, loadBeatOverlay, terrainEnabled]);
+  }, [changeStyle, setMapStyleId]);
 
   // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || mapLibreFallback) return;
-    const token = tokenRef.current;
+    const token = mapboxToken;
     if (!token) return;
 
     // Don't double-add
@@ -895,7 +775,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       try { map.removeControl(geocoder); } catch { /* map may already be destroyed */ }
       geocoderRef.current = null;
     };
-  }, [mapLoaded, mapLibreFallback]);
+  }, [mapLoaded, mapLibreFallback, mapboxToken]);
 
   // ── Sidebar Interactions ───────────────────────────────────────────────────
 
@@ -935,9 +815,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       // Remove existing isochrone layers
       ['isochrone-fill-0', 'isochrone-fill-1', 'isochrone-fill-2',
        'isochrone-border-0', 'isochrone-border-1', 'isochrone-border-2'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource('isochrone')) map.removeSource('isochrone');
+      safeRemoveSource(map, 'isochrone');
       setIsochroneEnabled(false);
       return;
     }
@@ -952,18 +832,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         minutes: [5, 10, 15],
       });
 
-      if (map.getSource('isochrone')) {
-        (map.getSource('isochrone') as mapboxgl.GeoJSONSource).setData(data as any);
-      } else {
-        map.addSource('isochrone', { type: 'geojson', data: data as any });
-      }
+      if (!data?.features) { console.error('Isochrone response missing features'); return; }
+      upsertGeoJsonSource(map, 'isochrone', data as any);
 
       const colors = ['#22c55e', '#f59e0b', '#ef4444']; // 5min=green, 10min=yellow, 15min=red
-      if (!data?.features) { console.error('Isochrone response missing features'); return; }
       data.features.forEach((_, idx) => {
         const fillId = `isochrone-fill-${idx}`;
         const borderId = `isochrone-border-${idx}`;
-        if (!map.getLayer(fillId)) {
+        if (!hasLayer(map, fillId)) {
           map.addLayer({
             id: fillId,
             type: 'fill',
@@ -972,7 +848,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             filter: ['==', ['get', 'contour'], (idx + 1) * 5],
           });
         }
-        if (!map.getLayer(borderId)) {
+        if (!hasLayer(map, borderId)) {
           map.addLayer({
             id: borderId,
             type: 'line',
@@ -997,7 +873,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       id: 'operational',
       label: 'Operational Overlays',
       layers: [
-        { id: 'heatmap', label: 'Crime Heatmap', active: heatmap.enabled, onToggle: heatmap.toggle, color: '#ef4444', description: 'Incident density (H)' },
+        { id: 'heatmap', label: `Crime Heatmap (${heatmapMode === 'live' ? 'Live' : 'Historical'})`, active: heatmap.enabled, onToggle: () => { void populateAndToggleHeatmap(); }, color: '#ef4444', description: 'Incident density (H) — click label to switch Live/Historical' },
         { id: 'traffic', label: 'Live Traffic', active: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
         { id: 'breadcrumbs', label: 'Unit Trails', active: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
         { id: 'clustering', label: 'Call Clusters', active: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
@@ -1010,6 +886,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'streetview', label: 'Street View', active: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
+        { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
+        { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
+        { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
+        { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
+        { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
       ],
     },
     {
@@ -1060,9 +941,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
         { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
+        { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1119,30 +1001,30 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   if (mapError) {
     return (
       <div className="flex items-center justify-center bg-surface-base" style={{ position: 'absolute', inset: 0 }}>
-        <div className="bg-surface-raised border border-[#222222] p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
-           <AlertTriangle className="w-10 h-10 text-[#d4a017] mx-auto mb-3" />
+        <div className="bg-surface-raised border border-border-default p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
+           <AlertTriangle className="w-10 h-10 text-brand-gold-500 mx-auto mb-3" />
            <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
            <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
-           <div className="text-left bg-[#111] border border-[#1a1a1a] p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
+           <div className="text-left bg-surface-deep border border-border-subtle p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
              <p className="font-semibold text-rmpg-300 mb-1">To fix this issue:</p>
              <ol className="list-decimal list-inside space-y-1">
-               <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-[#d4a017] underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
+               <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
                <li>Ensure the token has the required scopes: <span className="font-mono text-rmpg-300">styles:read</span>, <span className="font-mono text-rmpg-300">styles:tiles</span>, <span className="font-mono text-rmpg-300">fonts:read</span>.</li>
                <li>If expired or revoked, create a new public token and copy it.</li>
-               <li>Navigate to <a href="/admin?tab=integrations" className="text-[#d4a017] underline">Admin → Integrations → Mapbox</a> and paste the new token.</li>
+               <li>Navigate to <a href="/admin?tab=integrations" className="text-brand-gold-500 underline">Admin → Integrations → Mapbox</a> and paste the new token.</li>
                <li>Alternatively, set the <span className="font-mono text-rmpg-300">MAPBOX_ACCESS_TOKEN</span> environment variable on the server.</li>
              </ol>
            </div>
            <div className="flex flex-col gap-2 items-center">
              <a
                href="/admin?tab=integrations"
-               className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
+               className="text-brand-gold-500 text-xs underline hover:text-brand-gold-400"
              >
                Configure in Admin → Integrations
              </a>
              <button
-               onClick={() => { setRetryNonce(n => n + 1); setMapError(null); setLoading(true); }}
-               className="text-[#d4a017] text-xs hover:text-[#e8b84a] transition-colors"
+               onClick={() => setRetryNonce(n => n + 1)}
+               className="text-brand-gold-500 text-xs hover:text-brand-gold-400 transition-colors"
              >
                ↻ Retry Mapbox
              </button>
@@ -1155,12 +1037,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
+    <div className="tactical-dark relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#d4a017] animate-spin" />
+            <Loader2 className="w-8 h-8 text-brand-gold-500 animate-spin" />
             <span className="text-rmpg-300 text-xs font-mono">INITIALIZING MAP…</span>
           </div>
         </div>
@@ -1170,11 +1052,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
 
 
-      {/* Geocoder styling override for RMPG dark theme */}
+      {/* Geocoder styling override — tactical-dark surface (always night palette,
+          see utils/tacticalPalette.ts; the geocoder is a raw Mapbox DOM control,
+          not React, so it's styled via injected CSS rather than Tailwind classes) */}
       <style>{`
         .mapboxgl-ctrl-geocoder {
-          background: #141414 !important;
-          border: 1px solid #222222 !important;
+          background: ${TACTICAL_SURFACE_RAISED} !important;
+          border: 1px solid ${TACTICAL_BORDER} !important;
           border-radius: 2px !important;
           color: #e0e0e0 !important;
           font-family: ui-monospace, monospace !important;
@@ -1187,11 +1071,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           font-size: 12px !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
-          color: #555 !important;
+          color: ${TACTICAL_TEXT_MUTED} !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions {
-          background: #141414 !important;
-          border: 1px solid #222222 !important;
+          background: ${TACTICAL_SURFACE_RAISED} !important;
+          border: 1px solid ${TACTICAL_BORDER} !important;
           border-radius: 2px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > li > a {
@@ -1200,17 +1084,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         }
         .mapboxgl-ctrl-geocoder .suggestions > .active > a,
         .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-          background: #1a1a1a !important;
-          color: #d4a017 !important;
+          background: ${TACTICAL_SURFACE_BASE} !important;
+          color: ${TACTICAL_BRAND_GOLD} !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-search {
-          fill: #d4a017 !important;
+          fill: ${TACTICAL_BRAND_GOLD} !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--button {
           background: transparent !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-close {
-          fill: #888 !important;
+          fill: ${TACTICAL_TEXT_MUTED} !important;
         }
       `}</style>
 
@@ -1219,7 +1103,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <IconButton
           aria-label="Open sidebar"
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-[#222222] p-2 text-rmpg-300 hover:text-[#d4a017] backdrop-blur-sm"
+          className="absolute top-3 left-3 z-30 bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
           style={{ borderRadius: 2 }}
         >
           <PanelLeftOpen className="w-4 h-4" />
@@ -1229,13 +1113,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Sidebar */}
       {sidebarOpen && (
         <div
-          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-[#222222] backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
+          className={`absolute top-0 left-0 z-20 h-full bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col ${isMobile ? 'w-full' : 'w-[280px]'}`}
         >
           {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
             <div className="flex items-center gap-2">
               <RmpgLogo height={20} iconOnly />
-              <span className="text-[#d4a017] text-xs font-semibold tracking-wider">FLEX MAP</span>
+              <span className="text-brand-gold-500 text-xs font-semibold tracking-wider">FLEX MAP</span>
             </div>
             <IconButton
               aria-label="Close sidebar"
@@ -1247,12 +1131,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-[#222222]">
+          <div className="flex border-b border-border-default">
             <button
               onClick={() => setActiveTab('units')}
               className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
                 activeTab === 'units'
-                  ? 'text-[#d4a017] border-b-2 border-[#d4a017]'
+                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
                   : 'text-rmpg-400 hover:text-rmpg-300'
               }`}
             >
@@ -1263,7 +1147,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               onClick={() => setActiveTab('calls')}
               className={`flex-1 py-2 text-xs font-semibold tracking-wider transition-colors ${
                 activeTab === 'calls'
-                  ? 'text-[#d4a017] border-b-2 border-[#d4a017]'
+                  ? 'text-brand-gold-500 border-b-2 border-brand-gold-500'
                   : 'text-rmpg-400 hover:text-rmpg-300'
               }`}
             >
@@ -1275,7 +1159,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           {/* Tab Content */}
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'units' && (
-              <div className="divide-y divide-[#1a1a1a]">
+              <div className="divide-y divide-border-subtle">
                 {units.length === 0 && (
                   <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No units available</div>
                 )}
@@ -1288,7 +1172,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       onClick={() => flyToUnit(unit)}
                       disabled={!hasGps}
                       className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-[#1a1a1a] cursor-pointer' : 'opacity-50 cursor-default'
+                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1312,7 +1196,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             )}
 
             {activeTab === 'calls' && (
-              <div className="divide-y divide-[#1a1a1a]">
+              <div className="divide-y divide-border-subtle">
                 {calls.length === 0 && (
                   <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No active calls</div>
                 )}
@@ -1326,7 +1210,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       onClick={() => flyToCall(call)}
                       disabled={!hasGps}
                       className={`w-full text-left px-3 py-1.5 transition-colors ${
-                        hasGps ? 'hover:bg-[#1a1a1a] cursor-pointer' : 'opacity-50 cursor-default'
+                        hasGps ? 'hover:bg-surface-overlay cursor-pointer' : 'opacity-50 cursor-default'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1358,7 +1242,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                       {hasGps && (
                         <div className="ml-4 mt-0.5">
                           <span
-                            className="text-[8px] text-rmpg-400 hover:text-[#d4a017] cursor-pointer inline-flex items-center gap-0.5"
+                            className="text-[8px] text-rmpg-400 hover:text-brand-gold-500 cursor-pointer inline-flex items-center gap-0.5"
                             onClick={(e) => { e.stopPropagation(); showNearestUnit(call); }}
                           >
                             <Locate className="w-2.5 h-2.5" /> NEAREST UNIT
@@ -1373,72 +1257,28 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Sidebar Footer — quick actions */}
-          <div className="border-t border-[#222222] px-3 py-2">
+          <div className="border-t border-border-default px-3 py-2">
             <div className="flex items-center gap-1 flex-wrap">
               <IconButton
                 aria-label="Refresh data"
                 onClick={silentRefresh}
-                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
-                onClick={() => setBeatsVisible(v => !v)}
-                className={`p-1.5 ${beatsVisible ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              </IconButton>
-              <IconButton
                 aria-label="Fly to my position"
                 onClick={flyToSelf}
-                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+                className="text-rmpg-400 hover:text-brand-gold-500 p-1.5"
               >
                 <Crosshair className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-                onClick={() => setTerrainEnabled(v => !v)}
-                className={`p-1.5 ${terrainEnabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Mountain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
-                onClick={toggleIsochrone}
-                className={`p-1.5 ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
-                onClick={() => setSelfPosVisible(v => !v)}
-                className={`p-1.5 ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-              >
-                <Navigation2 className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Layers panel"
                 onClick={() => setLayersPanelOpen(v => !v)}
-                className={`p-1.5 ${layersPanelOpen ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                className={`p-1.5 ${layersPanelOpen ? 'text-brand-gold-500' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               >
                 <Layers className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
-                onClick={() => breadcrumbs.toggle()}
-                className={`p-1.5 ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="GPS Breadcrumb Trails (B)"
-              >
-                <Footprints className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
-                onClick={() => daylight.toggle()}
-                className={`p-1.5 ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Day/Night Terminator (D)"
-              >
-                <Sun className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
                 aria-label={geofenceAlerts.enabled ? 'Disable premise alerts' : 'Enable premise alerts'}
@@ -1465,22 +1305,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <Volume2 className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
-                onClick={() => coordGrid.toggle()}
-                className={`p-1.5 ${coordGrid.enabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Coordinate Grid (G)"
-              >
-                <Hash className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
-                aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
-                onClick={() => weatherRadar.toggle()}
-                className={`p-1.5 ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Weather Radar"
-              >
-                <CloudRain className="w-3.5 h-3.5" />
-              </IconButton>
-              <IconButton
                 aria-label="Bookmarks"
                 onClick={() => setShowBookmarksPanel(v => !v)}
                 className={`p-1.5 ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
@@ -1496,14 +1320,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               >
                 <Download className="w-3.5 h-3.5" />
               </IconButton>
-              <IconButton
-                aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
-                onClick={() => setDeckEnabled(v => !v)}
-                className={`p-1.5 ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-                title="Deck.gl GPU Overlay"
-              >
-                <Zap className="w-3.5 h-3.5" />
-              </IconButton>
             </div>
           </div>
         </div>
@@ -1516,88 +1332,173 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Advanced map tools"
             onClick={() => setShowAdvancedToolbar(v => !v)}
-            className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-              showAdvancedToolbar ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+            className={`${TOOLBAR_ITEM_CLASS} ${
+              showAdvancedToolbar ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
             }`}
-            style={{ borderRadius: 2 }}
           >
             <Grid3X3 className="w-4 h-4" />
           </IconButton>
 
+          <ToolbarDropdownGroup
+            icon={Layers3}
+            label="Overlays"
+            open={showOverlaysGroup}
+            onToggle={() => setShowOverlaysGroup(v => !v)}
+          >
+            <IconButton
+              aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
+              onClick={() => setBeatsVisible(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${beatsVisible ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              {beatsVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </IconButton>
+            <IconButton
+              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
+              onClick={() => setTerrainEnabled(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${terrainEnabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Mountain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
+              onClick={toggleIsochrone}
+              className={`${TOOLBAR_ITEM_CLASS} ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Clock className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
+              onClick={() => setSelfPosVisible(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+            >
+              <Navigation2 className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
+              onClick={() => breadcrumbs.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="GPS Breadcrumb Trails (B)"
+            >
+              <Footprints className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
+              onClick={() => daylight.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Day/Night Terminator (D)"
+            >
+              <Sun className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
+              onClick={() => coordGrid.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${coordGrid.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Coordinate Grid (G)"
+            >
+              <Hash className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+              onClick={() => weatherRadar.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Weather Radar"
+            >
+              <CloudRain className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
+              onClick={() => setDeckEnabled(v => !v)}
+              className={`${TOOLBAR_ITEM_CLASS} ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+              title="Deck.gl GPU Overlay"
+            >
+              <Zap className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
+
+          <ToolbarDropdownGroup
+            icon={BarChart3}
+            label="Analysis"
+            open={showAnalysisGroup}
+            onToggle={() => setShowAnalysisGroup(v => !v)}
+          >
+            {/* Heatmap */}
+            <IconButton
+              aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
+              onClick={() => { void populateAndToggleHeatmap(); }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Crime Heatmap"
+            >
+              <Flame className="w-4 h-4" />
+            </IconButton>
+
+            {/* Heatmap Live/Historical mode switch */}
+            <button
+              type="button"
+              className="text-[9px] px-1 py-0.5 rounded-sm"
+              style={{ background: heatmapMode === 'historical' ? 'rgba(239,68,68,0.2)' : 'transparent', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}
+              onClick={() => {
+                const next = heatmapMode === 'live' ? 'historical' : 'live';
+                setHeatmapMode(next);
+                if (heatmap.enabled) refreshHeatmapPoints(next);
+              }}
+              title="Switch between live (currently active calls) and historical (30-day) heatmap data"
+            >
+              {heatmapMode === 'live' ? 'LIVE' : '30D'}
+            </button>
+
+            {/* Traffic */}
+            <IconButton
+              aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
+              onClick={() => traffic.toggle()}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Live Traffic"
+            >
+              <Car className="w-4 h-4" />
+            </IconButton>
+
+            {/* Clustering */}
+            <IconButton
+              aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
+              onClick={() => {
+                if (!clustering.enabled) {
+                  const clPts = calls
+                    .filter(c => c.latitude != null && c.longitude != null)
+                    .map(c => ({
+                      id: c.id,
+                      longitude: c.longitude!,
+                      latitude: c.latitude!,
+                      priority: c.priority,
+                      label: c.call_number,
+                      color: PRIORITY_COLORS[c.priority] || '#888',
+                    }));
+                  clustering.updatePoints(clPts);
+                }
+                clustering.toggle();
+              }}
+              className={`${TOOLBAR_ITEM_CLASS} ${
+                clustering.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
+              }`}
+              style={{ borderRadius: 2 }}
+              title="Cluster Markers"
+            >
+              <Hexagon className="w-4 h-4" />
+            </IconButton>
+          </ToolbarDropdownGroup>
+
           {showAdvancedToolbar && (
             <>
-              {/* Heatmap */}
-              <IconButton
-                aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
-                onClick={() => {
-                  if (!heatmap.enabled) {
-                    const heatPts = calls
-                      .filter(c => c.latitude != null && c.longitude != null)
-                      .map(c => ({
-                        longitude: c.longitude!,
-                        latitude: c.latitude!,
-                        weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
-                      }));
-                    heatmap.updatePoints(heatPts);
-                  }
-                  heatmap.toggle();
-                }}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-[#d4a017]'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Crime Heatmap"
-              >
-                <Flame className="w-4 h-4" />
-              </IconButton>
-
-              {/* Traffic */}
-              <IconButton
-                aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
-                onClick={() => traffic.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-[#d4a017]'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Live Traffic"
-              >
-                <Car className="w-4 h-4" />
-              </IconButton>
-
-              {/* Clustering */}
-              <IconButton
-                aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
-                onClick={() => {
-                  if (!clustering.enabled) {
-                    const clPts = calls
-                      .filter(c => c.latitude != null && c.longitude != null)
-                      .map(c => ({
-                        id: c.id,
-                        longitude: c.longitude!,
-                        latitude: c.latitude!,
-                        priority: c.priority,
-                        label: c.call_number,
-                        color: PRIORITY_COLORS[c.priority] || '#888',
-                      }));
-                    clustering.updatePoints(clPts);
-                  }
-                  clustering.toggle();
-                }}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  clustering.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Cluster Markers"
-              >
-                <Hexagon className="w-4 h-4" />
-              </IconButton>
-
               {/* Satellite Peek (Street View equivalent) */}
               <IconButton
                 aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
                 onClick={() => streetView.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`${TOOLBAR_ITEM_CLASS} ${
+                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="Satellite Peek"
@@ -1610,8 +1511,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Measure tool"
                   onClick={() => setShowMeasureMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  className={`${TOOLBAR_ITEM_CLASS} ${
+                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
                   title="Measure Distance / Area"
@@ -1619,11 +1520,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <Ruler className="w-4 h-4" />
                 </IconButton>
                 {showMeasureMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-36 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-36 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       📏 Distance
@@ -1631,7 +1532,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        measure.mode === 'area' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        measure.mode === 'area' ? 'text-[#3b82f6] bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       📐 Area
@@ -1639,7 +1540,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     {measure.mode !== 'none' && (
                       <button
                         onClick={() => { measure.clear(); setShowMeasureMenu(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
                       >
                         ✕ Clear
                       </button>
@@ -1653,8 +1554,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <IconButton
                   aria-label="Drawing tools"
                   onClick={() => setShowDrawMenu(v => !v)}
-                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                    drawing.mode !== 'none' ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  className={`${TOOLBAR_ITEM_CLASS} ${
+                    drawing.mode !== 'none' ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                   }`}
                   style={{ borderRadius: 2 }}
                   title="Draw Shapes"
@@ -1662,11 +1563,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   <PenTool className="w-4 h-4" />
                 </IconButton>
                 {showDrawMenu && (
-                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-40 overflow-hidden" style={{ borderRadius: 2 }}>
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-border-default w-40 overflow-hidden" style={{ borderRadius: 2 }}>
                     <button
                       onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polygon' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'polygon' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ▬ Polygon (geofence)
@@ -1674,7 +1575,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { drawing.setMode('polyline'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'polyline' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'polyline' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ╱ Polyline (route)
@@ -1682,21 +1583,21 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <button
                       onClick={() => { drawing.setMode('circle'); setShowDrawMenu(false); }}
                       className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        drawing.mode === 'circle' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                        drawing.mode === 'circle' ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
                       }`}
                     >
                       ◯ Circle (perimeter)
                     </button>
-                    <div className="border-t border-[#222]" />
+                    <div className="border-t border-border-default" />
                     <button
                       onClick={() => { drawing.undo(); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
                     >
                       ↩ Undo last shape
                     </button>
                     <button
                       onClick={() => { drawing.clearAll(); drawing.setMode('none'); setShowDrawMenu(false); }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-[#1a1a1a]"
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-surface-overlay"
                     >
                       ✕ Clear all shapes
                     </button>
@@ -1708,8 +1609,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
               <IconButton
                 aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
                 onClick={() => glDraw.toggle()}
-                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
-                  glDraw.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                className={`${TOOLBAR_ITEM_CLASS} ${
+                  glDraw.enabled ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'
                 }`}
                 style={{ borderRadius: 2 }}
                 title="GL Draw (vertex editing)"
@@ -1723,7 +1624,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Measurement Result Banner */}
       {measure.result && measure.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
           <Ruler className="w-3.5 h-3.5 text-[#3b82f6]" />
           <span className="text-rmpg-200 text-xs font-mono">
             {measure.result.distanceFormatted}
@@ -1735,9 +1636,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Drawing Mode Indicator */}
       {drawing.mode !== 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/30 px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
-          <PenTool className="w-3.5 h-3.5 text-[#d4a017]" />
-          <span className="text-[#d4a017] text-xs font-mono">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-brand-gold-500/30 px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+          <PenTool className="w-3.5 h-3.5 text-brand-gold-500" />
+          <span className="text-brand-gold-500 text-xs font-mono">
             DRAWING: {drawing.mode.toUpperCase()} — {drawing.mode === 'circle' ? 'Click center, then edge' : 'Click to add points, double-click to finish'}
           </span>
           <button onClick={() => drawing.setMode('none')} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕ Cancel</button>
@@ -1746,7 +1647,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Drawing Shapes Count */}
       {drawing.shapes.length > 0 && drawing.mode === 'none' && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
           <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
         </div>
@@ -1754,8 +1655,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* GL Draw Feature Count */}
       {glDraw.enabled && glDraw.featureCount > 0 && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
-          <Grid3X3 className="w-3 h-3 text-[#d4a017]" />
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-brand-gold-500/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <Grid3X3 className="w-3 h-3 text-brand-gold-500" />
           <span className="text-rmpg-300 text-[10px] font-mono">{glDraw.featureCount} GL Draw feature(s)</span>
           <button onClick={() => glDraw.deleteAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
         </div>
@@ -1763,8 +1664,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Active Route Panel */}
       {routing.activeRoute && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
-          <Route className="w-4 h-4 text-[#d4a017]" />
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-border-default px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
+          <Route className="w-4 h-4 text-brand-gold-500" />
           <div className="text-xs font-mono">
             <span className="text-rmpg-200 font-semibold">{routing.activeRoute.unitCallSign}</span>
             <span className="text-rmpg-500 mx-1">→</span>
@@ -1779,6 +1680,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
+      {/* Safety Alert Ticker — unified panic/welfare/premise-alert feed */}
+      <SafetyAlertTicker
+        items={safetyAlertFeed.items}
+        count={safetyAlertFeed.count}
+        loading={safetyAlertFeed.loading}
+      />
+
       {/* Layers Panel */}
       <MapOverlaysPanel
         open={layersPanelOpen}
@@ -1792,7 +1700,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <IconButton
             aria-label="Map style"
             onClick={() => setShowStyleMenu(v => !v)}
-            className="bg-surface-raised/95 border border-[#222222] p-2 text-rmpg-300 hover:text-[#d4a017] backdrop-blur-sm"
+            className="bg-surface-raised/95 border border-border-default p-2 text-rmpg-300 hover:text-brand-gold-500 backdrop-blur-sm"
             style={{ borderRadius: 2 }}
           >
             <Layers className="w-4 h-4" />
@@ -1800,7 +1708,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
           {showStyleMenu && (
             <div
-              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-[#222222] w-48 overflow-hidden"
+              className="absolute bottom-full left-0 mb-1 bg-surface-raised border border-border-default w-48 overflow-hidden"
               style={{ borderRadius: 2 }}
             >
               {(Object.keys(MAP_STYLE_LABELS) as MapStyleId[]).map(id => (
@@ -1809,8 +1717,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   onClick={() => handleStyleChange(id)}
                   className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
                     mapStyle === id
-                      ? 'bg-[#1a1a1a] text-[#d4a017]'
-                      : 'text-rmpg-300 hover:bg-[#1a1a1a] hover:text-rmpg-200'
+                      ? 'bg-surface-overlay text-brand-gold-500'
+                      : 'text-rmpg-300 hover:bg-surface-overlay hover:text-rmpg-200'
                   }`}
                 >
                   <span>{MAP_STYLE_LABELS[id]}</span>
@@ -1824,7 +1732,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Status Bar */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-[#222222] backdrop-blur-sm"
+        className="absolute bottom-0 left-0 right-0 z-20 bg-surface-raised/95 border-t border-border-default backdrop-blur-sm"
         style={{ height: 28 }}
       >
         <div className="flex items-center justify-between h-full px-3 text-[9px] font-mono">
@@ -1844,7 +1752,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 </span>
               );
             })}
-            <span className="text-rmpg-500 border-l border-[#222222] pl-3">
+            <span className="text-rmpg-500 border-l border-border-default pl-3">
               GPS: <span className="text-rmpg-300">{gpsUnitCount}/{units.length}</span>
             </span>
           </div>

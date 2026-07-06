@@ -254,3 +254,8 @@ export function getZoomLevel(zoom: number): 'overview' | 'neighborhood' | 'stree
   if (zoom >= MAP_ZOOM_BREAKPOINTS.neighborhood) return 'neighborhood';
   return 'overview';
 }
+
+/** Shared className prefix for floating toolbar buttons (Advanced Map Tools
+ * toolbar + ToolbarDropdownGroup triggers/items) — one source of truth so the
+ * 5 toolbar-declutter groups don't each hand-copy this string. */
+export const TOOLBAR_ITEM_CLASS = 'bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm';

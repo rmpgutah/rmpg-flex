@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
 import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 71: Warrant Verification Workflow ─────────────
@@ -276,7 +277,7 @@ export function useMultiJurisdictionWarrantCheck() {
         method: 'POST',
         body: JSON.stringify({ firstName, lastName, dob, jurisdictions }),
       });
-      if (result) setResults(result);
+      setResults(asArray<MultiJurisdictionResult>(result));
       return result;
     } catch { return null; }
     finally { setLoading(false); }

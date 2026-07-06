@@ -62,7 +62,7 @@ import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings, type FilterTab,
 } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
@@ -3777,7 +3777,8 @@ export default function DispatchPage() {
                     onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}
-                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    hasIntelHit={hitCallIds.has(call.id)}
+                    warnings={deriveCallWarnings(call)}
                     onTogglePin={handleTogglePin}
                     signalInfo={signalLookup(call.incident_type || '') || null}
                   />
@@ -3971,8 +3972,22 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
+                {/* Row 2: Action buttons — separate row to prevent cramping. This row
+                    scrolls horizontally (it can hold 15+ buttons depending on call
+                    state), but the scrollbar-dark thumb is low-contrast against
+                    dark surfaces (dark gray thumb on a transparent track) — the
+                    mask-image fade below gives a visual cue that more buttons
+                    exist to the right, instead of the row silently truncating
+                    with no affordance. No extra wrapper element needed: the mask
+                    applies to this div's own painted content. */}
+                <div
+                  className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark"
+                  style={{
+                    background: 'var(--surface-deep)',
+                    WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                    maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                  }}
+                >
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
@@ -7056,27 +7071,44 @@ export default function DispatchPage() {
                 break;
               }
               case 'voice_serve': {
-                // Announce serve details for a call
+                // Announce serve details for a call. process_service_type/
+                // pso_service_type/process_served_to/pso_attempt_number/
+                // process_attempts/process_service_result all live in
+                // calls_for_service_ext (D1 100-col-cap overflow table) —
+                // GET /dispatch/calls (the list this `calls` array comes
+                // from) never returns them, so reading them off a list-row
+                // was silently always undefined. Only GET /:id joins the
+                // ext table, so fetch the real detail before announcing.
                 const call = calls.find(c => c.call_number === action.callNumber);
                 if (call) {
-                  const docType = (call as any).process_service_type || (call as any).pso_service_type || 'unknown';
-                  const servedTo = (call as any).process_served_to || (call as any).caller_name || 'unknown';
-                  const attempt = (call as any).pso_attempt_number || (call as any).process_attempts || 1;
-                  const result = (call as any).process_service_result || 'pending';
-                  announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                  apiFetch<any>(`/dispatch/calls/${call.id}`).then((full) => {
+                    const docType = full?.process_service_type || full?.pso_service_type || 'unknown';
+                    const servedTo = full?.process_served_to || call.caller_name || 'unknown';
+                    const attempt = full?.pso_attempt_number || full?.process_attempts || 1;
+                    const result = full?.process_service_result || 'pending';
+                    announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                  }).catch(() => {
+                    announceServeComplete(call.caller_name || 'unknown', call.location || '', 'unknown', 1, 'pending');
+                  });
                 }
                 break;
               }
               case 'voice_deadline': {
-                // Announce 72hr deadline status for a PSO call
+                // Announce 72hr deadline status for a PSO call. closed_at/
+                // cleared_at are in the list projection, but
+                // process_served_to is ext-only (see voice_serve above) —
+                // fetch the detail for that one field rather than always
+                // falling back to caller_name.
                 const call = calls.find(c => c.call_number === action.callNumber);
                 if (call) {
-                  const terminalTime = (call as any).closed_at || (call as any).cleared_at;
+                  const terminalTime = call.closed_at || call.cleared_at;
                   if (terminalTime) {
                     const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                     const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                     const caseNum = call.case_number || call.call_number;
-                    announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
+                    apiFetch<any>(`/dispatch/calls/${call.id}`)
+                      .then((full) => announceCourtDeadline(caseNum, hoursLeft, full?.process_served_to || call.caller_name))
+                      .catch(() => announceCourtDeadline(caseNum, hoursLeft, call.caller_name));
                   } else {
                     announceCallUpdate('', `Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
                   }

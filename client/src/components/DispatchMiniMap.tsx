@@ -190,8 +190,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // GPS poll never re-centers the map ("reload while the unit moves") or
   // disturbs the static call pin.
   useEffect(() => {
-    if (!loaded || !mapRef.current) return;
-    const map = mapRef.current;
+    // Deliberately does NOT bail on `!mapRef.current` — the block below at
+    // `if (!mapRef.current) { ... }` is what CREATES the map on first run,
+    // when the ref is still null. Bailing here as well made the map creation
+    // branch unreachable: the mini-map never initialized on first mount, or
+    // after a WebGL-loss rebuild (which also nulls mapRef.current).
+    if (!loaded) return;
 
     // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
     // so a call with bad coordinates never anchors the map / drops a teardrop.

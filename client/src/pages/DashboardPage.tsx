@@ -17,6 +17,7 @@ import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import { humanizePriority } from '../utils/statusLabels';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
+import DashboardMiniMap from '../components/DashboardMiniMap';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -1156,6 +1157,9 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Live Situational Map */}
+        <DashboardMiniMap />
       </div>
       </div>
       </SpmGroup>

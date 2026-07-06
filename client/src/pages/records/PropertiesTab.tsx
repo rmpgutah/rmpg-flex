@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, Building2, Shield, MapPin, FileWarning, Trash2, Pencil, X, Phone,
   AlertTriangle, Calendar, Archive, RotateCcw, Globe, Users, Key, FileText, Wrench,
-  Camera, ArrowUpDown, Filter, Eye, Navigation,
+  Camera, ArrowUpDown, Filter, Eye, Navigation, LocateFixed,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -144,6 +145,8 @@ export interface PropertiesTabState {
   clients: { id: string; name: string; status: string }[];
   properties: Property[];
   propertySubmitError: string | null;
+  regeocoding: boolean;
+  handleRegeocode: () => Promise<void>;
 }
 
 // ════════════════════════════════════════════════════
@@ -163,6 +166,8 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
   const [propertySubmitting, setPropertySubmitting] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [propertySubmitError, setPropertySubmitError] = useState<string | null>(null);
+  const [regeocoding, setRegeocoding] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (openNewTrigger && openNewTrigger > 0) {
@@ -208,6 +213,65 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
   const openNewProperty = () => { setPropertySubmitError(null); setEditingProperty(undefined); setPropertyModalOpen(true); };
   const closeModal = () => { setPropertySubmitError(null); setPropertyModalOpen(false); setEditingProperty(undefined); };
 
+  // Re-geocode the selected property's address at rooftop precision.
+  //
+  // Why this exists: property lat/lng is usually captured via the
+  // Nominatim-backed /geocode/search endpoint (see src/routes/geocode.ts),
+  // which does TIGER/OSM address-interpolation — it estimates a point
+  // along the street segment nearest the address range rather than the
+  // true building location. For most addresses that's close enough to
+  // read fine on a map, but it can visibly land the point ON the road
+  // centerline instead of offset onto the parcel (confirmed on a live
+  // generated Property Location Map, 2026-07-04). Mapbox's geocoder
+  // returns better rooftop-level precision for most US addresses, so
+  // this re-queries Mapbox specifically (not Nominatim) and overwrites
+  // the stored coordinate — an explicit, officer-triggered action rather
+  // than an automatic background correction, since a wrong overwrite is
+  // worse than a merely-imprecise existing value.
+  const handleRegeocode = async () => {
+    if (!selectedProperty) return;
+    const address = [
+      selectedProperty.address, selectedProperty.city, selectedProperty.state, selectedProperty.zip,
+    ].filter(Boolean).join(', ').trim();
+    if (!address) {
+      addToast('No address on file to re-geocode.', 'error');
+      return;
+    }
+    setRegeocoding(true);
+    try {
+      const tokenRes = await apiFetch<{ configured: boolean; accessToken?: string }>(
+        '/integrations/mapbox/client-token',
+      );
+      if (!tokenRes.configured || !tokenRes.accessToken) {
+        addToast('Mapbox is not configured — cannot re-geocode.', 'error');
+        return;
+      }
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json`
+        + `?access_token=${encodeURIComponent(tokenRes.accessToken)}&types=address&limit=1&country=us`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Mapbox geocoding failed (${resp.status})`);
+      const data = await resp.json() as { features?: Array<{ center?: [number, number] }> };
+      const center = data.features?.[0]?.center;
+      if (!center || center.length !== 2) {
+        addToast('Mapbox found no match for this address.', 'error');
+        return;
+      }
+      const [lng, lat] = center;
+      const updatedRow = await apiFetch<Record<string, unknown>>(`/records/properties/${selectedProperty.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      });
+      setSelectedProperty(mapDbProperty(updatedRow));
+      await fetchProperties();
+      addToast(`Coordinate updated: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Re-geocode failed';
+      addToast(msg, 'error');
+    } finally {
+      setRegeocoding(false);
+    }
+  };
+
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
     setSelectedProperty(null);
     await handleArchiveRecord(type, id);
@@ -235,6 +299,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
     clients, properties, propertySubmitError,
+    regeocoding, handleRegeocode,
   };
 }
 
@@ -483,6 +548,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
     selectedProperty, showArchived,
     openEditProperty, setDeleteTarget, handleArchive, handleUnarchive,
     linkRefreshKey, openLinkModal,
+    regeocoding, handleRegeocode,
   } = state;
 
   if (!selectedProperty) return null;
@@ -521,6 +587,17 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           <div className="ml-auto flex items-center gap-1">
             {(!showArchived || user?.role === 'admin') && (
               <>
+                {selectedProperty.address && (
+                  <button
+                    type="button"
+                    onClick={handleRegeocode}
+                    disabled={regeocoding}
+                    className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors disabled:opacity-40 disabled:cursor-wait"
+                    title="Re-geocode address (fixes an imprecise coordinate that can land the map pin on the road instead of the building)"
+                  >
+                    <LocateFixed className={`w-3 h-3 ${regeocoding ? 'animate-pulse' : ''}`} />
+                  </button>
+                )}
                 <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>

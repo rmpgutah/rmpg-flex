@@ -13,7 +13,9 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
       // Synchronously apply theme before React loads to prevent flash-of-wrong-theme (FOUC).
-      // Resolution order: legacy flag → blue-silver flag → manual override →
+      // Resolution order: legacy flag → blue-silver (DEFAULT ON as of 2026-07-04's
+      // app-wide blue/silver/white/red re-theme; set rmpg_theme_blue_silver='0' to
+      // opt back out to the retired gold day/night scheme) → manual override →
       // time-of-day schedule (06:00–18:00 day).
       // Keep storage keys + valid values in sync with client/src/utils/theme.ts.
       (function () {
@@ -23,7 +25,7 @@
           try { legacy = localStorage.getItem('rmpg_theme_legacy') === '1'; } catch (e) {}
           var blueSilver = false;
           if (!legacy) {
-            try { blueSilver = localStorage.getItem('rmpg_theme_blue_silver') === '1'; } catch (e) {}
+            try { blueSilver = localStorage.getItem('rmpg_theme_blue_silver') !== '0'; } catch (e) { blueSilver = true; }
           }
 
           var theme;
@@ -101,7 +103,7 @@
       the CSP header and all inline <script>/<style> tags. This requires server-side
       rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://tile.openweathermap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
   </head>

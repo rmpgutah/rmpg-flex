@@ -8,6 +8,7 @@ import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { asArray } from '../../../utils/asArray';
 import { toDisplayLabel } from '../../../utils/formatters';
 interface PIP {
   id: number;
@@ -58,11 +59,11 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   const load = async () => {
     setLoading(true);
     try {
-      try { const data = await apiFetch<any[]>('/hr/pips'); setPips(data); } catch { addToast('Failed to load PIPs', 'error'); }
+      try { const data = await apiFetch<any[]>('/hr/pips'); setPips(asArray(data)); } catch { addToast('Failed to load PIPs', 'error'); }
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(d.filter((o: any) => o.status === 'active'))).catch(() => {}); }, []);
+  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(asArray(d).filter((o: any) => o.status === 'active'))).catch(() => {}); }, []);
 
   // Escape to close form
   useEffect(() => {

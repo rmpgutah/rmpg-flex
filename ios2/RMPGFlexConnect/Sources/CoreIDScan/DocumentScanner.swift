@@ -467,17 +467,14 @@ public struct DocumentScannerView: View {
     }
 }
 
-/// In-app document-scanning camera (VisionKit) — live preview with automatic
-/// edge detection and perspective correction, purpose-built for scanning
-/// documents like IDs rather than taking a generic photo.
-struct DocumentCameraView: UIViewControllerRepresentable {
-    let onCapture: ([UIImage]) -> Void
-    let onCancel: () -> Void
+struct CameraCaptureView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
 
-    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
-        let controller = VNDocumentCameraViewController()
-        controller.delegate = context.coordinator
-        return controller
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
     }
 
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}

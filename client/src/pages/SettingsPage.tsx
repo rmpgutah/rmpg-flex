@@ -43,6 +43,7 @@ import {
 } from '../utils/mapPreferences';
 import { MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, type MapStyleId } from './map/utils/mapConstants';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import type { RadioChannel } from './radio/types';
 import { getPttPrefs, setPttPrefs, keyCodeLabel, type PttPreferences } from '../utils/pttPreferences';
 import { saveAsOrgDefault } from '../utils/settingsSync';
@@ -325,7 +326,11 @@ export default function SettingsPage() {
     // check, but keep the UI toggle in sync so it doesn't look stuck on).
     if (on && blueSilver) {
       setBlueSilver(false);
-      try { localStorage.removeItem(BLUE_SILVER_FLAG_KEY); } catch { /* storage unavailable */ }
+      // Blue & Silver defaults ON (isBlueSilverForced() treats an absent key
+      // as on) — write an explicit '0' here, not removeItem, or switching to
+      // legacy would leave the flag unset and Blue & Silver would silently
+      // stay in effect underneath it.
+      try { localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0'); } catch { /* storage unavailable */ }
     }
     // Re-resolve so the change is visible immediately.
     applyThemePreference(resolveCurrentTheme(), { persist: false });
@@ -334,8 +339,11 @@ export default function SettingsPage() {
   function toggleBlueSilver(on: boolean) {
     setBlueSilver(on);
     try {
-      if (on) localStorage.setItem(BLUE_SILVER_FLAG_KEY, '1');
-      else localStorage.removeItem(BLUE_SILVER_FLAG_KEY);
+      // Blue & Silver is the app-wide default (isBlueSilverForced() treats an
+      // absent/'1' key as on) — write explicit '1'/'0' rather than
+      // setItem/removeItem so "off" actually opts out instead of reverting
+      // to "unset", which the default-on polarity would treat as still on.
+      localStorage.setItem(BLUE_SILVER_FLAG_KEY, on ? '1' : '0');
     } catch { /* storage unavailable */ }
     if (on && legacyBlack) {
       setLegacyBlack(false);
@@ -358,7 +366,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setPttChannelsLoading(true);
     apiFetch<RadioChannel[]>('/radio/channels')
-      .then(setPttChannels)
+      .then((data) => setPttChannels(asArray<RadioChannel>(data)))
       .catch(() => { /* offline */ })
       .finally(() => setPttChannelsLoading(false));
   }, []);
@@ -545,8 +553,8 @@ export default function SettingsPage() {
               onChange={toggleLegacyBlack}
             />
             <ToggleRow
-              label="Blue & Silver mode"
-              description="Deep navy-blue surfaces with a silver accent in place of gold. Overrides the Auto/Night/Day schedule until switched off."
+              label="Blue & Silver mode (default)"
+              description="Deep navy-blue surfaces with a silver accent — the app's default theme as of 2026-07-04. Turn off to use the retired gold Auto/Night/Day schedule instead."
               checked={blueSilver}
               onChange={toggleBlueSilver}
             />

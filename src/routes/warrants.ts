@@ -9,8 +9,20 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
+
+// Warrant data (active warrants, per-person profiles) is sworn-side law
+// enforcement data — not everyone with a valid session should see it.
+// client_viewer is this system's external/business-facing role (see
+// CLAUDE.md role list) and has no legitimate reason to query it.
+warrants.use('*', async (c, next) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (user?.role === 'client_viewer') return c.json({ error: 'Forbidden' }, 403);
+  await next();
+});
 
 // GET / — list warrants with pagination + status filter
 // Used by DashboardPage (per_page=1 for count) and WarrantsPage (full list).
@@ -296,4 +308,152 @@ warrants.post('/search-all', async (c) => {
   if (response.scraped.length) response.meta.sources.push('scraped');
   return c.json(response);
 });
+// GET /national-coverage — per-state source/warrant counts for the
+// NationalWarrantSearchPage coverage map. A state counts as 'active' if it
+// has at least one enabled source, from EITHER national_warrant_sources
+// (config-driven) or the code-resident ADAPTERS registry (excluding the
+// FBI adapter's state:'US' — that's federal, not state-specific coverage).
+warrants.get('/national-coverage', async (c) => {
+  const db = getDb(c.env);
+
+  const configRows = await query<{ state: string | null; enabled: number }>(
+    db, `SELECT state, enabled FROM national_warrant_sources WHERE enabled = 1`,
+  );
+  const codeAdapters = await getEnabledAdapters(db);
+
+  const stateSources = new Map<string, number>();
+  for (const row of configRows) {
+    if (!row.state) continue;
+    const code = row.state.toUpperCase();
+    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
+  }
+  for (const adapter of codeAdapters) {
+    if (adapter.meta.state === 'US') continue;
+    const code = adapter.meta.state.toUpperCase();
+    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
+  }
+
+  // Utah is always covered regardless of national_warrant_sources /
+  // warrant_scraper_config state: it has its own dedicated poller/pipeline
+  // (utahWarrantPoller.ts / runUtahWarrantScan), entirely separate from the
+  // generic code-adapter registry gating that getEnabledAdapters applies.
+  // The `utah-warrant-watch` adapter key is never seeded into
+  // warrant_scraper_config by any migration, so getEnabledAdapters correctly
+  // (and misleadingly, for this route's purposes) excludes it when the table
+  // has no Utah row — see src/routes/scrapers.ts's `POST /:key/trigger`
+  // handler for the same always-on special-case precedent. Guard with
+  // `!stateSources.has('UT')` so this stays idempotent if getEnabledAdapters
+  // ever does return a UT-keyed adapter (e.g. fail-open on a missing table).
+  if (!stateSources.has('UT')) {
+    stateSources.set('UT', 1);
+  }
+
+  const warrantCountRows = await query<{ state: string | null; n: number }>(
+    db, `SELECT state, COUNT(*) as n FROM scraped_warrants WHERE status = 'active' GROUP BY state`,
+  );
+  const stateWarrants = new Map<string, number>();
+  for (const row of warrantCountRows) {
+    if (!row.state) continue;
+    stateWarrants.set(row.state.toUpperCase(), row.n);
+  }
+
+  const state_sources: Record<string, number> = {};
+  const state_warrants: Record<string, number> = {};
+  const state_status: Record<string, string> = {};
+  const states = US_STATES.map(({ code, name }) => {
+    const sourceCount = stateSources.get(code) ?? 0;
+    const warrantCount = stateWarrants.get(code) ?? 0;
+    const available = sourceCount > 0;
+    state_sources[code] = sourceCount;
+    state_warrants[code] = warrantCount;
+    state_status[code] = available ? 'active' : 'disabled';
+    return {
+      stateCode: code,
+      stateName: name,
+      available,
+      ...(available ? {} : { message: 'No active sources configured' }),
+    };
+  });
+
+  const states_covered = states.filter((s) => s.available).length;
+  const sources = Object.values(state_sources).reduce((a, b) => a + b, 0);
+  const active_warrants = Object.values(state_warrants).reduce((a, b) => a + b, 0);
+
+  return c.json({
+    states,
+    updatedAt: new Date().toISOString(),
+    sources,
+    states_covered,
+    active_warrants,
+    state_status,
+    state_sources,
+    state_warrants,
+  });
+});
+
+// POST /national-search — federated search across scraped_warrants +
+// local warrants, with strict DOB/age match confirmation. Read-only: never
+// sets status/cleared_at — clearing stays governed exclusively by
+// src/utils/warrantSources/runScan.ts's "never wrongly clear" invariant.
+warrants.post('/national-search', async (c) => {
+  const startedAt = Date.now();
+  type NationalSearchBody = {
+    first_name?: string; last_name?: string; dob?: string; state?: string;
+    offense_level?: string; warrant_type?: string; charge_keyword?: string;
+  };
+  const body = await c.req.json<NationalSearchBody>().catch(() => ({} as NationalSearchBody));
+
+  if (!body.first_name && !body.last_name && !body.state) {
+    return c.json({ error: 'At least one of first_name, last_name, or state is required' }, 400);
+  }
+
+  const db = getDb(c.env);
+  const queryDob = body.dob ?? null;
+
+  const scrapedWhere: string[] = [];
+  const scrapedParams: unknown[] = [];
+  if (body.first_name) { scrapedWhere.push('first_name LIKE ?'); scrapedParams.push(`%${body.first_name}%`); }
+  if (body.last_name) { scrapedWhere.push('last_name LIKE ?'); scrapedParams.push(`%${body.last_name}%`); }
+  if (body.state) { scrapedWhere.push('UPPER(state) = ?'); scrapedParams.push(body.state.toUpperCase()); }
+  if (body.offense_level) { scrapedWhere.push('UPPER(offense_level) = ?'); scrapedParams.push(body.offense_level.toUpperCase()); }
+  if (body.warrant_type) { scrapedWhere.push('UPPER(warrant_type) = ?'); scrapedParams.push(body.warrant_type.toUpperCase()); }
+  if (body.charge_keyword) { scrapedWhere.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge_keyword}%`); }
+
+  const scrapedSql = `SELECT * FROM scraped_warrants${scrapedWhere.length ? ' WHERE ' + scrapedWhere.join(' AND ') : ''}`;
+  const scrapedRows = await query<Record<string, unknown>>(db, scrapedSql, ...scrapedParams);
+
+  const by_state: Record<string, ReturnType<typeof mapScrapedWarrantRow>[]> = {};
+  for (const row of scrapedRows) {
+    if (!matchesDobOrAge(queryDob, { dob: (row.date_of_birth as string) ?? null, age: (row.age as number) ?? null })) continue;
+    const mapped = mapScrapedWarrantRow(row);
+    const stateKey = ((row.state as string) ?? 'UNKNOWN').toUpperCase();
+    if (!by_state[stateKey]) by_state[stateKey] = [];
+    by_state[stateKey].push(mapped);
+  }
+
+  const localWhere: string[] = [];
+  const localParams: unknown[] = [];
+  if (body.first_name) { localWhere.push('subject_first_name LIKE ?'); localParams.push(`%${body.first_name}%`); }
+  if (body.last_name) { localWhere.push('subject_last_name LIKE ?'); localParams.push(`%${body.last_name}%`); }
+  if (body.offense_level) { localWhere.push('UPPER(offense_level) = ?'); localParams.push(body.offense_level.toUpperCase()); }
+  if (body.warrant_type) { localWhere.push("UPPER(COALESCE(warrant_type, type)) = ?"); localParams.push(body.warrant_type.toUpperCase()); }
+  if (body.charge_keyword) { localWhere.push('COALESCE(charge_description, offense_description, offense) LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
+
+  const localSql = `SELECT * FROM warrants${localWhere.length ? ' WHERE ' + localWhere.join(' AND ') : ''}`;
+  const localRows = await query<Record<string, unknown>>(db, localSql, ...localParams);
+
+  const local = localRows
+    .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
+    .map(mapLocalWarrantRow);
+
+  const total = Object.values(by_state).reduce((a, arr) => a + arr.length, 0) + local.length;
+
+  return c.json({
+    total,
+    search_time_ms: Date.now() - startedAt,
+    by_state,
+    local,
+  });
+});
+
 export default warrants;

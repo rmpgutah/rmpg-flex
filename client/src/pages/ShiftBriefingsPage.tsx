@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { parseTimestamp } from '../utils/dateUtils';
@@ -76,7 +77,7 @@ export default function ShiftBriefingsPage() {
     setLoading(true);
     try {
       const data = await apiFetch<Briefing[]>('/api/shift-briefings');
-      setBriefings(data);
+      setBriefings(asArray<Briefing>(data));
     } catch (err) {
       console.error('Failed to load briefings', err);
     } finally {
@@ -87,7 +88,7 @@ export default function ShiftBriefingsPage() {
   async function loadSafetyAlerts() {
     try {
       const data = await apiFetch<SafetyAlert[]>('/api/shift-briefings/officer-safety/alerts');
-      setSafetyAlerts(data);
+      setSafetyAlerts(asArray<SafetyAlert>(data));
     } catch (err) {
       console.error('Failed to load safety alerts', err);
     }

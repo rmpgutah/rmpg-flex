@@ -4646,4 +4646,115 @@ fleet.get('/:id/readiness', async (c) => {
   }
 });
 
+// ── Fleet Expenses — per-vehicle expense tracking (2026-07-04) ──
+// Backs FleetExpensesTab.tsx. Registration/tolls/parking/tickets/etc.
+// Manager-tier write gate already applied at the router level (top
+// of this file) — no per-route role check needed here.
+
+fleet.get('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('vehicleId'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const rows = await query(
+      db,
+      `SELECT * FROM fleet_expenses WHERE vehicle_id = ? ORDER BY expense_date DESC, id DESC`,
+      vehicleId,
+    );
+    return c.json({ data: rows });
+  } catch (err) { console.error('GET /fleet/:vehicleId/expenses failed:', err); return dbErrorResponse(c, err, 'Failed to fetch vehicle expenses'); }
+});
+
+fleet.post('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  const db = getDb(c.env);
+  const vehicleId = Number(c.req.param('vehicleId'));
+  if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+
+  const user = c.get('user') as { id: number } | undefined;
+  const body = await c.req.json<{
+    expense_date?: string; category?: string; amount?: number; vendor?: string | null;
+    description?: string | null; receipt_path?: string | null; odometer_reading?: number | null;
+    recurring?: boolean; recurring_frequency?: string | null; notes?: string | null;
+  }>();
+  if (!body.expense_date || !body.category || body.amount === undefined) {
+    return c.json({ error: 'expense_date, category, and amount are required' }, 400);
+  }
+
+  try {
+    const result = await execute(
+      db,
+      `INSERT INTO fleet_expenses
+       (vehicle_id, expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      vehicleId,
+      body.expense_date,
+      body.category,
+      body.amount,
+      body.vendor ?? null,
+      body.description ?? null,
+      body.receipt_path ?? null,
+      body.odometer_reading ?? null,
+      body.recurring ? 1 : 0,
+      body.recurring_frequency ?? null,
+      body.notes ?? null,
+      user?.id ?? null,
+    );
+    return c.json({ id: result.meta.last_row_id, success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] create failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to create expense');
+  }
+});
+
+const EXPENSE_FIELDS = [
+  'expense_date', 'category', 'amount', 'vendor', 'description', 'receipt_path',
+  'odometer_reading', 'recurring', 'recurring_frequency', 'notes',
+] as const;
+
+fleet.put('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const field of EXPENSE_FIELDS) {
+    if (field in body) {
+      sets.push(`${field} = ?`);
+      values.push(field === 'recurring' ? (body[field] ? 1 : 0) : body[field]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+
+  sets.push(`updated_at = datetime('now')`);
+  values.push(id);
+  try {
+    await execute(db, `UPDATE fleet_expenses SET ${sets.join(', ')} WHERE id = ?`, ...values);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] update failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to update expense');
+  }
+});
+
+fleet.delete('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  try {
+    await execute(db, 'DELETE FROM fleet_expenses WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to delete expense');
+  }
+});
+
 export default fleet;

@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { humanizeCaseType } from '../utils/statusLabels';
+import { asArray } from '../utils/asArray';
 import {
   Microscope, Plus, Search, Filter, ChevronRight, FileText, Clock, AlertTriangle,
   CheckCircle, XCircle, Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
@@ -469,9 +470,9 @@ export default function ForensicLabPage() {
       // live (not implemented in src/routes/forensics.ts as of this PR), so the
       // .catch() coerces to empty + the panels show "No links / hashes" rather
       // than spamming the toast queue. Re-enable once the server endpoints land.
-      apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
+      apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(asArray(l))).catch(() => setCaseLinks([]));
       apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
-        .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
+        .then(d => { setHashes(asArray(d?.hashes)); setHashStats(d?.stats || null); })
         .catch(() => { setHashes([]); setHashStats(null); });
     } catch (err: any) {
       if (err?.name === 'AbortError') return;

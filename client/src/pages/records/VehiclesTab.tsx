@@ -4,6 +4,7 @@ import {
   X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -338,7 +339,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
     if (selectedVehicle) {
       setLoadingVehicleIncidents(true);
       apiFetch<any[]>(`/records/vehicles/${selectedVehicle.id}/incidents`)
-        .then(setVehicleIncidents)
+        .then((data) => setVehicleIncidents(asArray(data)))
         .catch(() => setVehicleIncidents([]))
         .finally(() => setLoadingVehicleIncidents(false));
     } else {

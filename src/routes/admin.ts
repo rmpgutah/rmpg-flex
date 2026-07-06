@@ -17,6 +17,15 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
   return null;
 }
 
+// system_config is a shared flat key/value bag — third-party API keys/secrets
+// (see ALLOWED_THIRD_PARTY_KEYS below) live in the SAME table as ordinary UI
+// config (dropdown defaults, feature flags, etc.), distinguished only by
+// naming convention. Any route that dumps this table (like GET /config below)
+// must exclude secret-shaped keys or it becomes a plaintext secret leak to
+// every admin/manager/supervisor account — a much lower bar than the
+// dedicated /third-party-keys endpoints' redact-to-{configured:boolean}.
+const SECRET_KEY_PATTERN = /_(api_key|access_key|access_key_id|secret|secret_access_key|token|password|client_secret|app_key|key_id|webhook_url|webhook_token)$/i;
+
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
@@ -56,7 +65,7 @@ admin.get('/config', async (c) => {
             config_value: value,
           });
         } catch { /* malformed row — skip */ }
-      } else {
+      } else if (!SECRET_KEY_PATTERN.test(key)) {
         result[key] = value;
       }
     }

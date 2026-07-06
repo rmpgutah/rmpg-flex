@@ -24,6 +24,18 @@ import type { CallForService, Unit, UnitStatus } from '../types';
 
 const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
+// `call.assigned_units` can arrive as id strings/numbers OR as full unit
+// objects (the call-detail endpoint returns objects). Normalize to a Set of
+// id-strings so assigned-unit matching works either way — `.includes(String(u.id))`
+// is always false when the array holds objects, which silently dropped every
+// assigned unit marker (and the map's fit-bounds) for a selected call. Mirrors
+// assignedUnitIdSet() in DispatchMiniMap.tsx.
+function assignedUnitIdSet(call: { assigned_units?: unknown } | null | undefined): Set<string> {
+  const a = (call as { assigned_units?: unknown } | null | undefined)?.assigned_units;
+  if (!Array.isArray(a)) return new Set();
+  return new Set(a.map((x) => String(x && typeof x === 'object' ? (x as { id: unknown }).id : x)));
+}
+
 interface MapboxMiniMapProps {
   call: CallForService | null;
   units: Unit[];
@@ -130,13 +142,15 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   // With a call selected, show only units assigned to it (existing
   // behavior). With no call selected — e.g. the CAD board before a call is
   // picked — fall back to every unit with a GPS fix so the map isn't blank.
-  const assignedUnits = useMemo(() =>
-    units.filter(u => {
+  const assignedUnits = useMemo(() => {
+    const assignedIds = assignedUnitIdSet(call);
+    return units.filter(u => {
       if (u.latitude == null || u.longitude == null) return false;
-      return call ? !!call.assigned_units?.includes(String(u.id)) : true;
-    }),
-    [units, call],
-  );
+      if (!call) return true;
+      return assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call.id));
+    });
+  }, [units, call]);
 
   // Initialize Mapbox map
   useEffect(() => {

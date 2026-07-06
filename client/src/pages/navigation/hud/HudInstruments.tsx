@@ -291,12 +291,22 @@ export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   );
 }
 
+/** One lane's guidance state at a maneuver — mirrors RouteStepLane's shape (this
+ *  file intentionally defines its own types rather than importing from
+ *  useMapRouting.ts, per this lane's "no cross-lane imports" convention). */
+interface HudLane {
+  valid: boolean;
+  active: boolean;
+  indications: string[];
+}
+
 // ── #41/#42 — next-maneuver mini-icon + progress micro-bar ───────────────────────
 export function HudNextManeuver({
-  maneuverType, modifier, instruction, distanceToTurnMeters, stepDistanceMeters,
+  maneuverType, modifier, instruction, distanceToTurnMeters, stepDistanceMeters, lanes,
 }: {
   maneuverType: string | null; modifier?: string; instruction?: string;
   distanceToTurnMeters: number | null; stepDistanceMeters: number | null;
+  lanes?: HudLane[];
 }) {
   if (!maneuverType) return null;
   const Icon = maneuverIconFor(maneuverType, modifier);
@@ -318,8 +328,40 @@ export function HudNextManeuver({
       <div className="h-1 bg-rmpg-800 overflow-hidden" style={{ borderRadius: 2 }}>
         <div className="h-full" style={{ width: `${Math.round(frac * 100)}%`, background: '#d4a017', transition: 'width 0.4s ease-out' }} />
       </div>
+      {lanes && lanes.length > 0 && (
+        <div data-testid="lane-strip" className="flex items-center gap-1 mt-0.5">
+          {lanes.map((lane, i) => (
+            <ArrowUp
+              key={i}
+              data-testid="lane-icon"
+              data-lane-valid={lane.valid}
+              data-lane-active={lane.active}
+              aria-hidden="true"
+              className="w-3 h-3"
+              style={{
+                color: lane.valid ? '#d4a017' : 'var(--rmpg-700)',
+                transform: laneRotation(lane.indications),
+                ...(lane.active ? { filter: 'drop-shadow(0 0 2px #d4a017)' } : {}),
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+/** Rough rotation for a lane's primary indication — good enough for a small icon strip.
+ * Priority: hard turns > straight > slight turns. A lane valid for both "straight" and a
+ * slight variant renders upright, not tilted, so officers don't read a mandatory-turn cue
+ * where none exists. */
+function laneRotation(indications: string[]): string {
+  if (indications.includes('left')) return 'rotate(-45deg)';
+  if (indications.includes('right')) return 'rotate(45deg)';
+  if (indications.includes('straight')) return 'rotate(0deg)';
+  if (indications.includes('slight left')) return 'rotate(-22deg)';
+  if (indications.includes('slight right')) return 'rotate(22deg)';
+  return 'rotate(0deg)';
 }
 
 // ── #30/#58 — track export cluster ────────────────────────────────────────────

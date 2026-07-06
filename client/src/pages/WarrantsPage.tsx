@@ -29,6 +29,7 @@ import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
 import EmptyState from '../components/EmptyState';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
@@ -2510,8 +2511,9 @@ export default function WarrantsPage() {
                         <div className="text-green-400">{formatDateTime(selectedWarrant.served_at)}</div>
                         {selectedWarrant.served_by_name && <div className="text-rmpg-500 text-[9px]">{selectedWarrant.served_by_name}</div>}
                         {selectedWarrant.served_location && (
-                          <div className="text-rmpg-500 text-[9px] flex items-center gap-0.5 mt-0.5">
+                          <div className="text-rmpg-500 text-[9px] flex items-center gap-1 mt-0.5">
                             <MapPin className="w-2.5 h-2.5" /> {selectedWarrant.served_location}
+                            <ViewOnMapLink address={selectedWarrant.served_location} label={selectedWarrant.subject_name || undefined} />
                           </div>
                         )}
                       </div>
@@ -2575,7 +2577,10 @@ export default function WarrantsPage() {
                       {selectedWarrant.subject_address && (
                         <div className="col-span-2">
                           <span className="text-rmpg-500 text-[9px]">Address</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_address}</div>
+                          <div className="text-rmpg-300 flex items-center gap-1.5">
+                            {selectedWarrant.subject_address}
+                            <ViewOnMapLink address={selectedWarrant.subject_address} label={selectedWarrant.subject_name || undefined} />
+                          </div>
                           <div className="mt-1">
                             <JurisdictionLookup address={selectedWarrant.subject_address} />
                           </div>
