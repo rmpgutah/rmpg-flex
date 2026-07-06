@@ -14,6 +14,7 @@ import { apiFetch } from './useApi';
 import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
 import { asArray } from '../utils/asArray';
+import { safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -124,9 +125,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
 
     if (!enabled || geofences.length === 0) {
       [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(GEOFENCE_SOURCE)) map.removeSource(GEOFENCE_SOURCE);
+      safeRemoveSource(map, GEOFENCE_SOURCE);
       return;
     }
 
@@ -149,8 +150,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         })),
     };
 
-    if (map.getSource(GEOFENCE_SOURCE)) {
-      (map.getSource(GEOFENCE_SOURCE) as mapboxgl.GeoJSONSource).setData(fc);
+    const existingSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, GEOFENCE_SOURCE);
+    if (existingSource) {
+      existingSource.setData(fc);
     } else {
       map.addSource(GEOFENCE_SOURCE, { type: 'geojson', data: fc });
 
@@ -198,9 +200,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
 
     return () => {
       [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(GEOFENCE_SOURCE)) map.removeSource(GEOFENCE_SOURCE);
+      safeRemoveSource(map, GEOFENCE_SOURCE);
     };
   }, [map, mapLoaded, enabled, geofences]);
 
