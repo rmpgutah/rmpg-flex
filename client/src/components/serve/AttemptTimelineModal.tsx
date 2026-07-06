@@ -71,7 +71,7 @@ export default function AttemptTimelineModal({ queueId, onClose }: AttemptTimeli
             <div className="text-[11px] text-rmpg-500 text-center py-6">No activity recorded for this job.</div>
           )}
           {!loading && !error && data?.timeline.map((entry, i) => (
-            <div key={i} className="border-b border-rmpg-800 last:border-0 pb-2">
+            <div key={`${entry.type}-${entry.timestamp}-${entry.data?.id ?? i}`} className="border-b border-rmpg-800 last:border-0 pb-2">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] text-rmpg-500 tabular-nums">
                   {parseTimestamp(entry.timestamp)?.toLocaleString() ?? entry.timestamp}

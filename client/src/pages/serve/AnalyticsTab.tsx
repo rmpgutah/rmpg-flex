@@ -666,7 +666,11 @@ export default function AnalyticsTab() {
                           loading={officerJobsLoading}
                           officerId={s.officer_id}
                           onOpenTimeline={setTimelineQueueId}
-                          onBulkActionComplete={() => { fetchWorkload(); toggleOfficerExpand(s.officer_id); }}
+                          onBulkActionComplete={async () => {
+                            fetchWorkload();
+                            const jobs = await apiFetch<ServeJob[]>(`/process-server?officer_id=${s.officer_id}`);
+                            setOfficerJobs(jobs ?? []);
+                          }}
                         />
                       </td>
                     </tr>
@@ -715,7 +719,7 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
 
   const handleBulkReassign = async () => {
     const toServerId = parseInt(reassignTarget, 10);
-    if (!toServerId || selectedAttemptIds.size === 0) return;
+    if (!toServerId || toServerId === officerId || selectedAttemptIds.size === 0) return;
     setSubmitting(true);
     try {
       const res = await apiFetch<BulkReassignResponse>('/serve-dashboard/bulk-reassign', {
@@ -776,7 +780,7 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
         />
         <button
           type="button"
-          disabled={submitting || selectedAttemptIds.size === 0 || !reassignTarget}
+          disabled={submitting || selectedAttemptIds.size === 0 || !reassignTarget || parseInt(reassignTarget, 10) === officerId}
           onClick={handleBulkReassign}
           className="text-[10px] px-2 py-1 rounded-[2px] bg-brand-500/10 border border-brand-500/30 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-40"
         >
