@@ -29,6 +29,7 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openForensicCasePdf } from '../utils/forensicCasePdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -1353,7 +1354,7 @@ export default function ForensicLabPage() {
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
                                     backgroundColor: (actionColors[ev.action] || 'var(--rmpg-500)') + '20',
                                     color: actionColors[ev.action] || 'var(--rmpg-500)',
-                                  }}>{ev.action}</span>
+                                  }}>{toDisplayLabel(ev.action)}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
                                     <span className="text-rmpg-500 mx-1">&rarr;</span>
@@ -1767,7 +1768,7 @@ export default function ForensicLabPage() {
                             <span className={`font-bold ${qc.details?.includes('PASS') ? 'text-green-400' : 'text-red-400'}`}>
                               {qc.details?.includes('PASS') ? 'PASS' : 'FAIL'}
                             </span>
-                            <span className="text-rmpg-400">{qc.action}</span>
+                            <span className="text-rmpg-400">{toDisplayLabel(qc.action)}</span>
                           </div>
                           <div className="text-rmpg-500 mt-0.5">{qc.performed_by_name} — {qc.performed_at}</div>
                           {qc.details && <div className="text-rmpg-300 mt-0.5 line-clamp-2">{qc.details}</div>}
@@ -1905,7 +1906,7 @@ export default function ForensicLabPage() {
                         m.action('Unlink entity', () => handleUnlinkEntity(link.id), { icon: <Unlink size={12} />, danger: true }),
                       ])}
                     >
-                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{toDisplayLabel(link.entity_type)}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
                       <IconButton onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link" aria-label="Remove link">

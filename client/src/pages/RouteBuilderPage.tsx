@@ -32,6 +32,7 @@ import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles 
 import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -718,7 +719,7 @@ export default function RouteBuilderPage() {
                       {wp.priority}
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#e5e5e5] truncate">{wp.incident_type}</div>
+                  <div className="text-[11px] text-[#e5e5e5] truncate">{toDisplayLabel(wp.incident_type)}</div>
                   <div className="text-[10px] text-[#666666] truncate flex items-center gap-1">
                     <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
                     {wp.location_address}

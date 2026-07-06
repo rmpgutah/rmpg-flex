@@ -15,6 +15,7 @@ import { downloadPdfReport } from '../../utils/pdfGenerator';
 import type { PdfReportType } from '../../utils/caseNumbers';
 import { apiFetch } from '../../hooks/useApi';
 import { fetchEntityImages } from '../../utils/pdfImageHelpers';
+import { toDisplayLabel } from '../../utils/formatters';
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
@@ -280,13 +281,13 @@ export default function IncidentDetailWindow() {
             {incident.weather_conditions && (
               <div>
                 <label className="text-[10px] text-rmpg-500">Weather</label>
-                <p className="text-rmpg-200">{incident.weather_conditions}</p>
+                <p className="text-rmpg-200">{toDisplayLabel(incident.weather_conditions)}</p>
               </div>
             )}
             {incident.lighting_conditions && (
               <div>
                 <label className="text-[10px] text-rmpg-500">Lighting</label>
-                <p className="text-rmpg-200">{incident.lighting_conditions}</p>
+                <p className="text-rmpg-200">{toDisplayLabel(incident.lighting_conditions)}</p>
               </div>
             )}
             {incident.injuries && incident.injuries !== 'none' && (

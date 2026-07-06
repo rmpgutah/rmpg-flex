@@ -35,6 +35,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
 } from '../utils/helpReferenceData';
@@ -953,7 +954,7 @@ export default function HelpPage() {
                     <div key={b.browser} className="flex items-center gap-4">
                       <span className="text-[10px] font-bold text-rmpg-200 w-36">{b.browser}</span>
                       <span className="text-[10px] font-mono text-rmpg-500 w-16">{b.version}</span>
-                      <span className="text-[10px] text-rmpg-400">{b.status}</span>
+                      <span className="text-[10px] text-rmpg-400">{toDisplayLabel(b.status)}</span>
                     </div>
                   ))}
                 </div>

@@ -12,7 +12,7 @@ import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { formatEnumValue } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { coded } from '../../../utils/searchText';
 interface Grievance {
   id: number;
@@ -245,7 +245,7 @@ export default function GrievancesTab() {
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{g.status.replace(/_/g, ' ')}</span>
                     <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
-                    <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{g.priority}</span>
+                    <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{toDisplayLabel(g.priority)}</span>
                   </div>
                   <h3 className="text-xs font-bold text-rmpg-100 truncate max-w-md">{g.subject}</h3>
                   <p className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{g.description}</p>

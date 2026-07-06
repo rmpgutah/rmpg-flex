@@ -5,6 +5,7 @@ import PanelTitleBar from '../../components/PanelTitleBar';
 import { apiFetch } from '../../hooks/useApi';
 import { usePsPricing } from '../../hooks/usePsBilling';
 import { formatUsd } from './psBillingHelpers';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Contract { id: number; client_id: number; client_name?: string; contract_number: string | null; contract_type: string | null; status: string; start_date: string; end_date: string | null; }
 interface Terms { contract_id: number; billing_trigger: string; sla_days: number | null; retainer_amount: number | null; rate_overrides_json: string | null; notes: string | null; }
@@ -99,7 +100,7 @@ export default function ContractsTab() {
                 {audit.map((a) => (
                   <tr key={a.id} className="border-b border-border-subtle">
                     <td className="text-rmpg-500 py-[2px]">{a.created_at}</td>
-                    <td className="text-[var(--brand-gold)]">{a.action}</td>
+                    <td className="text-[var(--brand-gold)]">{toDisplayLabel(a.action)}</td>
                     <td className="text-[var(--spm-text-muted)]">{a.user_name ?? '—'}</td>
                   </tr>
                 ))}

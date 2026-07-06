@@ -10,21 +10,27 @@ import { parseTimestamp } from './dateUtils';
 /**
  * Normalize a snake_case / lowercase enum value for display.
  *
- * `pso_client_request` → `PSO CLIENT REQUEST`
- * `in_progress`        → `IN PROGRESS`
+ * `pso_client_request` → `PSO Client Request`
+ * `in_progress`        → `In Progress`
  * `Christopher Zamora` → `Christopher Zamora` (free text passes through)
+ *
+ * Title Case with acronym-awareness, matching every other label formatter
+ * in this file (toDisplayLabel/formatLabel) — this used to shout in ALL
+ * CAPS ("PSO CLIENT REQUEST"), the only formatter in the module that did,
+ * which read as inconsistent shouting next to Title Case labels everywhere
+ * else on the same screen (status chips, warrant/CRM/serve-job badges, etc).
  *
  * Heuristic: a value is enum-like if it's a single token of lowercase
  * letters/digits/underscores, OR if it contains an underscore. Names,
  * addresses, and free-form text pass through untouched so we don't
- * accidentally uppercase data the user typed in mixed case.
+ * accidentally re-case data the user typed in mixed case.
  */
 export function formatEnumValue(s: string | null | undefined): string {
   if (s == null) return '';
   const trimmed = String(s).trim();
   if (!trimmed) return '';
   const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
-  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
+  return isEnumLike ? toDisplayLabel(trimmed) : trimmed;
 }
 
 /**

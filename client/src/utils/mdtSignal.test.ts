@@ -12,6 +12,11 @@ describe('mdtSignal', () => {
     expect(describeSignal(msg('scan'))).toContain('DL Search');
   });
 
+  it('builds a subject name from first_name/last_name when no combined name field is sent (iOS payload shape)', () => {
+    expect(describeSignal(msg('person', { first_name: 'John', last_name: 'Doe', dob: '1990-01-01' })))
+      .toContain('John Doe');
+  });
+
   it('describes the new signals', () => {
     expect(describeSignal(msg('alpr_hit', { plate: '7ABC123', detail: 'STOLEN' }))).toContain('ALPR HIT');
     expect(describeSignal(msg('alpr_hit', { plate: '7ABC123', detail: 'STOLEN' }))).toContain('STOLEN');
@@ -34,6 +39,18 @@ describe('mdtSignal', () => {
     expect(routeForSignal('shift_summary')).toBeNull();
     expect(routeForSignal('cfs_action')).toBeNull();
     expect(routeForSignal('evidence')).toBeNull();
+  });
+
+  it('carries the scanned subject as DlSearchPage deep-link query params so the MDT opens the full record', () => {
+    const dest = routeForSignal('person', {
+      first_name: 'John', last_name: 'Doe', dob: '1990-01-01', id_number: 'D1234567', id_state: 'UT',
+    });
+    expect(dest).toBe('/dl-search?dl=D1234567&first=John&last=Doe&dob=1990-01-01&state=UT');
+  });
+
+  it('falls back to a bare /dl-search when the scan signal has no usable subject fields', () => {
+    expect(routeForSignal('scan', {})).toBe('/dl-search');
+    expect(routeForSignal('person')).toBe('/dl-search');
   });
 
   it('escalates severity for hits / OOS', () => {

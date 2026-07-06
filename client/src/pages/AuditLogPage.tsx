@@ -36,6 +36,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { openAuditLogPdf, type AuditLogEntryForPdf } from '../utils/auditLogPdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Roles that may access the audit log. AdminRoute at the router level already
 // gates to admin+manager, but we add a belt-and-suspenders in-page gate so
@@ -620,7 +621,7 @@ const AuditLogPage: React.FC = () => {
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/50 space-y-0.5">
                   {stats.topActions.slice(1, 4).map((a) => (
                     <div key={a.action} className="flex items-center justify-between text-[9px]">
-                      <span className="text-rmpg-400 truncate">{a.action}</span>
+                      <span className="text-rmpg-400 truncate">{toDisplayLabel(a.action)}</span>
                       <span className="text-rmpg-500 font-mono ml-2">{a.count}</span>
                     </div>
                   ))}
@@ -940,7 +941,7 @@ const AuditLogPage: React.FC = () => {
                     <td className="px-3 py-1.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">
                         <div>
-                          <div className="text-rmpg-200">{log.entity_type}</div>
+                          <div className="text-rmpg-200">{toDisplayLabel(log.entity_type)}</div>
                           <div className="text-rmpg-400 font-mono">{log.entity_id}</div>
                         </div>
                         {route && <ExternalLink className="w-3 h-3 text-brand-400 opacity-60" aria-hidden />}

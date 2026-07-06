@@ -3,6 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Bulletin {
   id: number;
@@ -239,7 +240,7 @@ export default function IntelBulletinsPage() {
                     {typeLabels[b.type] || b.type}
                   </span>
                   {b.status !== 'active' && (
-                    <span className="px-1.5 py-0.5 text-[9px] bg-[#333333] text-gray-400 rounded-sm uppercase">{b.status}</span>
+                    <span className="px-1.5 py-0.5 text-[9px] bg-[#333333] text-gray-400 rounded-sm uppercase">{toDisplayLabel(b.status)}</span>
                   )}
                 </div>
                 <div className="text-sm text-gray-100 font-semibold mt-1 truncate">{b.title}</div>

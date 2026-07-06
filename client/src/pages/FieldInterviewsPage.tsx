@@ -28,7 +28,7 @@ import { formatDate, formatDateTime, parseTimestamp, localToday } from '../utils
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
-import { formatLabel } from '../utils/formatters';
+import { formatLabel, toDisplayLabel } from '../utils/formatters';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -684,7 +684,7 @@ export default function FieldInterviewsPage() {
               {selectedFi.gang_affiliation && (
                 <div className="col-span-2">
                   <span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Gang Affiliation</span>
-                  <div className="text-amber-300 font-semibold mt-0.5">{selectedFi.gang_affiliation}</div>
+                  <div className="text-amber-300 font-semibold mt-0.5">{toDisplayLabel(selectedFi.gang_affiliation)}</div>
                 </div>
               )}
               <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-rmpg-100 mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
@@ -693,7 +693,7 @@ export default function FieldInterviewsPage() {
               )}
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-rmpg-100 mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
-              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-rmpg-100 mt-0.5 capitalize">{toDisplayLabel(selectedFi.action_taken)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-rmpg-100 mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
               {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Vehicle</span><div className="text-rmpg-100 mt-0.5">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
               {/* Person record cross-reference — only shown when the FI is linked

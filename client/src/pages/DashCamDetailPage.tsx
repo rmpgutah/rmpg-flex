@@ -1185,7 +1185,7 @@ export default function DashCamDetailPage() {
                         if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
                         else if (link.entity_type === 'citation') navigate(`/citations/${link.entity_id}`);
                       }}>
-                      <span className="text-rmpg-500 uppercase font-mono text-[9px]">{link.entity_type}</span>
+                      <span className="text-rmpg-500 uppercase font-mono text-[9px]">{toDisplayLabel(link.entity_type)}</span>
                       <span className="text-rmpg-200 font-mono">#{link.entity_id}</span>
                     </button>
                   ))}

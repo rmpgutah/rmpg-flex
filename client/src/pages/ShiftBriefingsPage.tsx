@@ -3,6 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Clock, Users, Shield, AlertTriangle,
   Plus, RefreshCw, Check, Sun, Moon, Sunset
@@ -319,7 +320,7 @@ export default function ShiftBriefingsPage() {
                 generated.units_on_duty.map((u) => (
                   <div key={u.unit_id} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0 flex justify-between">
                     <span><span className="font-mono text-neutral-400">{u.unit_id}</span> {u.officer_name}</span>
-                    <span className="text-neutral-500">{u.status}</span>
+                    <span className="text-neutral-500">{toDisplayLabel(u.status)}</span>
                   </div>
                 ))
               )}

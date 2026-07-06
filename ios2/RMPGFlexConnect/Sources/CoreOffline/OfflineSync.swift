@@ -7,7 +7,16 @@ public final class OfflineSync: ObservableObject {
     @Published public var lastSync: Date?
 
     private let apiClient: APIClient
-    private let defaults = UserDefaults(suiteName: "group.us.rmpgutah.rmpgflex")!
+    // `UserDefaults(suiteName:)` returns nil if the named App Group isn't
+    // actually provisioned — force-unwrapping it crashed the instant this
+    // class was instantiated, because `com.apple.security.application-groups`
+    // in the entitlements is an empty array (no App Group capability set up
+    // at all; the suite name here didn't even match the group ID used
+    // elsewhere in the app — see PersistentAuth.swift's identical bug, fixed
+    // the same way). Falls back to the app's own standard defaults, which
+    // needs no special entitlement and always works; only revisit a shared
+    // suite once a real App Group is provisioned for cross-target access.
+    private let defaults = UserDefaults(suiteName: "group.us.rmpgutah.rmpgflex") ?? .standard
     private let queueKey = "offline_sync_queue"
     private let maxRetries = 3
 
@@ -34,7 +43,14 @@ public final class OfflineSync: ObservableObject {
 
         for item in batch {
             do {
-                let body = try JSONSerialization.data(withJSONObject: item.payload)
+                // `item.payload` is `[String: AnyCodable]`, a custom Codable
+                // struct — `JSONSerialization.data(withJSONObject:)` only
+                // accepts plain Foundation types (NSNumber/NSString/NSArray/
+                // NSDictionary/NSNull) and throws on anything else, so this
+                // always failed here regardless of what AnyCodable's own
+                // (now-fixed) Codable conformance does. `JSONEncoder` is the
+                // correct encoder for an actual Codable value.
+                let body = try JSONEncoder().encode(item.payload)
                 try await apiClient.requestVoid(Endpoint(
                     path: item.path,
                     method: Endpoint.HTTPMethod(rawValue: item.method) ?? .post,
@@ -85,9 +101,41 @@ public struct OfflineAction: Codable, Sendable {
     }
 }
 
+/// A real JSON-value box — a prior version's `encode(to:)` was a no-op and
+/// `init(from:)` unconditionally hardcoded `0` regardless of what was
+/// actually stored, so every offline-queued action lost its entire payload
+/// the moment it round-tripped through `saveQueue`/`loadQueue` (i.e. on
+/// every single app relaunch while an action was still queued/retrying) —
+/// silent, total data loss for exactly the actions this type exists to
+/// protect from being lost.
 public struct AnyCodable: Codable, @unchecked Sendable {
     public let value: Any
     public init(_ value: Any) { self.value = value }
-    public init(from decoder: Decoder) throws { self.value = 0 }
-    public func encode(to encoder: Encoder) throws {}
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let v = try? container.decode(Bool.self) { value = v }
+        else if let v = try? container.decode(Int.self) { value = v }
+        else if let v = try? container.decode(Double.self) { value = v }
+        else if let v = try? container.decode(String.self) { value = v }
+        else if let v = try? container.decode([AnyCodable].self) { value = v.map { $0.value } }
+        else if let v = try? container.decode([String: AnyCodable].self) { value = v.mapValues { $0.value } }
+        else if container.decodeNil() { value = NSNull() }
+        else { throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported AnyCodable value") }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch value {
+        case let v as Bool: try container.encode(v)
+        case let v as Int: try container.encode(v)
+        case let v as Double: try container.encode(v)
+        case let v as String: try container.encode(v)
+        case let v as [Any]: try container.encode(v.map { AnyCodable($0) })
+        case let v as [String: Any]: try container.encode(v.mapValues { AnyCodable($0) })
+        case is NSNull: try container.encodeNil()
+        default:
+            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported AnyCodable value"))
+        }
+    }
 }

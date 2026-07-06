@@ -17,7 +17,7 @@ import ZsbBadge from '../../components/ZsbBadge';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
-import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
+import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES, PROCESS_SERVICE_INCIDENT_TYPES } from '../../constants/dispositionCodes';
 import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
@@ -1492,7 +1492,7 @@ export default function DispatchPage() {
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
       // Fetch serve queue link for PSO calls
-      if (selectedCall.incident_type === 'pso_client_request') {
+      if (PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) {
         try {
           const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
           if (!cancelled) setServeLink(serveData);
@@ -1522,18 +1522,6 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
 
-  // PSO incident types — must be declared before filteredCalls which references it.
-  // Matches PROCESS_SERVICE_INCIDENT_TYPES in constants/dispositionCodes.ts — this
-  // list drifted to a single-member array at some point (this file's own detail-
-  // panel checks elsewhere, e.g. the visit-history/serve-completion logic, already
-  // used the full ['pso_client_request', 'process_service'] pair), which meant any
-  // call created via the "Process Service (General)" dropdown option or with
-  // incident_type='civil_paper_service' rendered correctly everywhere EXCEPT the
-  // Serve tab/queue and its count, where it was silently invisible (caught
-  // 2026-07-03 — reported as "multiple missing requests" with no calls appearing
-  // in the Serve tab despite existing in the database).
-  const PSO_INCIDENT_TYPES = ['pso_client_request', 'process_service', 'civil_paper_service'];
-
   // When the admin-config disposition list is empty (production default),
   // derive the correct fallback codes from the incident type so PSO calls
   // see PS codes in the clear prompt and general calls see general codes.
@@ -1554,7 +1542,7 @@ export default function DispatchPage() {
       case 'pending': return call.status === 'pending';
       case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
       case 'hold': return call.status === 'on_hold';
-      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type);
+      case 'serve': return PROCESS_SERVICE_INCIDENT_TYPES.has(call.incident_type);
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'archived': return true;
       default: return true;
@@ -2359,7 +2347,7 @@ export default function DispatchPage() {
       hold,
       cleared,
       archived: archivedCalls.length,
-      serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+      serve: calls.filter((c) => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type)).length,
     };
   }, [calls, archivedCalls, user?.id]);
 
@@ -2921,7 +2909,7 @@ export default function DispatchPage() {
                 </div>
 
                 {/* PSO Details + Schedule Return Visit (mobile) */}
-                {selectedCall.incident_type === 'pso_client_request' && (
+                {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
@@ -3203,7 +3191,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
-                    {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -4127,7 +4115,7 @@ export default function DispatchPage() {
                     {/* Notice of Communication — PSO client requests with a failed attempt
                         being re-dispatched. Autofills from this call (client, service,
                         attempt) into a printable client notice. */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -4160,7 +4148,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Send to Serve Queue — PSO calls */}
-                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)' }}
@@ -4520,8 +4508,8 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.weather_conditions && (
                         <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
                           <Thermometer style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">{selectedCall.weather_conditions}</span>
-                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {selectedCall.lighting_conditions}</span>}
+                          <span className="text-rmpg-300">{toDisplayLabel(selectedCall.weather_conditions)}</span>
+                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {toDisplayLabel(selectedCall.lighting_conditions)}</span>}
                         </p>
                       )}
                     </div>
@@ -4865,7 +4853,7 @@ export default function DispatchPage() {
                                 key={unitIdStr}
                                 className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
                                 style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
-                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ').toUpperCase()})` : displayName}
+                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${toDisplayLabel(unitObj.status || '')})` : displayName}
                               >
                                 <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
@@ -5255,9 +5243,9 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callBusinesses.map((cb: any) => (
                                 <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cb.role || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
                                   {cb.name}
-                                  {cb.business_type && <span className="text-rmpg-500">{cb.business_type}</span>}
+                                  {cb.business_type && <span className="text-rmpg-500">{toDisplayLabel(cb.business_type)}</span>}
                                   <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
@@ -5320,8 +5308,8 @@ export default function DispatchPage() {
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
-                                {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
-                                {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}
+                                {cp.race && <span className="text-rmpg-500">{toDisplayLabel(cp.race)}</span>}
+                                {cp.sex && <span className="text-rmpg-500">{toDisplayLabel(cp.sex)}</span>}
                               </div>
                             ))}
                           </div>
@@ -5434,7 +5422,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
+                {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
@@ -5472,7 +5460,7 @@ export default function DispatchPage() {
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
-                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
                         const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -5493,7 +5481,7 @@ export default function DispatchPage() {
                         }
                         return null;
                       })()}
-                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
@@ -5636,7 +5624,7 @@ export default function DispatchPage() {
                           {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
-                        {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
@@ -5652,14 +5640,14 @@ export default function DispatchPage() {
                             </div>
                           );
                         })()}
-                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
+                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (
                           <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
                     )}
 
                     {/* PSO Service Window Compliance Checklist (desktop) */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && (() => {
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (() => {
                       const w = typeof selectedCall.pso_service_windows === 'string'
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
@@ -6309,7 +6297,7 @@ export default function DispatchPage() {
                         {auditTrail.map((ev: any) => (
                           <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
-                            <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
+                            <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{toDisplayLabel(ev.action)}</span>
                             <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
@@ -6385,7 +6373,7 @@ export default function DispatchPage() {
                   const updated = { ...selectedCall, [flag]: 1 };
                   setSelectedCall(updated);
                   setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-                  addToast(`Flag "${flag.replace(/_/g, ' ').toUpperCase()}" accepted`, 'success');
+                  addToast(`Flag "${toDisplayLabel(flag)}" accepted`, 'success');
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
@@ -6426,8 +6414,8 @@ export default function DispatchPage() {
                   units={units}
                   fullHeight
                   onRouteUpdate={setRouteInfo}
-                  serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
-                  serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
+                  serveRouteJobs={PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
+                  serveRouteOrder={PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
                 />
               )
             ) : (
@@ -6676,7 +6664,7 @@ export default function DispatchPage() {
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
                   quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
-                }`}>{quickTemplateData.priority}</span>
+                }`}>{toDisplayLabel(quickTemplateData.priority)}</span>
                 <span className="text-xs font-bold text-rmpg-100">{quickTemplateData.name}</span>
                 <span className="text-[10px] text-rmpg-400 ml-auto">{formatIncidentType(quickTemplateData.incident_type)}</span>
               </div>
@@ -7041,7 +7029,7 @@ export default function DispatchPage() {
                 const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
                 const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
                 const pending = calls.filter(c => c.status === 'pending');
-                const psoServes = completed.filter(c => c.incident_type === 'pso_client_request');
+                const psoServes = completed.filter(c => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type));
                 const totalMi = activeCalls.reduce((sum, c) => {
                   if (c.starting_mileage && c.ending_mileage) return sum + (Number(c.ending_mileage) - Number(c.starting_mileage));
                   return sum;

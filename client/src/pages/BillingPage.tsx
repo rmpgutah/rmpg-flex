@@ -45,6 +45,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { localToday } from '../utils/dateUtils';
 import { DollarSign, FileText, Clock, Receipt, Plus, Pencil, Trash2, Download, AlertTriangle, X } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 type Invoice = Record<string, any> & { id: number; invoice_number?: string; status?: string; due_date?: string | null };
 
@@ -284,7 +285,7 @@ export default function BillingPage() {
     { key: 'paid_amount', label: 'Paid', render: (r: any) => r.paid_amount ? `$${Number(r.paid_amount).toLocaleString()}` : '$0' },
     { key: 'status', label: 'Status', render: (r: any) => (
       <span className="inline-flex items-center gap-1">
-        <span>{r.status}</span>
+        <span>{toDisplayLabel(r.status)}</span>
         {isOverdue(r) && (
           <span
             title={`Due ${r.due_date}`}

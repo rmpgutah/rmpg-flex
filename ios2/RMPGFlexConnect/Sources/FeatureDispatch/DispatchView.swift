@@ -6,6 +6,9 @@ public struct DispatchView: View {
     @StateObject private var viewModel: DispatchViewModel
     @State private var showNewCallSheet = false
     @State private var searchText = ""
+    @State private var showPanicConfirm = false
+    @State private var panicMessage: String?
+    @State private var showMap = false
 
     public init(api: DispatchAPI) {
         _viewModel = StateObject(wrappedValue: DispatchViewModel(api: api))
@@ -18,6 +21,9 @@ public struct DispatchView: View {
             VStack(spacing: 0) {
                 PanelTitleBar(title: "Dispatch", icon: "antenna.radiowaves.left.and.right")
                 RMPGDivider()
+
+                statsBanner
+                welfareBanner
 
                 HStack(spacing: 8) {
                     HStack(spacing: 6) {
@@ -33,6 +39,14 @@ public struct DispatchView: View {
                     .cornerRadius(2)
 
                     statusFilter
+
+                    IconButton(systemName: showMap ? "list.bullet" : "map.fill", label: showMap ? "List" : "Map") {
+                        showMap.toggle()
+                    }
+
+                    IconButton(systemName: "exclamationmark.triangle.fill", label: "Panic") {
+                        showPanicConfirm = true
+                    }
 
                     IconButton(systemName: "plus.circle.fill", label: "New Call") {
                         showNewCallSheet = true
@@ -60,6 +74,8 @@ public struct DispatchView: View {
                             .foregroundColor(RMPGTheme.brandGold)
                     }
                     Spacer()
+                } else if showMap {
+                    DispatchMapView(viewModel: viewModel)
                 } else {
                     callsList
                 }
@@ -72,13 +88,80 @@ public struct DispatchView: View {
                 viewModel.refresh()
             }
         }
+        .alert("Trigger Panic Alert?", isPresented: $showPanicConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("PANIC", role: .destructive) {
+                Task {
+                    await viewModel.triggerPanic()
+                    panicMessage = viewModel.errorMessage ?? "Panic alert sent — dispatch notified."
+                }
+            }
+        } message: {
+            Text("This immediately alerts dispatch and nearby units of your location.")
+        }
+        .alert("Panic Alert", isPresented: Binding(get: { panicMessage != nil }, set: { if !$0 { panicMessage = nil } })) {
+            Button("OK") { panicMessage = nil }
+        } message: {
+            Text(panicMessage ?? "")
+        }
+    }
+
+    /// Real per-officer counts from GET /api/dispatch (aggregates.ts) — this
+    /// data was always being fetched but never displayed anywhere, and the
+    /// fetch itself 404'd until the endpoint path/shape was fixed alongside
+    /// this UI.
+    @ViewBuilder
+    private var statsBanner: some View {
+        if let stats = viewModel.stats {
+            HStack(spacing: 0) {
+                statTile("Pending", stats.calls?.pending, RMPGTheme.statusYellow)
+                statTile("Active", stats.calls?.active, RMPGTheme.statusOrange)
+                statTile("P1", stats.calls?.p1Count, RMPGTheme.statusRed)
+                statTile("Available", stats.units?.available, RMPGTheme.statusGreen)
+                statTile("Committed", stats.units?.committed, RMPGTheme.textSecondary)
+            }
+            .padding(.vertical, 6)
+            .background(RMPGTheme.raisedSurface)
+            RMPGDivider()
+        }
+    }
+
+    private func statTile(_ label: String, _ value: Int?, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value ?? 0)").font(.system(size: 15, weight: .bold)).foregroundColor(color)
+            Text(label.uppercased()).font(.system(size: 8, weight: .medium)).foregroundColor(RMPGTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Officers on-scene at a high-priority call who should have an active
+    /// welfare-check timer — surfaces here as a safety banner rather than
+    /// requiring a dispatcher to know to check a separate screen.
+    @ViewBuilder
+    private var welfareBanner: some View {
+        if !viewModel.welfareWatches.isEmpty {
+            HStack(spacing: 6) {
+                Image(systemName: "shield.lefthalf.filled").font(.system(size: 11)).foregroundColor(RMPGTheme.statusYellow)
+                Text("\(viewModel.welfareWatches.count) officer\(viewModel.welfareWatches.count == 1 ? "" : "s") under welfare watch:")
+                    .font(.system(size: 10, weight: .semibold)).foregroundColor(RMPGTheme.statusYellow)
+                Text(viewModel.welfareWatches.compactMap { $0.callSign ?? $0.officerName }.joined(separator: ", "))
+                    .font(.system(size: 10)).foregroundColor(RMPGTheme.textSecondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(RMPGTheme.statusYellow.opacity(0.1))
+        }
     }
 
     @ViewBuilder
     private var statusFilter: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                ForEach(["All", "pending", "active", "en_route", "on_scene", "closed"], id: \.self) { status in
+                // Real calls_for_service.status CHECK values (migrations/0001_initial_schema.sql) —
+                // a prior version of this list used "active"/"en_route"/"on_scene", none of
+                // which exist in the real enum, so those filters silently matched zero calls.
+                ForEach(["All", "pending", "dispatched", "enroute", "onscene", "cleared", "closed"], id: \.self) { status in
                     Button {
                         viewModel.selectedStatus = status == "All" ? nil : status
                         viewModel.refresh()
@@ -107,18 +190,20 @@ public struct DispatchView: View {
                 let q = searchText.lowercased()
                 return (call.callNumber?.lowercased().contains(q) ?? false)
                     || (call.incidentType?.lowercased().contains(q) ?? false)
-                    || (call.location?.lowercased().contains(q) ?? false)
+                    || (call.locationAddress?.lowercased().contains(q) ?? false)
             }
 
         return List(filtered) { call in
-            CallRow(call: call)
-                .listRowBackground(RMPGTheme.baseBlack)
-                .listRowSeparatorTint(RMPGTheme.borderSubtle)
-                .swipeActions(edge: .leading) {
-                    Button { Task { try? await viewModel.updateCallStatus(id: call.id, status: "active") } }
-                    label: { Label("Active", systemImage: "play.fill") }
-                        .tint(RMPGTheme.statusGreen)
-                }
+            NavigationLink(destination: CallDetailView(call: call, api: viewModel.api)) {
+                CallRow(call: call)
+            }
+            .listRowBackground(RMPGTheme.baseBlack)
+            .listRowSeparatorTint(RMPGTheme.borderSubtle)
+            .swipeActions(edge: .leading) {
+                Button { Task { try? await viewModel.updateCallStatus(id: call.id, status: "dispatched") } }
+                label: { Label("Dispatch", systemImage: "play.fill") }
+                    .tint(RMPGTheme.statusGreen)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -136,7 +221,7 @@ struct CallRow: View {
                     StatusBadge.priority(priority)
                 }
                 if let status = call.status {
-                    StatusBadge(text: status.replacingOccurrences(of: "_", with: " "), color: RMPGTheme.textSecondary)
+                    StatusBadge(text: status.replacingOccurrences(of: "_", with: " ").capitalized, color: RMPGTheme.textSecondary)
                 }
                 Spacer()
                 if let number = call.callNumber {
@@ -148,7 +233,7 @@ struct CallRow: View {
             Text(call.incidentType ?? "Unknown")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(RMPGTheme.textPrimary)
-            if let location = call.location {
+            if let location = call.locationAddress {
                 HStack(spacing: 4) {
                     Image(systemName: "location.fill")
                         .font(.system(size: 9))
@@ -221,7 +306,7 @@ struct NewCallView: View {
                 let req = CreateCallRequest(
                     incidentType: incidentType,
                     priority: priority,
-                    location: location,
+                    locationAddress: location,
                     narrative: narrative.isEmpty ? nil : narrative
                 )
                 let call = try await api.createCall(req)

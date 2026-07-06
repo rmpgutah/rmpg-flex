@@ -21,6 +21,7 @@ import PanelTitleBar from './PanelTitleBar';
 import { openOffenderRegistrationCardPdf } from '../utils/offenderRegistrationCardPdf';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './ToastProvider';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface OffenderCard {
   nsopwOffenderId: string;
@@ -496,7 +497,7 @@ function OffenderRow({ c, queryContext, canPrint }: {
             <span className="ml-2 text-rmpg-300 font-normal">DOB {o.dateOfBirth}</span>
           )}
           {o.sex && (
-            <span className="ml-2 text-rmpg-300 font-normal">{o.sex}</span>
+            <span className="ml-2 text-rmpg-300 font-normal">{toDisplayLabel(o.sex)}</span>
           )}
         </div>
         <div className="text-rmpg-200">

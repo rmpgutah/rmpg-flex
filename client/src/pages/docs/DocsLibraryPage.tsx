@@ -5,6 +5,7 @@ import DocumentEditor from './DocumentEditor';
 import { docsApi } from './useDocuments';
 import type { DocListItem } from '../../types';
 import { useToast } from '../../components/ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 
 export default function DocsLibraryPage() {
   const { addToast } = useToast();
@@ -74,7 +75,7 @@ export default function DocsLibraryPage() {
             {items.map((d) => (
               <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
                 <td className="py-[2px] text-rmpg-200">{d.title}</td>
-                <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{d.status}</span></td>
+                <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{toDisplayLabel(d.status)}</span></td>
                 <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>
                 <td className="py-[2px] text-rmpg-500 font-mono">{d.updated_at || d.created_at}</td>
               </tr>

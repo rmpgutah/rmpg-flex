@@ -13,6 +13,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface AnimalControlCase {
@@ -357,7 +358,7 @@ export default function AnimalControlPage() {
                   >
                     <span className="font-mono text-brand-400 truncate">{ac.case_number}</span>
                     <span className="text-rmpg-400 truncate">{safeDateStr(ac.created_at)}</span>
-                    <span className="text-rmpg-300 truncate capitalize">{ac.case_type}</span>
+                    <span className="text-rmpg-300 truncate capitalize">{toDisplayLabel(ac.case_type)}</span>
                     <span className="text-white truncate">{ac.animal_type}</span>
                     <span className="text-rmpg-300 truncate">{ac.breed}</span>
                     <span className="text-rmpg-300 truncate">{ac.owner_last_name ? `${ac.owner_last_name}, ${ac.owner_first_name}` : '\u2014'}</span>
@@ -414,7 +415,7 @@ export default function AnimalControlPage() {
               <div className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase mb-2">Case Info</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  <div><span className="text-rmpg-500">Type:</span> <span className="text-white capitalize">{selectedCase.case_type}</span></div>
+                  <div><span className="text-rmpg-500">Type:</span> <span className="text-white capitalize">{toDisplayLabel(selectedCase.case_type)}</span></div>
                   <div><span className="text-rmpg-500">Status:</span> <span className={`font-bold px-1.5 py-0 border rounded-sm text-[8px] ${STATUS_COLORS[selectedCase.status] || ''}`}>{(selectedCase.status || '').toUpperCase()}</span></div>
                   <div><span className="text-rmpg-500">Location:</span> <span className="text-white">{selectedCase.location}</span></div>
                   <div><span className="text-rmpg-500">Officer:</span> <span className="text-white">{selectedCase.officer_name || '\u2014'}</span></div>

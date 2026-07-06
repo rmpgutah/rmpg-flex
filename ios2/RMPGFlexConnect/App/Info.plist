@@ -49,6 +49,8 @@
 	<string>RMPG Flex uses the microphone to record voice notes and field interview audio.</string>
 	<key>NFCReaderUsageDescription</key>
 	<string>RMPG Flex uses NFC to read chip-enabled ID cards and passports.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>RMPG Flex uses Face ID to securely unlock your session on this device.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>RMPG Flex tracks your location for officer safety and dispatch routing. Location data is sent to the RMPG dispatch center in real time.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
