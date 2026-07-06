@@ -26,9 +26,12 @@ import {
 } from 'lucide-react';
 
 import {
-  addMapbox3DBuildings,
+  addMapbox3DBuildings, removeMapbox3DBuildings,
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
+import {
+  hasLayer, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource,
+} from '../../utils/mapboxSafeLayer';
 import { getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -158,11 +161,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       // Remove existing beat layers/source if present (e.g. after style change)
       ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource('beats')) map.removeSource('beats');
+      safeRemoveSource(map, 'beats');
 
-      map.addSource('beats', { type: 'geojson', data: geojson });
+      upsertGeoJsonSource(map, 'beats', geojson);
 
       map.addLayer({
         id: 'beats-fill',
@@ -578,7 +581,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (!map || !mapLoaded) return;
     const vis = beatsVisible ? 'visible' : 'none';
     ['beats-fill', 'beats-border', 'beats-label'].forEach(id => {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+      if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis);
     });
   }, [beatsVisible, mapLoaded]);
 
@@ -589,7 +592,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (buildings3dEnabled) {
       addMapbox3DBuildings(map);
     } else {
-      if (map.getLayer('3d-buildings')) map.removeLayer('3d-buildings');
+      removeMapbox3DBuildings(map);
     }
   }, [buildings3dEnabled, mapLoaded]);
 
@@ -812,9 +815,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       // Remove existing isochrone layers
       ['isochrone-fill-0', 'isochrone-fill-1', 'isochrone-fill-2',
        'isochrone-border-0', 'isochrone-border-1', 'isochrone-border-2'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource('isochrone')) map.removeSource('isochrone');
+      safeRemoveSource(map, 'isochrone');
       setIsochroneEnabled(false);
       return;
     }
@@ -829,18 +832,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         minutes: [5, 10, 15],
       });
 
-      if (map.getSource('isochrone')) {
-        (map.getSource('isochrone') as mapboxgl.GeoJSONSource).setData(data as any);
-      } else {
-        map.addSource('isochrone', { type: 'geojson', data: data as any });
-      }
+      if (!data?.features) { console.error('Isochrone response missing features'); return; }
+      upsertGeoJsonSource(map, 'isochrone', data as any);
 
       const colors = ['#22c55e', '#f59e0b', '#ef4444']; // 5min=green, 10min=yellow, 15min=red
-      if (!data?.features) { console.error('Isochrone response missing features'); return; }
       data.features.forEach((_, idx) => {
         const fillId = `isochrone-fill-${idx}`;
         const borderId = `isochrone-border-${idx}`;
-        if (!map.getLayer(fillId)) {
+        if (!hasLayer(map, fillId)) {
           map.addLayer({
             id: fillId,
             type: 'fill',
@@ -849,7 +848,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             filter: ['==', ['get', 'contour'], (idx + 1) * 5],
           });
         }
-        if (!map.getLayer(borderId)) {
+        if (!hasLayer(map, borderId)) {
           map.addLayer({
             id: borderId,
             type: 'line',

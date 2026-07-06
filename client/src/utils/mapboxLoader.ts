@@ -277,12 +277,126 @@ export { fetchMapboxConfig, resolveMapboxAccessToken, clearMapboxConfigCache } f
 // Re-export for pages that import map utilities from this module
 export { injectMapStyles as injectMapboxStyles, createMapboxMap } from './mapboxMap';
 
-// Stub re-exports for missing symbols referenced by existing pages.
-// These are no-op implementations to unblock the build.
-export function destroyMapboxMap(_map?: any): void { /* stub */ }
-export function addMapboxTrail(_map: any, _coords: any, _color?: string): void { /* stub */ }
-export function removeMapboxTrail(_map: any): void { /* stub */ }
-export function addMapbox3DBuildings(_map: any): void { /* stub */ }
-export function setMapboxStyle(_map: any, _style: string): void { /* stub */ }
-export function addMapboxTerrain(_map: any): void { /* stub */ }
-export function removeMapboxTerrain(_map: any): void { /* stub */ }
+// ============================================================
+// Map lifecycle / style / trail / 3D-buildings / terrain helpers
+// ============================================================
+// These were previously hard no-op stubs ("unblock the build" placeholders)
+// despite every caller (MapCore.ts, useMapboxInit.ts, MapboxMapPage.tsx,
+// RouteBuilderPage.tsx) treating them as real — so map cleanup leaked WebGL
+// contexts, the map-style selector never changed the live map, 3D
+// terrain/buildings toggles did nothing, and RouteBuilderPage's planned-route
+// polyline never rendered. Implemented for real below, using the safe-layer
+// wrappers from mapboxSafeLayer.ts so a torn-down/mid-setStyle map never
+// throws out of these calls.
+import { resolveMapStyleUrl } from './mapboxClient';
+import {
+  hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource,
+} from './mapboxSafeLayer';
+
+/** Tear down a live Mapbox map instance (releases the WebGL context, DOM, listeners). */
+export function destroyMapboxMap(map?: mapboxgl.Map | null): void {
+  if (!map) return;
+  try { map.remove(); } catch { /* already removed / torn down */ }
+}
+
+const TRAIL_SOURCE = 'rmpg-mapbox-trail';
+const TRAIL_LAYER = 'rmpg-mapbox-trail-line';
+
+/** Draw (or replace) a route trail polyline on the map. */
+export function addMapboxTrail(
+  map: mapboxgl.Map,
+  coords: [number, number][],
+  color: string = '#d4a017',
+): void {
+  if (!map || !map.style || !coords?.length) return;
+  const data: GeoJSON.Feature<GeoJSON.LineString> = {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'LineString', coordinates: coords },
+  };
+  try {
+    upsertGeoJsonSource(map, TRAIL_SOURCE, data);
+    if (!hasLayer(map, TRAIL_LAYER)) {
+      map.addLayer({
+        id: TRAIL_LAYER,
+        type: 'line',
+        source: TRAIL_SOURCE,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': color, 'line-width': 4, 'line-opacity': 0.85 },
+      });
+    } else {
+      map.setPaintProperty(TRAIL_LAYER, 'line-color', color);
+    }
+  } catch { /* style mid-swap — caller re-renders on the next route change */ }
+}
+
+/** Remove the route trail polyline, if present. */
+export function removeMapboxTrail(map: mapboxgl.Map): void {
+  if (!map) return;
+  safeRemoveLayer(map, TRAIL_LAYER);
+  safeRemoveSource(map, TRAIL_SOURCE);
+}
+
+/** Switch the live map to a new style (short id like 'dark', or a full mapbox://.../https:// URL). */
+export function setMapboxStyle(map: mapboxgl.Map, style: string): void {
+  if (!map || !style) return;
+  const resolved = style.startsWith('mapbox://') || style.startsWith('http')
+    ? style
+    : resolveMapStyleUrl(style);
+  try { map.setStyle(resolved); } catch { /* ignore — caller listens for style.load to re-apply overlays */ }
+}
+
+const BUILDINGS_3D_LAYER = 'rmpg-3d-buildings-loader';
+
+/** Add extruded 3D building footprints from the style's vector `composite` source, if present. */
+export function addMapbox3DBuildings(map: mapboxgl.Map): void {
+  if (!map || !map.style) return;
+  try {
+    if (hasLayer(map, BUILDINGS_3D_LAYER) || !hasSource(map, 'composite')) return;
+    map.addLayer({
+      id: BUILDINGS_3D_LAYER,
+      source: 'composite',
+      'source-layer': 'building',
+      filter: ['==', ['get', 'extrude'], 'true'],
+      type: 'fill-extrusion',
+      minzoom: 13,
+      paint: {
+        'fill-extrusion-color': '#343434',
+        'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 15.05, ['get', 'height']],
+        'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 15.05, ['get', 'min_height']],
+        'fill-extrusion-opacity': 0.8,
+      },
+    });
+  } catch { /* raster-only style lacks `composite` — nothing to extrude */ }
+}
+
+/** Remove the 3D building extrusion layer, if present. */
+export function removeMapbox3DBuildings(map: mapboxgl.Map): void {
+  if (!map) return;
+  safeRemoveLayer(map, BUILDINGS_3D_LAYER);
+}
+
+const TERRAIN_DEM_SOURCE = 'rmpg-mapbox-terrain-dem';
+
+/** Enable 3D terrain (raster-DEM elevation) on the current style. */
+export function addMapboxTerrain(map: mapboxgl.Map): void {
+  if (!map || !map.style) return;
+  try {
+    if (!hasSource(map, TERRAIN_DEM_SOURCE)) {
+      map.addSource(TERRAIN_DEM_SOURCE, {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14,
+      });
+    }
+    map.setTerrain({ source: TERRAIN_DEM_SOURCE, exaggeration: 1.15 });
+  } catch { /* style mid-swap — style.load re-apply covers it */ }
+}
+
+/** Disable 3D terrain, restoring a flat basemap. */
+export function removeMapboxTerrain(map: mapboxgl.Map): void {
+  if (!map) return;
+  try { map.setTerrain(null); } catch { /* ignore */ }
+  safeRemoveSource(map, TERRAIN_DEM_SOURCE);
+}
