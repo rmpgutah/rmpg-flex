@@ -918,6 +918,27 @@ calls.post('/:id/status', async (c) => {
       } catch (err) { console.error('[dispatch] failed to compute response_time_seconds:', err); }
     }
 
+    // ── Cascade non-terminal transitions to assigned units ──
+    // A call moving dispatched→enroute→onscene previously left every assigned
+    // unit's status frozen wherever assign-unit set it — the roster/MDT kept
+    // reading "dispatched" while the call itself said "onscene". Units mirror
+    // the call's status 1:1 (units.status supports the same 'enroute'/
+    // 'onscene' values — see the VALID list in units.ts) but only when the
+    // unit is still actively working this call; a unit already marked
+    // 'unavailable'/'out_of_service' should not be silently pulled back into
+    // service just because the call moved.
+    if (status === 'enroute' || status === 'onscene') {
+      try {
+        const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
+        if (Array.isArray(assignedIds) && assignedIds.length > 0) {
+          await execute(db,
+            `UPDATE units SET status = ?, last_status_change = datetime('now')
+             WHERE id IN (${assignedIds.map(() => '?').join(',')}) AND status IN ('dispatched', 'enroute', 'onscene')`,
+            status, ...assignedIds);
+        }
+      } catch (err) { console.error('[dispatch] failed to cascade unit status on call transition:', err); }
+    }
+
     // ── Release assigned units on a terminal transition ──
     // BUG: closing/clearing/cancelling a call left every assigned unit stuck
     // showing 'dispatched' with current_call_id still pointing at the now-dead
@@ -959,6 +980,12 @@ calls.post('/:id/status', async (c) => {
           .catch((err: Error) => console.error('[pso-crosslink] sync failed:', err));
       }).catch(() => {});
     }
+
+    // Broadcast so every connected dispatcher/map/MDT client re-renders
+    // without a manual refresh. call_created already broadcasts (above, in
+    // POST /) but this status-transition endpoint never did — clients only
+    // saw a status change on their next poll or page reload.
+    broadcastAll('dispatch_update', { action: 'call_status_changed', call: updated });
 
     return c.json(updated);
   } catch (err) {
