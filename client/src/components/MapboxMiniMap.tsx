@@ -80,32 +80,42 @@ function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
   return el;
 }
 
-/** Build a unit marker DOM element */
+/** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. Never rotates. */
 function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
   const el = document.createElement('div');
   el.style.cssText = `
-    display:flex;flex-direction:column;align-items:center;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
     filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));cursor:pointer;
   `;
 
+  const photoFrame = document.createElement('div');
+  photoFrame.style.cssText = `
+    width:40px;height:40px;border-radius:4px;overflow:hidden;
+    border:3px solid ${color};box-shadow:0 0 6px ${color}80;
+    background:#0a0a0a;
+  `;
+  const img = document.createElement('img');
+  img.src = '/icons/unit-vehicle.png';
+  img.alt = '';
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+  img.onerror = () => {
+    photoFrame.style.background = color;
+    img.remove();
+  };
+  photoFrame.appendChild(img);
+  el.appendChild(photoFrame);
+
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:8px;font-weight:900;
-    padding:2px 5px;border:1.5px solid rgba(255,255,255,0.8);
+    background:#0a0a0a;color:${color};font-size:8px;font-weight:900;
+    padding:1px 5px;border:1.2px solid ${color};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
-    border-radius:1px;box-shadow:0 0 6px ${color}40;
+    border-radius:1px;
   `;
   tag.textContent = callSign;
-
-  const caret = document.createElement('div');
-  caret.style.cssText = `
-    width:0;height:0;border-left:4px solid transparent;
-    border-right:4px solid transparent;border-top:5px solid ${color};
-  `;
-
   el.appendChild(tag);
-  el.appendChild(caret);
+
   return el;
 }
 

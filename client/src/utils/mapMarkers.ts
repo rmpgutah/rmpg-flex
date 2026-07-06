@@ -79,51 +79,62 @@ export interface UnitMarkerOpts {
   heading?: number;
 }
 
-/** Clean circular unit marker with status-colored ring + centered label. */
+/** Fixed-orientation photo-icon unit marker: vehicle photo + status ring + label. Never rotates — opts.heading is ignored by design (a 3/4-angle photo spinning in place looks broken). */
 export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
   const color = unitStatusColor(opts.status);
   const el = document.createElement('div');
-  // Record the resolved status color verbatim (the DOM normalizes hex in
-  // `style` to rgb(), so callers/tests can read the canonical hex from here).
   el.dataset.statusColor = color;
   applyStyles(el, {
-    width: '22px',
-    height: '22px',
-    'border-radius': '50%',
-    background: '#000000',
-    border: `2px solid ${color}`,
-    'box-shadow': `0 0 6px ${color}, 0 1px 3px rgba(0,0,0,0.6)`,
     display: 'flex',
+    'flex-direction': 'column',
     'align-items': 'center',
-    'justify-content': 'center',
-    'font-family': '"JetBrains Mono",monospace',
-    'font-size': '10px',
-    'font-weight': '700',
-    color: '#fff',
+    gap: '2px',
     cursor: 'pointer',
   });
+
+  const photoFrame = document.createElement('div');
+  applyStyles(photoFrame, {
+    width: '40px',
+    height: '40px',
+    'border-radius': '4px',
+    overflow: 'hidden',
+    border: `3px solid ${color}`,
+    'box-shadow': `0 0 6px ${color}80`,
+    background: '#0d1520',
+  });
+  const img = document.createElement('img');
+  img.src = '/icons/unit-vehicle.png';
+  img.alt = '';
+  applyStyles(img, {
+    width: '100%',
+    height: '100%',
+    'object-fit': 'cover',
+    display: 'block',
+  });
+  img.onerror = () => {
+    photoFrame.style.background = color;
+    img.remove();
+  };
+  photoFrame.appendChild(img);
+  el.appendChild(photoFrame);
+
   if (opts.label) {
-    const span = document.createElement('span');
-    span.textContent = opts.label;       // text node — no HTML injection
-    el.appendChild(span);
-  }
-  if (typeof opts.heading === 'number') {
-    const arrow = document.createElement('div');
-    applyStyles(arrow, {
-      position: 'absolute',
-      top: '-6px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      width: '0',
-      height: '0',
-      'border-left': '4px solid transparent',
-      'border-right': '4px solid transparent',
-      'border-bottom': `6px solid ${color}`,
+    const labelEl = document.createElement('div');
+    applyStyles(labelEl, {
+      background: '#101820',
+      border: `1.2px solid ${color}`,
+      'border-radius': '2px',
+      padding: '1px 6px',
+      'font-size': '9px',
+      'font-weight': '700',
+      color,
+      'font-family': '"JetBrains Mono",monospace',
+      'white-space': 'nowrap',
     });
-    el.style.position = 'relative';
-    el.appendChild(arrow);
-    el.style.transform = `rotate(${opts.heading}deg)`;
+    labelEl.textContent = opts.label;
+    el.appendChild(labelEl);
   }
+
   return el;
 }
 
