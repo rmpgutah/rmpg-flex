@@ -117,6 +117,23 @@ interface WorkloadResponse {
   over_capacity_count: number;
 }
 
+interface BulkReassignResponse {
+  success: boolean;
+  reassigned_count: number;
+  reassigned_attempt_ids: number[];
+  skipped_attempt_ids: number[];
+  affected_queue_ids: number[];
+}
+
+interface BulkStatusResponse {
+  success: boolean;
+  updated_queue_count: number;
+  affected_queue_ids: number[];
+  status: string;
+}
+
+const BULK_STATUS_OPTIONS = ['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled'] as const;
+
 function rateColor(rate: number): string {
   return rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 }
@@ -545,6 +562,160 @@ export default function AnalyticsTab() {
       {timelineQueueId != null && (
         <AttemptTimelineModal queueId={timelineQueueId} onClose={() => setTimelineQueueId(null)} />
       )}
+    </div>
+  );
+}
+
+interface OfficerJobsPanelProps {
+  jobs: ServeJob[];
+  loading: boolean;
+  officerId: number;
+  onOpenTimeline: (queueId: number) => void;
+  onBulkActionComplete: () => void;
+}
+
+function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActionComplete }: OfficerJobsPanelProps) {
+  const { addToast } = useToast();
+  const [selectedAttemptIds, setSelectedAttemptIds] = useState<Set<number>>(new Set());
+  const [reassignTarget, setReassignTarget] = useState('');
+  const [bulkStatus, setBulkStatus] = useState<typeof BULK_STATUS_OPTIONS[number]>('failed');
+  const [submitting, setSubmitting] = useState(false);
+
+  const allAttempts = jobs.flatMap((j) => (j.attempts ?? []).map((a) => ({ ...a, jobRecipient: j.recipient_name, jobId: j.id })));
+
+  const toggleAttempt = (id: number) => {
+    setSelectedAttemptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkReassign = async () => {
+    const toServerId = parseInt(reassignTarget, 10);
+    if (!toServerId || selectedAttemptIds.size === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<BulkReassignResponse>('/serve-dashboard/bulk-reassign', {
+        method: 'POST',
+        body: JSON.stringify({
+          fromServerId: officerId,
+          toServerId,
+          attemptIds: Array.from(selectedAttemptIds),
+        }),
+      });
+      addToast(`Reassigned ${res.reassigned_count} attempt(s)`, 'success');
+      setSelectedAttemptIds(new Set());
+      onBulkActionComplete();
+    } catch (err: any) {
+      addToast(err?.message || 'Reassign failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (selectedAttemptIds.size === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<BulkStatusResponse>('/serve-dashboard/bulk-status-update', {
+        method: 'POST',
+        body: JSON.stringify({
+          attemptIds: Array.from(selectedAttemptIds),
+          status: bulkStatus,
+        }),
+      });
+      addToast(`Updated ${res.updated_queue_count} job(s) to "${res.status}"`, 'success');
+      setSelectedAttemptIds(new Set());
+      onBulkActionComplete();
+    } catch (err: any) {
+      addToast(err?.message || 'Status update failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-[10px] text-rmpg-500 text-center py-3 bg-surface-base/40">Loading jobs…</div>;
+  }
+  if (allAttempts.length === 0) {
+    return <div className="text-[10px] text-rmpg-500 text-center py-3 bg-surface-base/40">No attempts recorded for this officer's assigned jobs.</div>;
+  }
+
+  return (
+    <div className="bg-surface-base/40 border-t border-rmpg-800 p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="number"
+          placeholder="Reassign to officer ID"
+          value={reassignTarget}
+          onChange={(e) => setReassignTarget(e.target.value)}
+          className="w-40 text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-200"
+        />
+        <button
+          type="button"
+          disabled={submitting || selectedAttemptIds.size === 0 || !reassignTarget}
+          onClick={handleBulkReassign}
+          className="text-[10px] px-2 py-1 rounded-[2px] bg-brand-500/10 border border-brand-500/30 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-40"
+        >
+          Reassign Selected ({selectedAttemptIds.size})
+        </button>
+        <select
+          value={bulkStatus}
+          onChange={(e) => setBulkStatus(e.target.value as typeof BULK_STATUS_OPTIONS[number])}
+          className="text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-200"
+        >
+          {BULK_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button
+          type="button"
+          disabled={submitting || selectedAttemptIds.size === 0}
+          onClick={handleBulkStatusUpdate}
+          className="text-[10px] px-2 py-1 rounded-[2px] bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+        >
+          Set Status Selected ({selectedAttemptIds.size})
+        </button>
+      </div>
+
+      <table className="w-full text-[9px]">
+        <thead>
+          <tr className="border-b border-rmpg-800">
+            <th className="w-6 px-2 py-[2px]" />
+            <th className="text-left px-2 py-[2px] text-rmpg-500 font-semibold">Job</th>
+            <th className="text-left px-2 py-[2px] text-rmpg-500 font-semibold">Attempt #</th>
+            <th className="text-left px-2 py-[2px] text-rmpg-500 font-semibold">Result</th>
+            <th className="text-left px-2 py-[2px] text-rmpg-500 font-semibold">Date</th>
+            <th className="w-16 px-2 py-[2px]" />
+          </tr>
+        </thead>
+        <tbody>
+          {allAttempts.map((a) => (
+            <tr key={a.id} className="border-b border-rmpg-800/60 last:border-0">
+              <td className="px-2 py-[2px]">
+                <input
+                  type="checkbox"
+                  checked={selectedAttemptIds.has(a.id)}
+                  onChange={() => toggleAttempt(a.id)}
+                  aria-label={`Select attempt ${a.id}`}
+                />
+              </td>
+              <td className="px-2 py-[2px] text-rmpg-300">{a.jobRecipient}</td>
+              <td className="px-2 py-[2px] text-rmpg-400 tabular-nums">{a.attempt_number}</td>
+              <td className="px-2 py-[2px] text-rmpg-300">{a.result}</td>
+              <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{a.attempt_at?.slice(0, 10)}</td>
+              <td className="px-2 py-[2px] text-right">
+                <button
+                  type="button"
+                  onClick={() => onOpenTimeline(a.jobId)}
+                  className="text-brand-400 hover:text-brand-300 transition-colors"
+                >
+                  Timeline
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
