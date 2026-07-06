@@ -31,6 +31,7 @@ import StatsCard from '../components/StatsCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   Users, Calendar, MessageSquare, Bell, Plus, Pencil, Trash2,
   AlertCircle, Eye, RefreshCw,
@@ -400,7 +401,7 @@ export default function CommunityPage() {
       </span>
     )},
     { key: 'status', label: 'Status', render: (row: PublicTip) => (
-      <span className="capitalize">{row.status}</span>
+      <span className="capitalize">{toDisplayLabel(row.status)}</span>
     )},
   ];
 

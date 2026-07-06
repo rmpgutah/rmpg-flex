@@ -501,8 +501,8 @@ export default function CriminalHistoryPage() {
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-400">
                 {p.date_of_birth && <span>DOB: {p.date_of_birth}</span>}
-                {p.sex && <span>{p.sex}</span>}
-                {p.race && <span>{p.race}</span>}
+                {p.sex && <span>{toDisplayLabel(p.sex)}</span>}
+                {p.race && <span>{toDisplayLabel(p.race)}</span>}
               </div>
               <div className="flex items-center gap-1.5 mt-1">
                 {p.has_active_warrants && (

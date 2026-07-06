@@ -5,6 +5,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import type { ProviderInfo, UsageStats, TestResult } from './AISharedComponents';
 import { PROVIDER_LABELS, StatCard } from './AISharedComponents';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface ActivityEntry {
   id: number;
@@ -188,7 +189,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             <div key={a.id || i} className="flex items-center gap-3 px-3 py-2">
               <div className={`w-1.5 h-1.5 rounded-full ${a.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-rmpg-100 font-mono truncate">{a.task_type}</div>
+                <div className="text-xs text-rmpg-100 font-mono truncate">{toDisplayLabel(a.task_type)}</div>
                 <div className="text-[10px] text-rmpg-500 truncate">{a.prompt_preview}</div>
               </div>
               <div className="text-[10px] text-rmpg-500 shrink-0">{a.provider}</div>

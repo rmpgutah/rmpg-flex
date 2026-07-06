@@ -45,6 +45,7 @@ function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
 }
 import type { VehicleFormData } from '../../components/VehicleFormModal';
 import type { VehiclePdfData } from '../../utils/recordPdfGenerator';
+import { toDisplayLabel } from '../../utils/formatters';
 import {
   titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
   cleanDisplay,
@@ -525,7 +526,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-surface-raised text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-surface-raised text-rmpg-400 rounded-sm">{toDisplayLabel(v.source)}</span>
                       {onAutoFill && (
                         <button
                           type="button"

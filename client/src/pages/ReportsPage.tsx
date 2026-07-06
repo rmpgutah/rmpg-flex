@@ -1489,7 +1489,7 @@ export default function ReportsPage() {
                   <div key={s.id} className="flex items-center gap-2 text-xs text-rmpg-300 bg-surface-sunken px-3 py-1.5">
                     <span className={`w-2 h-2 rounded-full ${s.enabled ? 'bg-green-500' : 'bg-rmpg-600'}`} />
                     <span className="font-bold">{s.name}</span>
-                    <span className="text-rmpg-500">{s.frequency}</span>
+                    <span className="text-rmpg-500">{toDisplayLabel(s.frequency)}</span>
                     {s.time_of_day && <span className="text-rmpg-500">{s.time_of_day}</span>}
                   </div>
                 ))}

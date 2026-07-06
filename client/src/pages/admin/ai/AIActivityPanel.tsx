@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { RefreshCw, Loader2, Activity } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface ActivityEntry {
   id: number;
@@ -85,7 +86,7 @@ export default function AIActivityPanel() {
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">
                   {a.created_at ? parseTimestamp(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </div>
-                <div className="text-rmpg-100 font-mono truncate">{a.task_type}</div>
+                <div className="text-rmpg-100 font-mono truncate">{toDisplayLabel(a.task_type)}</div>
                 <div className="text-rmpg-400 truncate">{a.provider}</div>
                 <div className="text-rmpg-400 font-mono">{a.latency_ms}ms</div>
                 <div>

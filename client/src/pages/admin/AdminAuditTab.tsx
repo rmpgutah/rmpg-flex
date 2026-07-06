@@ -3,6 +3,7 @@ import { Clock, Download, Search, Filter } from 'lucide-react';
 import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // Types
@@ -193,7 +194,7 @@ export default function AdminAuditTab({
                   </div>
                 </td>
                 <td className="text-xs font-semibold text-rmpg-100">{entry.user}</td>
-                <td className="text-xs text-brand-400 font-medium">{entry.action}</td>
+                <td className="text-xs text-brand-400 font-medium">{toDisplayLabel(entry.action)}</td>
                 <td className="text-xs text-rmpg-300 max-w-[300px] truncate" title={entry.details}>{entry.details}</td>
               </tr>
             ))}

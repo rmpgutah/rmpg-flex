@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface AuditEntry {
   id: number;
@@ -60,7 +61,7 @@ export default function ServeAuditLogModal({ jobId, onClose }: ServeAuditLogModa
             entries.map((e) => (
               <div key={e.id} className="bg-surface-raised rounded px-2.5 py-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold text-rmpg-200 uppercase">{e.action}</span>
+                  <span className="text-[10px] font-bold text-rmpg-200 uppercase">{toDisplayLabel(e.action)}</span>
                   <span className="text-[9px] text-rmpg-400 font-mono shrink-0">
                     {e.created_at ? parseTimestamp(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) : ''}
                   </span>

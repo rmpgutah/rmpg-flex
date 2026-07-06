@@ -14,10 +14,10 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('<ActivityTab>', () => {
-  it('renders audit_log rows with their action labels', async () => {
+  it('renders audit_log rows with their action labels in Title Case', async () => {
     render(<ActivityTab vehicleId={42} />);
-    await screen.findByText('STATUS_CHANGE', {}, { timeout: 3000 });
-    expect(screen.getByText('ODOMETER_UPDATE')).toBeInTheDocument();
+    await screen.findByText('Status Change', {}, { timeout: 3000 });
+    expect(screen.getByText('Odometer Update')).toBeInTheDocument();
   });
 
   it('renders empty state when no rows', async () => {

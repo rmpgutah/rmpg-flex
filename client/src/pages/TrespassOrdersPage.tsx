@@ -27,6 +27,7 @@ import { formatAddressDisplay } from '../utils/statusLabels';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -988,7 +989,7 @@ export default function TrespassOrdersPage() {
           <>
             <div><span className="text-rmpg-500">Order</span> <span className="font-mono text-rmpg-100">{orderToDelete.order_number}</span></div>
             <div><span className="text-rmpg-500">Subject</span> <span className="text-rmpg-100">{orderToDelete.subject_last_name}, {orderToDelete.subject_first_name}</span></div>
-            <div><span className="text-rmpg-500">Status</span> <span className="text-rmpg-100 capitalize">{orderToDelete.status}</span></div>
+            <div><span className="text-rmpg-500">Status</span> <span className="text-rmpg-100 capitalize">{toDisplayLabel(orderToDelete.status)}</span></div>
             {orderToDelete.property_name && (
               <div><span className="text-rmpg-500">Property</span> <span className="text-rmpg-100">{orderToDelete.property_name}</span></div>
             )}

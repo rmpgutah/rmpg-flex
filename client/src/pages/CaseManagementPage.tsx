@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { formatEnumValue } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -747,7 +747,7 @@ export default function CaseManagementPage() {
     setStatusChanging(true);
     try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      addToast(`Case status → ${newStatus.replace(/_/g, ' ').toUpperCase()}`, 'success');
+      addToast(`Case status → ${toDisplayLabel(newStatus)}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
       setSelected(updated.data);
       fetchCases({ silent: true });
@@ -1574,7 +1574,7 @@ export default function CaseManagementPage() {
                           {note.is_pinned && <span className="text-[8px] font-mono text-brand-400 uppercase">PINNED</span>}
                           <span className="text-[10px] font-bold text-rmpg-100 truncate">{(note as any).author_full_name || note.author_name || 'Unknown'}</span>
                           {note.note_type && note.note_type !== 'general' && (
-                            <span className="text-[8px] px-1 border border-rmpg-700 text-rmpg-500 uppercase">{note.note_type}</span>
+                            <span className="text-[8px] px-1 border border-rmpg-700 text-rmpg-500 uppercase">{toDisplayLabel(note.note_type)}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">

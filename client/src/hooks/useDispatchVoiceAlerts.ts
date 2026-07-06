@@ -36,6 +36,7 @@ import {
 } from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
 import { getLocalAudioMode, vibrateForSeverity } from '../utils/audioMode';
+import { toDisplayLabel } from '../utils/formatters';
 
 /**
  * Normalize DB column names to voice system field names.
@@ -588,7 +589,7 @@ export function useDispatchVoiceAlerts(options?: {
         const action = data.action || data.entity || 'Security event';
         if (['device_removed', 'sessions_terminated', 'ip_blocked'].includes(action)) {
           speak(`Security alert. ${action.replace(/_/g, ' ').toUpperCase()}.`, 'moderate');
-          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SECURITY', message: action.replace(/_/g, ' ').toUpperCase(), timestamp: Date.now() });
+          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SECURITY', message: toDisplayLabel(action), timestamp: Date.now() });
         }
       })
     );

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
-import { formatEnumValue } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 interface RawCall {
   id: number;
   call_number: string;
@@ -301,7 +301,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {resp && <span title="Response (dispatch → on-scene)"><Timer className="w-2.5 h-2.5 inline mr-0.5 text-brand-500" />{resp}</span>}
                 {scene && <span title="On-scene duration"><Clock className="w-2.5 h-2.5 inline mr-0.5 text-brand-500" />{scene}</span>}
                 {meaningful(c.disposition) && (
-                  <span className="flex items-center gap-0.5 text-green-400/80" title="Disposition"><CheckCircle2 className="w-2.5 h-2.5" />{c.disposition}</span>
+                  <span className="flex items-center gap-0.5 text-green-400/80" title="Disposition"><CheckCircle2 className="w-2.5 h-2.5" />{toDisplayLabel(c.disposition)}</span>
                 )}
                 {d != null && <span className="ml-auto text-rmpg-500">{d < 0.1 ? `${Math.round(d * 5280)} ft` : `${d.toFixed(1)} mi`}</span>}
               </div>

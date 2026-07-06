@@ -30,6 +30,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { toDisplayLabel } from '../utils/formatters';
 import EmptyState from '../components/EmptyState';
 import { openCodeViolationNoticePdf, openTowOrderPdf } from '../utils/codeEnforcementPdf';
 import { useAuth } from '../context/AuthContext';
@@ -299,7 +300,7 @@ export default function CodeEnforcementPage() {
   const handleViolationStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/violations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Violation → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
+      addToast(`Violation → ${toDisplayLabel(status)}`, 'success');
       fetchViolations({ silent: true }); fetchStats();
       if (selectedViolation?.id === id) {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
@@ -329,7 +330,7 @@ export default function CodeEnforcementPage() {
   const handleTowStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/tows/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Tow → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
+      addToast(`Tow → ${toDisplayLabel(status)}`, 'success');
       fetchTows({ silent: true }); fetchStats();
       if (selectedTow?.id === id) {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);

@@ -26,6 +26,7 @@ import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
 import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
 // The Email page used to write every preference and the compose-draft cache
@@ -313,7 +314,7 @@ function ContactAutocompleteInput({
                 {contact.name && <div className="text-[11px] truncate">{contact.name}</div>}
                 <div className="text-[10px] text-rmpg-500 truncate">{contact.email}</div>
               </div>
-              <span className="text-[8px] text-rmpg-600 uppercase">{contact.source}</span>
+              <span className="text-[8px] text-rmpg-600 uppercase">{toDisplayLabel(contact.source)}</span>
             </button>
           ))}
         </div>

@@ -1736,13 +1736,13 @@ export default function IncidentsPage() {
               {inc.weather_conditions && (
                 <div>
                   <label className="field-label">Weather:</label>
-                  <p className="text-xs text-rmpg-200">{inc.weather_conditions}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.weather_conditions)}</p>
                 </div>
               )}
               {inc.lighting_conditions && (
                 <div>
                   <label className="field-label">Lighting:</label>
-                  <p className="text-xs text-rmpg-200">{inc.lighting_conditions}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.lighting_conditions)}</p>
                 </div>
               )}
               {inc.injuries && inc.injuries !== 'none' && (
@@ -2070,14 +2070,14 @@ export default function IncidentsPage() {
                     officer.role === 'supervisor' ? 'bg-purple-900/60 text-purple-300 border border-purple-700/50' :
                     officer.role === 'investigator' ? 'bg-amber-900/60 text-amber-300 border border-amber-700/50' :
                     'bg-surface-base text-rmpg-400 border border-border-default'
-                  }`}>{officer.role}</span>
+                  }`}>{toDisplayLabel(officer.role)}</span>
                   <span className="text-xs text-rmpg-100 font-medium">{officer.first_name} {officer.last_name}</span>
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
                   {officer.call_sign && <span className="text-[10px] text-rmpg-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
                   {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {safeTimeStr(officer.arrived_at, '')}</span>}
                   {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
-                  {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
+                  {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{toDisplayLabel(officer.action_taken)}</span>}
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={() => {
                       const officerName = officer.full_name || officer.officer_name || `officer #${officer.id}`;
@@ -2163,8 +2163,8 @@ export default function IncidentsPage() {
                     ) : (
                       <span className="text-xs text-rmpg-400">#{link.linked_id}</span>
                     )}
-                    {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{link.detail.incident_type}</span>}
-                    {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{link.detail.status}</span>}
+                    {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{toDisplayLabel(link.detail.incident_type)}</span>}
+                    {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{toDisplayLabel(link.detail.status)}</span>}
                     {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={() => {

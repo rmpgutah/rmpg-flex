@@ -27,6 +27,7 @@ import { apiFetch } from '../../hooks/useApi';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -268,7 +269,7 @@ function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticU
 
       {/* Meta */}
       <div className="flex items-center gap-3 mb-3 text-[9px] text-rmpg-600 uppercase">
-        {job.document_type && <span>{job.document_type}</span>}
+        {job.document_type && <span>{toDisplayLabel(job.document_type)}</span>}
         {job.deadline && <span>Due {job.deadline}</span>}
         {job.attempt_count > 0 && (
           <span className="text-amber-600">{job.attempt_count} prior attempt{job.attempt_count === 1 ? '' : 's'}</span>
