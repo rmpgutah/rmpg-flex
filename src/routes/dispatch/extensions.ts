@@ -791,9 +791,17 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 
     const call = await queryFirst<{
       id: number; call_number: string | null; latitude: number | null; longitude: number | null;
-      assigned_unit_ids: string | null; dispatched_at: string | null;
-    }>(db, 'SELECT id, call_number, latitude, longitude, assigned_unit_ids, dispatched_at FROM calls_for_service WHERE id = ?', id);
+      assigned_unit_ids: string | null; dispatched_at: string | null; status: string | null;
+    }>(db, 'SELECT id, call_number, latitude, longitude, assigned_unit_ids, dispatched_at, status FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    // Guard against resurrecting a call that's already been closed out — without
+    // this, auto-assign would happily commit a unit to a call that's cleared/
+    // closed/cancelled/archived, corrupting both the unit's status and the call's
+    // audit trail (the call would silently flip back toward 'dispatched').
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged']);
+    if (call.status && TERMINAL_STATUSES.has(call.status)) {
+      return c.json({ error: `Call is already ${call.status} — cannot auto-assign`, code: 'CALL_ALREADY_TERMINAL' }, 409);
+    }
     if (call.latitude == null || call.longitude == null) {
       return c.json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' }, 400);
     }
