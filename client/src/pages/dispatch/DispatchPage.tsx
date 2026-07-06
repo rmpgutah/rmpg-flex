@@ -6403,8 +6403,14 @@ export default function DispatchPage() {
             />
           )}
 
-          {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+          {/* Dispatch Map Panel (right side, always visible on screen; hidden
+              on print — a live interactive map has no printable value, and
+              without print:hidden this w-[35%] flex-col panel squeezed down
+              to a near-zero-height sliver alongside the call record data
+              instead of being excluded like every other page's
+              interactive-only chrome (see print:hidden usage elsewhere,
+              e.g. CaseManagementPage.tsx). */}
+          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0 print:hidden" style={{ background: 'var(--surface-deep)' }}>
             {(() => {
               const callHasLocation = selectedCall?.latitude != null && selectedCall?.longitude != null;
               // Mapbox path is null-call safe (renders units even with no

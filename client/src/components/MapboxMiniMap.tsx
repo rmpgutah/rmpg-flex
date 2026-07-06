@@ -17,7 +17,7 @@ import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
-import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
@@ -146,6 +146,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,6 +237,26 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         });
 
         mapRef.current = map;
+        // Registers this instance with mapboxLoader's shared print-swap
+        // registry — its module-level `beforeprint`/`afterprint` listeners
+        // (wired once at import time) swap every REGISTERED map to a light
+        // style and back. This mini-map never called it, so its dark style
+        // printed as-is (illegible dark tiles on white paper).
+        registerMapInstance(map, 'mapbox://styles/mapbox/dark-v11');
+
+        // Mapbox GL sizes its WebGL canvas to the container's dimensions AT
+        // CONSTRUCTION TIME and never re-syncs on its own. This mini-map sits
+        // inside a densely-nested, conditionally-rendered dispatch flex
+        // layout (sibling panels — code quick-panel, detail pane — mount/
+        // unmount and change how much width this panel actually gets), so
+        // the container can settle to its real size on a LATER layout pass
+        // than the one active when `new mapboxgl.Map()` ran above. Without
+        // an explicit resize(), the canvas stays locked to whatever (often
+        // zero/wrong) size it read at construction — Mapbox then renders a
+        // solid black canvas, which is exactly what this fixes.
+        const resizeObserver = new ResizeObserver(() => map.resize());
+        resizeObserver.observe(containerRef.current);
+        resizeObserverRef.current = resizeObserver;
       } catch (err: any) {
         if (!cancelled) {
           if (attempt < MAX_INIT_ATTEMPTS) {
@@ -251,10 +272,15 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
     return () => {
       cancelled = true;
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
       geocoderRef.current = null;
       if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
         mapRef.current.remove();
         mapRef.current = null;
       }
