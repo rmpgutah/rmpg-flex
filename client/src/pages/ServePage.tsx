@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -19,6 +19,7 @@ import { useToast } from '../components/ToastProvider';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
 import PerformanceTab from './serve/PerformanceTab';
+import AnalyticsTab from './serve/AnalyticsTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -49,7 +50,7 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -1472,6 +1473,7 @@ export default function ServePage() {
           const role = user?.role ?? '';
           if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
           if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+          if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
           // Queue, Route, Map, Stats, My Run — visible to all
           return true;
         }).map(tab => {
@@ -1482,6 +1484,7 @@ export default function ServePage() {
             tab === 'Stats' ? BarChart3 :
             tab === 'Assign' ? Users :
             tab === 'Performance' ? BarChart3 :
+            tab === 'Analytics' ? LineChart :
             Route; // My Run
           return (
             <button type="button"
@@ -2040,6 +2043,7 @@ export default function ServePage() {
           />
         )}
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
+        {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}
