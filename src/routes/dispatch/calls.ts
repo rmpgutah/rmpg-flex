@@ -1378,11 +1378,16 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       }
     } catch (err) { console.error('[redispatch] failed to snapshot assigned units:', err); }
 
+    // visit_date is a legacy NOT NULL column (predates the visit_number/
+    // status chain-tracking columns added later on this same table) with no
+    // default on live D1 — every redispatch INSERT failed against it until
+    // this fix (SQLITE_CONSTRAINT_NOTNULL, see error_log id 11-15). Stamped
+    // with the current time same as created_at.
     await execute(db, `
       INSERT INTO call_visit_history
-        (call_id, visit_number, status, disposition, assigned_units, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+        (call_id, visit_date, visit_number, status, disposition, assigned_units, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
          responding_vehicle_id, starting_mileage, ending_mileage, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       id, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
       parent.dispatched_at ?? null, parent.enroute_at ?? null, parent.onscene_at ?? null, parent.cleared_at ?? null, parent.closed_at ?? null,
       parent.responding_vehicle_id ?? null, parent.starting_mileage ?? null, parent.ending_mileage ?? null);
