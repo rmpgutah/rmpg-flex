@@ -1955,7 +1955,7 @@ export default function DispatchPage() {
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setArchivedCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
-      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+      addToast(`Timeline updated: ${toDisplayLabel(field.replace(/_at$/, ''))}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
       const msg = err instanceof Error ? err.message : 'Failed to update timeline';

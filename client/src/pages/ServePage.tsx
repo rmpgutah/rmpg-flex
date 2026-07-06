@@ -336,7 +336,7 @@ export default function ServePage() {
           number: a.attempt_number ?? i + 1,
           date: valid ? `${pad(at!.getMonth() + 1)}/${pad(at!.getDate())}/${at!.getFullYear()}` : '',
           time: valid ? at!.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
-          type: (a.attempt_type || '').replace(/_/g, ' '),
+          type: toDisplayLabel(a.attempt_type),
           result: (a as any).disposition_code || a.result || 'other',
           officerName: a.officer_name || '',
           notes: a.notes || '',
@@ -1628,7 +1628,7 @@ export default function ServePage() {
                       {jobs.length > 0 ? (
                         <>
                           <p className="text-sm text-rmpg-400 font-medium">
-                            {searchQuery ? `No jobs match "${searchQuery}"` : `No ${statusFilter.replace(/_/g, ' ')} jobs.`}
+                            {searchQuery ? `No jobs match "${searchQuery}"` : `No ${toDisplayLabel(statusFilter)} jobs.`}
                           </p>
                           <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
                             className="mt-2 text-[11px] text-brand-400 hover:text-brand-300 underline underline-offset-2">

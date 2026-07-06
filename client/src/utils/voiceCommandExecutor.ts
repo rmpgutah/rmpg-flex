@@ -10,6 +10,7 @@
  */
 
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from './formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ async function handleStatusUpdate(
 
   return {
     success: true,
-    message: `Copy, ${unit.call_sign} now showing ${newStatus.replace(/_/g, ' ')}.`,
+    message: `Copy, ${unit.call_sign} now showing ${toDisplayLabel(newStatus)}.`,
   };
 }
 
@@ -240,7 +241,7 @@ async function handleNextCall(): Promise<VoiceCommandResult> {
     const c = calls[0];
     return {
       success: true,
-      message: `Next call: ${c.call_number}, ${(c.incident_type || 'unknown').replace(/_/g, ' ')}, priority ${c.priority}, at ${c.location_address || 'unknown location'}.`,
+      message: `Next call: ${c.call_number}, ${toDisplayLabel(c.incident_type || 'unknown')}, priority ${c.priority}, at ${c.location_address || 'unknown location'}.`,
       data: c,
     };
   } catch {
@@ -360,7 +361,7 @@ async function handleCreateCall(
 
     return {
       success: true,
-      message: `Call created: ${result.call_number || 'new call'}, ${callType.replace(/_/g, ' ')}${address ? ` at ${address}` : ''}.`,
+      message: `Call created: ${result.call_number || 'new call'}, ${toDisplayLabel(callType)}${address ? ` at ${address}` : ''}.`,
       data: result,
     };
   } catch {

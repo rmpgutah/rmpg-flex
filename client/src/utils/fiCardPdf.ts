@@ -12,6 +12,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { FieldInterview } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -163,7 +164,7 @@ export function generateFiCardPdf(fi: FieldInterview): jsPDF {
 
   const contactFields: Array<[string, string]> = [
     ['Location', fi.location || '—'],
-    ['Contact Reason', (fi.contact_reason || '').replace(/_/g, ' ')],
+    ['Contact Reason', toDisplayLabel(fi.contact_reason)],
     ['Contact Type', fi.contact_type || '—'],
     ['Action Taken', fi.action_taken || '—'],
   ];

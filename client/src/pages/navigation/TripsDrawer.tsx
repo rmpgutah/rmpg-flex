@@ -25,6 +25,7 @@ import {
 } from '../../hooks/useTrips';
 import { useActiveTripsLive } from '../../hooks/useActiveTripsLive';
 import { generateTripLogPdf } from '../../utils/tripLogPdf';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   unitId?: number;
@@ -115,7 +116,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         )}
         {isResponse && trip.call_type && (
           <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={trip.call_type}>
-            {trip.call_type.replace(/_/g, ' ')}
+            {toDisplayLabel(trip.call_type)}
           </span>
         )}
         <span className="text-[8px] font-mono text-rmpg-600 shrink-0 ml-auto">{fmtDateShort(trip.start_time)}</span>

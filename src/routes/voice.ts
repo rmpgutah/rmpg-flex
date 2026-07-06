@@ -31,6 +31,11 @@ import {
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+
+function toTitleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 const voice = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ─── POST /api/voice/dialogue ──────────────────────────────────
@@ -190,7 +195,7 @@ voice.post('/read-aloud', async (c) => {
       );
       if (call) {
         const prio = call.priority === 'P1' ? 'Priority One' : call.priority === 'P2' ? 'Priority Two' : call.priority;
-        const incType = (call.incident_type || 'call').replace(/_/g, ' ');
+        const incType = toTitleCase((call.incident_type || 'call').replace(/_/g, ' '));
         const at = call.location_address ? ` at ${call.location_address}` : '';
         const desc = call.description ? `. ${call.description}` : '';
         const reply = `Attention all units. New ${prio} call. ${incType}${at}.${desc}`.trim();
@@ -201,7 +206,7 @@ voice.post('/read-aloud', async (c) => {
     if (t === 'status_change' && typeof unit === 'string' && typeof status === 'string') {
       const loc = typeof location === 'string' ? location : '';
       const at = loc ? ` at ${loc}` : '';
-      const statusSpoken = (status as string).replace(/_/g, ' ');
+      const statusSpoken = toTitleCase((status as string).replace(/_/g, ' '));
       let reply = `Unit ${unit}, ${statusSpoken}${at}.`;
       if (typeof call_number === 'string') {
         reply = `Unit ${unit}, ${statusSpoken}${at} on call ${call_number}.`;
@@ -212,7 +217,7 @@ voice.post('/read-aloud', async (c) => {
     if (t === 'dispatch') {
       const unitStr = typeof unit === 'string' ? unit : '';
       const cn = typeof call_number === 'string' ? call_number : '';
-      const it = typeof incident_type === 'string' ? incident_type.replace(/_/g, ' ') : '';
+      const it = typeof incident_type === 'string' ? toTitleCase(incident_type.replace(/_/g, ' ')) : '';
       const loc = typeof location === 'string' ? location : '';
       const prio = typeof priority === 'string' ? priority : '';
       const at = loc ? ` at ${loc}` : '';

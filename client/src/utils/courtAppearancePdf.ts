@@ -14,6 +14,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -360,9 +361,9 @@ export function generateCourtAppearancePdf(input: CourtAppearanceInput): jsPDF {
       let rx = M + 4;
       doc.text(ellipsize(w.name || '—', 30), rx, y + 9);
       rx += witCols[0].width;
-      doc.text(ellipsize((w.role || '').replace(/_/g, ' '), 20), rx, y + 9);
+      doc.text(ellipsize(toDisplayLabel(w.role), 20), rx, y + 9);
       rx += witCols[1].width;
-      doc.text(ellipsize((w.contact_status || '').replace(/_/g, ' '), 16), rx, y + 9);
+      doc.text(ellipsize(toDisplayLabel(w.contact_status), 16), rx, y + 9);
       rx += witCols[2].width;
       const contact = [w.phone, w.email].filter(Boolean).join(' · ');
       doc.text(ellipsize(contact || '—', 40), rx, y + 9);
