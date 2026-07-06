@@ -4,6 +4,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
+import { denverOffsetHours } from '../utils/denverTime';
 
 const admin = new Hono<Env>();
 
@@ -452,9 +453,16 @@ admin.get('/shift-stats', async (c) => {
     const shiftName = shiftHour >= 6 && shiftHour < 14 ? 'Day' : shiftHour >= 14 && shiftHour < 22 ? 'Swing' : 'Night';
     const startHour = shiftName === 'Day' ? 6 : shiftName === 'Swing' ? 14 : 22;
     const endHour = shiftName === 'Day' ? 14 : shiftName === 'Swing' ? 22 : 6;
+    // shiftHour/startHour/endHour are Denver wall-clock hours, but created_at is
+    // stored UTC — strftime('%H', created_at) read the raw UTC hour, off by the
+    // MT UTC offset (6-7h). Shift the timestamp into Denver time before
+    // extracting the hour, same fix already applied to reports.ts's
+    // shift-comparison endpoint.
+    const offset = denverOffsetHours();
+    const shiftedHourExpr = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
     const dateCondition = shiftName === 'Night'
-      ? `(CAST(strftime('%H', created_at) AS INTEGER) >= ${startHour} OR CAST(strftime('%H', created_at) AS INTEGER) < ${endHour})`
-      : `CAST(strftime('%H', created_at) AS INTEGER) BETWEEN ${startHour} AND ${endHour - 1}`;
+      ? `(${shiftedHourExpr} >= ${startHour} OR ${shiftedHourExpr} < ${endHour})`
+      : `${shiftedHourExpr} BETWEEN ${startHour} AND ${endHour - 1}`;
     const calls = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${dateCondition}`))?.n ?? 0;
     const incidents = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE ${dateCondition}`))?.n ?? 0;
     const citations = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE ${dateCondition.replace('created_at','issued_at')}`))?.n ?? 0;
@@ -467,10 +475,15 @@ admin.get('/upcoming-court-dates', async (c) => {
   try {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
+    // hearing_date is a plain calendar date (no time-of-day), but "today" needs
+    // to be Denver's calendar date, not UTC's — DATE('now') is UTC and drifts a
+    // day off for ~6-7 hours around each midnight (same offset bug fixed above
+    // in shift-stats and previously in reports.ts).
+    const offset = denverOffsetHours();
     const rows = await query<{ date: string; case_number: string; officer_name: string }>(db,
       `SELECT ce.hearing_date AS date, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
        FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       WHERE ce.hearing_date BETWEEN DATE('now', '${offset} hours') AND DATE('now', '${offset} hours', '+${Math.min(days, 90)} days')
        ORDER BY ce.hearing_date LIMIT 50`);
     return c.json({ count: rows.length, dates: rows });
   } catch { return c.json({ count: 0, dates: [] }); }
