@@ -275,6 +275,47 @@ export default function AnalyticsTab() {
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
 
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/serve-dashboard/export', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          status: exportStatus || undefined,
+          startDate: exportStartDate || undefined,
+          endDate: exportEndDate || undefined,
+          format: 'csv',
+        }),
+      });
+      if (!res.ok) throw new Error(`Export failed with status ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', `serve_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      addToast('Export downloaded', 'success');
+      setExportOpen(false);
+    } catch (err: any) {
+      addToast(err?.message || 'Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
       {/* ── Header + shared range selector ── */}
@@ -308,6 +349,47 @@ export default function AnalyticsTab() {
           >
             <RefreshCw size={12} className={dailyLoading ? 'animate-spin' : ''} />
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen((o) => !o)}
+              className="text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 transition-colors"
+            >
+              Export
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 mt-1 z-10 w-56 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-xl p-3 space-y-2">
+                <select
+                  value={exportStatus}
+                  onChange={(e) => setExportStatus(e.target.value)}
+                  className="w-full text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-200"
+                >
+                  <option value="">All statuses</option>
+                  {BULK_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <input
+                  type="date"
+                  value={exportStartDate}
+                  onChange={(e) => setExportStartDate(e.target.value)}
+                  className="w-full text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-200"
+                />
+                <input
+                  type="date"
+                  value={exportEndDate}
+                  onChange={(e) => setExportEndDate(e.target.value)}
+                  className="w-full text-[10px] px-2 py-1 rounded-[2px] bg-surface-raised border border-rmpg-700 text-rmpg-200"
+                />
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={handleExport}
+                  className="w-full text-[10px] px-2 py-1 rounded-[2px] bg-brand-gold-500/10 border border-brand-gold-500/30 text-brand-gold-400 hover:bg-brand-gold-500/20 transition-colors disabled:opacity-40"
+                >
+                  {exporting ? 'Exporting…' : 'Download CSV'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
