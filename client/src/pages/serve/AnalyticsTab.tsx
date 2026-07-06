@@ -80,6 +80,27 @@ interface CountyBreakdownResponse {
   regions: CountyRow[];
 }
 
+interface TimeToServeResponse {
+  period_days: number;
+  sample_size: number;
+  avg_days: number;
+  median_days: number;
+  p90_days: number;
+}
+
+interface WeeklyTrendRow {
+  week_start: string;
+  total_attempts: number;
+  successful_attempts: number;
+  queues_served: number;
+  queues_created: number;
+  success_rate: number;
+}
+interface WeeklyTrendResponse {
+  period_weeks: number;
+  weeks: WeeklyTrendRow[];
+}
+
 function rateColor(rate: number): string {
   return rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 }
@@ -145,10 +166,39 @@ export default function AnalyticsTab() {
     }
   }, [range]);
 
+  const [ttsRange, setTtsRange] = useState<RangeDays>(90);
+  const [timeToServe, setTimeToServe] = useState<TimeToServeResponse | null>(null);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+
+  const [weeklyTrend, setWeeklyTrend] = useState<WeeklyTrendResponse | null>(null);
+  const [weeklyTrendError, setWeeklyTrendError] = useState<string | null>(null);
+
+  const fetchTimeToServe = useCallback(async () => {
+    setTtsError(null);
+    try {
+      const data = await apiFetch<TimeToServeResponse>(`/serve-dashboard/time-to-serve?days=${ttsRange}`);
+      setTimeToServe(data);
+    } catch (err: any) {
+      setTtsError(err?.message || 'Failed to load time-to-serve');
+    }
+  }, [ttsRange]);
+
+  const fetchWeeklyTrend = useCallback(async () => {
+    setWeeklyTrendError(null);
+    try {
+      const data = await apiFetch<WeeklyTrendResponse>('/serve-dashboard/weekly-trend?weeks=12');
+      setWeeklyTrend(data);
+    } catch (err: any) {
+      setWeeklyTrendError(err?.message || 'Failed to load weekly trend');
+    }
+  }, []);
+
   useEffect(() => { fetchDaily(); }, [fetchDaily, refreshKey]);
   useEffect(() => { fetchServerPerf(); }, [fetchServerPerf, refreshKey]);
   useEffect(() => { fetchSuccessByType(); }, [fetchSuccessByType, refreshKey]);
   useEffect(() => { fetchCountyBreakdown(); }, [fetchCountyBreakdown, refreshKey]);
+  useEffect(() => { fetchTimeToServe(); }, [fetchTimeToServe, refreshKey]);
+  useEffect(() => { fetchWeeklyTrend(); }, [fetchWeeklyTrend, refreshKey]);
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
 
@@ -302,6 +352,79 @@ export default function AnalyticsTab() {
             <div className="text-[11px] text-rmpg-500 text-center py-4">No jobs in this period.</div>
           )}
         </div>
+      </div>
+
+      {/* ── Time to serve ── */}
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] text-rmpg-400 uppercase font-semibold tracking-wider">Time to Serve</span>
+          <div className="flex gap-px text-[10px]">
+            {([7, 30, 90] as RangeDays[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setTtsRange(d)}
+                className={`px-2 py-0.5 rounded-[2px] transition-colors ${
+                  ttsRange === d
+                    ? 'bg-brand-gold-500/20 text-brand-gold-400 border border-brand-gold-500/30'
+                    : 'text-rmpg-400 hover:text-rmpg-200 border border-transparent'
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+        {ttsError && <div className="text-[10px] text-red-400">{ttsError}</div>}
+        {!ttsError && timeToServe && (
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div className="text-xl font-bold tabular-nums font-mono text-rmpg-100">{timeToServe.avg_days}</div>
+              <div className="text-[9px] text-rmpg-400 mt-0.5">Avg Days</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold tabular-nums font-mono text-rmpg-100">{timeToServe.median_days}</div>
+              <div className="text-[9px] text-rmpg-400 mt-0.5">Median Days</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold tabular-nums font-mono text-rmpg-100">{timeToServe.p90_days}</div>
+              <div className="text-[9px] text-rmpg-400 mt-0.5">P90 Days</div>
+            </div>
+          </div>
+        )}
+        {!ttsError && timeToServe && (
+          <div className="text-[9px] text-rmpg-500 text-center">
+            Based on {timeToServe.sample_size} successful serve(s) in the last {timeToServe.period_days} days
+          </div>
+        )}
+      </div>
+
+      {/* ── Weekly trend ── */}
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-1">
+        <span className="text-[9px] text-rmpg-400 uppercase font-semibold tracking-wider">Weekly Trend (12 weeks)</span>
+        {weeklyTrendError && <div className="text-[10px] text-red-400">{weeklyTrendError}</div>}
+        {!weeklyTrendError && (weeklyTrend?.weeks.length ?? 0) > 0 && (
+          <div className="space-y-1 mt-2">
+            {weeklyTrend!.weeks.map((w) => (
+              <div key={w.week_start} className="flex items-center gap-2 text-[9px]">
+                <span className="w-16 text-rmpg-400 tabular-nums shrink-0">{w.week_start}</span>
+                <div className="flex-1 h-[6px] bg-rmpg-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-green-500"
+                    style={{ width: `${Math.min(w.success_rate, 100)}%` }}
+                  />
+                </div>
+                <span className="w-10 text-right text-rmpg-300 tabular-nums shrink-0">{w.total_attempts}</span>
+                <span className={`w-10 text-right tabular-nums shrink-0 font-semibold ${rateColor(w.success_rate)}`}>
+                  {w.success_rate}%
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!weeklyTrendError && (weeklyTrend?.weeks.length ?? 0) === 0 && (
+          <div className="text-[11px] text-rmpg-500 text-center py-4">No activity in the last 12 weeks.</div>
+        )}
       </div>
     </div>
   );
