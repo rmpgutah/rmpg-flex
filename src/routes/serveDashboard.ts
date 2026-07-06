@@ -15,6 +15,34 @@ import { toDenverWallClock } from '../utils/denverTime';
 
 const sd = new Hono<Env>();
 
+/**
+ * Pure avg/median/p90 stats over a set of "days to serve" values. Exported
+ * for unit testing (tests/serveDashboardStats.test.ts) — median/p90 here
+ * previously had off-by-one bugs: median used dayValues[floor(n/2)] (wrong
+ * for even n — that's the lower-middle element, not the average of the two
+ * middle values), and p90 used dayValues[floor(n*0.9)] (one index too high
+ * for exact multiples of 10, e.g. n=100 selected the 91st value).
+ */
+export function computeDaysToServeStats(sortedDayValues: number[]): {
+  avg: number;
+  median: number;
+  p90: number;
+} {
+  const n = sortedDayValues.length;
+  const avg = n
+    ? Math.round((sortedDayValues.reduce((s, v) => s + v, 0) / n) * 100) / 100
+    : 0;
+  const median = n
+    ? (n % 2 === 1
+        ? sortedDayValues[(n - 1) / 2]
+        : (sortedDayValues[n / 2 - 1] + sortedDayValues[n / 2]) / 2)
+    : 0;
+  const p90 = n
+    ? sortedDayValues[Math.max(0, Math.ceil(n * 0.9) - 1)]
+    : 0;
+  return { avg, median, p90 };
+}
+
 // ── Auth guard ──────────────────────────────────────────────
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -253,15 +281,7 @@ sd.get('/time-to-serve', async (c) => {
   const dayValues = rows.map((r) => r.days_to_serve).filter((n) => n !== null && n >= 0) as number[];
   dayValues.sort((a, b) => a - b);
 
-  const avg = dayValues.length
-    ? Math.round((dayValues.reduce((s, v) => s + v, 0) / dayValues.length) * 100) / 100
-    : 0;
-  const median = dayValues.length
-    ? dayValues[Math.floor(dayValues.length / 2)]
-    : 0;
-  const p90 = dayValues.length
-    ? dayValues[Math.floor(dayValues.length * 0.9)]
-    : 0;
+  const { avg, median, p90 } = computeDaysToServeStats(dayValues);
 
   return c.json({
     period_days: days,
