@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
+import type { ServeJob } from '../../types';
 
 type RangeDays = 7 | 30 | 90;
 
@@ -101,6 +103,20 @@ interface WeeklyTrendResponse {
   weeks: WeeklyTrendRow[];
 }
 
+interface WorkloadRow {
+  officer_id: number;
+  officer_name: string;
+  assigned_count: number;
+  overdue_count: number;
+  todays_attempts: number;
+  over_capacity: boolean;
+}
+interface WorkloadResponse {
+  capacity_threshold: number;
+  servers: WorkloadRow[];
+  over_capacity_count: number;
+}
+
 function rateColor(rate: number): string {
   return rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 }
@@ -192,6 +208,46 @@ export default function AnalyticsTab() {
       setWeeklyTrendError(err?.message || 'Failed to load weekly trend');
     }
   }, []);
+
+  const [workload, setWorkload] = useState<WorkloadResponse | null>(null);
+  const [workloadError, setWorkloadError] = useState<string | null>(null);
+
+  const [expandedOfficerId, setExpandedOfficerId] = useState<number | null>(null);
+  const [officerJobs, setOfficerJobs] = useState<ServeJob[]>([]);
+  const [officerJobsLoading, setOfficerJobsLoading] = useState(false);
+
+  const [timelineQueueId, setTimelineQueueId] = useState<number | null>(null);
+
+  const fetchWorkload = useCallback(async () => {
+    setWorkloadError(null);
+    try {
+      const data = await apiFetch<WorkloadResponse>('/serve-dashboard/workload-distribution');
+      setWorkload(data);
+    } catch (err: any) {
+      setWorkloadError(err?.message || 'Failed to load workload');
+    }
+  }, []);
+
+  useEffect(() => { fetchWorkload(); }, [fetchWorkload, refreshKey]);
+
+  const toggleOfficerExpand = useCallback(async (officerId: number) => {
+    if (expandedOfficerId === officerId) {
+      setExpandedOfficerId(null);
+      setOfficerJobs([]);
+      return;
+    }
+    setExpandedOfficerId(officerId);
+    setOfficerJobsLoading(true);
+    try {
+      const jobs = await apiFetch<ServeJob[]>(`/process-server?officer_id=${officerId}`);
+      setOfficerJobs(jobs ?? []);
+    } catch {
+      setOfficerJobs([]);
+      addToast('Failed to load officer jobs', 'error');
+    } finally {
+      setOfficerJobsLoading(false);
+    }
+  }, [expandedOfficerId, addToast]);
 
   useEffect(() => { fetchDaily(); }, [fetchDaily, refreshKey]);
   useEffect(() => { fetchServerPerf(); }, [fetchServerPerf, refreshKey]);
@@ -426,6 +482,69 @@ export default function AnalyticsTab() {
           <div className="text-[11px] text-rmpg-500 text-center py-4">No activity in the last 12 weeks.</div>
         )}
       </div>
+
+      {/* ── Workload distribution ── */}
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] overflow-hidden">
+        <div className="px-3 py-2 border-b border-rmpg-700 flex items-center justify-between">
+          <span className="text-[9px] text-rmpg-400 uppercase font-semibold tracking-wider">Workload Distribution</span>
+          {workload && workload.over_capacity_count > 0 && (
+            <span className="text-[9px] text-red-400 font-semibold">
+              {workload.over_capacity_count} over capacity
+            </span>
+          )}
+        </div>
+        {workloadError && <div className="text-[10px] text-red-400 px-3 py-2">{workloadError}</div>}
+        {!workloadError && (workload?.servers.length ?? 0) > 0 && (
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="border-b border-rmpg-800">
+                <th className="text-left px-3 py-[3px] text-rmpg-500 font-semibold text-[9px]">Officer</th>
+                <th className="text-right px-3 py-[3px] text-rmpg-500 font-semibold text-[9px]">Assigned</th>
+                <th className="text-right px-3 py-[3px] text-rmpg-500 font-semibold text-[9px]">Overdue</th>
+                <th className="text-right px-3 py-[3px] text-rmpg-500 font-semibold text-[9px]">Today</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workload!.servers.map((s) => (
+                <>
+                  <tr
+                    key={s.officer_id}
+                    className={`border-b border-rmpg-800 cursor-pointer hover:bg-surface-base/60 ${s.over_capacity ? 'bg-red-950/20' : ''}`}
+                    onClick={() => toggleOfficerExpand(s.officer_id)}
+                  >
+                    <td className="px-3 py-[2px] text-rmpg-200">{s.officer_name}</td>
+                    <td className={`px-3 py-[2px] text-right tabular-nums font-semibold ${s.over_capacity ? 'text-red-400' : 'text-rmpg-300'}`}>
+                      {s.assigned_count}
+                    </td>
+                    <td className="px-3 py-[2px] text-right text-amber-400 tabular-nums">{s.overdue_count}</td>
+                    <td className="px-3 py-[2px] text-right text-rmpg-400 tabular-nums">{s.todays_attempts}</td>
+                  </tr>
+                  {expandedOfficerId === s.officer_id && (
+                    <tr key={`${s.officer_id}-expanded`}>
+                      <td colSpan={4} className="p-0">
+                        <OfficerJobsPanel
+                          jobs={officerJobs}
+                          loading={officerJobsLoading}
+                          officerId={s.officer_id}
+                          onOpenTimeline={setTimelineQueueId}
+                          onBulkActionComplete={() => { fetchWorkload(); toggleOfficerExpand(s.officer_id); }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {!workloadError && (workload?.servers.length ?? 0) === 0 && (
+          <div className="text-[11px] text-rmpg-500 text-center py-4">No officers with active assignments.</div>
+        )}
+      </div>
+
+      {timelineQueueId != null && (
+        <AttemptTimelineModal queueId={timelineQueueId} onClose={() => setTimelineQueueId(null)} />
+      )}
     </div>
   );
 }
