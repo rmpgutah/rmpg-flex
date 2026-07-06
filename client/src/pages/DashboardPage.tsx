@@ -786,8 +786,11 @@ export default function DashboardPage() {
     fetchWidgets();
     fetchEnhancedData();
 
-    // Refresh every 60 seconds (LiveSync handles real-time updates)
-    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); fetchEnhancedData(); }, 60_000);
+    // Refresh every 60 seconds (LiveSync handles real-time updates).
+    // fetchWidgets() was called on mount but never on this recurring tick, so
+    // ShiftComparison/ClearanceRate/PatrolCoverage etc. froze at their initial
+    // load while every other tile kept refreshing around them.
+    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); fetchWidgets(); fetchEnhancedData(); }, 60_000);
     return () => clearInterval(interval);
   }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets, fetchEnhancedData]);
 
@@ -818,7 +821,12 @@ export default function DashboardPage() {
       try {
         const activityRaw = await apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20');
         if (!cancelled && activityRaw?.data) setActivities(activityRaw.data.map(mapActivityEntry));
-      } catch { /* silent */ }
+      } catch (err) {
+        // Was fully silent — a downed /comms/activity-feed left the feed
+        // frozen with no signal that it had stopped updating. Log so an
+        // outage is at least visible in the console instead of invisible.
+        if (!cancelled) console.warn('[dashboard] activity feed refresh failed:', err);
+      }
     }, 30_000);
     return () => { cancelled = true; clearInterval(activityInterval); };
   }, []);
