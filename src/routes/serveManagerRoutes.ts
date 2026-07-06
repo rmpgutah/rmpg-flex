@@ -103,13 +103,53 @@ sm.get('/poller/status', async (c) => {
   } catch { return c.json({ enabled: false, poll_interval: 300, target_client: '', auto_create_calls: false, last_poll_at: null }); }
 });
 
+// GET /servemanager/jobs — paginated job list backing AdminServeManagerTab's
+// job table (search + pagination). sm_jobs.id is a TEXT PRIMARY KEY that the
+// poller's INSERT never sets (SQLite only auto-rowid-aliases INTEGER PRIMARY
+// KEY columns, so every row's `id` is NULL) — the real, populated identifier
+// is `sm_job_id` (ServeManager's own numeric job id, see migration 0163).
+// `sm_job_id AS id` is re-emitted AFTER `*` so it wins on the duplicate `id`
+// key, giving the client the working identifier under the field name its
+// SMCachedJob.id type already expects.
+sm.get('/jobs', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const perPage = Math.min(100, Math.max(1, parseInt(c.req.query('per_page') || '25', 10)));
+    const q = c.req.query('q')?.trim();
+
+    const where = q ? `WHERE sm_job_number LIKE ? OR recipient_name LIKE ? OR client_company_name LIKE ?` : '';
+    const args = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
+
+    const totalRow = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM sm_jobs ${where}`, ...args,
+    );
+    const total = totalRow?.n || 0;
+
+    const jobs = await query<Record<string, unknown>>(
+      db,
+      `SELECT *, sm_job_id AS id FROM sm_jobs ${where} ORDER BY sm_updated_at DESC LIMIT ? OFFSET ?`,
+      ...args, perPage, (page - 1) * perPage,
+    );
+
+    return c.json({
+      data: jobs,
+      pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
+    });
+  } catch { return c.json({ data: [], pagination: { page: 1, per_page: 25, total: 0, totalPages: 0 } }, 500); }
+});
+
 sm.get('/jobs/:jobId', async (c) => {
   try {
     const db = getDb(c.env);
     const jobId = parseInt(c.req.param('jobId'), 10);
-    const job = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM sm_jobs WHERE id = ?', jobId);
+    const job = await queryFirst<Record<string, unknown>>(db, 'SELECT *, sm_job_id AS id FROM sm_jobs WHERE sm_job_id = ?', jobId);
     if (!job) return c.json({ error: 'Not found' }, 404);
-    const attempts = await query<Record<string, unknown>>(db, 'SELECT * FROM sm_attempts WHERE sm_job_id = ? ORDER BY id DESC', (job as any).sm_job_id);
+    // sm_attempts.job_id is TEXT (unlike sm_jobs.sm_job_id, which is
+    // INTEGER) — bind as a string so a strict-type D1 prepared-statement
+    // comparison matches the stored value (SQLite's CLI applies column-
+    // affinity coercion automatically; the Workers D1 binding API does not).
+    const attempts = await query<Record<string, unknown>>(db, 'SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY id DESC', String(jobId));
     return c.json({ data: { ...job, attempts } });
   } catch { return c.json({ error: 'Not found' }, 404); }
 });
