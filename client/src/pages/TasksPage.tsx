@@ -379,7 +379,7 @@ export default function TasksPage() {
     try {
       await apiFetch(`/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ status }) });
       await fetchData(true);
-      addToast(`Task #${task.id} → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Task #${task.id} → ${toDisplayLabel(status)}`, 'success');
     } catch (err) {
       addToast(err instanceof Error ? err.message : 'Update failed', 'error');
     }
@@ -470,7 +470,7 @@ export default function TasksPage() {
                  : row.status === 'in_progress' ? 'text-brand-400'
                  : row.status === 'review' ? 'text-amber-300'
                  : 'text-rmpg-200';
-      return <span className={`text-[10px] ${tone}`}>{(row.status || '—').replace(/_/g, ' ')}</span>;
+      return <span className={`text-[10px] ${tone}`}>{row.status ? toDisplayLabel(row.status) : '—'}</span>;
     }},
     { key: 'assigned_to_name', label: 'Assignee', width: '160px', render: (row: Task) => (
       <div>

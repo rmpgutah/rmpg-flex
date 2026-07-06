@@ -9,6 +9,7 @@
 // ============================================================
 
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 /* ── FEATURE 91: Call Prediction Engine ────────────────────
    Spillman Flex predicts future call volume based on
@@ -523,7 +524,7 @@ export function processNaturalLanguageQuery(query: string): NLQuery {
           intent,
           entities,
           resolvedQuery: `${intent}: ${Object.values(entities).join(', ')}`,
-          systemResponse: `Processing ${intent.replace(/_/g, ' ')} query...`,
+          systemResponse: `Processing ${toDisplayLabel(intent)} query...`,
         };
       }
     }

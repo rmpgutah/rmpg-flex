@@ -6,6 +6,7 @@ import type { FormSchema } from '../engine/types';
 import { drawBadge } from '../engine/badge';
 import { formatActivity, type CaseActivityRow } from '../../../caseActivity';
 import { parseTimestamp } from '../../../dateUtils';
+import { toDisplayLabel } from '../../../formatters';
 
 export interface CaseReportData {
   caseRow: Record<string, any>;
@@ -91,7 +92,7 @@ export const caseReportSchema: FormSchema<CaseReportData> = {
       ctx.section('Overview', (inner) => {
         inner.labeledField({ kind: 'labeled', label: 'Status', accessor: () => safe(c.status, '').replace(/_/g, ' ').toUpperCase() }, data);
         inner.labeledField({ kind: 'labeled', label: 'Priority', accessor: () => safe(c.priority, '').toUpperCase() }, data);
-        inner.labeledField({ kind: 'labeled', label: 'Type', accessor: () => safe(c.case_type, '').replace(/_/g, ' ') }, data);
+        inner.labeledField({ kind: 'labeled', label: 'Type', accessor: () => safe(c.case_type, '').replace(/_/g, ' ').toUpperCase() }, data);
         inner.labeledField({ kind: 'labeled', label: 'Lead Investigator', accessor: () => safe(c.lead_investigator_name) }, data);
         inner.labeledField({ kind: 'labeled', label: 'Opened', accessor: () => safeDate(c.opened_date) }, data);
         if (c.closed_date) inner.labeledField({ kind: 'labeled', label: 'Closed', accessor: () => safeDate(c.closed_date) }, data);
@@ -116,7 +117,7 @@ export const caseReportSchema: FormSchema<CaseReportData> = {
               ? (typeof c.solvability_factors === 'string' ? JSON.parse(c.solvability_factors) : c.solvability_factors)
               : {};
           } catch { /* ignore */ }
-          const present = Object.entries(factors).filter(([, v]) => v).map(([k]) => k.replace(/_/g, ' '));
+          const present = Object.entries(factors).filter(([, v]) => v).map(([k]) => toDisplayLabel(k));
           if (present.length) inner.labeledField({ kind: 'labeled', label: 'Factors', accessor: () => present.join(', ') }, data);
         });
       }

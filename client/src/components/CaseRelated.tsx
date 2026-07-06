@@ -7,6 +7,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
 import { useToast } from './ToastProvider';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface RelatedCase {
   id: number;
@@ -106,7 +107,7 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
                   <button type="button" key={r.id} onClick={() => link(r.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
                     <div className="text-[11px] font-bold text-rmpg-100">{r.case_number} — {r.title}</div>
-                    <div className="text-[9px] text-rmpg-500">{(r.status || '').replace(/_/g, ' ')}</div>
+                    <div className="text-[9px] text-rmpg-500">{toDisplayLabel(r.status)}</div>
                   </button>
                 ))}
                 {results.length === 0 && q && !searching && <div className="text-[10px] text-rmpg-500 text-center py-4">No results</div>}

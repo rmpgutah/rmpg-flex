@@ -73,9 +73,9 @@ describe('caseReportSchema', () => {
     const doc = await renderPdfV2(caseReportSchema, data, { coreFontsOnly: true });
     const text = getDocText(doc);
     expect(text).toContain('72/100');
-    expect(text).toContain('witnesses present');
-    expect(text).toContain('physical evidence');
-    expect(text).not.toContain('suspect named');
+    expect(text).toContain('Witnesses Present');
+    expect(text).toContain('Physical Evidence');
+    expect(text).not.toContain('Suspect Named');
   });
 
   it('omits the Factors field when no solvability factors are true', async () => {
