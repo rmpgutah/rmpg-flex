@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { refreshAccessToken } from '../../utils/tokenRefresh';
 import { useToast } from '../../components/ToastProvider';
 import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
 import type { ServeJob } from '../../types';
@@ -280,6 +281,31 @@ export default function AnalyticsTab() {
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
+  const exportPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close export popover on click outside or Escape — mirrors ExportButton.tsx.
+  useEffect(() => {
+    if (!exportOpen) return;
+
+    function handleClickOutside(e: MouseEvent) {
+      if (exportPopoverRef.current && !exportPopoverRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setExportOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [exportOpen]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -287,16 +313,30 @@ export default function AnalyticsTab() {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/serve-dashboard/export', {
+      const body = JSON.stringify({
+        status: exportStatus || undefined,
+        startDate: exportStartDate || undefined,
+        endDate: exportEndDate || undefined,
+        format: 'csv',
+      });
+      let res = await fetch('/api/serve-dashboard/export', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          status: exportStatus || undefined,
-          startDate: exportStartDate || undefined,
-          endDate: exportEndDate || undefined,
-          format: 'csv',
-        }),
+        body,
       });
+
+      if (res.status === 401) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          res = await fetch('/api/serve-dashboard/export', {
+            method: 'POST',
+            headers,
+            body,
+          });
+        }
+      }
+
       if (!res.ok) throw new Error(`Export failed with status ${res.status}`);
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -349,7 +389,7 @@ export default function AnalyticsTab() {
           >
             <RefreshCw size={12} className={dailyLoading ? 'animate-spin' : ''} />
           </button>
-          <div className="relative">
+          <div className="relative" ref={exportPopoverRef}>
             <button
               type="button"
               onClick={() => setExportOpen((o) => !o)}
