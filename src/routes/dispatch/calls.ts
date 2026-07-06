@@ -204,15 +204,22 @@ calls.post('/', async (c) => {
     // collide with the old sequence.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    const [{ max }] = await query<{ max: string | null }>(
-      db,
-      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-      `${prefix}%`,
-    );
-    const seq = max
-      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-      : '00001';
-    const callNumber = `${prefix}${seq}`;
+    // call_number carries a UNIQUE constraint, and this read-max-then-increment
+    // isn't atomic — two near-simultaneous creates can read the same MAX and
+    // collide on insert. nextCallNumber() is re-run on that specific collision
+    // below rather than surfacing a raw INSERT_FAILED to the dispatcher.
+    const nextCallNumber = async () => {
+      const [{ max }] = await query<{ max: string | null }>(
+        db,
+        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+        `${prefix}%`,
+      );
+      const seq = max
+        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+        : '00001';
+      return `${prefix}${seq}`;
+    };
+    let callNumber = await nextCallNumber();
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -285,7 +292,21 @@ calls.post('/', async (c) => {
     // succeeds (below) so the call row commits even if the ext write fails.
 
     try {
-      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
+      let result;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
+          break;
+        } catch (raceErr: any) {
+          const raceMsg = String(raceErr?.message || raceErr || 'unknown');
+          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raceMsg) && /call_number/i.test(raceMsg)) {
+            callNumber = await nextCallNumber();
+            bindParams[0] = callNumber;
+            continue;
+          }
+          throw raceErr;
+        }
+      }
       const callId = Number(result.meta.last_row_id);
 
       // Record which run card was applied — to ext (PSO/process-service home).
@@ -1367,11 +1388,19 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       parent.responding_vehicle_id ?? null, parent.starting_mileage ?? null, parent.ending_mileage ?? null);
 
     // New call number — same CFS{YY}-{NNNNN} scheme as call creation (POST /).
+    // call_number carries a UNIQUE constraint, and this read-max-then-increment
+    // isn't atomic — a near-simultaneous redispatch (e.g. a double-clicked
+    // "Schedule Return Visit" button) can read the same MAX twice and collide
+    // on insert. Recompute and retry a few times on that specific collision
+    // rather than surfacing the generic SQLITE_CONSTRAINT 409 to the dispatcher.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
-    const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
-    const newCallNumber = `${prefix}${seq}`;
+    const nextCallNumber = async () => {
+      const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
+      const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+      return `${prefix}${seq}`;
+    };
+    let newCallNumber = await nextCallNumber();
 
     // Carry parent notes forward (tagged so the client can badge them
     // "carried from prior visit") + append a system note marking the
@@ -1414,10 +1443,26 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       previous_status: null, status_changed_at: now,
       overdue_notified: 0,
     };
-    const baseValues = baseCols.map((col) => (col in baseOverrides ? baseOverrides[col] : (parent as Record<string, unknown>)[col] ?? null));
-    const insertResult = await execute(db,
-      `INSERT INTO calls_for_service (${baseCols.map((c2) => `"${c2}"`).join(', ')}) VALUES (${baseCols.map(() => '?').join(', ')})`,
-      ...baseValues);
+    let insertResult;
+    for (let attempt = 0; ; attempt++) {
+      const baseValues = baseCols.map((col) => {
+        if (col === 'call_number') return newCallNumber;
+        return col in baseOverrides ? baseOverrides[col] : (parent as Record<string, unknown>)[col] ?? null;
+      });
+      try {
+        insertResult = await execute(db,
+          `INSERT INTO calls_for_service (${baseCols.map((c2) => `"${c2}"`).join(', ')}) VALUES (${baseCols.map(() => '?').join(', ')})`,
+          ...baseValues);
+        break;
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err ?? '');
+        if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raw) && /call_number/i.test(raw)) {
+          newCallNumber = await nextCallNumber();
+          continue;
+        }
+        throw err;
+      }
+    }
     const newCallId = Number(insertResult.meta.last_row_id);
 
     // Ext row — same schema-driven copy, plus the chain link + reset
