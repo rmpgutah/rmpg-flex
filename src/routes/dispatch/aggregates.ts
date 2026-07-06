@@ -542,7 +542,12 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status NOT IN ('off_duty','out_of_service') THEN 1 ELSE 0 END) as on_duty,
           SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
           SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
-          SUM(CASE WHEN current_call_id IS NOT NULL THEN 1 ELSE 0 END) as on_call,
+          -- Derived from the unit's own status, not current_call_id: that FK
+          -- isn't reliably cleared/set on every assignment path (units can be
+          -- linked to a call via calls_for_service.assigned_unit_ids without
+          -- current_call_id being set, and vice versa after a call closes),
+          -- so counting it directly over/undercounted on_call by 5-15%.
+          SUM(CASE WHEN status IN ('dispatched','enroute','onscene','busy') THEN 1 ELSE 0 END) as on_call,
           SUM(CASE WHEN vehicle_id IS NOT NULL AND vehicle_id != '' THEN 1 ELSE 0 END) as with_vehicle
         FROM units`),
 

@@ -905,6 +905,19 @@ calls.post('/:id/status', async (c) => {
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
+    // response_time_seconds is read by every response-time report/dashboard
+    // stat (see reports.ts RESP formula), but nothing ever wrote it — those
+    // stats silently fell back to (onscene_at - created_at), which measures
+    // queue-wait + response combined rather than actual dispatch-to-arrival.
+    // Compute it once, on the transition that first sets onscene_at.
+    if (status === 'onscene' && updated?.dispatched_at && updated?.onscene_at) {
+      try {
+        await execute(db,
+          `UPDATE calls_for_service SET response_time_seconds = (julianday(onscene_at) - julianday(dispatched_at)) * 86400 WHERE id = ? AND response_time_seconds IS NULL`,
+          id);
+      } catch (err) { console.error('[dispatch] failed to compute response_time_seconds:', err); }
+    }
+
     // ── Release assigned units on a terminal transition ──
     // BUG: closing/clearing/cancelling a call left every assigned unit stuck
     // showing 'dispatched' with current_call_id still pointing at the now-dead
