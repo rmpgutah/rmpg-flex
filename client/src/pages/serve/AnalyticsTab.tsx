@@ -668,8 +668,15 @@ export default function AnalyticsTab() {
                           onOpenTimeline={setTimelineQueueId}
                           onBulkActionComplete={async () => {
                             fetchWorkload();
-                            const jobs = await apiFetch<ServeJob[]>(`/process-server?officer_id=${s.officer_id}`);
-                            setOfficerJobs(jobs ?? []);
+                            setOfficerJobsLoading(true);
+                            try {
+                              const jobs = await apiFetch<ServeJob[]>(`/process-server?officer_id=${s.officer_id}`);
+                              setOfficerJobs(jobs ?? []);
+                            } catch {
+                              addToast('Failed to refresh officer jobs', 'error');
+                            } finally {
+                              setOfficerJobsLoading(false);
+                            }
                           }}
                         />
                       </td>
