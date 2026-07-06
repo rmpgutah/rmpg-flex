@@ -4,6 +4,7 @@ import {
   escapeSqlLiteral,
   buildPlateHistorySql,
   buildAlprSummarySql,
+  buildAlprDistinctCountSql,
   extractRows,
   alprReadEvent,
   flexEvent,
@@ -74,6 +75,15 @@ describe('buildAlprSummarySql', () => {
     expect(sql).toContain('GROUP BY plate');
     expect(sql).toContain('ORDER BY reads DESC');
     expect(sql).toContain('LIMIT 100');
+  });
+});
+
+describe('buildAlprDistinctCountSql', () => {
+  it('counts distinct plates and distinct hit-plates, unbounded by LIMIT', () => {
+    const sql = buildAlprDistinctCountSql({ sinceIso: '2026-05-01T00:00:00.000Z' });
+    expect(sql).toContain('COUNT(DISTINCT plate) AS distinct_plates');
+    expect(sql).toContain('COUNT(DISTINCT CASE WHEN critical_hit THEN plate END) AS distinct_hit_plates');
+    expect(sql).not.toContain('LIMIT');
   });
 });
 

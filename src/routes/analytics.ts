@@ -27,6 +27,7 @@ import {
   extractRows,
   buildPlateHistorySql,
   buildAlprSummarySql,
+  buildAlprDistinctCountSql,
   buildEventsSql,
   buildEventSummarySql,
   buildCfsTrendsSql,
@@ -156,6 +157,29 @@ analytics.get('/alpr/summary', operational, async (c) => {
   try {
     const rows = await runR2Sql(c.env, sql);
     return c.json({ since: sinceIso, count: rows.length, plates: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── ALPR: true distinct-plate / distinct-hit-plate counts ────
+// GET /api/analytics/alpr/distinct-count?days=7
+// Unbounded by LIMIT, unlike /alpr/summary's top-N-by-volume rows — the
+// client's "Distinct plates"/"Plates with a hit" cards previously derived
+// these from summary.length, silently undercounting whenever more than
+// (summary's limit, default 100) distinct plates existed in the window.
+analytics.get('/alpr/distinct-count', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 7);
+  const sql = buildAlprDistinctCountSql({ sinceIso });
+  try {
+    const rows = await runR2Sql(c.env, sql);
+    const row = (rows[0] ?? {}) as Record<string, unknown>;
+    return c.json({
+      since: sinceIso,
+      distinct_plates: Number(row.distinct_plates) || 0,
+      distinct_hit_plates: Number(row.distinct_hit_plates) || 0,
+    });
   } catch (err) {
     return sqlErrorResponse(c, err);
   }
