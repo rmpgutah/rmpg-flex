@@ -77,7 +77,12 @@ export async function generateServeCharges(db: D1Database, serveQueueId: number)
         chargeId, l.pricing_code, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0);
     }
     return chargeId;
-  } catch {
+  } catch (err) {
+    // Best-effort by design (callers never let a billing failure break the
+    // serve write) — but silently returning null here meant a served job
+    // could go unbilled with zero trace of why. Log so ops can find and
+    // manually reconcile the miss.
+    console.error(`[serveChargeStore] generateServeCharges failed for queue ${serveQueueId}:`, err);
     return null;
   }
 }

@@ -46,6 +46,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
 import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
+import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 
@@ -831,6 +832,11 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     await generateServeCharges(db, id);
     // Fire-and-forget: sync the terminal outcome back to the originating CFS
     syncServeCompletionToCfs(db, id).catch(() => {});
+    // Fire-and-forget: notify the client the job reached a terminal outcome.
+    // serveCompletionNotify.ts was written to be called from exactly this spot
+    // but nothing ever imported/invoked it — clients had no way to learn a
+    // job was served or failed short of checking the portal themselves.
+    notifyServeCompletion(db, id, newStatus).catch(() => {});
   }
   return c.json({
     success: true,

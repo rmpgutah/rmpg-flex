@@ -69,6 +69,7 @@ import {
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
+import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 // ── Migration 0140 runtime reconciler ───────────────────────
@@ -1966,10 +1967,19 @@ si.post('/:id/attempts', async (c) => {
 
   // Completion → auto-compute the serve charge (pending_review) so it shows up in
   // billing without a manual step. Mirrors serve.ts; best-effort — generateServeCharges
-  // swallows its own errors and never breaks the attempt write.
+  // never throws (it logs its own failures internally) and never breaks the
+  // attempt write.
   if (newStatus === 'served') {
     const { generateServeCharges } = await import('../utils/serveChargeStore');
-    await generateServeCharges(db, id).catch(() => null);
+    await generateServeCharges(db, id);
+  }
+
+  // Fire-and-forget: notify the client the job reached a terminal outcome.
+  // serveCompletionNotify.ts documents itself as callable from serve.ts's
+  // logAttempt(), but this intake path is the OTHER attempt-logging route and
+  // never called it either — jobs completed here never notified anyone.
+  if (newStatus === 'served' || newStatus === 'failed') {
+    notifyServeCompletion(db, id, newStatus).catch(() => {});
   }
 
   // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
