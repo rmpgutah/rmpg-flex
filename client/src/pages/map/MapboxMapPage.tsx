@@ -92,7 +92,7 @@ import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
-import { HAZARD_FLAGS, buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
+import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
   TACTICAL_TEXT_PRIMARY,
@@ -657,12 +657,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         existing.setLngLat([unit.longitude, unit.latitude]);
         const popup = existing.getPopup();
         if (popup) popup.setHTML(buildUnitPopupHtml(unit));
-        // Update marker color
-        const el = existing.getElement();
-        const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
-        el.style.background = color;
-        el.style.boxShadow = `0 0 6px ${color}80`;
-        el.textContent = unit.call_sign.slice(0, 4);
+        // BUG: this used to set `el.textContent = unit.call_sign` directly on
+        // the marker's root element — textContent replaces ALL child nodes,
+        // so it wiped out the photo-icon frame + label buildUnitMarkerEl()
+        // creates, turning every marker into plain unstyled text on its very
+        // first update after creation (which happens on nearly every poll/
+        // WS push). Update the existing child nodes in place instead of
+        // replacing the root element — mapboxgl.Marker tracks that exact
+        // node internally (setLngLat writes a CSS transform onto it), so
+        // swapping it out from under the library would break future moves.
+        applyUnitMarkerState(existing.getElement(), unit);
       } else {
         const el = buildUnitMarkerEl(unit);
         const marker = new mapboxgl.Marker({ element: el })
