@@ -1388,7 +1388,7 @@ export default function DispatchPage() {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
       const data = msg.data || msg;
       const verb = data.event_type === 'enter' ? 'entered' : 'exited';
-      addToast(`${data.call_sign ?? 'Unit'} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
+      addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
     });
 
     return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); };
