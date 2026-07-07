@@ -120,6 +120,60 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
   return ordered.map(i => clusters[i]);
 }
 
+// ─── Offline fallback: pure-geometry nearest-neighbor optimizer ─────────
+// Mirrors src/utils/serveRouteOptimizer.ts's haversine + nearest-neighbor
+// approach (can't import it directly — /src/ is the Worker build,
+// /client/src/ is a separate build with no shared bundle). Requires no
+// external API, so it's used whenever Mapbox Directions is unavailable
+// (token fetch failed, network down, rate-limited, etc.) instead of
+// leaving the route planner entirely non-functional.
+const EARTH_RADIUS_MI = 3958.8;
+const ROAD_WINDING_FACTOR = 1.3;
+const URBAN_AVG_MPH = 25;
+
+export function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_MI * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+export function estimateDriveMinutes(distanceMiles: number): number {
+  if (!Number.isFinite(distanceMiles) || distanceMiles <= 0) return 0;
+  return (distanceMiles * ROAD_WINDING_FACTOR / URBAN_AVG_MPH) * 60;
+}
+
+/** Greedy nearest-neighbor reorder from an optional origin. Returns the
+ *  reordered stops plus the total straight-line distance/time estimate. */
+export function nearestNeighborOrder(
+  selected: StopItem[],
+  origin: { lat: number; lng: number } | null,
+): { ordered: StopItem[]; totalDistanceMiles: number; totalDurationMinutes: number } {
+  const remaining = [...selected];
+  const ordered: StopItem[] = [];
+  let cursor = origin;
+  let totalDistanceMiles = 0;
+
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const s = remaining[i];
+      const d = cursor
+        ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
+        : 0;
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    const [next] = remaining.splice(bestIdx, 1);
+    if (cursor) totalDistanceMiles += bestDist;
+    cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
+    ordered.push(next);
+  }
+
+  return { ordered, totalDistanceMiles, totalDurationMinutes: estimateDriveMinutes(totalDistanceMiles) };
+}
+
 // ─── Mapbox Directions API Helper ───────────────────────────────────────
 
 async function fetchDirections(coordSets: [number, number][][]): Promise<{ legs: any[]; geometry: any } | null> {
@@ -316,15 +370,29 @@ export default function ServeRoutePlanner({
       });
     };
 
+    // Retry the token fetch a few times with backoff before giving up.
+    // getMapboxAccessToken()'s server fallback (fetchMapboxConfig in
+    // mapboxToken.ts) requires an auth token already in localStorage at
+    // the exact moment it's called and returns empty with NO retry of its
+    // own if that's momentarily missing (e.g. this modal opening in the
+    // same tick as a fresh login) — previously that meant one unlucky
+    // timing race permanently broke Mapbox for the rest of this mount,
+    // with no path back to a working map short of closing and reopening.
+    const MAX_ATTEMPTS = 3;
     (async () => {
-      try {
-        const token = await getMapboxAccessToken();
-        if (cancelled) return;
-        initMapbox(token);
-        if (cancelled) return;
-        initMap();
-      } catch {
-        if (!cancelled) setError('Failed to load Mapbox');
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const token = await getMapboxAccessToken();
+          if (cancelled) return;
+          initMapbox(token);
+          if (cancelled) return;
+          initMap();
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          if (attempt >= MAX_ATTEMPTS) { setError('Failed to load Mapbox'); return; }
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        }
       }
     })();
 
@@ -407,8 +475,6 @@ export default function ServeRoutePlanner({
   }, []);
 
   const optimizeRoute = useCallback(async () => {
-    if (!mapReady || !mapRef.current) return;
-
     const selected = stops.filter(s => s.selected);
     if (selected.length < 2) {
       setError('Select at least 2 stops to optimize');
@@ -418,6 +484,26 @@ export default function ServeRoutePlanner({
     setOptimizing(true);
     setError(null);
     clearRouteFromMap();
+
+    // Mapbox unavailable (token fetch failed, network down, rate-limited)
+    // used to leave the ENTIRE route planner unusable — Optimize Route was
+    // gated on mapReady with no fallback, even though reordering stops by
+    // distance doesn't fundamentally require a live map or the Directions
+    // API. Fall back to a pure client-side nearest-neighbor estimate so
+    // officers still get a usable (if less precise) route order.
+    if (!mapReady || !mapRef.current) {
+      const { ordered, totalDistanceMiles, totalDurationMinutes } = nearestNeighborOrder(selected, currentLocation);
+      setTotalDistance(totalDistanceMiles);
+      setTotalDuration(totalDurationMinutes);
+      const unselected = stops.filter(s => !s.selected);
+      setStops([
+        ...ordered.map((s, i) => ({ ...s, order: i })),
+        ...unselected.map((s, i) => ({ ...s, order: ordered.length + i })),
+      ]);
+      setError('Map unavailable — used straight-line distance estimate instead of driving directions.');
+      setOptimizing(false);
+      return;
+    }
 
     try {
       const clusters = chainClusters(clusterStops(selected));
@@ -578,7 +664,7 @@ export default function ServeRoutePlanner({
           {/* Left: Stop list */}
           <div className="w-[380px] border-r border-rmpg-700 flex flex-col bg-surface-sunken">
             <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700">
-              <button type="button" onClick={optimizeRoute} disabled={optimizing || !mapReady || selectedCount < 2}
+              <button type="button" onClick={optimizeRoute} disabled={optimizing || selectedCount < 2}
                 className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 flex-1 justify-center">
                 {optimizing ? <><Loader2 className="w-3 h-3 animate-spin" /> Optimizing...</> : <><Route className="w-3 h-3" /> Optimize Route</>}
               </button>
