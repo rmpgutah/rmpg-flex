@@ -573,6 +573,11 @@ export default function DashboardPage() {
   } | null>(null);
 
   // ═══ Dashboard widget states (Features 31-43) ═══
+  // Failed fetches inside fetchWidgets() already console.warn per-endpoint,
+  // but a widget whose fetch failed simply renders nothing — indistinguishable
+  // from "this feature has no data right now." Track a count so the operator
+  // gets a single visible signal that something is actually broken.
+  const [widgetErrorCount, setWidgetErrorCount] = useState(0);
   const [shiftComparison, setShiftComparison] = useState<any>(null);
   const [clearanceRate, setClearanceRate] = useState<any>(null);
   const [patrolCoverage, setPatrolCoverage] = useState<any>(null);
@@ -725,8 +730,9 @@ export default function DashboardPage() {
 
   // ═══ Fetch dashboard widget data (Features 31-43) ═══
   const fetchWidgets = useCallback(async () => {
+    let failures = 0;
     const safe = async <T,>(url: string): Promise<T | null> => {
-      try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
+      try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); failures++; return null; }
     };
     const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
@@ -742,6 +748,7 @@ export default function DashboardPage() {
       safe<any>('/dispatch/call-volume?days=7'),
       safe<any>('/dispatch/by-zone?days=7'),
     ]);
+    setWidgetErrorCount(failures);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
     if (pc) setPatrolCoverage(pc);
@@ -976,7 +983,15 @@ export default function DashboardPage() {
           ])}>
             <span className={`led-dot ${ledClass}`} aria-hidden="true" />
             Command &amp; Control — {statusWord}
-            <span className="ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums" title={lastSyncedAt?.toLocaleString() ?? 'Never'}>
+            {widgetErrorCount > 0 && (
+              <span
+                className="ml-auto text-[10px] font-mono text-amber-400"
+                title="One or more dashboard widget endpoints failed to load this refresh — see console for which. The widget stays blank rather than showing stale data."
+              >
+                {widgetErrorCount} widget{widgetErrorCount === 1 ? '' : 's'} unavailable
+              </span>
+            )}
+            <span className={widgetErrorCount > 0 ? 'text-[10px] font-mono text-rmpg-500 tabular-nums' : 'ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums'} title={lastSyncedAt?.toLocaleString() ?? 'Never'}>
               {syncLabel}
             </span>
           </div>
