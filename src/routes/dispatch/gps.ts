@@ -302,14 +302,19 @@ gps.post('/', async (c) => {
         const zones = await query<{ id: number; zone_name: string; zone_type: string; geojson_data: string }>(
           db, 'SELECT id, zone_name, zone_type, geojson_data FROM geofence_zones WHERE is_active = 1');
 
+        const zoneNameById = new Map<number, string>();
+        const zoneTypeById = new Map<number, string>();
+        for (const zone of zones) {
+          zoneNameById.set(zone.id, zone.zone_name);
+          zoneTypeById.set(zone.id, zone.zone_type);
+        }
+
         let currentZoneId: number | null = null;
-        let currentZone: { id: number; zone_name: string; zone_type: string } | null = null;
         for (const zone of zones) {
           const parsedZones = parseZoneFeatures(zone.geojson_data);
           const inside = parsedZones.some((pz) => pointInAnyPolygon(lastPt.longitude, lastPt.latitude, pz.polygons));
           if (inside) {
             currentZoneId = zone.id;
-            currentZone = { id: zone.id, zone_name: zone.zone_name, zone_type: zone.zone_type };
             break; // first match wins — a unit is only ever "in" one zone
           }
         }
@@ -333,18 +338,18 @@ gps.post('/', async (c) => {
               `INSERT INTO geofence_events (unit_id, zone_id, event_type, latitude, longitude)
                VALUES (?, ?, ?, ?, ?)`,
               unitId, ev.zoneId, ev.eventType, lastPt.latitude, lastPt.longitude);
-          }
 
-          broadcastAll('geofence_alert', {
-            unit_id: unitId,
-            call_sign: callSign,
-            transition: transition.type,
-            zone_id: currentZoneId,
-            zone_name: currentZone?.zone_name ?? null,
-            zone_type: currentZone?.zone_type ?? null,
-            latitude: lastPt.latitude,
-            longitude: lastPt.longitude,
-          });
+            broadcastAll('geofence_alert', {
+              unit_id: unitId,
+              call_sign: callSign,
+              zone_id: ev.zoneId,
+              zone_name: zoneNameById.get(ev.zoneId) ?? null,
+              zone_type: zoneTypeById.get(ev.zoneId) ?? null,
+              event_type: ev.eventType,
+              latitude: lastPt.latitude,
+              longitude: lastPt.longitude,
+            });
+          }
 
           log.info(`[gps] unit ${callSign ?? unitId} geofence ${transition.type}`, { unitId, transition });
         }
