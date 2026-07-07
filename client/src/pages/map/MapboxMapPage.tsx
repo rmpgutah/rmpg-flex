@@ -637,8 +637,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         ? { ...u, latitude: lat, longitude: lng }
         : u)));
     });
-    return () => { unsub1(); unsub2(); unsub3(); };
-  }, [subscribe, fetchData]);
+    // Geofence entry/exit alert — mirrors the panic_alert handler in DispatchPage.tsx.
+    const unsub4 = subscribe('geofence_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const verb = data.event_type === 'enter' ? 'entered' : 'exited';
+      addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
+    });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+  }, [subscribe, fetchData, addToast]);
 
   // ── Unit Markers ───────────────────────────────────────────────────────────
 

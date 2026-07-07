@@ -2003,6 +2003,10 @@ export type WSMessageType =
   // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
   // brain fan-in — MapPage moves the marker / rotates the arrow directly.
   | 'unit_position'
+  // Geofence zone entry/exit (src/routes/dispatch/gps.ts). Payload:
+  // { unit_id, call_sign, zone_id, zone_name, zone_type, event_type:'enter'|'exit',
+  // latitude, longitude }. One message per event.
+  | 'geofence_alert'
   // Trip lifecycle (unit_trips → AlertHubDO). Payload:
   // { type:'trip_update', action:'opened'|'closed', unit_id, trip }.
   // 'appended' is intentionally NOT broadcast — live distance/duration

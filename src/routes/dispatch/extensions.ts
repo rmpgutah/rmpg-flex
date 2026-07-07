@@ -1195,7 +1195,14 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
   } catch { return c.json({ total: 0, active: 0, expired: 0, resolved: 0 }); }
 });
 
-// ── Geofence CRUD ────────────────────────────────────────────
+// ── Geofence CRUD (LEGACY — do not use for new work) ─────────
+// This mounts at /api/dispatch/calls/geofences, against its OWN `geofences`
+// table — unrelated to `geofence_zones` (src/routes/geofences.ts, mounted at
+// /api/geofences), which is the table the map's draw tool
+// (DrawGeofenceTool.tsx) and the geofence entry/exit detection pipeline
+// (src/routes/dispatch/gps.ts) actually use. Nothing currently populates
+// this table's rows. Kept for now to avoid an unnecessary removal in an
+// unrelated change; do not build new geofence features against this route.
 callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
