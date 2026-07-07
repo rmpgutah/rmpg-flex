@@ -1384,7 +1384,14 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
+    // Geofence entry/exit alert — mirrors the panic_alert handler above.
+    const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const verb = data.event_type === 'enter' ? 'entered' : 'exited';
+      addToast(`${data.call_sign ?? 'Unit'} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
