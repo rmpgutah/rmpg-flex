@@ -2,7 +2,7 @@
 // RMPG Flex — "What's Here" unified spatial query
 // ============================================================
 // When active, clicking anywhere on the map resolves the full geography
-// stack at that point in one popup: Area › Section › Zone › Beat (point-
+// stack at that point in one popup: Area › Sector › Zone › Beat (point-
 // in-polygon against beat geometry), County, Municipality, plus the
 // nearest statewide address point if that overlay is on. Turns every
 // overlay into a single point-and-identify dispatch tool.
@@ -170,7 +170,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       const baseRows: { label: string; value: string; color?: string }[] = [];
       if (beat) {
         baseRows.push({ label: 'Area', value: bp._areaName || '—', color: bp._areaColor });
-        baseRows.push({ label: 'Section', value: bp._sectionName || '—', color: bp._sectionColor });
+        baseRows.push({ label: 'Sector', value: bp._sectorName || '—', color: bp._sectorColor });
         baseRows.push({ label: 'Zone', value: bp._zoneName || '—', color: bp._zoneColor });
         baseRows.push({ label: 'Beat', value: bp.beat_code || bp.beat_id || '—' });
       }
