@@ -12,10 +12,11 @@ import {
   Layers, MapPin, Search, ChevronLeft,
   RefreshCw, Download, Info, Grid3X3, Globe,
   Building2, Map, Filter, SortAsc, SortDesc, Eye,
-  ChevronRight as ChevronRightIcon, X,
+  ChevronRight as ChevronRightIcon, X, Table2,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
+import GeoDataMapView from '../components/GeoDataMapView';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -278,6 +279,7 @@ export default function GeoDataViewerPage() {
   const [selectedFeature, setSelectedFeature] = useState<GeoFeature | null>(null);
   const [showFilter, setShowFilter] = useState(false);
   const [columnFilter, setColumnFilter] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'table' | 'map'>('table');
 
   const mountedRef = useRef(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -541,6 +543,41 @@ export default function GeoDataViewerPage() {
                 )}
               </div>
 
+              {/* Table / Map view toggle */}
+              <div className="flex items-center" style={{ border: '1px solid var(--surface-raised)' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  title="Table view"
+                  aria-label="Table view"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                  style={{
+                    background: viewMode === 'table' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+                    color: viewMode === 'table' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Table2 style={{ width: 9, height: 9 }} />
+                  Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('map')}
+                  title="Map view"
+                  aria-label="Map view"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-mono uppercase tracking-wider transition-colors"
+                  style={{
+                    background: viewMode === 'map' ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+                    color: viewMode === 'map' ? 'var(--rmpg-400)' : 'var(--rmpg-500)',
+                    cursor: 'pointer',
+                    borderLeft: '1px solid var(--surface-raised)',
+                  }}
+                >
+                  <Map style={{ width: 9, height: 9 }} />
+                  Map
+                </button>
+              </div>
+
               {/* Column filter toggle */}
               <button
                 type="button"
@@ -609,7 +646,23 @@ export default function GeoDataViewerPage() {
               </span>
             </div>
 
-            {/* Table — three distinct empty states */}
+            {/* Map view — real Mapbox GL geometry for the active layer.
+                Click a feature to select it; feeds the same detail panel
+                the table view uses. Renders the full (unfiltered) layer,
+                not the search-filtered/paginated table subset — geographic
+                browsing is a different mode than row search. */}
+            {viewMode === 'map' ? (
+              <div className="flex-1 min-h-0">
+                <GeoDataMapView
+                  fc={fc}
+                  color={activeLayer.color}
+                  selectedFeature={selectedFeature}
+                  onSelectFeature={setSelectedFeature}
+                  height="100%"
+                />
+              </div>
+            ) : (
+            /* Table — three distinct empty states */
             <div className="flex-1 overflow-auto min-h-0">
               {isLoading ? (
                 <div className="flex items-center justify-center h-32 gap-2">
@@ -722,6 +775,7 @@ export default function GeoDataViewerPage() {
                 </table></div>
               )}
             </div>
+            )}
           </div>
 
           {/* ── Feature detail panel ─────────────────── */}
