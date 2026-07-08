@@ -1542,11 +1542,11 @@ body.fx-noise::after {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #aaaaaa;
+    color: var(--text-secondary);
     background: var(--surface-raised);
-    border: 1px solid #2e2e2e;
-    border-bottom-color: #050505;
-    border-right-color: #050505;
+    border: 1px solid var(--border-subtle);
+    border-bottom-color: var(--surface-deep);
+    border-right-color: var(--surface-deep);
     cursor: pointer;
     transition: all 0.15s ease;
     white-space: nowrap;
@@ -1557,15 +1557,15 @@ body.fx-noise::after {
 
   .toolbar-btn:hover {
     background: var(--surface-raised);
-    color: #ffffff;
+    color: var(--text-primary);
   }
 
   .toolbar-btn:active {
-    background: #050505;
-    border-top-color: #050505;
-    border-left-color: #050505;
-    border-bottom-color: #2e2e2e;
-    border-right-color: #2e2e2e;
+    background: var(--surface-deep);
+    border-top-color: var(--surface-deep);
+    border-left-color: var(--surface-deep);
+    border-bottom-color: var(--border-subtle);
+    border-right-color: var(--border-subtle);
   }
 
   .toolbar-btn:disabled {
@@ -1575,14 +1575,14 @@ body.fx-noise::after {
 
   .toolbar-btn-primary {
     background: var(--brand-blue);
-    border-color: #b9c1ca;
-    border-bottom-color: #1a1a1a;
-    border-right-color: #1a1a1a;
+    border-color: var(--border-strong);
+    border-bottom-color: var(--surface-deep);
+    border-right-color: var(--surface-deep);
     color: #ffffff;
   }
 
   .toolbar-btn-primary:hover {
-    background: #aaaaaa;
+    background: color-mix(in srgb, var(--brand-blue) 85%, white);
   }
 
   .toolbar-btn-danger {
