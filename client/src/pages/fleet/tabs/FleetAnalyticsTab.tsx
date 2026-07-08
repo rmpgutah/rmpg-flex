@@ -309,6 +309,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   const [inspectionStats, setInspectionStats] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [overdueInspections, setOverdueInspections] = useState<any[]>([]);
+  // Fleet.io sync health — link coverage, conflict trend, outbound latency.
+  const [fleetioAnalytics, setFleetioAnalytics] = useState<any>(null);
 
   // Combined cost trend (12 months) — enhanced endpoint with fuel + maintenance + recurring
   const [combinedCostTrend, setCombinedCostTrend] = useState<any[]>([]);
@@ -336,6 +338,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     apiFetch<any>('/fleet/inspection-stats').then((d: any) => d && setInspectionStats(d)).catch(() => {});
     apiFetch<any>('/fleet/notifications').then((d: any) => d?.notifications && setNotifications(d.notifications)).catch(() => {});
     apiFetch<any>('/fleet/overdue-inspections').then((d: any) => d?.alerts && setOverdueInspections(d.alerts)).catch(() => {});
+    apiFetch<any>('/fleetio/analytics').then((d: any) => d && !d.error && setFleetioAnalytics(d)).catch(() => {});
   }, []);
 
   // Fetch combined cost trend (12 months)
@@ -1552,6 +1555,49 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Fleet.io Sync Health */}
+      {fleetioAnalytics && (
+        <div className="panel-beveled p-3 bg-surface-base">
+          <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Activity className="w-3 h-3" /> Fleet.io Sync Health
+          </h4>
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            {(fleetioAnalytics.link_coverage ?? []).map((lc: any) => (
+              <div key={lc.rmpg_table} className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className={`text-sm font-bold font-mono ${lc.coverage_pct >= 90 ? 'text-green-400' : lc.coverage_pct >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {lc.coverage_pct}%
+                </div>
+                <div className="text-[7px] text-rmpg-500 uppercase">{toDisplayLabel(lc.rmpg_table)} linked ({lc.linked}/{lc.total})</div>
+              </div>
+            ))}
+          </div>
+          {(fleetioAnalytics.latency_by_resource ?? []).length > 0 && (
+            <div className="space-y-0.5 mb-2">
+              {fleetioAnalytics.latency_by_resource.map((r: any) => (
+                <div key={r.resource} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[10px]">
+                  <span className="font-mono text-rmpg-100 font-bold">{toDisplayLabel(r.resource)}</span>
+                  <span className="text-rmpg-400">{r.n} synced (30d)</span>
+                  <span className="font-mono text-brand-400">{r.avg_seconds != null ? `${Math.round(r.avg_seconds)}s avg` : '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(fleetioAnalytics.conflict_trend_14d ?? []).length > 0 && (
+            <div className="h-[100px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fleetioAnalytics.conflict_trend_14d}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis dataKey="day" tick={{ fontSize: 8 }} />
+                  <YAxis tick={{ fontSize: 8 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="n" name="Conflicts" fill="#f59e0b" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
     </div>
