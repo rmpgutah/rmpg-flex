@@ -9,6 +9,8 @@
 //   GET  /test-connection   Any authed user. Returns { ok, account_id, account_name } or { ok:false, error }.
 //   GET  /sync-status       Admin. Returns counts from fleetio_links / fleetio_events / fleetio_conflicts.
 //   POST /seed              Admin. Pushes every fleet_vehicles row that lacks a fleetio_links entry into Fleet.io.
+//   POST /pull               Admin. Reconciles Fleet.io's existing vehicle roster into fleet_vehicles
+//                            (matches by VIN/plate/name, links rather than duplicates, creates what's new).
 //
 // PR 4 adds:
 //   POST /webhook           Fleet.io webhook receiver (HMAC-verified inbound).
@@ -20,9 +22,10 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { configFromEnv, createVehicle, ping } from '../utils/fleetio/client';
+import { configFromEnv, createVehicle, listVehicles, ping } from '../utils/fleetio/client';
 import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
+import { matchLocalVehicle, buildLocalInsertFromFleetio, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
@@ -429,6 +432,137 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
   }
 
   return c.json({ ok: true, dry_run: dryRun, ...summary });
+});
+
+/**
+ * POST /pull — Admin. Reconciles RMPG's fleet_vehicles against Fleet.io's
+ * existing vehicle roster, in the opposite direction from /seed.
+ *
+ * /seed assumes RMPG is the system of record and blind-creates in Fleet.io,
+ * which 422s for any vehicle Fleet.io already has (e.g. entered there
+ * directly before this integration existed — Fleet.io predates it as the
+ * operator's fleet-management tool). /pull fetches Fleet.io's full roster
+ * first and, per vehicle:
+ *   - already in fleetio_links (by fleetio_id)   -> already_linked, no-op
+ *   - matches a local row by VIN/plate/name       -> linked_existing (just
+ *     inserts the fleetio_links row; never overwrites local field values)
+ *   - matches nothing locally                     -> created (inserts a new
+ *     fleet_vehicles row from Fleet.io's data + links it)
+ *   - Fleet.io-archived                            -> skipped_archived
+ *   - no usable name to seed a new row with        -> skipped_no_name
+ *
+ * Linking existing vehicles here is what actually fixes /seed's 422s: its
+ * LEFT JOIN over fleetio_links will skip them on the next run.
+ */
+fleetio.post('/pull', requireRole('admin'), async (c) => {
+  let config;
+  try {
+    config = configFromEnv(c.env as unknown as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof FleetioConfigError) {
+      return c.json({ ok: false, error: err.message, code: 'not_configured' }, 503);
+    }
+    throw err;
+  }
+
+  const db = getDb(c.env);
+  const locals = await query<LocalVehicleForMatch>(
+    db, `SELECT id, vin, plate_number, vehicle_number, vehicle_name FROM fleet_vehicles WHERE COALESCE(archived_at, '') = ''`,
+  );
+  const alreadyLinkedIds = new Set(
+    (await query<{ fleetio_id: number }>(
+      db, `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
+    )).map((r) => r.fleetio_id),
+  );
+
+  const outcomes: PullOutcome[] = [];
+  let page = 1;
+  let totalPages = 1;
+  try {
+    do {
+      const resp = await listVehicles({ config, page, perPage: 100 });
+      totalPages = resp.pagination?.total_pages ?? 1;
+      for (const fioVehicle of resp.records) {
+        if (alreadyLinkedIds.has(fioVehicle.id)) {
+          outcomes.push({ fleetio_id: fioVehicle.id, status: 'already_linked', rmpg_id: -1 });
+          continue;
+        }
+        if (fioVehicle.archived_at) {
+          outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_archived' });
+          continue;
+        }
+        const match = matchLocalVehicle(fioVehicle, locals);
+        if (match) {
+          await execute(
+            db,
+            `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+             VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
+            match.id, fioVehicle.id,
+          );
+          outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: match.id });
+          continue;
+        }
+        const insertRow = buildLocalInsertFromFleetio(fioVehicle);
+        if (!insertRow) {
+          outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_no_name' });
+          continue;
+        }
+        const dup = await queryFirst<{ id: number }>(
+          db, 'SELECT id FROM fleet_vehicles WHERE vehicle_number = ?', insertRow.vehicle_number,
+        );
+        if (dup) {
+          // vehicle_number collision the name-based match above missed
+          // (e.g. differing VIN/plate casing) — link rather than error.
+          await execute(
+            db,
+            `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+             VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
+            dup.id, fioVehicle.id,
+          );
+          outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: dup.id });
+          continue;
+        }
+        const result = await execute(
+          db,
+          `INSERT INTO fleet_vehicles (vehicle_name, vehicle_number, vin, plate_number, year, make, model, color, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          insertRow.vehicle_name, insertRow.vehicle_number, insertRow.vin, insertRow.plate_number,
+          insertRow.year, insertRow.make, insertRow.model, insertRow.color, insertRow.status,
+        );
+        const newId = Number(result.meta?.last_row_id);
+        await execute(
+          db,
+          `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+           VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
+          newId, fioVehicle.id,
+        );
+        outcomes.push({ fleetio_id: fioVehicle.id, status: 'created', rmpg_id: newId });
+        locals.push({ id: newId, vin: insertRow.vin, plate_number: insertRow.plate_number, vehicle_number: insertRow.vehicle_number, vehicle_name: insertRow.vehicle_name });
+      }
+      page++;
+    } while (page <= totalPages);
+  } catch (err) {
+    const message = err instanceof FleetioError
+      ? `${err.name}: ${err.message}`
+      : err instanceof Error ? err.message : String(err);
+    return c.json({ ok: false, error: message, outcomes }, 502);
+  }
+
+  const summary = {
+    total: outcomes.length,
+    created: outcomes.filter((o) => o.status === 'created').length,
+    linked_existing: outcomes.filter((o) => o.status === 'linked_existing').length,
+    already_linked: outcomes.filter((o) => o.status === 'already_linked').length,
+    skipped: outcomes.filter((o) => o.status === 'skipped_no_name' || o.status === 'skipped_archived').length,
+  };
+
+  await recordAudit(c, {
+    action: 'FLEETIO_PULL',
+    entityType: 'fleetio',
+    details: { ...summary, sample: outcomes.slice(0, 10) },
+  });
+
+  return c.json({ ok: true, ...summary, outcomes });
 });
 
 export default fleetio;
