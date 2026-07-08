@@ -136,12 +136,23 @@ geography.get('/premise-alerts', async (c) => {
 });
 
 // GET /dispatch/districts
+//
+// Field-naming note: `sector_id`/`area_id` are the numeric dispatch_sectors.id
+// / dispatch_areas.id row keys. `zone_id`/`beat_id` are NOT numeric row keys —
+// they're the human-readable zone_code/beat_code strings. Their numeric PKs
+// are separately exposed as `zone_db_id`/`beat_db_id`/`sector_db_id`. This
+// asymmetry (same `_id` suffix, different semantics per field) already caused
+// one production crash from a consumer assuming all four were the same kind
+// of value (see client/src/hooks/useDistrictLookup.ts's normalizeSectorId).
+// Existing consumers depend on this exact shape — do not rename sector_id/
+// zone_id/beat_id without auditing every consumer first.
 geography.get('/districts', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT
         ds.id AS sector_id,
+        ds.id AS sector_db_id,
         ds.sector_code,
         ds.sector_name,
         ds.color AS sector_color,

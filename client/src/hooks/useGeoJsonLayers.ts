@@ -12,6 +12,7 @@ import type { FeatureCollection } from 'geojson';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSectorColor, getZoneColor, formatBeatLabel } from '../utils/geographyLabels';
 
 // Tactical-dark fallback when a config color won't parse as a Mapbox color
 // (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
@@ -137,35 +138,6 @@ function getMuniColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
   return MUNI_COLORS[Math.abs(hash) % MUNI_COLORS.length];
-}
-
-export const SECTION_COLORS: Record<string, string> = {
-  SL1: '#22c55e', SL2: '#d4a017', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#fbbf24',
-  DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
-  WB1: '#8b5cf6', WB2: '#10b981',
-  UC1: '#facc15', UC2: '#eab308', UC3: '#f43f5e',
-};
-const SECTION_COLOR_FALLBACKS = ['#fb923c', '#d946ef', '#84cc16', '#facc15', '#e11d48', '#14b8a6', '#f59e0b', '#8b5cf6'];
-
-export function getSectionColor(sectionId: string): string {
-  if (!sectionId) return SECTION_COLOR_FALLBACKS[0];
-  if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
-  let hash = 0;
-  for (let i = 0; i < sectionId.length; i++) hash = ((hash << 5) - hash + sectionId.charCodeAt(i)) | 0;
-  return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
-}
-
-const CITY_COLORS = [
-  '#4ade80', '#60a5fa', '#f87171', '#fbbf24', '#c084fc', '#f472b6',
-  '#2dd4bf', '#fb923c', '#a78bfa', '#34d399', '#22d3ee', '#fb7185',
-  '#a3e635', '#818cf8', '#e879f9', '#38bdf8', '#fde047', '#fdba74',
-  '#5eead4', '#f9a8d4', '#bef264', '#93c5fd', '#fcd34d', '#7dd3fc',
-];
-
-export function getCityColor(cityCode: string): string {
-  let hash = 0;
-  for (let i = 0; i < cityCode.length; i++) hash = ((hash << 5) - hash + cityCode.charCodeAt(i)) | 0;
-  return CITY_COLORS[Math.abs(hash) % CITY_COLORS.length];
 }
 
 export interface BeatDistrictEntry {
@@ -311,7 +283,7 @@ export function useGeoJsonLayers({
     if (!beatCfg) return undefined;
     const lookup = new Map<string, BeatStyleEntry>();
     for (const [cityCode, zoneMap] of beatDistrictMap) {
-      const cColor = getCityColor(cityCode);
+      const cColor = getZoneColor(cityCode);
       for (const [distLetter, entry] of zoneMap) {
         lookup.set(`${cityCode}::${distLetter}`, {
           style: { ...beatCfg.style, fillColor: cColor, strokeColor: cColor, fillOpacity: 0.22, strokeOpacity: 0.65, strokeWeight: 1.2 },
@@ -493,10 +465,10 @@ export function useGeoJsonLayers({
             : undefined;
 
           if (entry) {
-            const sColor = getSectionColor(entry.sectionId);
+            const sColor = getSectorColor(entry.sectionId);
             html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
-            html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
-            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
+            html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(formatBeatLabel(entry.beatName, entry.beatDescriptor))}</div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Sector:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
             html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
             html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
           } else {
