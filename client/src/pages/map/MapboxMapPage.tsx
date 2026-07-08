@@ -93,6 +93,7 @@ import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
 import RulerTool from './components/RulerTool';
 import BufferRingTool from './components/BufferRingTool';
+import AnnotationTool from './components/AnnotationTool';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -358,8 +359,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
   // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
   // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
-  const [rulerOpen, setRulerOpen] = useState(false);
-  const [bufferRingOpen, setBufferRingOpen] = useState(false);
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | null>(null);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
@@ -941,8 +941,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
         { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
-        { id: 'ruler', label: 'Ruler', active: rulerOpen, onToggle: () => setRulerOpen((v) => { if (!v) setBufferRingOpen(false); return !v; }), color: '#d4a017', description: 'Multi-point distance measurement' },
-        { id: 'buffer-ring', label: 'Buffer Ring', active: bufferRingOpen, onToggle: () => setBufferRingOpen((v) => { if (!v) setRulerOpen(false); return !v; }), color: '#f08228', description: 'Radius rings around a point' },
+        { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
+        { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
+        { id: 'annotation', label: 'Annotations', active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation'), color: '#3b82f6', description: 'Pin notes on the map' },
       ],
     },
     {
@@ -982,7 +983,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, rulerOpen, bufferRingOpen]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1726,14 +1727,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       />
 
       {/* Measurement & Analysis Tools — Ruler / Buffer Ring */}
-      {rulerOpen && mapRef.current && (
+      {activeFloatingTool === 'ruler' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
-          <RulerTool map={mapRef.current} onClose={() => setRulerOpen(false)} />
+          <RulerTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
         </div>
       )}
-      {bufferRingOpen && mapRef.current && (
+      {activeFloatingTool === 'buffer-ring' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
-          <BufferRingTool map={mapRef.current} onClose={() => setBufferRingOpen(false)} />
+          <BufferRingTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
+        </div>
+      )}
+      {activeFloatingTool === 'annotation' && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <AnnotationTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
         </div>
       )}
 
