@@ -452,12 +452,25 @@ async function recordPullConflict(
   existingFleetioId: number | null,
   collidingFleetioId: number,
 ): Promise<void> {
+  // The situation this records is permanent until an admin resolves it — the
+  // local row never becomes eligible to link, so every subsequent /pull
+  // re-detects the exact same collision. Without the WHERE NOT EXISTS guard,
+  // that means a fresh unresolved row per pull run for the same (rmpg_id,
+  // colliding fleetio_id) pair, growing unbounded (no unique index covers
+  // this on fleetio_conflicts — see migrations/0133).
   await execute(
     db,
     `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value)
-     VALUES ('fleet_vehicles', ?, 'fleetio_id', ?, ?)`,
+     SELECT 'fleet_vehicles', ?, 'fleetio_id', ?, ?
+     WHERE NOT EXISTS (
+       SELECT 1 FROM fleetio_conflicts
+       WHERE rmpg_table='fleet_vehicles' AND rmpg_id=? AND field='fleetio_id'
+         AND remote_value=? AND resolved_at IS NULL
+     )`,
     rmpgId,
     existingFleetioId !== null ? String(existingFleetioId) : null,
+    String(collidingFleetioId),
+    rmpgId,
     String(collidingFleetioId),
   );
 }
