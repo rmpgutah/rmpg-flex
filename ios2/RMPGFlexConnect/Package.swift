@@ -70,7 +70,7 @@ let package = Package(
         .testTarget(name: "FeatureReportsTests", dependencies: ["FeatureReports"], path: "Packages/FeatureReports/Tests/FeatureReportsTests"),
         .target(name: "FeatureMap", dependencies: ["CoreAPI", "CoreLocationService", "DesignSystem", "FeatureCFS"], path: "Packages/FeatureMap/Sources/FeatureMap"),
         .testTarget(name: "FeatureMapTests", dependencies: ["FeatureMap"], path: "Packages/FeatureMap/Tests/FeatureMapTests"),
-        .target(name: "CoreCarPlay", dependencies: [], path: "Packages/CoreCarPlay/Sources/CoreCarPlay"),
+        .target(name: "CoreCarPlay", dependencies: ["CoreAPI"], path: "Packages/CoreCarPlay/Sources/CoreCarPlay"),
         .testTarget(name: "CoreCarPlayTests", dependencies: ["CoreCarPlay"], path: "Packages/CoreCarPlay/Tests/CoreCarPlayTests"),
     ]
 )

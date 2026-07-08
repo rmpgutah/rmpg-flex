@@ -9,7 +9,7 @@ let package = Package(
     ],
     dependencies: [],
     targets: [
-        .target(name: "CoreCarPlay", dependencies: []),
+        .target(name: "CoreCarPlay", dependencies: [], exclude: ["CarPlaySceneDelegate.swift"]),
         .testTarget(name: "CoreCarPlayTests", dependencies: ["CoreCarPlay"]),
     ]
 )
