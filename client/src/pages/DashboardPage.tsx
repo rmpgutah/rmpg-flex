@@ -1396,7 +1396,7 @@ export default function DashboardPage() {
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
               {[
                 { icon: Phone, label: 'New Call', path: '', color: 'var(--stat-accent-red-bright)', action: () => setShowNewCallModal(true) },
-                { icon: FileText, label: 'New Incident', path: '', color: 'var(--stat-accent-amber)', action: () => setShowIncidentModal(true) },
+                { icon: FileText, label: 'New Incident', path: '', color: 'var(--stat-accent-silver)', action: () => setShowIncidentModal(true) },
                 { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: 'var(--stat-accent-green)' },
                 { icon: Gavel, label: 'New Citation', path: '/citations', color: 'var(--spm-text-muted)' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: 'var(--stat-accent-purple)' },
@@ -1404,7 +1404,7 @@ export default function DashboardPage() {
                 { icon: Briefcase, label: 'Cases', path: '/cases', color: 'var(--sev-info)' },
                 { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: 'var(--spm-text-muted)' },
                 { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: 'var(--stat-accent-red-bright)' },
-                { icon: Gavel, label: 'Court Tracker', path: '/court', color: 'var(--stat-accent-amber)' },
+                { icon: Gavel, label: 'Court Tracker', path: '/court', color: 'var(--stat-accent-silver)' },
                 { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: 'var(--sev-high)' },
                 { icon: Car, label: 'Fleet', path: '/fleet', color: 'var(--spm-text-muted)' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
@@ -1998,7 +1998,7 @@ export default function DashboardPage() {
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: 'var(--stat-accent-green)', path: '/incidents' },
           { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: 'var(--stat-accent-green)', path: '/personnel' },
           { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: 'var(--spm-text-muted)', path: '/reports' },
-          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: 'var(--stat-accent-amber)', path: '/warrants' },
+          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: 'var(--stat-accent-silver)', path: '/warrants' },
           { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
           <div

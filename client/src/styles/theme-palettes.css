@@ -35,6 +35,11 @@ html.theme-dark,
   --stat-accent-amber: #f59e0b;
   --stat-accent-amber-bright: #fbbf24;
   --stat-accent-purple: #a855f7;
+  /* Decorative/branding accent — for stat cards, nav shortcuts, and icons
+     that are NOT reporting a warning state (unlike --stat-accent-amber,
+     which stays reserved for genuine pending/overdue/threshold signals).
+     Mirrors --brand-gold so it's silver in Blue & Silver, gold in night/day. */
+  --stat-accent-silver: var(--brand-gold);
   /* Priority neutrals: P3 routine uses --spm-text-muted; P4 scheduled is a
      dimmer step so the two read distinctly (esp. as adjacent pie slices). */
   --pri-scheduled: #5c6672;
@@ -254,6 +259,10 @@ html.theme-blue-silver {
   --surface-sunken: #1a3350; --surface-sunken-rgb: 26 51 80;
   --surface-overlay: #142840; --surface-overlay-rgb: 20 40 64;
   --surface-deep: #142840;   --surface-deep-rgb: 20 40 64;
+  /* Extra tonal steps (2026-07-08) so panel headers and hover states read as a
+     close, deliberate shade shift off the ramp instead of a flat jump. */
+  --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
+  --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
   --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
   --brand-blue: #5a9ae0; --brand-gold: #c3ccd6;
