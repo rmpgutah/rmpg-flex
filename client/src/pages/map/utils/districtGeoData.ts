@@ -7,7 +7,7 @@
 // processed at most once per page load; callers await the same promise.
 //
 // `getTaggedBeats()` returns the 719 beat polygons with the full
-// Area/Section/Zone hierarchy + display colors baked onto each feature's
+// Area/Sector/Zone hierarchy + display colors baked onto each feature's
 // properties (joined to /dispatch/geography/districts on
 // city_code == zone_id, the key the rest of the map assumes).
 // ============================================================
@@ -93,7 +93,7 @@ export function getAreaColor(code: string): string {
 
 export interface TaggedBeatProps {
   _zone: string; _zoneName: string; _zoneColor: string;
-  _section: string; _sectionName: string; _sectionColor: string;
+  _sector: string; _sectorName: string; _sectorColor: string;
   _area: string; _areaName: string; _areaColor: string;
   [k: string]: any;
 }
@@ -136,7 +136,7 @@ export function getTaggedBeats(): Promise<any> {
         // unincorporated catch-alls render (and aggregate in the choropleth) as
         // their own zone rather than collapsing into a same-coded neighbor.
         const zone = zoneCode || 'UNK';
-        const section = info.sectorId || 'UNASSIGNED';
+        const sector = info.sectorId || 'UNASSIGNED';
         const area = info.areaCode || 'UNASSIGNED';
         const zoneName = uninc
           ? unincorporatedZoneName(p, info.sectorName)
@@ -149,9 +149,9 @@ export function getTaggedBeats(): Promise<any> {
             _zone: zone,
             _zoneName: zoneName,
             _zoneColor: getZoneColor(zone),
-            _section: section,
-            _sectionName: info.sectorName || (section === 'UNASSIGNED' ? 'Unassigned' : section),
-            _sectionColor: getSectorColor(section),
+            _sector: sector,
+            _sectorName: info.sectorName || (sector === 'UNASSIGNED' ? 'Unassigned' : sector),
+            _sectorColor: getSectorColor(sector),
             _area: area,
             _areaName: info.areaName || (area === 'UNASSIGNED' ? 'Unassigned' : area),
             _areaColor: getAreaColor(area),
