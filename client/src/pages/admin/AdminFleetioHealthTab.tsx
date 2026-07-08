@@ -106,7 +106,7 @@ export default function AdminFleetioHealthTab() {
     if (!confirm('Pull Fleet.io’s existing vehicle roster into fleet_vehicles? Vehicles matching by VIN/plate/name are linked (not duplicated); vehicles new to RMPG are created.')) return;
     setPulling(true);
     setPullResult(null);
-    apiFetch<{ created?: number; linked_existing?: number; already_linked?: number; skipped?: number; error?: string }>(
+    apiFetch<{ created?: number; linked_existing?: number; already_linked?: number; skipped?: number; conflicts?: number; error?: string }>(
       '/fleetio/pull',
       { method: 'POST' },
     )
@@ -117,6 +117,7 @@ export default function AdminFleetioHealthTab() {
         if (typeof r?.linked_existing === 'number') parts.push(`linked ${r.linked_existing}`);
         if (typeof r?.already_linked === 'number') parts.push(`already linked ${r.already_linked}`);
         if (typeof r?.skipped === 'number' && r.skipped > 0) parts.push(`skipped ${r.skipped}`);
+        if (typeof r?.conflicts === 'number' && r.conflicts > 0) parts.push(`⚠ ${r.conflicts} conflict${r.conflicts === 1 ? '' : 's'} — see below`);
         setPullResult(parts.length ? parts.join(' · ') : (r?.error ?? 'OK'));
         fetchHealth();
       })
@@ -192,7 +193,7 @@ export default function AdminFleetioHealthTab() {
             </button>
           </div>
           {pullResult ? (
-            <span className={`text-[10px] ${pullResult.startsWith('failed') ? 'text-red-400' : 'text-emerald-400'}`}>
+            <span className={`text-[10px] ${pullResult.startsWith('failed') ? 'text-red-400' : pullResult.includes('⚠') ? 'text-amber-400' : 'text-emerald-400'}`}>
               {pullResult}
             </span>
           ) : null}
