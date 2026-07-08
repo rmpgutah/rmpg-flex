@@ -147,6 +147,16 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
     // masked by an earlier corroborating one. That's a same-warrant data
     // discrepancy (not a namesake), so it doesn't weaken the invariant that a
     // DOB-less person or a decisive >1-off age reads unverified.
+    //
+    // NOTE: since the identityMatch pre-filter above (identityChecked) was
+    // added, every hit reaching this point already passed dobOrAgeConfirms
+    // individually — which requires personDob to be present and rejects any
+    // individually-conflicting age. So in practice `!personHasDob` is always
+    // false and `ageDisconfirms` can no longer return true here; this branch
+    // is now unreachable-in-practice defense-in-depth, not dead code that can
+    // misbehave, but don't rely on it doing real filtering — that job now
+    // belongs to identityMatch.ts. Left in place rather than removed so a
+    // future change to the pre-filter doesn't silently lose this safety net.
     let confidence: 'confirmed' | 'unverified';
     if (!personHasDob) {
       confidence = 'unverified';
