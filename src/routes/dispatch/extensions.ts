@@ -553,6 +553,82 @@ bolos.get('/active', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+// GET /check?address=&subject=&vehicle= — active-BOLO keyword match.
+// Must be registered before /:id — otherwise Hono matches "check" as an id
+// param and the request 400s on parseInt (see stubs.ts history for the
+// duplicate this replaces; that copy is now dead code, shadowed by this
+// router being mounted first at /api/comms/bolos).
+bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = c.req.query('address') || '';
+    const subject = c.req.query('subject') || '';
+    const vehicle = c.req.query('vehicle') || '';
+    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+
+    const keywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const kw of keywords(subject)) {
+      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    for (const kw of keywords(vehicle)) {
+      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    if (address && address.length >= 3) {
+      matchClauses.push('UPPER(description) LIKE ?');
+      params.push(`%${address.toUpperCase()}%`);
+    }
+    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, bolo_number, type, title, description,
+             subject_description, vehicle_description, priority,
+             created_at, expires_at
+      FROM bolos
+      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
+      ORDER BY priority ASC, created_at DESC
+      LIMIT 10`, ...params);
+    return c.json({ matches: rows, count: rows.length });
+  } catch (err) {
+    log.error('GET /bolos/check failed', {}, err);
+    return c.json({ matches: [], count: 0 });
+  }
+});
+
+// GET /stats — aggregate counts for the Comms BOLO dashboard tile.
+// Also must precede /:id for the same shadowing reason as /check above.
+bolos.get('/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [{ totalActive }] = await query<{ totalActive: number }>(db,
+      "SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'");
+    const [{ expiringSoon }] = await query<{ expiringSoon: number }>(db,
+      "SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')");
+    const byCategory = await query<Record<string, unknown>>(db,
+      "SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type");
+    const byPriority = await query<Record<string, unknown>>(db,
+      "SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority");
+    const avgLifespan = await queryFirst<{ hours: number | null }>(db,
+      "SELECT ROUND(AVG((julianday(expires_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expires_at IS NOT NULL");
+    return c.json({
+      byCategory: byCategory || [],
+      byPriority: byPriority || [],
+      totalActive: totalActive ?? 0,
+      expiringSoon: expiringSoon ?? 0,
+      avgLifespanHours: avgLifespan?.hours ?? null,
+    });
+  } catch (err) {
+    log.error('GET /bolos/stats failed', {}, err);
+    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
+  }
+});
+
 bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);

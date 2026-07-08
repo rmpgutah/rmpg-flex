@@ -79,55 +79,10 @@ stubs.get('/activity-feed', async (c) => {
 });
 stubs.get('/bolos/active', (c) => c.json([]));
 
-// GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
-stubs.get('/bolos/check', async (c) => {
-  // The same `stubs` router is also mounted at /api/diagnostics + /api/updates
-  // as auth:'public' (for /ui-trap and /check). authMiddleware only sets
-  // userId on the auth:'required' mounts, so this gate keeps live BOLO data
-  // (subject_description, vehicle_description, priority) from leaking publicly.
-  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
-  try {
-    const address = c.req.query('address') || '';
-    const subject = c.req.query('subject') || '';
-    const vehicle = c.req.query('vehicle') || '';
-    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
-
-    const keywords = (text: string) =>
-      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
-
-    const matchClauses: string[] = [];
-    const params: unknown[] = [];
-
-    for (const kw of keywords(subject)) {
-      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
-      params.push(`%${kw}%`, `%${kw}%`);
-    }
-    for (const kw of keywords(vehicle)) {
-      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
-      params.push(`%${kw}%`, `%${kw}%`);
-    }
-    if (address && address.length >= 3) {
-      matchClauses.push('UPPER(description) LIKE ?');
-      params.push(`%${address.toUpperCase()}%`);
-    }
-    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
-
-    const sql = `
-      SELECT id, bolo_number, type, title, description,
-             subject_description, vehicle_description, priority,
-             created_at, expires_at
-      FROM bolos
-      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
-      ORDER BY priority ASC, created_at DESC
-      LIMIT 10`;
-    const rows = await c.env.DB.prepare(sql).bind(...params).all();
-    const matches = rows.results || [];
-    return c.json({ matches, count: matches.length });
-  } catch (err) {
-    console.error('GET /comms/bolos/check failed:', err);
-    return c.json({ matches: [], count: 0 });
-  }
-});
+// NB: /bolos/check and /bolos/stats used to be handled here, but they're
+// unreachable — bolosRouter is mounted at /api/comms/bolos BEFORE this stubs
+// mount and owns the whole /bolos subtree (see routesConfig.ts), so those
+// paths now live in src/routes/dispatch/extensions.ts.
 
 // ── Comms: messages CRUD (mounted at /api/comms) ──
 // GET /messages — inbox for the authenticated user (sent + received, paginated).
@@ -349,33 +304,11 @@ stubs.post('/emergency-broadcast', async (c) => {
   }
 });
 
-// ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
-stubs.get('/bolos/stats', async (c) => {
-  // See /bolos/check above — same router is also mounted public, so this
-  // aggregate over the live `bolos` table needs an in-handler gate.
-  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
-  try {
-    const db = c.env.DB;
-    const [{ totalActive }] = (await db.prepare("SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'").all()).results as any[];
-    const [{ expiringSoon }] = (await db.prepare("SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')").all()).results as any[];
-    const byCategory = (await db.prepare("SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type").all()).results as any[];
-    const byPriority = (await db.prepare("SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority").all()).results as any[];
-    const avgLifespan = (await db.prepare("SELECT ROUND(AVG((julianday(expires_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expires_at IS NOT NULL").first()) as any;
-    return c.json({
-      byCategory: byCategory || [],
-      byPriority: byPriority || [],
-      totalActive: totalActive ?? 0,
-      expiringSoon: expiringSoon ?? 0,
-      avgLifespanHours: avgLifespan?.hours ?? null,
-    });
-  } catch (err) {
-    console.error('GET /comms/bolos/stats failed:', err);
-    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
-  }
-});
+// NB: /bolos/stats used to be handled here — see the note near /bolos/active
+// above. It now lives in src/routes/dispatch/extensions.ts.
 
 stubs.get('/messages/priority-stats', async (c) => {
-  // See /bolos/check / /bolos/stats — same public-mount leak surface.
+  // Same public-mount leak surface as the /bolos/* routes noted above.
   if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
