@@ -302,12 +302,27 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
+      let text: string;
+      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        text = clientText;
+        ocrEngine = 'pdfjs-client';
+      } else {
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch {
+          text = clientText;
+          ocrEngine = 'container-unavailable';
+        }
+      }
+      extraction = await ocrText(c.env, text);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
