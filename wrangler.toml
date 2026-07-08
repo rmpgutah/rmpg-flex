@@ -133,31 +133,6 @@ bucket_name = "rmpg-flex-uploads"
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
 
-# RECORDINGS — dedicated bucket for body-cam and radio audio recordings.
-# New writes from src/routes/personnel/bodyCameraUploads.ts and
-# src/routes/radio.ts land here; recordings already in UPLOADS from before
-# this binding existed keep working via their stored r2_key.
-[[r2_buckets]]
-binding = "RECORDINGS"
-bucket_name = "rmpg-recordings"
-
-# TILES — map tile assets. Re-bound 2026-07-07 (was previously dropped from
-# wrangler.toml, likely during the Workers Builds rename incident); no route
-# uses this yet.
-[[r2_buckets]]
-binding = "TILES"
-bucket_name = "rmpg-r2-tiles-upload"
-
-# FILES / BAP_FILES — provisioned in Cloudflare but not yet assigned a
-# purpose. Bound so the Worker can reach them; no routes use these yet.
-[[r2_buckets]]
-binding = "FILES"
-bucket_name = "rmpg-files"
-
-[[r2_buckets]]
-binding = "BAP_FILES"
-bucket_name = "bap-files"
-
 # ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
 # OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
 # query routes (src/routes/analytics.ts) BOTH no-op / 503 while these are unset,
