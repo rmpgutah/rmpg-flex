@@ -282,10 +282,12 @@ mapbox.get('/static-map', async (c) => {
 // ── Static image (binary proxy) ───────────────────────────
 // GET /api/mapbox/static/image?lng=&lat=&zoom=&width=&height=&style=&retina=&markers=
 //   → binary image bytes (image/png), Mapbox token never reaches the browser.
-// Backs client/src/hooks/useMapStreetView.ts (SAT PEEK popup),
-// client/src/utils/pdfImageHelpers.ts, and client/src/services/staticMapPreview.ts —
-// all three already called this path; it just never existed server-side, so every
-// request 404'd and rendered as "Image failed to load".
+// Backs client/src/utils/pdfImageHelpers.ts and client/src/services/staticMapPreview.ts —
+// both already called this path; it just never existed server-side, so every
+// request 404'd and rendered as "Image failed to load". (StreetViewLightbox's
+// oblique-angle orbit fallback in client/src/utils/locationImagery.ts hits the
+// Mapbox Static Images API directly with a cached client-side token, not this
+// server proxy.)
 mapbox.get('/static/image', async (c) => {
   const tk = token(c);
   if (!tk) return tokenMissing(c);
