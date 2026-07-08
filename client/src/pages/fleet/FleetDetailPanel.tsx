@@ -27,7 +27,6 @@ import FleetCostsTab from './tabs/FleetCostsTab';
 import FleetDashCamTab from './tabs/FleetDashCamTab';
 import FleetFuelCardsTab from './tabs/FleetFuelCardsTab';
 import FleetExpensesTab from './tabs/FleetExpensesTab';
-import FleetGpsTab from './tabs/FleetGpsTab';
 import type { CostCategory } from './modals/FleetCostFormModal';
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
@@ -40,7 +39,7 @@ import EmailedDocuments from '../../components/EmailedDocuments';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
-export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'gps' | 'expenses';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'expenses';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
@@ -78,7 +77,6 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'tires', label: 'Tires', icon: Circle },
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
-  { key: 'gps', label: 'GPS', icon: MapPin },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
   { key: 'dashcam', label: 'Dash Cam', icon: Video },
   { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
@@ -567,7 +565,6 @@ export default function FleetDetailPanel({
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
-        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
