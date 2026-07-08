@@ -42,6 +42,8 @@ targets:
         product: DesignSystem
       - package: RMPGFlexModules
         product: CoreIDScan
+      - package: RMPGFlexModules
+        product: CoreCarPlay
 
 schemes:
   RMPGFlexConnect:
