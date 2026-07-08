@@ -197,12 +197,22 @@ export function parseAamva(raw: string): AamvaResult {
       }
       if (designators.length === entries) {
         directoryOk = true;
-        // Slice from each offset to end-of-payload rather than trusting
-        // the declared length — some jurisdiction encoders emit lengths
-        // short by the terminator, which would truncate trailing fields.
-        // First-occurrence-wins keeps subfiles from contaminating each other.
+        // Slice each subfile from its offset to the START OF THE NEXT
+        // subfile (by offset order), not to its own declared length —
+        // some jurisdiction encoders emit lengths short by the
+        // terminator, which would truncate trailing fields. But we must
+        // still stop at the next subfile's boundary: subfiles are packed
+        // back-to-back with no guaranteed newline between the last field
+        // of one and the header of the next, so slicing all the way to
+        // end-of-payload made the last field of every non-final subfile
+        // swallow every subsequent subfile's raw bytes as its own value
+        // (garbled/false field data). The final subfile still reads to
+        // end-of-payload. First-occurrence-wins is what actually keeps
+        // subfiles from contaminating each other's *known* element ids.
+        const byOffset = [...designators].sort((a, b) => a.offset - b.offset);
         for (const dsg of designators) {
-          addBody(raw.slice(dsg.offset), dsg.type);
+          const next = byOffset.find(d => d.offset > dsg.offset);
+          addBody(raw.slice(dsg.offset, next ? next.offset : undefined), dsg.type);
         }
       }
     }
