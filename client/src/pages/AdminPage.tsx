@@ -29,6 +29,7 @@ import {
   Radio,
   Cloud,
   RefreshCw,
+  Package,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -64,6 +65,7 @@ import AdminPersonIntelTab from './admin/AdminPersonIntelTab';
 import AdminCloudflareTab from './admin/AdminCloudflareTab';
 import { AdminFleetV2HealthTab } from './admin/AdminFleetV2HealthTab';
 import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
+import AdminFleetioDirectoryTab from './admin/AdminFleetioDirectoryTab';
 import AdminInspectionTemplatesTab from './admin/AdminInspectionTemplatesTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
@@ -246,7 +248,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -273,7 +275,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -759,6 +761,7 @@ export default function AdminPage() {
         { id: 'iped', label: 'IPED', icon: ClipboardList },
         { id: 'fleet_v2_health', label: 'Fleet V2 Health', icon: Activity },
         { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
+        { id: 'fleetio_directory', label: 'Fleet.io Vendors/Parts', icon: Package },
         { id: 'inspection_templates', label: 'Inspection Templates', icon: ClipboardList },
         { id: 'vmrs_browser', label: 'VMRS Browser', icon: Book },
       ],
@@ -1157,6 +1160,9 @@ export default function AdminPage() {
 
         {activeTab === 'fleetio_health' && (
           <AdminFleetioHealthTab />
+        )}
+        {activeTab === 'fleetio_directory' && (
+          <AdminFleetioDirectoryTab />
         )}
 
         {activeTab === 'inspection_templates' && (
