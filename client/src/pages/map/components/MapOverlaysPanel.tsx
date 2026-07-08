@@ -1,8 +1,7 @@
-// Map Overlays Panel — sidebar toggle panel for all map overlay layers
-import React, { useState, useCallback } from 'react';
-import { Layers, Flame, History, MapPin, Clock, AlertTriangle, Shield, FileText, Route, SlidersHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
+// Map Overlays Panel — tabbed toggle panel for all map overlay layers
+import React, { useState, useMemo } from 'react';
+import { Layers, Search } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
-import IconButton from '../../../components/IconButton';
 
 export interface OverlayToggle {
   id: string;
@@ -30,133 +29,156 @@ interface MapOverlaysPanelProps {
   className?: string;
 }
 
-const GROUPS: Record<string, { label: string; color: string }> = {
-  density: { label: 'Density & Patterns', color: '#f0b428' },
-  tactical: { label: 'Tactical & Safety', color: '#f03c3c' },
-  routing: { label: 'Routing & ETA', color: '#d4a017' },
-  history: { label: 'Historical & Data', color: '#64d264' },
+const FALLBACK_GROUP_LABEL: Record<string, string> = {
+  density: 'Density & Patterns',
+  tactical: 'Tactical & Safety',
+  routing: 'Routing & ETA',
+  history: 'Historical & Data',
 };
 
 export default function MapOverlaysPanel({ overlays, groups, open, onClose, className = '' }: MapOverlaysPanelProps) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-
-  const toggleGroup = useCallback((group: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      return next;
-    });
-  }, []);
-
-  // If groups prop is provided, use it directly
-  const displayGroups = groups?.map(g => ({
-    key: g.id,
-    label: g.label,
-    color: '#d4a017',
-    items: g.layers,
-  })) ?? (() => {
-    // Group flat overlays by their group property
+  // If `groups` is provided, use it directly. Otherwise bucket a flat
+  // `overlays` list by its `.group` property (legacy callers).
+  const resolvedGroups: LayerGroup[] = useMemo(() => {
+    if (groups) return groups;
     const grouped = new Map<string, OverlayToggle[]>();
     (overlays ?? []).forEach((o) => {
       const g = o.group || 'other';
       if (!grouped.has(g)) grouped.set(g, []);
       grouped.get(g)!.push(o);
     });
-    return Array.from(grouped.entries()).map(([key, items]) => ({
-      key,
-      label: GROUPS[key]?.label ?? key,
-      color: GROUPS[key]?.color ?? '#888888',
-      items,
+    return Array.from(grouped.entries()).map(([id, layers]) => ({
+      id, label: FALLBACK_GROUP_LABEL[id] ?? id, layers,
     }));
-  })();
+  }, [groups, overlays]);
+
+  const [activeTab, setActiveTab] = useState<string>(resolvedGroups[0]?.id ?? '');
+  const [search, setSearch] = useState('');
+
+  // Guard against the active tab id vanishing if `groups` changes shape.
+  const currentTab = resolvedGroups.some((g) => g.id === activeTab) ? activeTab : (resolvedGroups[0]?.id ?? '');
+
+  const query = search.trim().toLowerCase();
+  const matchesQuery = (item: OverlayToggle) => !query || item.label.toLowerCase().includes(query);
+
+  const activeGroup = resolvedGroups.find((g) => g.id === currentTab);
+  const visibleItems = query ? (activeGroup?.layers.filter(matchesQuery) ?? []) : (activeGroup?.layers ?? []);
+
+  // Cross-tab hint: only computed while searching and only when the active
+  // tab has zero matches — avoids extra work on every keystroke otherwise.
+  const crossTabMatch = useMemo(() => {
+    if (!query || visibleItems.length > 0) return null;
+    for (const g of resolvedGroups) {
+      if (g.id === currentTab) continue;
+      const count = g.layers.filter(matchesQuery).length;
+      if (count > 0) return { groupId: g.id, groupLabel: g.label, count };
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, visibleItems.length, resolvedGroups, currentTab]);
 
   if (open === false) return null;
 
   return (
     <div
       className={`flex flex-col ${className}`}
-      style={{ background:"var(--surface-sunken)", border: '1px solid #222222', borderRadius: 2 }}
+      style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', borderRadius: 2 }}
     >
-      <PanelTitleBar title="MAP OVERLAYS" icon={Layers} statusLed="amber" />
+      <PanelTitleBar title="MAP TOOLS" icon={Layers} statusLed="amber" />
+
+      {/* Tabs */}
+      <div role="tablist" className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        {resolvedGroups.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            role="tab"
+            aria-selected={g.id === currentTab}
+            onClick={() => setActiveTab(g.id)}
+            className="flex-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+            style={{
+              color: g.id === currentTab ? 'var(--brand-gold)' : 'var(--text-secondary)',
+              borderBottom: g.id === currentTab ? '2px solid var(--brand-gold)' : '2px solid transparent',
+              background: g.id === currentTab ? 'var(--surface-raised)' : 'transparent',
+            }}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <Search style={{ width: 11, height: 11, color: 'var(--text-secondary)', flexShrink: 0 }} />
+        <input
+          type="text"
+          placeholder="Search tools…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 text-[10px] bg-transparent outline-none"
+          style={{ color: 'var(--text-primary)', border: 'none' }}
+        />
+      </div>
 
       <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 350px)' }}>
-        {displayGroups.map(({ key: gKey, label, color, items }) => {
-          const collapsed = collapsedGroups.has(gKey);
-
-          return (
-            <div key={gKey} className="border-b border-border-default last:border-b-0">
-              {/* Group header */}
-              <button
-                type="button"
-                onClick={() => toggleGroup(gKey)}
-                aria-expanded={!collapsed}
-                aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider hover:brightness-110 transition-all"
-                style={{
-                  background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-                  color,
-                }}
+        {visibleItems.length === 0 && crossTabMatch && (
+          <button
+            type="button"
+            onClick={() => setActiveTab(crossTabMatch.groupId)}
+            className="w-full text-left px-3 py-2 text-[10px]"
+            style={{ color: 'var(--brand-gold)' }}
+          >
+            {crossTabMatch.count} result{crossTabMatch.count !== 1 ? 's' : ''} in another tab — {crossTabMatch.groupLabel}
+          </button>
+        )}
+        {visibleItems.length === 0 && !crossTabMatch && (
+          <div className="px-3 py-4 text-[10px] text-center" style={{ color: 'var(--text-secondary)' }}>
+            No tools match &ldquo;{search}&rdquo;
+          </div>
+        )}
+        <div className="py-1">
+          {visibleItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.onToggle}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[11px] transition-all"
+              style={{
+                background: item.active ? 'var(--surface-raised)' : 'transparent',
+                color: item.active ? 'var(--text-primary)' : 'var(--text-secondary)',
+              }}
+            >
+              <div
+                className="w-7 h-4 shrink-0 relative rounded-full transition-colors"
+                style={{ background: item.active ? 'var(--brand-gold)' : 'var(--surface-raised)' }}
               >
-                {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                {label}
-                <span className="ml-auto text-[9px] text-rmpg-500">
-                  {items.filter((i) => i.active).length}/{items.length}
-                </span>
-              </button>
-
-              {/* Toggle items */}
-              {!collapsed && (
-                <div className="py-1">
-                  {items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={item.onToggle}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:brightness-110 transition-all group"
-                      style={{
-                        background: item.active ? '#141414' : 'transparent',
-                        color: item.active ? '#cccccc' : '#555555',
-                      }}
-                    >
-                      {/* Custom toggle switch */}
-                      <div
-                        className="w-7 h-4 shrink-0 relative rounded-full transition-colors"
-                        style={{
-                          background: item.active ? '#d4a017' : '#2e2e2e',
-                        }}
-                      >
-                        <div
-                          className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                          style={{
-                            background: item.active ? '#0a0a0a' : '#666666',
-                            left: item.active ? '14px' : '2px',
-                          }}
-                        />
-                      </div>
-                      {item.icon && (
-                        <item.icon
-                          className="w-3.5 h-3.5 shrink-0"
-                          style={{ color: item.active ? '#cccccc' : '#555555' }}
-                          aria-hidden="true"
-                        />
-                      )}
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="truncate text-[11px]">{item.label}</div>
-                        {item.description && (
-                          <div className="text-[9px] text-rmpg-500 truncate">{item.description}</div>
-                        )}
-                      </div>
-                      {item.loading && (
-                        <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#d4a017' }} />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <div
+                  className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                  style={{
+                    background: item.active ? 'var(--surface-base)' : 'var(--text-secondary)',
+                    left: item.active ? '14px' : '2px',
+                  }}
+                />
+              </div>
+              {item.icon && (
+                <item.icon
+                  className="w-3.5 h-3.5 shrink-0"
+                  style={{ color: item.active ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                  aria-hidden="true"
+                />
               )}
-            </div>
-          );
-        })}
+              <div className="flex-1 min-w-0 text-left">
+                <div className="truncate text-[11px]">{item.label}</div>
+                {item.description && (
+                  <div className="text-[9px] truncate" style={{ color: 'var(--text-secondary)' }}>{item.description}</div>
+                )}
+              </div>
+              {item.loading && (
+                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--brand-gold)' }} />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
