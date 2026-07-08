@@ -1,4 +1,5 @@
 import type { RawWarrantHit, PersonRow } from './types';
+import { identityMatch } from './identityMatch';
 
 /**
  * One canonical warrant for a person after cross-source dedup. A warrant that
@@ -104,9 +105,15 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
   const personAge = ageFromDob(person.dob);
   const personHasDob = !isBlank(person.dob);
 
+  // Positive identity confirmation required before a hit is allowed to link
+  // to this person at all — see identityMatch.ts / the design doc for the
+  // full rationale. This replaces the old "attach unconditionally, flag via
+  // confidence" behavior for name-mismatched or identity-unconfirmable hits.
+  const identityChecked = hits.filter((h) => identityMatch(h, person));
+
   const byKey = new Map<string, CanonicalHit>();
 
-  for (const h of hits) {
+  for (const h of identityChecked) {
     const key = dedupKey(h);
     const existing = byKey.get(key);
 
