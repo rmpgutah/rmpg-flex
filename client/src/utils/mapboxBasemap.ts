@@ -48,13 +48,18 @@ function readVar(varName: string): string {
   } catch { return ''; }
 }
 
-/** Resolve an "R G B" triplet custom property to a Mapbox-safe `rgb(r g b)`
- *  (or `rgb(r g b / a)`) color string, reading the live theme off <html> so
+/** Resolve an "R G B" triplet custom property to a Mapbox-safe `rgb(r, g, b)`
+ *  (or `rgba(r, g, b, a)`) color string, reading the live theme off <html> so
  *  this follows whatever theme is active (Blue & Silver by default, or the
- *  legacy-black kill-switch) instead of being pinned to one fixed palette. */
+ *  legacy-black kill-switch) instead of being pinned to one fixed palette.
+ *  Mapbox GL's style-spec color parser only accepts the legacy comma-separated
+ *  `rgb(r,g,b)`/`rgba(r,g,b,a)` syntax — the modern space-separated CSS4 form
+ *  (`rgb(r g b)`, which Tailwind's `rgb(var(--x)/<alpha-value>)` tokens use)
+ *  fails with "color expected" and blanks the map. */
 function getThemeColorRgb(varName: string, alpha?: number): string {
   const triplet = readVar(varName) || FALLBACK_RGB[varName] || '0 0 0';
-  return alpha != null ? `rgb(${triplet} / ${alpha})` : `rgb(${triplet})`;
+  const parts = triplet.split(/\s+/).join(', ');
+  return alpha != null ? `rgba(${parts}, ${alpha})` : `rgb(${parts})`;
 }
 
 /** Resolve a plain-hex theme custom property, same <html>-sourced approach

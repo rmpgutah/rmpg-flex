@@ -46,22 +46,22 @@ describe('applyRmpgBasemap', () => {
     document.documentElement.style.setProperty('--surface-base-rgb', '34 64 95'); // Blue & Silver navy
     const map = makeMap([{ id: 'background', type: 'background' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints.background['background-color']).toBe('rgb(34 64 95)');
+    expect(map.__paints.background['background-color']).toBe('rgb(34, 64, 95)');
   });
 
   it('paints major-road accent from --brand-gold-rgb (the theme accent token, silver under Blue & Silver)', () => {
     document.documentElement.style.setProperty('--brand-gold-rgb', '195 204 214'); // Blue & Silver silver
     const map = makeMap([{ id: 'road-motorway', type: 'line' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints['road-motorway']['line-color']).toBe('rgb(195 204 214)');
+    expect(map.__paints['road-motorway']['line-color']).toBe('rgb(195, 204, 214)');
   });
 
   it('falls back to the pre-2026-07 black/gold literals when a CSS variable is unset', () => {
     // No custom properties set on <html> — simulates SSR / a pre-CSS-load render.
     const map = makeMap([{ id: 'background', type: 'background' }, { id: 'road-primary', type: 'line' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints.background['background-color']).toBe('rgb(0 0 0)');
-    expect(map.__paints['road-primary']['line-color']).toBe('rgb(212 160 23)');
+    expect(map.__paints.background['background-color']).toBe('rgb(0, 0, 0)');
+    expect(map.__paints['road-primary']['line-color']).toBe('rgb(212, 160, 23)');
   });
 
   it('hides POI/transit symbol noise regardless of theme', () => {
