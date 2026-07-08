@@ -115,7 +115,9 @@ struct MedicalHubView: View {
                 }
             }
             .navigationTitle("FIELD MEDICAL")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
         }
         .presentationDetents([.medium, .large])
     }

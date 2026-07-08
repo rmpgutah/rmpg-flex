@@ -89,4 +89,21 @@ public struct StartPatrolView: View {
         let m = (s % 3600) / 60
         return String(format: "%02d:%02d", h, m)
     }
+
+    private func toggle() async {
+        isBusy = true
+        error = nil
+        defer { isBusy = false }
+        do {
+            if dutyState.isOnDuty {
+                _ = try await api.clockOff()
+                dutyState.clockOff()
+            } else {
+                let response = try await api.clockOn()
+                dutyState.clockOn(unitID: response.unit?.call_sign ?? "")
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
 }
