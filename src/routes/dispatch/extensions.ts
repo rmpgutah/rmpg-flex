@@ -566,6 +566,22 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+bolos.post('/expire-check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const expired = await query<{ id: number }>(db, `
+      SELECT id FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`);
+    if (expired.length > 0) {
+      await execute(db, `
+        UPDATE bolos SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`);
+    }
+    return c.json({ expired_count: expired.length, expired_ids: expired.map((b) => b.id) });
+  } catch (err) {
+    log.error('POST /bolos/expire-check failed', {}, err);
+    return c.json({ error: 'Failed to expire BOLOs', code: 'BOLO_EXPIRE_CHECK_ERR' }, 500);
+  }
+});
+
 bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
