@@ -19,7 +19,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
 import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
@@ -643,6 +643,71 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete BOLO', code: 'BOLO_DELETE_ERR' }, 500);
+  }
+});
+
+// Archive is modeled as a separate `archived_at` column rather than a new
+// `status` value — the `status` column has a CHECK(status IN ('active',
+// 'expired','cancelled')) constraint (migration 0001), so an 'archived'
+// status would violate it. See migration 0177_bolos_archived_at.sql.
+let _bolosArchivedAtEnsured = false;
+async function ensureBolosArchivedAtColumn(db: D1Database): Promise<void> {
+  if (_bolosArchivedAtEnsured) return;
+  if (!(await columnExists(db, 'bolos', 'archived_at'))) {
+    await db.prepare('ALTER TABLE bolos ADD COLUMN archived_at TEXT').run();
+  }
+  _bolosArchivedAtEnsured = true;
+}
+
+bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET archived_at = datetime('now','localtime') WHERE id = ?", id);
+    return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
+  } catch (err) {
+    log.error('POST /bolos/:id/archive failed', {}, err);
+    return c.json({ error: 'Failed to archive BOLO', code: 'BOLO_ARCHIVE_ERR' }, 500);
+  }
+});
+
+bolos.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, 'UPDATE bolos SET archived_at = NULL WHERE id = ?', id);
+    return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
+  } catch (err) {
+    log.error('POST /bolos/:id/unarchive failed', {}, err);
+    return c.json({ error: 'Failed to unarchive BOLO', code: 'BOLO_UNARCHIVE_ERR' }, 500);
+  }
+});
+
+bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const body = await c.req.json().catch(() => ({} as any));
+    const daysExpired = Number.isFinite(body.days_expired) ? Number(body.days_expired) : 7;
+    const result = await execute(db, `
+      UPDATE bolos SET archived_at = datetime('now','localtime')
+      WHERE archived_at IS NULL
+        AND status IN ('expired', 'cancelled')
+        AND expires_at IS NOT NULL
+        AND expires_at < datetime('now','localtime', ?)`,
+      `-${daysExpired} days`);
+    return c.json({ archived: result.meta.changes ?? 0 });
+  } catch (err) {
+    log.error('POST /bolos/auto-archive failed', {}, err);
+    return c.json({ error: 'Failed to auto-archive BOLOs', code: 'BOLO_AUTO_ARCHIVE_ERR' }, 500);
   }
 });
 
