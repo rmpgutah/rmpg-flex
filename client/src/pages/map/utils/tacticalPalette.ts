@@ -8,7 +8,7 @@
 // tokens (see MapboxMapPage.tsx's root container).
 //
 // Mapbox markers/popups are built as raw HTML strings injected outside
-// React (utils/mapMarkers.ts, hooks/useMapStreetView.ts) — Tailwind classes
+// React (utils/mapMarkers.ts) — Tailwind classes
 // don't apply there. Since tactical-dark never switches, these constants are
 // just the resolved night-palette hex values, kept in sync manually with
 // the `:root, html.theme-dark, .tactical-dark` block in

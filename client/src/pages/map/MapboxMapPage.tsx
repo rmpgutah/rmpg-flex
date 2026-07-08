@@ -18,7 +18,7 @@ import {
   Shield, AlertTriangle, Layers, Layers3, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
   Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
-  Clock, Locate, Flame, Car, Ruler, Satellite, PenTool, Hexagon,
+  Clock, Locate, Flame, Car, Ruler, PenTool, Hexagon,
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
@@ -66,7 +66,8 @@ import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
-import { useMapStreetView } from '../../hooks/useMapStreetView';
+import StreetViewLightbox from './components/StreetViewLightbox';
+import type { StreetViewTarget } from './components/StreetViewLightbox';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -439,17 +440,31 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const info = await tilequery.queryFromMapClick(e);
       if (identifyPopupRef.current) { identifyPopupRef.current.remove(); identifyPopupRef.current = null; }
       if (!info) return;
+      const { lng, lat } = e.lngLat;
+      const label = info.sectorName || info.city || info.county || info.state || undefined;
       const lines = [
         info.city && `City: ${info.city}`,
         info.county && `County: ${info.county}`,
         info.state && `State: ${info.state}`,
         info.sectorName && `Area: ${info.sectorName}`,
       ].filter(Boolean);
-      const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}</div>`;
+      const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}<br/><button data-action="streetview" style="margin-top:4px;font:11px monospace;color:#3b82f6;background:transparent;border:1px solid #3b82f6;padding:2px 6px;cursor:pointer;">Street View</button></div>`;
       identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false })
         .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(map);
+
+      const popupEl = identifyPopupRef.current.getElement();
+      const onPopupClick = (evt: MouseEvent) => {
+        const target = evt.target as HTMLElement;
+        if (target.closest('[data-action="streetview"]')) {
+          setStreetViewTarget({ lng, lat, label });
+        }
+      };
+      popupEl?.addEventListener('click', onPopupClick);
+      identifyPopupRef.current.once('close', () => {
+        popupEl?.removeEventListener('click', onPopupClick);
+      });
     };
 
     map.on('click', handler);
@@ -461,7 +476,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
-  const streetView = useMapStreetView(mapRef.current, mapLoaded);
+  const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
   const gps = useGpsTracking();
   const safetyAlertFeed = useSafetyAlertFeed();
 
@@ -941,7 +956,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       label: 'Analysis',
       layers: [
         { id: 'isochrone', label: 'Response Zones', active: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
-        { id: 'streetview', label: 'Street View', active: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
         { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
@@ -989,7 +1003,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1538,19 +1552,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
           {showAdvancedToolbar && (
             <>
-              {/* Satellite Peek (Street View equivalent) */}
-              <IconButton
-                aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
-                onClick={() => streetView.toggle()}
-                className={`${TOOLBAR_ITEM_CLASS} ${
-                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-brand-gold-500'
-                }`}
-                style={{ borderRadius: 2 }}
-                title="Satellite Peek"
-              >
-                <Satellite className="w-4 h-4" />
-              </IconButton>
-
               {/* Measure — dropdown for distance vs area */}
               <div className="relative">
                 <IconButton
@@ -1762,6 +1763,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <div className="absolute top-16 right-3 z-30">
           <NavOverlayTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
         </div>
+      )}
+
+      {streetViewTarget && (
+        <StreetViewLightbox target={streetViewTarget} onClose={() => setStreetViewTarget(null)} />
       )}
 
       {/* Layers Panel */}
