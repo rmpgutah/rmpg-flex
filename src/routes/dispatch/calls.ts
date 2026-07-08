@@ -68,7 +68,7 @@ export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(',
 calls.get('/', async (c) => {
   try {
     const db = getDb(c.env);
-    const { status, priority, startDate, endDate, search, archived, page, limit, active } = c.req.query();
+    const { status, priority, startDate, endDate, search, archived, page, limit, active, unit_id } = c.req.query();
 
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
@@ -100,6 +100,20 @@ calls.get('/', async (c) => {
     // non-archived" per the archived handling above.
     if (active === 'true') {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
+    }
+
+    // `unit_id` scopes the list to calls assigned to one unit — opt-in, so
+    // dispatch/supervisor views (which need every agency call) keep omitting
+    // it. assigned_unit_ids is a JSON array column (see the assignment
+    // handlers further down this file); json_each is the only reliable "does
+    // this array contain N" check without a LIKE false-positive on
+    // substrings (e.g. unit 1 matching 11/21). Added for the CarPlay/
+    // officer-facing call list, which must show only the officer's own
+    // assigned calls rather than every agency call.
+    const unitIdNum = unit_id != null ? Number(unit_id) : NaN;
+    if (Number.isFinite(unitIdNum)) {
+      where += " AND EXISTS (SELECT 1 FROM json_each(c.assigned_unit_ids) je WHERE je.value = ?)";
+      params.push(unitIdNum);
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));

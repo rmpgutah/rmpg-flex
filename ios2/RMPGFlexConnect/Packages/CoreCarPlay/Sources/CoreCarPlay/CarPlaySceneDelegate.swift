@@ -77,11 +77,29 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
             let longitude: Double?
         }
         struct Response: Decodable { let data: [RawCall] }
+        struct DutyUnit: Decodable { let id: Int }
+        struct DutyState: Decodable { let unit: DutyUnit? }
 
         await syncAuthToken()
 
+        // `GET /api/dispatch/calls` with no scoping param returns EVERY
+        // non-archived agency call to any authenticated caller — fine for
+        // the dispatch/supervisor web UI, wrong for a driving-safety-
+        // sensitive dashboard surface. `/api/dispatch/duty/me` returns the
+        // signed-in officer's own claimed unit, which we pass as `unit_id`
+        // so the server scopes the list to calls actually assigned to this
+        // officer's unit instead of the whole agency queue.
+        let dutyState: DutyState? = try? await apiClient.request(
+            Endpoint(path: "/api/dispatch/duty/me")
+        )
+
+        var queryItems = [URLQueryItem(name: "active", value: "true")]
+        if let unitId = dutyState?.unit?.id {
+            queryItems.append(URLQueryItem(name: "unit_id", value: String(unitId)))
+        }
+
         guard let response: Response = try? await apiClient.request(
-            Endpoint(path: "/api/dispatch/calls")
+            Endpoint(path: "/api/dispatch/calls", queryItems: queryItems)
         ) else { return [] }
 
         return response.data
