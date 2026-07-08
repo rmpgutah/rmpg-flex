@@ -68,7 +68,7 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 | `0104` | Two files at 0104 | Same pattern. |
 | `0107` | Two files at 0107 | Same pattern. |
 | `0108` | Two files at 0108 | Same pattern. |
-| `0110` | Two files at 0110 | Same pattern. |
+| `0110` | `0110_national_warrant_pdf_sources.sql`, `0110_warrant_source_chunking.sql` | Two unrelated changes sharing 0110; both real, both applied; apply in lexicographic filename order (pdf-sources first). `0110_warrant_source_chunking.sql` is the actual source of truth for Baton Rouge (`socrata-brla-citycourt`)'s current `enabled=1` state — two earlier files (`0107_national_warrant_pull.sql`, `0110_national_warrant_pdf_sources.sql`) both describe it as staying disabled; that's stale, this file's UPDATE is what's live. |
 | `0118` | Two files at 0118 | Same pattern. |
 | `0119` | Two files at 0119 | Same pattern. |
 | `0121` | Two files at 0121 | Same pattern. |

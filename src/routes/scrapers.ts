@@ -48,9 +48,10 @@ async function logManualRun(
   db: D1Database,
   sourceKey: string,
   counts: { checked: number; found: number; cleared: number; errors: number },
+  degraded = false,
 ): Promise<void> {
   try {
-    await insertScraperRunRow(db, sourceKey, counts, 'manual');
+    await insertScraperRunRow(db, sourceKey, counts, 'manual', degraded);
   } catch (err) {
     console.error(`scraper_runs insert failed for ${sourceKey}:`, err instanceof Error ? err.message : String(err));
   }
@@ -305,7 +306,7 @@ scrapers.post('/:key/trigger', async (c) => {
       if (result) {
         await logManualRun(db, key, {
           checked: result.checked, found: result.found, cleared: result.cleared, errors: result.errors,
-        });
+        }, result.degraded);
       }
       return c.json({ success: true, source_key: key, result });
     } catch (err) {
@@ -323,7 +324,7 @@ scrapers.post('/:key/trigger', async (c) => {
       if (result) {
         await logManualRun(db, key, {
           checked: result.checked, found: result.found, cleared: result.cleared, errors: result.errors,
-        });
+        }, result.degraded);
       }
       return c.json({ success: true, source_key: key, result });
     } catch (err) {

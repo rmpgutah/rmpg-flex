@@ -9,7 +9,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
-import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { getAllEnabledAdapters } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
@@ -316,34 +316,40 @@ warrants.post('/search-all', async (c) => {
 warrants.get('/national-coverage', async (c) => {
   const db = getDb(c.env);
 
-  const configRows = await query<{ state: string | null; enabled: number }>(
-    db, `SELECT state, enabled FROM national_warrant_sources WHERE enabled = 1`,
-  );
-  const codeAdapters = await getEnabledAdapters(db);
+  // Single source of truth: the SAME enabled-adapter computation the real
+  // scan uses (getAllEnabledAdapters — code adapters gated by
+  // warrant_scraper_config, the always-on FBI/Utah-County adapters, and
+  // config-driven national_warrant_sources rows, deduped by meta.key). This
+  // route used to recompute this independently and could drift from what
+  // actually gets scanned; it no longer can.
+  const adapters = await getAllEnabledAdapters(db);
 
   const stateSources = new Map<string, number>();
-  for (const row of configRows) {
-    if (!row.state) continue;
-    const code = row.state.toUpperCase();
-    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
-  }
-  for (const adapter of codeAdapters) {
-    if (adapter.meta.state === 'US') continue;
+  for (const adapter of adapters) {
+    if (adapter.meta.state === 'US') continue;  // federal (FBI) isn't state-specific coverage
     const code = adapter.meta.state.toUpperCase();
     stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
   }
 
   // Utah is always covered regardless of national_warrant_sources /
-  // warrant_scraper_config state: it has its own dedicated poller/pipeline
-  // (utahWarrantPoller.ts / runUtahWarrantScan), entirely separate from the
-  // generic code-adapter registry gating that getEnabledAdapters applies.
-  // The `utah-warrant-watch` adapter key is never seeded into
-  // warrant_scraper_config by any migration, so getEnabledAdapters correctly
-  // (and misleadingly, for this route's purposes) excludes it when the table
-  // has no Utah row — see src/routes/scrapers.ts's `POST /:key/trigger`
-  // handler for the same always-on special-case precedent. Guard with
-  // `!stateSources.has('UT')` so this stays idempotent if getEnabledAdapters
-  // ever does return a UT-keyed adapter (e.g. fail-open on a missing table).
+  // warrant_scraper_config state, for two separate reasons:
+  //  1. It has its own dedicated poller/pipeline (utahWarrantPoller.ts /
+  //     runUtahWarrantScan, source key `utah-warrant-watch`), entirely
+  //     separate from the code-adapter registry that getAllEnabledAdapters
+  //     assembles. That key is never seeded into warrant_scraper_config by
+  //     any migration, so the code-adapter gating inside getAllEnabledAdapters
+  //     (invoked indirectly there, not called directly from this route)
+  //     correctly — and misleadingly, for this route's purposes — excludes it
+  //     when the table has no Utah row. See src/routes/scrapers.ts's
+  //     `POST /:key/trigger` handler for the same always-on special-case
+  //     precedent.
+  //  2. In practice `stateSources` is very likely already ≥1 for UT before
+  //     this guard even runs: getAllEnabledAdapters's own always-on set
+  //     unconditionally includes the `utah-county-mostwanted` adapter
+  //     (family 'utah-county', state 'UT'), independent of any DB query
+  //     state.
+  // Guard with `!stateSources.has('UT')` so this stays a harmless idempotent
+  // backstop for case 1 regardless of what case 2 already did.
   if (!stateSources.has('UT')) {
     stateSources.set('UT', 1);
   }

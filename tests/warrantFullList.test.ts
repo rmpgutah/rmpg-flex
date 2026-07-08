@@ -26,7 +26,7 @@ function fakeDb() {
 describe('runFullListLeg', () => {
   it('fetches each full-list adapter and batch-upserts its hits', async () => {
     const { DB, calls } = fakeDb();
-    const adapter: WarrantSourceAdapter = { meta: { key: 'x', display_name: 'X', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return [{ source_key: 'x', warrant_id: 'w1', full_name: 'Doe, Jane' }]; } };
+    const adapter: WarrantSourceAdapter = { meta: { key: 'x', display_name: 'X', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits: [{ source_key: 'x', warrant_id: 'w1', full_name: 'Doe, Jane' }] }; } };
     const summary = await runFullListLeg(DB, [adapter]);
     expect(summary[0].source_key).toBe('x');
     expect(summary[0].found).toBe(1);
@@ -35,7 +35,7 @@ describe('runFullListLeg', () => {
   });
   it('does NOT clear-sweep when a source returns zero hits (no wipe on empty/transient)', async () => {
     const { DB, calls } = fakeDb();
-    const empty: WarrantSourceAdapter = { meta: { key: 'empty', display_name: 'E', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return []; } };
+    const empty: WarrantSourceAdapter = { meta: { key: 'empty', display_name: 'E', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits: [] }; } };
     const summary = await runFullListLeg(DB, [empty]);
     expect(summary[0].found).toBe(0);
     expect(calls.some((c) => /cleared/i.test(c.sql))).toBe(false);
@@ -43,7 +43,7 @@ describe('runFullListLeg', () => {
   it('isolates a throwing adapter (one bad source does not abort others)', async () => {
     const { DB } = fakeDb();
     const bad: WarrantSourceAdapter = { meta: { key: 'bad', display_name: 'B', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { throw new Error('boom'); } };
-    const good: WarrantSourceAdapter = { meta: { key: 'good', display_name: 'G', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return [{ source_key: 'good', warrant_id: 'w', full_name: 'A B' }]; } };
+    const good: WarrantSourceAdapter = { meta: { key: 'good', display_name: 'G', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits: [{ source_key: 'good', warrant_id: 'w', full_name: 'A B' }] }; } };
     const summary = await runFullListLeg(DB, [bad, good]);
     expect(summary.find(s => s.source_key === 'bad')?.errors).toBe(1);
     expect(summary.find(s => s.source_key === 'good')?.found).toBe(1);
@@ -65,10 +65,24 @@ describe('runFullListLeg', () => {
       batch: async (stmts: any[]) => stmts.map(() => ({})),
     };
     const hits = Array.from({ length: 200_001 }, (_, i) => ({ source_key: 'big', warrant_id: `w${i}`, full_name: `N, ${i}` }));
-    const big: WarrantSourceAdapter = { meta: { key: 'big', display_name: 'Big', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return hits; } };
+    const big: WarrantSourceAdapter = { meta: { key: 'big', display_name: 'Big', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits }; } };
     const summary = await runFullListLeg(DB, [big]);
     expect(summary[0].found).toBe(200_000); // capped
     expect(sweepRan).toBe(false);           // truncation skips the sweep
+  });
+
+  it('propagates degraded:true when fetchAll reports a degraded fetch', async () => {
+    const { DB } = fakeDb();
+    const adapter: WarrantSourceAdapter = { meta: { key: 'deg', display_name: 'Deg', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits: [], degraded: true, degradedReason: 'fetch_threw' }; } };
+    const summary = await runFullListLeg(DB, [adapter]);
+    expect(summary[0].degraded).toBe(true);
+  });
+
+  it('reports degraded:false for a normal successful fetchAll result', async () => {
+    const { DB } = fakeDb();
+    const adapter: WarrantSourceAdapter = { meta: { key: 'ok', display_name: 'Ok', state: 'US', county: null, source_url: '', kind: 'json', priority: 1 }, mode: 'full-list', async fetchAll() { return { hits: [{ source_key: 'ok', warrant_id: 'w1', full_name: 'A B' }] }; } };
+    const summary = await runFullListLeg(DB, [adapter]);
+    expect(summary[0].degraded).toBe(false);
   });
 });
 

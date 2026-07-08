@@ -45,12 +45,26 @@ export interface ChunkResult {
   hits: RawWarrantHit[];
   nextCursor: string | null;   // opaque resume token (arcgis: last OBJECTID; socrata: next offset)
   done: boolean;               // true = roster fully traversed this pass
+  /** True if this fetch caught an error (bad HTTP status, thrown fetch/parse) and
+   *  degraded to partial/empty data instead of throwing. Distinct from `errors`
+   *  bookkeeping upstream — this is the adapter-level signal that something is
+   *  wrong even though it chose not to abort the batch. */
+  degraded?: boolean;
+  /** Short machine-readable reason, e.g. "http_500", "fetch_threw", "no_text_layer". */
+  degradedReason?: string;
+}
+
+/** Result of a non-chunked full-list fetch (fetchAll). */
+export interface FullListResult {
+  hits: RawWarrantHit[];
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 export interface WarrantSourceAdapter {
   meta: SourceMeta;
   mode: SourceMode;
-  fetchAll?(env: { DB: D1Database } & Record<string, unknown>): Promise<RawWarrantHit[]>;
+  fetchAll?(env: { DB: D1Database } & Record<string, unknown>): Promise<FullListResult>;
   /** Chunked full-list fetch: return one window starting after `cursor` (null = start). */
   fetchChunk?(
     cursor: string | null,

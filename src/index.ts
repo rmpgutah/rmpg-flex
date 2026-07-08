@@ -203,9 +203,11 @@ export default {
                 console.error('scraper_runs logging failed:', err),
               ),
             ),
-          ).catch((err) => {
-            console.error('Warrant source scheduled scan failed:', err);
-          }),
+          ).catch((err) =>
+            import('./utils/warrantSources/logScanResult').then((log) =>
+              log.logOrchestratorFailure(env.DB, 'cron', err),
+            ),
+          ),
         ).catch(() => {}),
       );
       ctx.waitUntil(

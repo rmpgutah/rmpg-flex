@@ -7,21 +7,41 @@ import type { AllSourceScanResult } from './runScan';
  * below) and the manual-trigger path (logManualRun in src/routes/scrapers.ts)
  * so the two callers can't drift out of sync on column list/order or the
  * success-derivation rule.
+ *
+ * `degraded` defaults to false so existing manual-trigger call sites (which
+ * don't have a per-adapter degraded signal to report) keep compiling and
+ * behaving exactly as before.
  */
 export function insertScraperRunRow(
   db: D1Database,
   sourceKey: string,
   counts: { checked: number; found: number; cleared: number; errors: number },
   trigger: 'cron' | 'manual',
+  degraded = false,
 ): Promise<unknown> {
   const now = new Date().toISOString();
+  // success=1 only when the run had zero errors AND wasn't degraded — a source
+  // that caught a fetch/parse failure and quietly returned an empty result set
+  // must not still grade as a clean success (see healthGrade.ts).
+  const success = counts.errors === 0 && !degraded ? 1 : 0;
   return execute(
     db,
-    `INSERT INTO scraper_runs (source_key, started_at, finished_at, success, checked, found, cleared, errors, trigger)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    sourceKey, now, now, counts.errors === 0 ? 1 : 0,
-    counts.checked, counts.found, counts.cleared, counts.errors, trigger,
+    `INSERT INTO scraper_runs (source_key, started_at, finished_at, success, checked, found, cleared, errors, trigger, degraded)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sourceKey, now, now, success,
+    counts.checked, counts.found, counts.cleared, counts.errors, trigger, degraded ? 1 : 0,
   );
+}
+
+/**
+ * Records a total-orchestrator-failure row (runAllSourceScans itself threw,
+ * not a per-source error) so a full scan crash shows up in scraper_runs /
+ * health-grade history instead of vanishing into console.error only.
+ */
+export function logOrchestratorFailure(db: D1Database, trigger: 'cron' | 'manual', err: unknown): Promise<unknown> {
+  console.error('Warrant source scheduled scan failed:', err);
+  return insertScraperRunRow(db, '__scan_orchestrator__', { checked: 0, found: 0, cleared: 0, errors: 1 }, trigger, false)
+    .catch((insertErr) => console.error('__scan_orchestrator__ scraper_runs insert failed:', insertErr));
 }
 
 /**
@@ -41,11 +61,11 @@ export async function logScanResult(
       found: result.utah.new_warrants_found,
       cleared: result.utah.warrants_cleared,
       errors: result.utah.errors,
-    }, trigger),
+    }, trigger, false),
     ...result.scraped.map((s) =>
       insertScraperRunRow(db, s.source_key, {
         checked: s.checked, found: s.found, cleared: s.cleared, errors: s.errors,
-      }, trigger),
+      }, trigger, s.degraded),
     ),
   ];
 

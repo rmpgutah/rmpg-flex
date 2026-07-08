@@ -9,8 +9,8 @@ describe('logScanResult', () => {
     await logScanResult(db, {
       utah: { run_id: 'r1', status: 'completed', persons_checked: 5, new_warrants_found: 1, warrants_cleared: 0, errors: 0 },
       scraped: [
-        { source_key: 'ada-county-id', checked: 10, found: 2, cleared: 1, errors: 0 },
-        { source_key: 'natrona-county-wy', checked: 3, found: 0, cleared: 0, errors: 1 },
+        { source_key: 'ada-county-id', checked: 10, found: 2, cleared: 1, errors: 0, degraded: false },
+        { source_key: 'natrona-county-wy', checked: 3, found: 0, cleared: 0, errors: 1, degraded: false },
       ],
     }, 'cron');
 
@@ -72,8 +72,8 @@ describe('logScanResult', () => {
     await logScanResult(db, {
       utah: { run_id: 'r1', status: 'completed', persons_checked: 0, new_warrants_found: 0, warrants_cleared: 0, errors: 0 },
       scraped: [
-        { source_key: 'ada-county-id', checked: 1, found: 0, cleared: 0, errors: 0 },
-        { source_key: 'natrona-county-wy', checked: 1, found: 0, cleared: 0, errors: 0 },
+        { source_key: 'ada-county-id', checked: 1, found: 0, cleared: 0, errors: 0, degraded: false },
+        { source_key: 'natrona-county-wy', checked: 1, found: 0, cleared: 0, errors: 0, degraded: false },
       ],
     }, 'cron');
 

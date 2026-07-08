@@ -28,7 +28,7 @@ import {
   runUtahWarrantScan,
   type WatchRunResult,
 } from '../utahWarrantPoller';
-import { getEnabledAdapters, getAllEnabledAdapters } from './registry';
+import { getAllEnabledAdapters } from './registry';
 import {
   upsertScrapedWarrant, markScrapedCleared, bulkUpsertScrapedWarrants,
   upsertScrapedWarrantsBatch, readSourceProgress, saveSourceProgress, completeSourceCycle,
@@ -55,6 +55,7 @@ export interface ScrapedSourceSummary {
   found: number;
   cleared: number;
   errors: number;
+  degraded: boolean;
 }
 
 export interface AllSourceScanResult {
@@ -223,12 +224,14 @@ export async function runFullListLeg(
       let found = 0;
       let errors = 0;
       let cleared = 0;
+      let degraded = false;
       try {
         const prog = await readSourceProgress(db, key);
         const cycleStartedAt = prog?.cycle_started_at ?? now();
         const cursor = prog?.cursor ?? null;
 
-        const { hits, nextCursor, done } = await adapter.fetchChunk(cursor, { DB: db });
+        const { hits, nextCursor, done, degraded: chunkDegraded } = await adapter.fetchChunk(cursor, { DB: db });
+        degraded = chunkDegraded ?? false;
         const r = await upsertScrapedWarrantsBatch(db, hits, null);
         found = r.found;
         errors += r.errors;
@@ -265,7 +268,7 @@ export async function runFullListLeg(
       }
       // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
       // list, so the per-person 'checked' metric doesn't apply here.
-      out.push({ source_key: key, checked: 0, found, cleared, errors });
+      out.push({ source_key: key, checked: 0, found, cleared, errors, degraded });
       continue;
     }
 
@@ -274,8 +277,10 @@ export async function runFullListLeg(
     let found = 0;
     let errors = 0;
     let cleared = 0;
+    let degraded = false;
     try {
-      const hits = await adapter.fetchAll({ DB: db });
+      const { hits, degraded: fetchDegraded } = await adapter.fetchAll({ DB: db });
+      degraded = fetchDegraded ?? false;
       const MAX_FULL_LIST_HITS = 200000;  // raised: batched ingest handles large rosters efficiently
       const truncated = hits.length > MAX_FULL_LIST_HITS;
       const toStore = truncated ? hits.slice(0, MAX_FULL_LIST_HITS) : hits;
@@ -313,7 +318,7 @@ export async function runFullListLeg(
         err instanceof Error ? err.message : String(err),
       );
     }
-    out.push({ source_key: adapter.meta.key, checked: 0, found, cleared, errors });
+    out.push({ source_key: adapter.meta.key, checked: 0, found, cleared, errors, degraded });
   }
   return out;
 }
@@ -389,6 +394,7 @@ export async function runAllSourceScans(
       found: 0,
       cleared: 0,
       errors: 0,
+      degraded: false,
     };
 
     // TODO(phase-2): gate each source on circuit-breaker state derived from
