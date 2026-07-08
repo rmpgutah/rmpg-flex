@@ -38,7 +38,8 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, started_at TEXT NOT NULL,
     finished_at TEXT NOT NULL, success INTEGER NOT NULL, checked INTEGER NOT NULL DEFAULT 0,
     found INTEGER NOT NULL DEFAULT 0, cleared INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
-    duration_ms INTEGER, trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual'))
+    duration_ms INTEGER, trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual')),
+    degraded INTEGER NOT NULL DEFAULT 0
   )`);
 
   await execute(db, `INSERT INTO warrant_scraper_config
