@@ -103,6 +103,7 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         ) else { return [] }
 
         return response.data
+            .compactMap(\.value)
             .filter { ["dispatched", "enroute", "onscene"].contains($0.status ?? "") }
             .map {
                 CarPlayCall(
