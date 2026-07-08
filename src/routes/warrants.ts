@@ -332,16 +332,24 @@ warrants.get('/national-coverage', async (c) => {
   }
 
   // Utah is always covered regardless of national_warrant_sources /
-  // warrant_scraper_config state: it has its own dedicated poller/pipeline
-  // (utahWarrantPoller.ts / runUtahWarrantScan), entirely separate from the
-  // generic code-adapter registry gating that getEnabledAdapters applies.
-  // The `utah-warrant-watch` adapter key is never seeded into
-  // warrant_scraper_config by any migration, so getEnabledAdapters correctly
-  // (and misleadingly, for this route's purposes) excludes it when the table
-  // has no Utah row — see src/routes/scrapers.ts's `POST /:key/trigger`
-  // handler for the same always-on special-case precedent. Guard with
-  // `!stateSources.has('UT')` so this stays idempotent if getEnabledAdapters
-  // ever does return a UT-keyed adapter (e.g. fail-open on a missing table).
+  // warrant_scraper_config state, for two separate reasons:
+  //  1. It has its own dedicated poller/pipeline (utahWarrantPoller.ts /
+  //     runUtahWarrantScan, source key `utah-warrant-watch`), entirely
+  //     separate from the code-adapter registry that getAllEnabledAdapters
+  //     assembles. That key is never seeded into warrant_scraper_config by
+  //     any migration, so the code-adapter gating inside getAllEnabledAdapters
+  //     (invoked indirectly there, not called directly from this route)
+  //     correctly — and misleadingly, for this route's purposes — excludes it
+  //     when the table has no Utah row. See src/routes/scrapers.ts's
+  //     `POST /:key/trigger` handler for the same always-on special-case
+  //     precedent.
+  //  2. In practice `stateSources` is very likely already ≥1 for UT before
+  //     this guard even runs: getAllEnabledAdapters's own always-on set
+  //     unconditionally includes the `utah-county-mostwanted` adapter
+  //     (family 'utah-county', state 'UT'), independent of any DB query
+  //     state.
+  // Guard with `!stateSources.has('UT')` so this stays a harmless idempotent
+  // backstop for case 1 regardless of what case 2 already did.
   if (!stateSources.has('UT')) {
     stateSources.set('UT', 1);
   }
