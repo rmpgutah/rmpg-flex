@@ -34,6 +34,17 @@ export function insertScraperRunRow(
 }
 
 /**
+ * Records a total-orchestrator-failure row (runAllSourceScans itself threw,
+ * not a per-source error) so a full scan crash shows up in scraper_runs /
+ * health-grade history instead of vanishing into console.error only.
+ */
+export function logOrchestratorFailure(db: D1Database, trigger: 'cron' | 'manual', err: unknown): Promise<unknown> {
+  console.error('Warrant source scheduled scan failed:', err);
+  return insertScraperRunRow(db, '__scan_orchestrator__', { checked: 0, found: 0, cleared: 0, errors: 1 }, trigger, false)
+    .catch((insertErr) => console.error('__scan_orchestrator__ scraper_runs insert failed:', insertErr));
+}
+
+/**
  * Writes one scraper_runs row for the Utah leg plus one per scraped source,
  * from the result of runAllSourceScans(). Used by the cron sweep (which
  * genuinely has both a Utah result AND a scraped-source array from one
