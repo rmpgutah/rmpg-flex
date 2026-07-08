@@ -16,7 +16,7 @@
 //
 // Half-duplex like a real radio: one transmitter at a time. The
 // DO also RECORDS the active transmitter's Opus/WebM chunks and,
-// on key-up, concatenates them, stores the clip in R2 (RECORDINGS),
+// on key-up, concatenates them, stores the clip in R2 (UPLOADS),
 // and writes the row that makes it replayable:
 //   • radio → radio_transmissions.audio_url
 //   • panic → panic_alerts.audio_file_id / audio_duration_seconds
@@ -51,7 +51,6 @@ import type { DispatcherOptions } from '../utils/aiDispatcher';
 interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
-  RECORDINGS: R2Bucket;
   KV: KVNamespace;
   JWT_SECRET: string;
   // Workers AI — powers the AI dispatcher (Whisper transcription,
@@ -315,7 +314,7 @@ export class VoiceHubDO {
       // logged (audit trail) but no audio is kept and no play button appears.
       if (settings.auto_record) {
         const key = `radio-audio/${id}.webm`;
-        await this.env.RECORDINGS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+        await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
         await execute(
           db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
           `/api/radio/transmissions/${id}/audio`, id,
@@ -356,7 +355,7 @@ export class VoiceHubDO {
       if (this.panicRecorded) return;
       this.panicRecorded = true;
       const key = `panic-audio/${this.refId}.webm`;
-      await this.env.RECORDINGS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
       await execute(
         db,
         `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
@@ -642,7 +641,7 @@ export class VoiceHubDO {
       if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
       // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
       // row is minted — the live audio still plays even if replay-by-URL 404s.
-      await this.env.RECORDINGS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+      await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
         httpMetadata: { contentType: 'audio/mpeg' },
       }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
       await execute(
