@@ -26,6 +26,8 @@ import { buildVehiclePayload } from '../utils/fleetio/seed';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
+import { rmpgTableToResource } from '../utils/fleetio/sync';
+import { emitFleetioEvent, type FleetioEmitKind } from '../utils/fleetio/events';
 
 const fleetio = new Hono<Env>();
 
@@ -179,7 +181,18 @@ fleetio.get('/conflicts', async (c) => {
   return c.json({ conflicts: rows, count: rows.length });
 });
 
-/** Resolve a single conflict by id with a chosen resolution. */
+/** Resolve a single conflict by id with a chosen resolution.
+ *
+ *  Previously this ONLY flagged a resolution — it never re-applied the
+ *  chosen value anywhere, so picking "remote_wins" left the local row
+ *  untouched and picking "local_wins" never pushed the local value back
+ *  to Fleet.io. Now:
+ *    - remote_wins: writes `remote_value` into the local table/field.
+ *    - local_wins:  re-reads the CURRENT local value and queues a fresh
+ *                   outbound event so the reconciliation cron pushes it
+ *                   back to Fleet.io (overwriting whatever it has).
+ *    - manual:      no auto-apply — an admin already resolved it by hand
+ *                   elsewhere; this just clears the badge. */
 fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) => {
   const id = parseInt(c.req.param('id') ?? '0', 10);
   if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
@@ -190,12 +203,110 @@ fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) =
   }
   const userId = (c.get('userId') as number | undefined) ?? null;
   const db = getDb(c.env);
+
+  const conflict = await queryFirst<{ id: number; rmpg_table: string; rmpg_id: number; field: string; remote_value: string | null }>(
+    db,
+    `SELECT id, rmpg_table, rmpg_id, field, remote_value FROM fleetio_conflicts WHERE id = ? AND resolved_at IS NULL`,
+    id,
+  );
+  if (!conflict) return c.json({ error: 'Conflict not found or already resolved' }, 404);
+
+  let applied: 'remote_applied' | 'outbound_requeued' | 'none' = 'none';
+  try {
+    if (body.resolution === 'remote_wins') {
+      let remoteValue: unknown = null;
+      try { remoteValue = conflict.remote_value ? JSON.parse(conflict.remote_value) : null; } catch { /* leave null */ }
+      await execute(db,
+        `UPDATE ${conflict.rmpg_table} SET ${conflict.field} = ?, updated_at = datetime('now') WHERE id = ?`,
+        remoteValue, conflict.rmpg_id);
+      applied = 'remote_applied';
+    } else if (body.resolution === 'local_wins') {
+      const mapping = rmpgTableToResource(conflict.rmpg_table);
+      if (mapping) {
+        const current = await queryFirst<Record<string, unknown>>(
+          db, `SELECT ${conflict.field} AS v FROM ${conflict.rmpg_table} WHERE id = ?`, conflict.rmpg_id,
+        );
+        await emitFleetioEvent(
+          c, mapping.updateKind as FleetioEmitKind,
+          { [conflict.field]: current?.v ?? null },
+          { rmpgTable: conflict.rmpg_table, rmpgId: conflict.rmpg_id, versionToken: `conflict-resolve-${conflict.id}-${Date.now()}` },
+        );
+        applied = 'outbound_requeued';
+      }
+    }
+  } catch (err) {
+    console.error('[fleetio.conflicts.resolve] failed to apply resolution', { id, resolution: body.resolution, err });
+    return c.json({ error: 'Failed to apply resolution', detail: (err as Error)?.message }, 500);
+  }
+
   await execute(db,
     `UPDATE fleetio_conflicts
      SET resolution = ?, resolved_by = ?, resolved_at = datetime('now')
      WHERE id = ? AND resolved_at IS NULL`,
     body.resolution, userId, id);
-  return c.json({ success: true, id, resolution: body.resolution });
+  return c.json({ success: true, id, resolution: body.resolution, applied });
+});
+
+/** Fleet.io sync-health analytics for the fleet analytics dashboard.
+ *  Distinct from /health (which is the raw admin troubleshooting dump):
+ *  this is pre-aggregated for charting — link coverage %, a 14-day
+ *  conflict trend, and outbound completion latency by resource. Any
+ *  authed user (read-only, no secrets, matches /conflicts' access level). */
+fleetio.get('/analytics', async (c) => {
+  const db = getDb(c.env);
+  try {
+    const [linkCoverage, conflictTrend, latencyByResource, conflictsByResolution] = await Promise.all([
+      // Link coverage: how many rows per synced RMPG table have a
+      // fleetio_links entry vs the table's total row count.
+      query<{ rmpg_table: string; linked: number }>(
+        db, `SELECT rmpg_table, COUNT(*) AS linked FROM fleetio_links GROUP BY rmpg_table`,
+      ),
+      query<{ day: string; n: number }>(
+        db,
+        `SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS n
+         FROM fleetio_conflicts
+         WHERE created_at >= datetime('now', '-14 days')
+         GROUP BY day ORDER BY day`,
+      ),
+      // Average seconds from queue to completion, per resource — the
+      // throughput/latency signal for "is sync keeping up."
+      query<{ resource: string; avg_seconds: number; n: number }>(
+        db,
+        `SELECT resource,
+                AVG((julianday(processed_at) - julianday(created_at)) * 86400) AS avg_seconds,
+                COUNT(*) AS n
+         FROM fleetio_events
+         WHERE direction = 'outbound' AND status = 'completed' AND processed_at IS NOT NULL
+           AND created_at >= datetime('now', '-30 days')
+         GROUP BY resource`,
+      ),
+      query<{ resolution: string; n: number }>(
+        db, `SELECT resolution, COUNT(*) AS n FROM fleetio_conflicts WHERE resolved_at IS NOT NULL GROUP BY resolution`,
+      ),
+    ]);
+    const totalsByTable: Record<string, string> = {
+      fleet_vehicles: 'fleet_vehicles', ref_vendors: 'ref_vendors', fleet_parts: 'fleet_parts',
+    };
+    const totals = await Promise.all(
+      Object.values(totalsByTable).map((t) => queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM ${t}`)),
+    );
+    const totalMap: Record<string, number> = {};
+    Object.keys(totalsByTable).forEach((t, i) => { totalMap[t] = totals[i]?.n ?? 0; });
+    const link_coverage = Object.keys(totalsByTable).map((table) => {
+      const linked = linkCoverage.find((r) => r.rmpg_table === table)?.linked ?? 0;
+      const total = totalMap[table] ?? 0;
+      return { rmpg_table: table, linked, total, coverage_pct: total > 0 ? Math.round((linked / total) * 1000) / 10 : 0 };
+    });
+    return c.json({
+      link_coverage,
+      conflict_trend_14d: conflictTrend,
+      latency_by_resource: latencyByResource,
+      conflicts_by_resolution: conflictsByResolution,
+    });
+  } catch (err) {
+    console.error('[fleetio.analytics] failed', err);
+    return c.json({ error: 'Failed to load Fleet.io analytics', detail: (err as Error)?.message }, 500);
+  }
 });
 
 fleetio.get('/sync-status', requireRole('admin'), async (c) => {

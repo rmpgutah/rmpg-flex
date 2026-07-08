@@ -247,6 +247,43 @@ export default {
           }).catch((err) => console.error('[sor-enrich] failed:', err)),
         ).catch(() => {}),
       );
+      // Fleet.io outbound reconciliation — drains `fleetio_events` rows
+      // queued by events.ts. Previously this had ZERO call sites anywhere
+      // in the Worker, so every queued outbound event (vehicle/fuel/work
+      // order/vendor/part writes) sat in status='pending' forever. Skips
+      // silently (FleetioConfigError) when the two secrets aren't set.
+      ctx.waitUntil(
+        Promise.all([
+          import('./utils/fleetio/sync'),
+          import('./utils/fleetio/client'),
+        ]).then(([syncMod, clientMod]) => {
+          const config = clientMod.configFromEnv(env as unknown as Record<string, unknown>);
+          const adapter = {
+            createVehicle: (args: { payload: Record<string, unknown> }) => clientMod.createVehicle({ config, payload: args.payload as never }),
+            updateVehicle: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateVehicle({ config, ...args }),
+            archiveVehicle: (args: { fleetioId: number; archivedAtIso: string }) => clientMod.archiveVehicle({ config, ...args }),
+            createFuelEntry: (args: { payload: Record<string, unknown> }) => clientMod.createFuelEntry({ config, ...args }),
+            updateFuelEntry: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateFuelEntry({ config, ...args }),
+            createWorkOrder: (args: { payload: Record<string, unknown> }) => clientMod.createWorkOrder({ config, ...args }),
+            updateWorkOrder: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateWorkOrder({ config, ...args }),
+            createVendor: (args: { payload: Record<string, unknown> }) => clientMod.createVendor({ config, ...args }),
+            updateVendor: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updateVendor({ config, ...args }),
+            archiveVendor: (args: { fleetioId: number }) => clientMod.archiveVendor({ config, ...args }),
+            createPart: (args: { payload: Record<string, unknown> }) => clientMod.createPart({ config, ...args }),
+            updatePart: (args: { fleetioId: number; payload: Record<string, unknown> }) => clientMod.updatePart({ config, ...args }),
+            deletePart: (args: { fleetioId: number }) => clientMod.deletePart({ config, ...args }),
+          };
+          return syncMod.applyOutbound({ db: env.DB, adapter, config }).then((r) => {
+            if (r.attempted > 0) {
+              console.log(`[fleetio-sync] attempted=${r.attempted} completed=${r.completed} failed=${r.failed} skipped=${r.skipped}`);
+            }
+          });
+        }).catch((err) => {
+          // FleetioConfigError (secrets unset) is expected until the
+          // operator provisions FLEETIO_API_KEY/FLEETIO_ACCOUNT_TOKEN.
+          if (err?.name !== 'FleetioConfigError') console.error('[fleetio-sync] applyOutbound failed:', err);
+        }),
+      );
     }
 
     // ── Every minute ──

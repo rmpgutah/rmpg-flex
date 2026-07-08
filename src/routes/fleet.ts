@@ -2704,6 +2704,9 @@ fleet.post('/parts', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number ?? null, body.name ?? null, body.category ?? null, body.description ?? null, body.unit_cost ?? null, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', result.meta.last_row_id);
+    await emitFleetioEvent(c, 'part.create', created, {
+      rmpgTable: 'fleet_parts', rmpgId: result.meta.last_row_id as number, versionToken: String(Date.now()),
+    });
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/parts failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
@@ -2719,12 +2722,23 @@ fleet.put('/parts/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_parts SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', id);
+    await emitFleetioEvent(c, 'part.update', updated, {
+      rmpgTable: 'fleet_parts', rmpgId: id, versionToken: String(Date.now()),
+    });
     return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/parts/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/parts/:id', async (c) => {
-  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_parts WHERE id = ?', id); return c.json({ success: true }); }
+  try {
+    const id = Number(c.req.param('id'));
+    await execute(getDb(c.env), 'DELETE FROM fleet_parts WHERE id = ?', id);
+    await emitFleetioEvent(c, 'part.delete', { id }, {
+      rmpgTable: 'fleet_parts', rmpgId: id, versionToken: String(Date.now()),
+    });
+    return c.json({ success: true });
+  }
   catch (err) { console.error('DELETE /fleet/parts/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 

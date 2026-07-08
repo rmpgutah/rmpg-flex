@@ -17,7 +17,9 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
+import { emitFleetioEvent } from '../utils/fleetio/events';
 import {
   decodeVinCached,
   VinFormatError,
@@ -179,6 +181,74 @@ refData.get('/:family/:id', async (c) => {
       detail: (err as Error)?.message,
     }, 500);
   }
+});
+
+// ─── Vendor CRUD (admin) — only `ref_vendors` writes today ─────
+// `ref_vendors` is the RMPG-side half of the Fleet.io vendor sync
+// (resource-parity extension). The other 20+ ref families are read-only
+// lookup tables seeded by migrations; vendors are the one family with
+// real day-to-day data entry (new shop/parts vendors), so it gets its
+// own write path here rather than a generic CRUD-for-every-family route.
+
+const VENDOR_TABLE = 'ref_vendors';
+const VENDOR_KIND_CREATE = 'vendor.create';
+const VENDOR_KIND_UPDATE = 'vendor.update';
+const VENDOR_KIND_DELETE = 'vendor.delete';
+
+refData.post('/vendors', requireRole('admin'), async (c) => {
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (!body.name) return c.json({ error: 'name is required', code: 'INVALID_BODY' }, 400);
+  const db = getDb(c.env);
+  const result = await execute(db,
+    `INSERT INTO ref_vendors (name, kind, address, city, state, zip, phone, email, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    body.name, body.kind ?? 'vendor', body.address ?? null, body.city ?? null,
+    body.state ?? null, body.zip ?? null, body.phone ?? null, body.email ?? null, body.notes ?? null);
+  const id = result.meta.last_row_id as number;
+  const row = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${VENDOR_TABLE} WHERE id = ?`, id);
+  await emitFleetioEvent(c, VENDOR_KIND_CREATE, row, {
+    rmpgTable: VENDOR_TABLE, rmpgId: id, versionToken: String(row?.updated_at ?? row?.created_at ?? id),
+  });
+  return c.json(row, 201);
+});
+
+refData.put('/vendors/:id{[0-9]+}', requireRole('admin'), async (c) => {
+  const id = parseInt(c.req.param('id') ?? '0', 10);
+  const db = getDb(c.env);
+  const existing = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${VENDOR_TABLE} WHERE id = ?`, id);
+  if (!existing) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const editable = ['name', 'kind', 'address', 'city', 'state', 'zip', 'lat', 'lng', 'phone', 'email', 'notes', 'active'];
+  const setCols: string[] = [];
+  const bindings: unknown[] = [];
+  for (const f of editable) {
+    if (Object.prototype.hasOwnProperty.call(body, f)) {
+      setCols.push(`${f} = ?`);
+      bindings.push(body[f]);
+    }
+  }
+  if (setCols.length === 0) return c.json({ error: 'No editable fields provided', code: 'INVALID_BODY' }, 400);
+  bindings.push(id);
+  await execute(db, `UPDATE ${VENDOR_TABLE} SET ${setCols.join(', ')}, updated_at = datetime('now') WHERE id = ?`, ...bindings);
+  const row = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${VENDOR_TABLE} WHERE id = ?`, id);
+  await emitFleetioEvent(c, VENDOR_KIND_UPDATE, row, {
+    rmpgTable: VENDOR_TABLE, rmpgId: id, versionToken: String(row?.updated_at ?? Date.now()),
+  });
+  return c.json(row);
+});
+
+refData.delete('/vendors/:id{[0-9]+}', requireRole('admin'), async (c) => {
+  const id = parseInt(c.req.param('id') ?? '0', 10);
+  const db = getDb(c.env);
+  const existing = await queryFirst<Record<string, unknown>>(db, `SELECT * FROM ${VENDOR_TABLE} WHERE id = ?`, id);
+  if (!existing) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+  // Soft delete — vendors may be referenced by historical work orders/fuel
+  // entries via vendor_id; deactivate rather than remove the row.
+  await execute(db, `UPDATE ${VENDOR_TABLE} SET active = 0, updated_at = datetime('now') WHERE id = ?`, id);
+  await emitFleetioEvent(c, VENDOR_KIND_DELETE, { id }, {
+    rmpgTable: VENDOR_TABLE, rmpgId: id, versionToken: String(Date.now()),
+  });
+  return c.json({ success: true });
 });
 
 // ─── Helpers ───────────────────────────────────────────────────

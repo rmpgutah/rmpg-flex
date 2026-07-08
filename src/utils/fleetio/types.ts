@@ -84,3 +84,36 @@ export interface SeedSummary {
   errors: number;
   outcomes: SeedOutcome[];
 }
+
+/** Vendor resource (Fleet.io `/vendors`) — used by work_order/fuel_entry
+ *  outbound FK translation and, as of the resource-parity extension, its
+ *  own bidirectional sync (RMPG `ref_vendors`). */
+export interface FleetioVendor {
+  id: number;
+  name: string | null;
+  vendor_types?: string[] | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
+/** Part resource (Fleet.io `/parts`) — RMPG `fleet_parts`. */
+export interface FleetioPart {
+  id: number;
+  name: string | null;
+  part_number: string | null;
+  description?: string | null;
+  unit_cost?: number | null;
+  quantity_on_hand?: number | null;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
