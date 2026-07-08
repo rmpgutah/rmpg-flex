@@ -56,6 +56,7 @@ import { whenStyleReady } from './map/utils/safeAddSource';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
@@ -723,6 +724,14 @@ export default function NavigationPage() {
           attributionControl: false,
           interactive: true,
         });
+        // Re-skin to the app's active theme (Blue & Silver navy/silver by
+        // default) instead of a hardcoded pure-black base — re-applies on
+        // every style.load, including the WebGL-recovery rebuild below.
+        // 2026-07 UPDATE: this map used to force a fixed black palette
+        // regardless of theme (the ".tactical-dark stays dark always" rule);
+        // that exception was intentionally lifted for the whole app's map
+        // surfaces, this one included, in favor of one theme-reactive re-skin.
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) { map.remove(); return; }
           mapInstanceRef.current = map;
@@ -739,19 +748,6 @@ export default function NavigationPage() {
               setNavRecoverNonce((n) => n + 1);
             },
           });
-          // Push dark-v11 toward a pure-black tactical base — black land/background
-          // and near-black water — so streets + the crime overlay pop. Defensive:
-          // layer ids vary by style version, so guard every set.
-          try {
-            for (const ly of (map.getStyle()?.layers || [])) {
-              if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
-              else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
-              // Mapbox paint properties don't resolve CSS variables — use the
-              // night-theme literal for --surface-overlay (#060b10). The map
-              // stays dark always per the .tactical-dark rule.
-              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#060b10');
-            }
-          } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
             .addTo(map);
@@ -790,6 +786,7 @@ export default function NavigationPage() {
           zoom: 17.4, pitch: 70, bearing: dir ?? 0,
           attributionControl: false, interactive: false,
         });
+        m.on('style.load', () => applyRmpgBasemap(m, { variant: 'dark' }));
         m.on('load', () => {
           if (cancelled) { m.remove(); return; }
           insetMapRef.current = m;

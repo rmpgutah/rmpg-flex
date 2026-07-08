@@ -18,6 +18,7 @@ import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
@@ -203,6 +204,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         });
 
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
         map.on('load', () => {
           if (!cancelled) {

@@ -16,6 +16,7 @@ import mapboxgl from 'mapbox-gl';
 import { Maximize2, Loader2 } from 'lucide-react';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
 import type { MapUnit, ActiveCall } from '../pages/map/utils/mapConstants';
@@ -72,6 +73,7 @@ export default function DashboardMiniMap() {
           pitchWithRotate: false,
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => { if (!cancelled) setLoaded(true); });
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;

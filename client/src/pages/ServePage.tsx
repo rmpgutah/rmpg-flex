@@ -47,6 +47,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -1050,6 +1051,7 @@ export default function ServePage() {
       });
 
       map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
       mapRef.current = map;
       popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });

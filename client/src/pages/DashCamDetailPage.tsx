@@ -18,6 +18,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { parseTimestamp } from '../utils/dateUtils';
@@ -444,6 +445,7 @@ export default function DashCamDetailPage() {
       center: [centerLng, centerLat],
       zoom: 15,
     });
+    map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
     mapRef.current = map;
 

@@ -10,6 +10,7 @@ import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -329,6 +330,7 @@ export default function ServeRoutePlanner({
         zoom: 11,
         attributionControl: false,
       });
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
       setMapReady(true);
 

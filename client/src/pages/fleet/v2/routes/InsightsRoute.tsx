@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { resolveMapboxAccessToken, initMapbox, isMapboxReady } from '../../../../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../../../../utils/mapboxBasemap';
 import { isValidLngLat } from '../../../../utils/mapMarkers';
 import {
   ResponsiveContainer, ScatterChart, Scatter,
@@ -891,6 +892,7 @@ function FleetMapCard() {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }));
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         mapRef.current = map;
         // Clear any prior mapErr (e.g. a transient init failure) — a
         // successful map init means Mapbox is alive. Without this, the
