@@ -524,9 +524,13 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
     const type = c.req.query('type');
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
-    if (status) { where += ' AND status = ?'; params.push(status); }
-    else { where += " AND status = 'active'"; }
-    if (type) { where += ' AND type = ?'; params.push(type); }
+    // Table-qualified: `users` also has a `status` column, and this query
+    // LEFT JOINs users — an unqualified `status` is ambiguous to SQLite
+    // ("ambiguous column name: status", ERROR 7500) and 500s the whole
+    // endpoint every time, regardless of which branch runs.
+    if (status) { where += ' AND b.status = ?'; params.push(status); }
+    else { where += " AND b.status = 'active'"; }
+    if (type) { where += ' AND b.type = ?'; params.push(type); }
     const rows = await query<Record<string, unknown>>(db, `
       SELECT b.*, u.full_name AS issued_by_name
       FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
