@@ -672,10 +672,15 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // still falls through to legacy via the proxy — separate concern.
   { prefix: '/api/reports', router: reports, auth: 'required' },
   // BOLOs: the client calls /api/comms/bolos (list/create/update/delete +
-  // active/check/stats/archive/expire-check). Mount the full bolos router here
-  // BEFORE the broad /api/comms stubs mount so it owns the whole /bolos subtree
-  // (Hono runs the first-registered matching handler). bolosRouter is a superset
-  // of the stubs' /bolos/{active,check,stats}, so nothing is shadowed.
+  // active/check/stats, plus :id/archive, :id/unarchive, auto-archive, and
+  // expire-check). Mount the full bolos router here BEFORE the broad
+  // /api/comms stubs mount so it owns the whole /bolos subtree (Hono runs the
+  // first-registered matching handler). bolosRouter defines /active, /check,
+  // and /stats (see dispatch/extensions.ts) — the stubs.ts copies of those
+  // were dead code and have been removed. ⚠️ :id/archive, :id/unarchive,
+  // auto-archive, and expire-check are NOT implemented anywhere and 404 —
+  // see task_ea67239c for expire-check; archive/unarchive/auto-archive are
+  // still an open gap (CommunicationsPage.tsx ~L738-1572).
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
