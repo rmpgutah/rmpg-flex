@@ -174,29 +174,6 @@ export function nearestNeighborOrder(
   return { ordered, totalDistanceMiles, totalDurationMinutes: estimateDriveMinutes(totalDistanceMiles) };
 }
 
-// ─── Mapbox Directions API Helper ───────────────────────────────────────
-
-async function fetchDirections(coordSets: [number, number][][]): Promise<{ legs: any[]; geometry: any } | null> {
-  const token = await getMapboxAccessToken();
-  if (!token) return null;
-  const allResults: any[] = [];
-  for (const coords of coordSets) {
-    if (coords.length < 2) continue;
-    const coordStr = coords.map(c => c.join(',')).join(';');
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-    const data = await res.json();
-    const route = data.routes?.[0];
-    if (!route) continue;
-    allResults.push(route);
-  }
-  if (allResults.length === 0) return null;
-  const legs = allResults.flatMap(r => r.legs || []);
-  const geometry = allResults.length === 1 ? allResults[0].geometry : null;
-  return { legs, geometry };
-}
-
 // ─── Badge Components ───────────────────────────────────────────────────
 
 function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {

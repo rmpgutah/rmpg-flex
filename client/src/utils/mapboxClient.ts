@@ -1,37 +1,9 @@
-let _tokenPromise: Promise<string> | null = null;
-
-export async function getMapboxToken(): Promise<string> {
-  if (_tokenPromise) return _tokenPromise;
-
-  _tokenPromise = (async () => {
-    try {
-      const authToken = localStorage.getItem('token');
-      if (!authToken) return import.meta.env.VITE_MAPBOX_API_KEY || '';
-
-      const base = import.meta.env.VITE_API_BASE_URL || '';
-      const res = await fetch(`${base}/api/admin/config`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      if (!res.ok) return import.meta.env.VITE_MAPBOX_API_KEY || '';
-
-      const config: Record<string, any[]> = await res.json();
-      for (const items of Object.values(config)) {
-        const item = items.find((c: any) => c.config_key === 'mapbox_api_key');
-        if (item?.config_value) return item.config_value;
-      }
-      return import.meta.env.VITE_MAPBOX_API_KEY || '';
-    } catch {
-      _tokenPromise = null;
-      return import.meta.env.VITE_MAPBOX_API_KEY || '';
-    }
-  })();
-
-  return _tokenPromise;
-}
-
-export function clearMapboxTokenCache(): void {
-  _tokenPromise = null;
-}
+// Token resolution lives in mapboxApiKey.ts / mapboxToken.ts (the single
+// source of truth, shared cache + in-flight dedupe). This file used to have
+// its own independent getMapboxToken() hitting the legacy /api/admin/config
+// endpoint, but nothing called it — every surface already imports from
+// mapboxApiKey.ts — so it was a second, unused, drifted token path. Removed
+// as part of the 2026-07 Mapbox consolidation pass.
 
 // ── Mapbox Style URLs ──────────────────────────────────────
 

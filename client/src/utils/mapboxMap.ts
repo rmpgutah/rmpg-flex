@@ -251,13 +251,13 @@ export function onOnlineRetryMaps(token: string, callback: () => void): () => vo
 }
 
 export function injectMapStyles(): void {
-  if (!document.getElementById('rmpg-mapbox-css')) {
-    const link = document.createElement('link');
-    link.id = 'rmpg-mapbox-css';
-    link.rel = 'stylesheet';
-    link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css';
-    document.head.appendChild(link);
-  }
+  // mapbox-gl.css is already loaded at module scope by mapboxLoader.ts
+  // (`import 'mapbox-gl/dist/mapbox-gl.css'`), sourced from the installed
+  // npm package version. This function used to also inject a CDN <link>
+  // pinned to a hardcoded v3.3.0 that drifted out of sync with the npm
+  // package (now ^3.25.0) — a redundant, stale duplicate. Removed as part
+  // of the 2026-07 Mapbox consolidation pass; only the shimmer keyframes
+  // below still need injecting.
 
   const SHIMMER_STYLE_ID = 'rmpg-tile-shimmer-style';
   if (!document.getElementById(SHIMMER_STYLE_ID)) {
