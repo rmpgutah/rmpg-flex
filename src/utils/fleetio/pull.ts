@@ -77,9 +77,33 @@ export function buildLocalInsertFromFleetio(
   };
 }
 
+/**
+ * Decides what to do with a local match, given the set of rmpg_ids that
+ * already have (or will have, earlier in this same run) a fleetio_links
+ * row. Pure — no D1 access — so the collision case the fleetio_links
+ * UNIQUE(rmpg_table, rmpg_id) index guards against is unit-testable
+ * without mocking the database:
+ *   - a local row already linked to a DIFFERENT Fleet.io vehicle (from an
+ *     earlier /pull run, or another Fleet.io vehicle earlier in this same
+ *     page/run matching the same local row via a shared VIN/plate/name)
+ *   - must be skipped, not linked again, or the INSERT violates the
+ *     unique index and (pre-fix) aborted the entire reconcile with a 502.
+ */
+export function decideMatchAction(
+  matchedLocalId: number,
+  linkedRmpgIds: ReadonlySet<number>,
+): 'link' | 'conflict' {
+  return linkedRmpgIds.has(matchedLocalId) ? 'conflict' : 'link';
+}
+
 export type PullOutcome =
   | { fleetio_id: number; status: 'linked_existing'; rmpg_id: number }
   | { fleetio_id: number; status: 'already_linked'; rmpg_id: number }
   | { fleetio_id: number; status: 'created'; rmpg_id: number }
   | { fleetio_id: number; status: 'skipped_no_name' }
-  | { fleetio_id: number; status: 'skipped_archived' };
+  | { fleetio_id: number; status: 'skipped_archived' }
+  // Match resolved to a local row already linked to a DIFFERENT Fleet.io
+  // vehicle (e.g. two Fleet.io records sharing a VIN/plate/name, or one
+  // already linked from an earlier run) — inserting a second link for the
+  // same rmpg_id would violate fleetio_links' UNIQUE(rmpg_table, rmpg_id).
+  | { fleetio_id: number; status: 'skipped_conflict'; rmpg_id: number };

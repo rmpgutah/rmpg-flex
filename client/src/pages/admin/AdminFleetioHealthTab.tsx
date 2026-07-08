@@ -20,7 +20,7 @@
 // ============================================================
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
-import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload, Download } from 'lucide-react';
 import FleetioConflictBadge from '../../components/FleetioConflictBadge';
 
 interface HealthResponse {
@@ -61,6 +61,8 @@ export default function AdminFleetioHealthTab() {
   const [resolving, setResolving] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullResult, setPullResult] = useState<string | null>(null);
 
   const fetchHealth = useCallback(() => {
     setErr(null);
@@ -97,6 +99,30 @@ export default function AdminFleetioHealthTab() {
       .catch((e) => {
         setSeeding(false);
         setSeedResult(`failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      });
+  };
+
+  const runPull = () => {
+    if (!confirm('Pull Fleet.io’s existing vehicle roster into fleet_vehicles? Vehicles matching by VIN/plate/name are linked (not duplicated); vehicles new to RMPG are created.')) return;
+    setPulling(true);
+    setPullResult(null);
+    apiFetch<{ created?: number; linked_existing?: number; already_linked?: number; skipped?: number; error?: string }>(
+      '/fleetio/pull',
+      { method: 'POST' },
+    )
+      .then((r) => {
+        setPulling(false);
+        const parts: string[] = [];
+        if (typeof r?.created === 'number') parts.push(`created ${r.created}`);
+        if (typeof r?.linked_existing === 'number') parts.push(`linked ${r.linked_existing}`);
+        if (typeof r?.already_linked === 'number') parts.push(`already linked ${r.already_linked}`);
+        if (typeof r?.skipped === 'number' && r.skipped > 0) parts.push(`skipped ${r.skipped}`);
+        setPullResult(parts.length ? parts.join(' · ') : (r?.error ?? 'OK'));
+        fetchHealth();
+      })
+      .catch((e) => {
+        setPulling(false);
+        setPullResult(`failed: ${e instanceof Error ? e.message : 'unknown'}`);
       });
   };
 
@@ -138,6 +164,16 @@ export default function AdminFleetioHealthTab() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={runPull}
+              disabled={pulling}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110 disabled:opacity-50"
+              aria-label="Pull vehicles from Fleet.io"
+              title="Reconcile Fleet.io's existing vehicle roster into fleet_vehicles — matches link, new-to-RMPG vehicles are created"
+            >
+              <Download className="w-3 h-3" /> {pulling ? 'Pulling…' : 'Pull vehicles'}
+            </button>
+            <button
+              type="button"
               onClick={runSeed}
               disabled={seeding}
               className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110 disabled:opacity-50"
@@ -155,6 +191,11 @@ export default function AdminFleetioHealthTab() {
               <RotateCw className="w-3 h-3" /> Reload
             </button>
           </div>
+          {pullResult ? (
+            <span className={`text-[10px] ${pullResult.startsWith('failed') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {pullResult}
+            </span>
+          ) : null}
           {seedResult ? (
             <span className={`text-[10px] ${seedResult.startsWith('failed') ? 'text-red-400' : 'text-emerald-400'}`}>
               {seedResult}

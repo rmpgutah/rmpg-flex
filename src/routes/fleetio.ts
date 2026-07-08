@@ -25,7 +25,7 @@ import { requireRole } from '../middleware/auth';
 import { configFromEnv, createVehicle, listVehicles, ping } from '../utils/fleetio/client';
 import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
-import { matchLocalVehicle, buildLocalInsertFromFleetio, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
+import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
@@ -469,11 +469,15 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   const locals = await query<LocalVehicleForMatch>(
     db, `SELECT id, vin, plate_number, vehicle_number, vehicle_name FROM fleet_vehicles WHERE COALESCE(archived_at, '') = ''`,
   );
-  const alreadyLinkedIds = new Set(
-    (await query<{ fleetio_id: number }>(
-      db, `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
-    )).map((r) => r.fleetio_id),
+  const existingLinks = await query<{ fleetio_id: number; rmpg_id: number }>(
+    db, `SELECT fleetio_id, rmpg_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
   );
+  const alreadyLinkedIds = new Set(existingLinks.map((r) => r.fleetio_id));
+  // Tracks every rmpg_id that now has (or will have, within this run) a
+  // fleetio_links row — guards the UNIQUE(rmpg_table, rmpg_id) index, since
+  // more than one Fleet.io vehicle can otherwise match the same local row
+  // (duplicate VIN/plate/name, or a row already linked from an earlier run).
+  const linkedRmpgIds = new Set(existingLinks.map((r) => r.rmpg_id));
 
   const outcomes: PullOutcome[] = [];
   let page = 1;
@@ -493,12 +497,17 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
         }
         const match = matchLocalVehicle(fioVehicle, locals);
         if (match) {
+          if (decideMatchAction(match.id, linkedRmpgIds) === 'conflict') {
+            outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_conflict', rmpg_id: match.id });
+            continue;
+          }
           await execute(
             db,
-            `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+            `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
              VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
             match.id, fioVehicle.id,
           );
+          linkedRmpgIds.add(match.id);
           outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: match.id });
           continue;
         }
@@ -512,13 +521,19 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
         );
         if (dup) {
           // vehicle_number collision the name-based match above missed
-          // (e.g. differing VIN/plate casing) — link rather than error.
+          // (e.g. differing VIN/plate casing) — link rather than error,
+          // unless that row is already linked to a different Fleet.io vehicle.
+          if (decideMatchAction(dup.id, linkedRmpgIds) === 'conflict') {
+            outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_conflict', rmpg_id: dup.id });
+            continue;
+          }
           await execute(
             db,
-            `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+            `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
              VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
             dup.id, fioVehicle.id,
           );
+          linkedRmpgIds.add(dup.id);
           outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: dup.id });
           continue;
         }
@@ -532,10 +547,11 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
         const newId = Number(result.meta?.last_row_id);
         await execute(
           db,
-          `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+          `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
            VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
           newId, fioVehicle.id,
         );
+        linkedRmpgIds.add(newId);
         outcomes.push({ fleetio_id: fioVehicle.id, status: 'created', rmpg_id: newId });
         locals.push({ id: newId, vin: insertRow.vin, plate_number: insertRow.plate_number, vehicle_number: insertRow.vehicle_number, vehicle_name: insertRow.vehicle_name });
       }
@@ -553,7 +569,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     created: outcomes.filter((o) => o.status === 'created').length,
     linked_existing: outcomes.filter((o) => o.status === 'linked_existing').length,
     already_linked: outcomes.filter((o) => o.status === 'already_linked').length,
-    skipped: outcomes.filter((o) => o.status === 'skipped_no_name' || o.status === 'skipped_archived').length,
+    skipped: outcomes.filter((o) => o.status === 'skipped_no_name' || o.status === 'skipped_archived' || o.status === 'skipped_conflict').length,
   };
 
   await recordAudit(c, {
