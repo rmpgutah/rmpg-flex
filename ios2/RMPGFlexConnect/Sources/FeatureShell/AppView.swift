@@ -10,6 +10,7 @@ import FeatureFleet
 import FeatureServe
 import FeatureWarrants
 import FeatureQuickActions
+import FeatureDuty
 import DesignSystem
 
 public struct AppView: View {
@@ -173,6 +174,9 @@ struct MainTabView: View {
     @ObservedObject var authManager: AuthManager
     let apiClient: APIClient
     @State private var selectedTab = 0
+    // Held here (not inside StartPatrolView) so on-duty status and the
+    // shift-elapsed timer survive switching away to another tab and back.
+    @State private var dutyState = DutyState()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -219,6 +223,9 @@ struct MainTabView: View {
 
                 ProfileView(authManager: authManager)
                     .tabItem { Image(systemName: "person.fill"); Text("Profile") }.tag(10)
+
+                StartPatrolView(dutyState: dutyState, apiClient: apiClient)
+                    .tabItem { Image(systemName: "clock.badge.checkmark.fill"); Text("Duty") }.tag(11)
             }
             .tint(RMPGTheme.brandGold)
             .onAppear {

@@ -5,6 +5,7 @@ import DesignSystem
 
 public struct QuickActionsView: View {
     @StateObject private var vm: QuickActionsViewModel
+    private let apiClient: APIClient
     @State private var showScanner = false
     @State private var showPopulationResult = false
     @State private var populationSuccess = false
@@ -15,6 +16,7 @@ public struct QuickActionsView: View {
     @State private var warrantHitMessage = ""
 
     public init(apiClient: APIClient = APIClient(baseURL: Endpoint.productionBaseURL)) {
+        self.apiClient = apiClient
         _vm = StateObject(wrappedValue: QuickActionsViewModel(client: apiClient))
     }
 
@@ -176,6 +178,16 @@ public struct QuickActionsView: View {
                 Divider().background(Color(hex: "1a1a1a"))
                 actionRow("Push to MDT", "desktopcomputer", Color(hex: "888888")) {
                     if let id = vm.lastScanned { Task { await vm.pushToMDT(id) } }
+                }
+                Divider().background(Color(hex: "1a1a1a"))
+                NavigationLink(destination: MDTLinkView(apiClient: apiClient)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "wave.3.right.circle").font(.system(size: 14)).foregroundColor(Color(hex: "3b82f6")).frame(width: 24)
+                        Text("Vehicle MDT Link").font(.system(size: 12)).foregroundColor(.white)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(Color(hex: "555555"))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                 }
             }
             .background(Color(hex: "141414")).cornerRadius(2)
