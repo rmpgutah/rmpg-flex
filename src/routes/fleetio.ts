@@ -11,6 +11,8 @@
 //   POST /seed              Admin. Pushes every fleet_vehicles row that lacks a fleetio_links entry into Fleet.io.
 //   POST /pull               Admin. Reconciles Fleet.io's existing vehicle roster into fleet_vehicles
 //                            (matches by VIN/plate/name, links rather than duplicates, creates what's new).
+//   POST /seed-vendors       Admin. Same as /seed, for ref_vendors.
+//   POST /seed-parts         Admin. Same as /seed, for fleet_parts.
 //
 // PR 4 adds:
 //   POST /webhook           Fleet.io webhook receiver (HMAC-verified inbound).
@@ -19,10 +21,11 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { configFromEnv, createVehicle, listVehicles, ping } from '../utils/fleetio/client';
+import { configFromEnv, createVehicle, listVehicles, createVendor, createPart, ping } from '../utils/fleetio/client';
 import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
 import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
@@ -449,12 +452,25 @@ async function recordPullConflict(
   existingFleetioId: number | null,
   collidingFleetioId: number,
 ): Promise<void> {
+  // The situation this records is permanent until an admin resolves it — the
+  // local row never becomes eligible to link, so every subsequent /pull
+  // re-detects the exact same collision. Without the WHERE NOT EXISTS guard,
+  // that means a fresh unresolved row per pull run for the same (rmpg_id,
+  // colliding fleetio_id) pair, growing unbounded (no unique index covers
+  // this on fleetio_conflicts — see migrations/0133).
   await execute(
     db,
     `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value)
-     VALUES ('fleet_vehicles', ?, 'fleetio_id', ?, ?)`,
+     SELECT 'fleet_vehicles', ?, 'fleetio_id', ?, ?
+     WHERE NOT EXISTS (
+       SELECT 1 FROM fleetio_conflicts
+       WHERE rmpg_table='fleet_vehicles' AND rmpg_id=? AND field='fleetio_id'
+         AND remote_value=? AND resolved_at IS NULL
+     )`,
     rmpgId,
     existingFleetioId !== null ? String(existingFleetioId) : null,
+    String(collidingFleetioId),
+    rmpgId,
     String(collidingFleetioId),
   );
 }
@@ -622,5 +638,109 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
 
   return c.json({ ok: true, ...summary, outcomes });
 });
+
+/** Shared seed implementation for vendors/parts — same shape as the vehicle
+ *  seed above (unlinked rows, paced pushes, per-row outcomes) but simpler:
+ *  no FK translation needed for either resource's create payload. */
+async function seedSimpleResource(
+  c: Context<Env>,
+  opts: {
+    rmpgTable: string;
+    fleetioResource: string;
+    buildPayload: (row: Record<string, unknown>) => Record<string, unknown> | null;
+    create: (config: ReturnType<typeof configFromEnv>, payload: Record<string, unknown>) => Promise<{ id: number }>;
+    auditAction: string;
+  },
+): Promise<Response> {
+  let config;
+  try {
+    config = configFromEnv(c.env as unknown as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof FleetioConfigError) {
+      return c.json({ ok: false, error: err.message, code: 'not_configured' }, 503);
+    }
+    throw err;
+  }
+  const body = await c.req.json().catch(() => ({} as { dry_run?: boolean; limit?: number }));
+  const dryRun = !!(body as { dry_run?: boolean }).dry_run;
+  const limit = Math.min(Math.max(Number((body as { limit?: number }).limit) || 50, 1), 200);
+  const db = getDb(c.env);
+
+  const rows = await query<Record<string, unknown>>(
+    db,
+    `SELECT t.* FROM ${opts.rmpgTable} t
+     LEFT JOIN fleetio_links l ON l.rmpg_table = ? AND l.rmpg_id = t.id
+     WHERE l.id IS NULL
+     ORDER BY t.id ASC
+     LIMIT ?`,
+    opts.rmpgTable, limit,
+  );
+
+  const PACE_MS = 1200;
+  const outcomes: SeedOutcome[] = [];
+  let firstWrite = true;
+  for (const row of rows) {
+    const id = row.id as number;
+    const payload = opts.buildPayload(row);
+    if (!payload) {
+      outcomes.push({ rmpg_id: id, status: 'skipped_no_name' });
+      continue;
+    }
+    if (dryRun) {
+      outcomes.push({ rmpg_id: id, status: 'created', fleetio_id: 0 });
+      continue;
+    }
+    if (!firstWrite) await new Promise((r) => setTimeout(r, PACE_MS));
+    firstWrite = false;
+    try {
+      const created = await opts.create(config, payload);
+      await execute(
+        db,
+        `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+        opts.rmpgTable, id, opts.fleetioResource, created.id,
+      );
+      outcomes.push({ rmpg_id: id, status: 'created', fleetio_id: created.id });
+    } catch (err) {
+      const message = err instanceof FleetioError ? `${err.name}: ${err.message}` : err instanceof Error ? err.message : String(err);
+      outcomes.push({ rmpg_id: id, status: 'error', error: message });
+    }
+  }
+
+  const summary: SeedSummary = {
+    total: outcomes.length,
+    created: outcomes.filter((o) => o.status === 'created').length,
+    already_linked: 0,
+    skipped: outcomes.filter((o) => o.status === 'skipped_no_name').length,
+    errors: outcomes.filter((o) => o.status === 'error').length,
+    outcomes,
+  };
+  if (!dryRun) {
+    await recordAudit(c, { action: opts.auditAction, entityType: 'fleetio', details: { ...summary, outcomes: undefined, sample: outcomes.slice(0, 5) } });
+  }
+  return c.json({ ok: true, dry_run: dryRun, ...summary });
+}
+
+/** Push every ref_vendors row lacking a fleetio_links entry. Admin only. */
+fleetio.post('/seed-vendors', requireRole('admin'), (c) =>
+  seedSimpleResource(c, {
+    rmpgTable: 'ref_vendors',
+    fleetioResource: 'vendor',
+    buildPayload: (row) => (row.name ? { name: row.name, address: row.address, city: row.city, state: row.state, zip: row.zip, phone: row.phone, email: row.email } : null),
+    create: (config, payload) => createVendor({ config, payload }),
+    auditAction: 'FLEETIO_SEED_VENDORS',
+  }),
+);
+
+/** Push every fleet_parts row lacking a fleetio_links entry. Admin only. */
+fleetio.post('/seed-parts', requireRole('admin'), (c) =>
+  seedSimpleResource(c, {
+    rmpgTable: 'fleet_parts',
+    fleetioResource: 'part',
+    buildPayload: (row) => (row.name ? { name: row.name, part_number: row.part_number, description: row.description, unit_cost: row.unit_cost } : null),
+    create: (config, payload) => createPart({ config, payload }),
+    auditAction: 'FLEETIO_SEED_PARTS',
+  }),
+);
 
 export default fleetio;
