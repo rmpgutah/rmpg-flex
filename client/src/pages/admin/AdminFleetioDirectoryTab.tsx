@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Trash2, Pencil, Upload, Store, Package, X, Check } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 
 interface VendorRow {
   id: number;
@@ -75,6 +76,7 @@ function SeedButton({ label, onSeed }: { label: string; onSeed: () => Promise<{ 
 }
 
 export default function AdminFleetioDirectoryTab() {
+  const { addToast } = useToast();
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,13 +84,13 @@ export default function AdminFleetioDirectoryTab() {
   const [editingPart, setEditingPart] = useState<PartForm | null>(null);
 
   const loadVendors = useCallback(() => {
-    apiFetch<{ rows: VendorRow[] }>('/ref-data/vendors')
+    return apiFetch<{ rows: VendorRow[] }>('/ref-data/vendors')
       .then((r) => setVendors(Array.isArray(r?.rows) ? r.rows : []))
       .catch(() => setVendors([]));
   }, []);
 
   const loadParts = useCallback(() => {
-    apiFetch<PartRow[]>('/fleet/parts')
+    return apiFetch<PartRow[]>('/fleet/parts')
       .then((r) => setParts(Array.isArray(r) ? r : []))
       .catch(() => setParts([]));
   }, []);
@@ -104,12 +106,14 @@ export default function AdminFleetioDirectoryTab() {
     const req = isNew
       ? apiFetch(`/ref-data/vendors`, { method: 'POST', body: JSON.stringify(editingVendor) })
       : apiFetch(`/ref-data/vendors/${editingVendor.id}`, { method: 'PUT', body: JSON.stringify(editingVendor) });
-    req.then(() => { setEditingVendor(null); loadVendors(); }).catch(() => {});
+    req.then(() => { setEditingVendor(null); loadVendors(); })
+      .catch((e) => addToast(e instanceof Error ? e.message : 'Failed to save vendor', 'error'));
   };
 
   const deleteVendor = (id: number) => {
     if (!confirm('Deactivate this vendor?')) return;
-    apiFetch(`/ref-data/vendors/${id}`, { method: 'DELETE' }).then(() => loadVendors()).catch(() => {});
+    apiFetch(`/ref-data/vendors/${id}`, { method: 'DELETE' }).then(() => loadVendors())
+      .catch((e) => addToast(e instanceof Error ? e.message : 'Failed to deactivate vendor', 'error'));
   };
 
   const savePart = () => {
@@ -118,12 +122,14 @@ export default function AdminFleetioDirectoryTab() {
     const req = isNew
       ? apiFetch(`/fleet/parts`, { method: 'POST', body: JSON.stringify(editingPart) })
       : apiFetch(`/fleet/parts/${editingPart.id}`, { method: 'PUT', body: JSON.stringify(editingPart) });
-    req.then(() => { setEditingPart(null); loadParts(); }).catch(() => {});
+    req.then(() => { setEditingPart(null); loadParts(); })
+      .catch((e) => addToast(e instanceof Error ? e.message : 'Failed to save part', 'error'));
   };
 
   const deletePart = (id: number) => {
     if (!confirm('Delete this part? This cannot be undone.')) return;
-    apiFetch(`/fleet/parts/${id}`, { method: 'DELETE' }).then(() => loadParts()).catch(() => {});
+    apiFetch(`/fleet/parts/${id}`, { method: 'DELETE' }).then(() => loadParts())
+      .catch((e) => addToast(e instanceof Error ? e.message : 'Failed to delete part', 'error'));
   };
 
   if (loading) return <div className="p-4 text-sm text-rmpg-400">Loading…</div>;
