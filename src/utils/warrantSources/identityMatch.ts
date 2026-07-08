@@ -69,6 +69,12 @@ function ageFromDob(dob: string | null | undefined): number | null {
 function dobOrAgeConfirms(hit: RawWarrantHit, person: PersonRow): boolean {
   const personDob = person.dob || null;
   const hitDob = hit.date_of_birth || null;
+  // Raw string equality, no reparsing — assumes both sides are already
+  // normalized ISO-ish dates, matching the same convention already used by
+  // matchesDobOrAge() in warrantNationalSearch.ts. A format mismatch (e.g.
+  // one side ISO, the other MM/DD/YYYY) would false-reject here rather than
+  // fall through to age tolerance, since this branch only skips when a dob
+  // is BLANK, not when both are present but differently formatted.
   if (personDob && hitDob) return personDob === hitDob;
 
   const personAge = ageFromDob(personDob);
