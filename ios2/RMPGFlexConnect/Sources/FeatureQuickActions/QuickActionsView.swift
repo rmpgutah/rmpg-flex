@@ -2,6 +2,9 @@ import SwiftUI
 import CoreAPI
 import CoreIDScan
 import DesignSystem
+import FeatureRunPlate
+import FeatureReports
+import FeatureRunID
 
 public struct QuickActionsView: View {
     @StateObject private var vm: QuickActionsViewModel
@@ -14,6 +17,11 @@ public struct QuickActionsView: View {
     @State private var showSearchResults = false
     @State private var showWarrantHitAlert = false
     @State private var warrantHitMessage = ""
+    @State private var showPlateEntry = false
+    @State private var showDAR = false
+    @State private var showCitation = false
+    @State private var showFieldInterview = false
+    @State private var showWirelessIDVerify = false
 
     public init(apiClient: APIClient = APIClient(baseURL: Endpoint.productionBaseURL)) {
         self.apiClient = apiClient
@@ -80,6 +88,30 @@ public struct QuickActionsView: View {
         }
         .sheet(isPresented: $showSearchResults) {
             SearchResultsSheet(vm: vm)
+        }
+        .sheet(isPresented: $showPlateEntry) {
+            NavigationStack {
+                PlateEntryView(apiClient: RunPlateAPIClient(
+                    baseURL: URL(string: Endpoint.productionBaseURL)!,
+                    tokenProvider: { PersistentAuth().storedToken() }
+                ))
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showPlateEntry = false } } }
+            }
+        }
+        .sheet(isPresented: $showDAR) {
+            DailyActivityReportView()
+        }
+        .sheet(isPresented: $showCitation) {
+            CitationView()
+        }
+        .sheet(isPresented: $showFieldInterview) {
+            FieldInterviewCardView()
+        }
+        .sheet(isPresented: $showWirelessIDVerify) {
+            NavigationStack {
+                AppleIDVerifierView()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showWirelessIDVerify = false } } }
+            }
         }
         .alert(populationSuccess ? "Success" : "Error", isPresented: $showPopulationResult) {
             Button("OK") { showPopulationResult = false }
@@ -189,6 +221,22 @@ public struct QuickActionsView: View {
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                 }
+                Divider().background(Color(hex: "1a1a1a"))
+                actionRow("Run Plate", "car.circle", Color(hex: "22c55e")) { showPlateEntry = true }
+                Divider().background(Color(hex: "1a1a1a"))
+                actionRow("Daily Activity Report", "doc.text", Color(hex: "d4a017")) { showDAR = true }
+                Divider().background(Color(hex: "1a1a1a"))
+                actionRow("Citation", "doc.badge.plus", Color(hex: "ef4444")) { showCitation = true }
+                Divider().background(Color(hex: "1a1a1a"))
+                actionRow("Field Interview Card", "person.text.rectangle", Color(hex: "3b82f6")) { showFieldInterview = true }
+                Divider().background(Color(hex: "1a1a1a"))
+                // Requires the ProximityReader identity-verification entitlement,
+                // which isn't in App/RMPGFlexConnect.entitlements yet — Apple
+                // grants that capability separately per developer account, it's
+                // not something Xcode/code alone can turn on. The button is
+                // wired so it's ready the moment that entitlement lands; until
+                // then IDVerificationSession.isSupported gates it off at runtime.
+                actionRow("Wireless ID Verify", "wave.3.right", Color(hex: "888888")) { showWirelessIDVerify = true }
             }
             .background(Color(hex: "141414")).cornerRadius(2)
         }
