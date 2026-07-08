@@ -12,7 +12,7 @@
 // city_code == zone_id, the key the rest of the map assumes).
 // ============================================================
 
-import { getCityColor, getSectionColor } from '../../../hooks/useGeoJsonLayers';
+import { getZoneColor, getSectorColor } from '../../../utils/geographyLabels';
 import { apiFetch } from '../../../hooks/useApi';
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
 
@@ -148,10 +148,10 @@ export function getTaggedBeats(): Promise<any> {
             _uninc: uninc,
             _zone: zone,
             _zoneName: zoneName,
-            _zoneColor: getCityColor(zone),
+            _zoneColor: getZoneColor(zone),
             _section: section,
             _sectionName: info.sectorName || (section === 'UNASSIGNED' ? 'Unassigned' : section),
-            _sectionColor: getSectionColor(section),
+            _sectionColor: getSectorColor(section),
             _area: area,
             _areaName: info.areaName || (area === 'UNASSIGNED' ? 'Unassigned' : area),
             _areaColor: getAreaColor(area),
