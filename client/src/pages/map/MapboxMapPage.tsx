@@ -59,6 +59,7 @@ import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
 import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
 import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
+import { useMapboxResponseTime } from '../../hooks/useMapboxResponseTime';
 import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
 import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
@@ -347,6 +348,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const incidentsLayer = useMapboxIncidents(mapLoaded ? mapRef.current : null);
   const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
+  const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
   const historyCalls = useMapboxHistoryCalls(mapLoaded ? mapRef.current : null);
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
@@ -356,6 +358,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
   const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
+  const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
   const [safetyZonesEnabled, setSafetyZonesEnabled] = useState(false);
   const [historyCallsEnabled, setHistoryCallsEnabled] = useState(false);
 
@@ -394,6 +397,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     map.on('moveend', onMoveEnd);
     return () => { map.off('moveend', onMoveEnd); if (timer) clearTimeout(timer); };
   }, [coverageGapsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Response Time — beat-level choropleth from 30 days of real historical
+  // dispatch data (not a theoretical estimate — see useMapboxResponseTime).
+  // Not viewport-scoped (unlike Coverage Gaps, which regenerates a grid per
+  // pan/zoom), so no moveend recompute is needed — beat.geojson is citywide.
+  useEffect(() => {
+    if (!responseTimeEnabled || !mapRef.current) { if (!responseTimeEnabled) responseTime.clear(); return; }
+    responseTime.fetchResponseTimes();
+  }, [responseTimeEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (safetyZonesEnabled) safetyZones.fetchSafetyZones();
@@ -915,6 +927,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'mapmatch', label: 'Map Match Trace', active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
         { id: 'incidents', label: 'Incidents', active: incidentsEnabled, onToggle: () => setIncidentsEnabled((v) => !v), color: '#ef4444', description: 'RMS incident clusters', loading: incidentsLayer.loading },
         { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
+        { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
         { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
         { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
         { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
@@ -971,7 +984,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 

@@ -136,8 +136,12 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
     if (!map) return;
     setLoading(true);
     try {
-      const data = await apiFetch<{ period_days: number; beats: BeatActivity[] }>(
-        `/dispatch/beat-activity?days=${days}`
+      // NOTE: this hits src/routes/reports.ts (mounted at /api/reports), not
+      // /api/dispatch — the previous /dispatch/beat-activity path 404'd,
+      // which is why this hook (built, but never wired into MapboxMapPage's
+      // layer panel) sat dead. Fixed as part of wiring it in.
+      const data = await apiFetch<{ days: number; beats: BeatActivity[] }>(
+        `/reports/beat-activity?days=${days}`
       );
       const b = data?.beats || [];
       setBeats(b);

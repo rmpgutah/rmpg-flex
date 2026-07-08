@@ -193,11 +193,18 @@ reports.get('/crime-trends', async (c) => {
 });
 
 // GET /api/reports/beat-activity?days=30
-// One row per active beat with call/incident/citation counts.
-// Joins:
+// One row per active beat with call/incident/citation counts + average
+// response time (minutes). Joins:
 //   calls    — calls_for_service.beat_id = dispatch_beats.beat_code
 //   incidents — via calls_for_service (incidents have no beat_id of their own)
 //   citations — citations.beat_id = dispatch_beats.beat_code
+//   response — AVG(calls_for_service.response_time_seconds) per beat, minutes.
+//     response_time_seconds is populated on arrival (see dispatch/calls.ts's
+//     onscene handler: (julianday(onscene_at) - julianday(dispatched_at)) *
+//     86400), so this is real observed dispatch-to-arrival time, not a
+//     theoretical drive-time estimate. Beats with zero arrived calls in the
+//     window get avg_response_min: null (the client's map layer already
+//     treats null distinctly from 0 — see useMapboxResponseTime.ts).
 // Inactive beats are excluded.
 reports.get('/beat-activity', async (c) => {
   try {
@@ -212,6 +219,7 @@ reports.get('/beat-activity', async (c) => {
     calls: number;
     incidents: number;
     citations: number;
+    avg_response_min: number | null;
   }>(
     db,
     `SELECT b.beat_code,
@@ -219,7 +227,8 @@ reports.get('/beat-activity', async (c) => {
             b.district_letter,
             COALESCE(c.n, 0)  AS calls,
             COALESCE(i.n, 0)  AS incidents,
-            COALESCE(ci.n, 0) AS citations
+            COALESCE(ci.n, 0) AS citations,
+            r.avg_min AS avg_response_min
        FROM dispatch_beats b
        LEFT JOIN (
          SELECT beat_id, COUNT(*) AS n
@@ -240,10 +249,17 @@ reports.get('/beat-activity', async (c) => {
           WHERE created_at >= datetime('now', ?)
           GROUP BY beat_id
        ) ci ON ci.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT beat_id, AVG(response_time_seconds) / 60.0 AS avg_min
+           FROM calls_for_service
+          WHERE created_at >= datetime('now', ?)
+            AND response_time_seconds IS NOT NULL
+          GROUP BY beat_id
+       ) r  ON r.beat_id = b.beat_code
       WHERE b.active = 1
       ORDER BY (COALESCE(c.n,0) + COALESCE(i.n,0) + COALESCE(ci.n,0)) DESC,
                b.beat_code ASC`,
-    since, since, since
+    since, since, since, since
   );
 
   return c.json({ days, beats });
