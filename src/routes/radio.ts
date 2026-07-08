@@ -243,9 +243,11 @@ rt.get('/transmissions/:id/audio', async (c) => {
     }
   }
 
+  // New clips land in RECORDINGS; anything recorded before that binding
+  // existed is still in UPLOADS under the same key.
   const obj = r2Range
-    ? await c.env.UPLOADS.get(key, { range: r2Range })
-    : await c.env.UPLOADS.get(key);
+    ? (await c.env.RECORDINGS.get(key, { range: r2Range }) ?? await c.env.UPLOADS.get(key, { range: r2Range }))
+    : (await c.env.RECORDINGS.get(key) ?? await c.env.UPLOADS.get(key));
   if (!obj) return c.json({ error: 'Recording not found' }, 404);
 
   const totalSize = obj.size;
