@@ -848,6 +848,58 @@ welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
   }
 });
 
+// =====================================================================
+// GET /api/dispatch/welfare/status
+// Flat per-officer welfare status for client/src/hooks/useWelfareAlerts.ts.
+// Same candidate set + DO-read pattern as /active, but returns one row per
+// candidate (including idle 'normal' ones) in the flat shape the client
+// expects, with DO stage mapped to a status string and minutes derived
+// from last_activity_at.
+// =====================================================================
+welfareActive.get('/status', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const candidates = await query<{ id: number; full_name: string; badge_number: string | null; call_sign: string }>(db, `
+      SELECT u.id, u.full_name AS full_name, u.badge_number, un.call_sign
+      FROM users u
+      JOIN units un ON un.officer_id = u.id
+      WHERE un.status = 'onscene' AND un.current_call_id IS NOT NULL`);
+
+    const STAGE_STATUS = ['normal', 'prompted', 'overdue', 'emergency'] as const;
+
+    const alerts = await Promise.all(candidates.map(async (cand) => {
+      let stage = 0;
+      let minutesSinceLastCheck: number | undefined;
+      try {
+        const id = (c.env as any).WELFARE_WATCH.idFromName(`u-${cand.id}`);
+        const stub = (c.env as any).WELFARE_WATCH.get(id);
+        const r = await stub.fetch('https://do/state', { method: 'GET' });
+        const state = await r.json();
+        if (state && !state.idle) {
+          stage = state.stage ?? 0;
+          if (typeof state.last_activity_at === 'number') {
+            minutesSinceLastCheck = Math.max(0, Math.round((Date.now() - state.last_activity_at) / 60000));
+          }
+        }
+      } catch { /* DO unreachable / state error — report normal */ }
+
+      return {
+        user_id: cand.id,
+        officer_name: cand.full_name,
+        badge_number: cand.badge_number ?? undefined,
+        call_sign: cand.call_sign,
+        status: STAGE_STATUS[stage] ?? 'normal',
+        minutes_since_last_check: minutesSinceLastCheck,
+      };
+    }));
+
+    return c.json(alerts);
+  } catch (err) {
+    log.error('GET /welfare/status failed', {}, err);
+    return c.json({ error: 'Failed to get welfare status', code: 'WELFARE_STATUS_ERR' }, 500);
+  }
+});
+
 // ─── Helper: safe JSON parse ─────────────────────────────
 function safeJson<T>(s: string | null | undefined, fb: T): T {
   if (!s) return fb;
