@@ -26,7 +26,9 @@ public struct PreTripInspectionView: View {
             Form {
                 Section("ODOMETER") {
                     TextField("Current Odometer Reading", text: $odometer)
+                        #if os(iOS)
                         .keyboardType(.numberPad)
+                        #endif
                 }
                 Section("INSPECTION ITEMS") {
                     ForEach($items) { $item in

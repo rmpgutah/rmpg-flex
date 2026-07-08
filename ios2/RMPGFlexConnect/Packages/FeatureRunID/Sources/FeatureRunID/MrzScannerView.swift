@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import Vision
 
+#if os(iOS)
 public struct MrzScannerView: UIViewControllerRepresentable {
     public let onScan: (MrzResult) -> Void
     public let onError: (Error) -> Void
@@ -68,6 +69,8 @@ public class MrzScannerViewController: UIViewController, AVCaptureVideoDataOutpu
         try? requestHandler.perform([request])
     }
 }
+
+#endif
 
 public enum MrzError: Error, LocalizedError {
     case cameraUnavailable

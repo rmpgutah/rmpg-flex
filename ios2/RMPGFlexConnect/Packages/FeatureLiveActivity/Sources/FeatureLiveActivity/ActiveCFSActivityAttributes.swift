@@ -1,9 +1,9 @@
 import Foundation
+#if os(iOS)
 import ActivityKit
+#endif
 
-public struct ActiveCFSActivityAttributes: ActivityAttributes {
-    public typealias ContentState = CFSContentState
-
+public struct ActiveCFSActivityAttributes {
     public let cfsNumber: String
     public let incidentType: String
     public let address: String
@@ -29,6 +29,11 @@ public struct CFSContentState: Codable, Hashable {
         self.unitsResponding = unitsResponding
         self.notes = notes
     }
+}
+
+#if os(iOS)
+extension ActiveCFSActivityAttributes: ActivityAttributes {
+    public typealias ContentState = CFSContentState
 }
 
 public enum LiveActivityManager {
@@ -79,3 +84,4 @@ public enum LiveActivityManager {
 extension Notification.Name {
     public static let liveActivityPushToken = Notification.Name("liveActivityPushToken")
 }
+#endif

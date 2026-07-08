@@ -45,9 +45,15 @@ public final class LocationTracker {
         delegate.onAuthChange = { [weak self] status in
             Task { @MainActor [weak self] in
                 self?.authorizationStatus = status
-                if Self.isAuthorized(status) {
+                #if os(iOS)
+                if status == .authorizedWhenInUse || status == .authorizedAlways {
                     self?.manager.startUpdatingLocation()
                 }
+                #else
+                if status == .authorizedAlways {
+                    self?.manager.startUpdatingLocation()
+                }
+                #endif
             }
         }
     }
@@ -55,15 +61,22 @@ public final class LocationTracker {
     public func start(apiClient: APIClient) {
         self.apiClient = apiClient
         isTracking = true
-        let status = manager.authorizationStatus
-        if status == .notDetermined {
+        switch manager.authorizationStatus {
+        case .notDetermined:
             #if os(iOS)
             manager.requestWhenInUseAuthorization()
             #else
             manager.requestAlwaysAuthorization()
             #endif
-        } else if Self.isAuthorized(status) {
+        #if os(iOS)
+        case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
+        #else
+        case .authorizedAlways:
+            manager.startUpdatingLocation()
+        #endif
+        default:
+            break
         }
         startFlushLoop()
     }

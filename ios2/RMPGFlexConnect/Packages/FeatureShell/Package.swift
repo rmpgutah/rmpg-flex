@@ -20,6 +20,7 @@ let package = Package(
         .package(path: "../FeatureRunPlate"),
         .package(path: "../FeatureRunID"),
         .package(path: "../FeatureLiveActivity"),
+        .package(path: "../FeatureMap"),
     ],
     targets: [
         .target(
@@ -28,6 +29,7 @@ let package = Package(
                 "CoreAPI", "CoreAuth", "CoreAudioService", "CoreLocationService",
                 "DesignSystem", "FeatureDuty", "FeatureCFS", "FeatureQuickActions",
                 "FeatureReports", "FeatureRunPlate", "FeatureRunID", "FeatureLiveActivity",
+                "FeatureMap",
             ],
             resources: [.process("Resources")]
         ),

@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 
+#if os(iOS)
 public struct ALPRCameraView: UIViewControllerRepresentable {
     public let onCapture: (String) -> Void
     public let onError: (Error) -> Void
@@ -52,6 +53,8 @@ public class ALPRCameraViewController: UIViewController, AVCaptureMetadataOutput
         onCapture?(string)
     }
 }
+
+#endif
 
 public enum ALPRError: Error, LocalizedError {
     case cameraUnavailable

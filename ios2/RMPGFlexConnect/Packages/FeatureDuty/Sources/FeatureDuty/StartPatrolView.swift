@@ -91,24 +91,19 @@ public struct StartPatrolView: View {
     }
 
     private func toggle() async {
-        guard !isBusy else { return }
         isBusy = true
         error = nil
         defer { isBusy = false }
-
-        let wasOnDuty = dutyState.isOnDuty
         do {
-            if wasOnDuty {
+            if dutyState.isOnDuty {
                 _ = try await api.clockOff()
                 dutyState.clockOff()
             } else {
                 let response = try await api.clockOn()
-                let unitLabel = response.unit?.call_sign ?? response.unit.map { String($0.id) } ?? ""
-                let startedAt = response.clock_in.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-                dutyState.clockOn(unitID: unitLabel, at: startedAt)
+                dutyState.clockOn(unitID: response.unit?.call_sign ?? "")
             }
-        } catch let clockError {
-            error = "Failed to \(wasOnDuty ? "clock off" : "clock on"): \(clockError.localizedDescription)"
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }
