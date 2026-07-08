@@ -36,6 +36,7 @@ const ALLOWED_CONNECT = [
   'https://*.basemaps.cartocdn.com',
   'https://*.cartocdn.com',
   'https://nominatim.openstreetmap.org',
+  'https://overpass-api.de',
   'https://api.fbi.gov',
   'https://photon.komoot.io',
   'https://static.cloudflareinsights.com',
