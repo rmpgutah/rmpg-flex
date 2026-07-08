@@ -1,21 +1,29 @@
 {
-  "images": [
+  "images" : [
     {
-      "filename": "rmpg-seal.png",
-      "idiom": "universal",
-      "scale": "1x"
+      "filename" : "rmpg-seal.png",
+      "idiom" : "universal",
+      "scale" : "1x"
     },
     {
-      "idiom": "universal",
-      "scale": "2x"
+      "idiom" : "universal",
+      "scale" : "2x"
     },
     {
-      "idiom": "universal",
-      "scale": "3x"
+      "idiom" : "universal",
+      "scale" : "3x"
+    },
+    {
+      "idiom" : "car",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "car",
+      "scale" : "3x"
     }
   ],
-  "info": {
-    "author": "xcode",
-    "version": 1
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
   }
 }
