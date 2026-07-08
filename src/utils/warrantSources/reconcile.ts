@@ -1,5 +1,6 @@
 import type { RawWarrantHit, PersonRow } from './types';
 import { identityMatch } from './identityMatch';
+import { log } from '../logger';
 
 /**
  * One canonical warrant for a person after cross-source dedup. A warrant that
@@ -110,6 +111,15 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
   // full rationale. This replaces the old "attach unconditionally, flag via
   // confidence" behavior for name-mismatched or identity-unconfirmable hits.
   const identityChecked = hits.filter((h) => identityMatch(h, person));
+  const dropped = hits.length - identityChecked.length;
+  if (dropped > 0) {
+    log.info('reconcileHits: identity gate excluded hits', {
+      person_id: person.id,
+      personHasDob,
+      total: hits.length,
+      excluded: dropped,
+    });
+  }
 
   const byKey = new Map<string, CanonicalHit>();
 
