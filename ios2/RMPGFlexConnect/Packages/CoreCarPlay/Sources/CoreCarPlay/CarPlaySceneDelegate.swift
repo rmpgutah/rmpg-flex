@@ -76,7 +76,18 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
             let latitude: Double?
             let longitude: Double?
         }
-        struct Response: Decodable { let data: [RawCall] }
+        // Decoding `[RawCall]` directly is all-or-nothing — one malformed
+        // record (e.g. a null `id`) would throw and silently empty the
+        // *entire* list via the `try?` below. LossyElement wraps each
+        // element's decode in its own `try?`, so a single bad record is
+        // dropped instead of hiding every other valid call.
+        struct LossyElement: Decodable {
+            let value: RawCall?
+            init(from decoder: Decoder) throws {
+                value = try? RawCall(from: decoder)
+            }
+        }
+        struct Response: Decodable { let data: [LossyElement] }
 
         await syncAuthToken()
 
@@ -85,6 +96,7 @@ public final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationScene
         ) else { return [] }
 
         return response.data
+            .compactMap(\.value)
             .filter { ["dispatched", "enroute", "onscene"].contains($0.status ?? "") }
             .map {
                 CarPlayCall(
