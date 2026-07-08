@@ -45,7 +45,7 @@ public final class LocationTracker {
         delegate.onAuthChange = { [weak self] status in
             Task { @MainActor [weak self] in
                 self?.authorizationStatus = status
-                if status == .authorizedWhenInUse || status == .authorizedAlways {
+                if Self.isAuthorized(status) {
                     self?.manager.startUpdatingLocation()
                 }
             }
@@ -55,15 +55,29 @@ public final class LocationTracker {
     public func start(apiClient: APIClient) {
         self.apiClient = apiClient
         isTracking = true
-        switch manager.authorizationStatus {
-        case .notDetermined:
+        let status = manager.authorizationStatus
+        if status == .notDetermined {
+            #if os(iOS)
             manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
+            #else
+            manager.requestAlwaysAuthorization()
+            #endif
+        } else if Self.isAuthorized(status) {
             manager.startUpdatingLocation()
-        default:
-            break
         }
         startFlushLoop()
+    }
+
+    // Patrol vehicle location tracking is an iOS-only feature at runtime —
+    // `authorizedWhenInUse` doesn't exist on macOS's CLAuthorizationStatus.
+    // macOS support here exists only so this package's tests can build/run
+    // on the CI macOS runner, not because it ever ships on macOS.
+    private static func isAuthorized(_ status: CLAuthorizationStatus) -> Bool {
+        #if os(iOS)
+        return status == .authorizedWhenInUse || status == .authorizedAlways
+        #else
+        return status == .authorizedAlways
+        #endif
     }
 
     public func stop() {
