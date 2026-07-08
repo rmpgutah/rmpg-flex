@@ -68,6 +68,8 @@ import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import StreetViewLightbox from './components/StreetViewLightbox';
 import type { StreetViewTarget } from './components/StreetViewLightbox';
+import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
+import MinimapControl from './components/MinimapControl';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -491,6 +493,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
+  const [scaleEnabled, setScaleEnabled] = useState(false);
+  const [fullscreenEnabled, setFullscreenEnabled] = useState(false);
+  const [minimapOpen, setMinimapOpen] = useState(false);
+  useScaleControl(mapLoaded ? mapRef.current : null, scaleEnabled);
+  useFullscreenControl(mapLoaded ? mapRef.current : null, fullscreenEnabled);
   const gps = useGpsTracking();
   const safetyAlertFeed = useSafetyAlertFeed();
 
@@ -1021,6 +1028,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'weather', label: 'Weather Radar', active: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
         { id: 'grid', label: 'Coordinate Grid', active: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
         { id: 'deck', label: 'GPU Overlay', active: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
+        { id: 'scale', label: 'Scale Bar', active: scaleEnabled, onToggle: () => setScaleEnabled((v) => !v), color: '#14b8a6', description: 'Show ground-distance scale' },
+        { id: 'fullscreen', label: 'Fullscreen', active: fullscreenEnabled, onToggle: () => setFullscreenEnabled((v) => !v), color: '#14b8a6', description: 'Expand map to fullscreen' },
+        { id: 'minimap', label: 'Minimap', active: minimapOpen, onToggle: () => setMinimapOpen((v) => !v), color: '#64d264', description: 'Small overview map, bottom-right' },
         ...geoJsonLayers.configs.map(cfg => ({
           id: `geo-${cfg.id}`,
           label: cfg.label,
@@ -1045,7 +1055,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1830,6 +1840,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {streetViewTarget && (
         <StreetViewLightbox target={streetViewTarget} onClose={() => setStreetViewTarget(null)} />
+      )}
+
+      {minimapOpen && mapRef.current && (
+        <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
       )}
 
       {/* Layers Panel */}
