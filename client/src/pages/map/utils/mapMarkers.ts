@@ -158,12 +158,18 @@ export function buildCallMarkerEl(call: ActiveCall): HTMLDivElement {
 }
 
 /** Build HTML popup for a call. */
-export function buildCallPopupHtml(call: ActiveCall): string {
+export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): string {
   const color = PRIORITY_COLORS[call.priority] || '#888888';
   const flags = HAZARD_FLAGS
     .filter(f => (call as any)[f.key])
     .map(f => `<span style="background:${f.color}22;color:${f.color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${f.label}</span>`)
     .join('');
+  const hasCoords = call.latitude != null && call.longitude != null;
+  const addToRouteBtn = hasCoords
+    ? queued
+      ? `<button disabled style="margin-top:6px;width:100%;font:10px monospace;font-weight:700;color:#666;background:transparent;border:1px solid #333;padding:3px 6px;border-radius:2px;cursor:default;">✓ ON ROUTE</button>`
+      : `<button data-action="add-to-route" data-call-number="${escapeHtml(call.call_number)}" style="margin-top:6px;width:100%;font:10px monospace;font-weight:700;color:#8b5cf6;background:transparent;border:1px solid #8b5cf6;padding:3px 6px;border-radius:2px;cursor:pointer;">+ ADD TO ROUTE</button>`
+    : '';
   return `
     <div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;">
       <div style="font-weight:700;color:${color};margin-bottom:2px;font-size:12px;">${escapeHtml(call.call_number)}</div>
@@ -174,5 +180,6 @@ export function buildCallPopupHtml(call: ActiveCall): string {
       ${call.cross_street ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">X: ${escapeHtml(call.cross_street)}</div>` : ''}
       ${call.beat_name ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
       ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
+      ${addToRouteBtn}
     </div>`;
 }

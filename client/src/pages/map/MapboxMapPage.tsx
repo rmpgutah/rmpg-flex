@@ -98,6 +98,8 @@ import AnnotationTool from './components/AnnotationTool';
 import DrawGeofenceTool from './components/DrawGeofenceTool';
 import GpsReplayTool from './components/GpsReplayTool';
 import NavOverlayTool from './components/NavOverlayTool';
+import MultiStopRoutePanel from './components/MultiStopRoutePanel';
+import type { QueuedStop } from './components/MultiStopRoutePanel';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -153,6 +155,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Refs ───────────────────────────────────────────────────────────────────
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const callsRef = useRef<ActiveCall[]>([]);
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // searchTimeoutRef removed — geocoder plugin handles debounce internally
@@ -232,7 +235,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   const {
     mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
-    daylight, projection, atmosphere, cameraAnimation, snapshot, optimization,
+    daylight, projection, atmosphere, cameraAnimation, snapshot,
   } = useMapCore({
     preferredEngine,
     mapStyle,
@@ -364,6 +367,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
   // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
   const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
+  const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
+  const [multiStopUnit, setMultiStopUnit] = useState<string | null>(null);
+  const [multiStopPanelOpen, setMultiStopPanelOpen] = useState(false);
+  const addCallToRoute = useCallback((call: ActiveCall) => {
+    if (call.latitude == null || call.longitude == null) return;
+    setMultiStopQueue((q) => {
+      if (q.some((s) => s.callNumber === call.call_number)) return q;
+      return [...q, { callNumber: call.call_number, lat: call.latitude as number, lng: call.longitude as number, label: formatIncidentType(call.incident_type) || call.location_address }];
+    });
+    setMultiStopPanelOpen(true);
+  }, []);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
@@ -734,28 +748,56 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Call Markers ───────────────────────────────────────────────────────────
 
   useEffect(() => {
+    callsRef.current = calls;
+  }, [calls]);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
     const currentIds = new Set<string>();
 
+    // Resolves the CURRENT call data at click time (via callsRef, which the
+    // effect above keeps in sync with every `calls` poll) rather than trusting
+    // whatever `call` object was in scope when the marker/popup was first
+    // created — a marker's popup is reused across polls (only its innerHTML
+    // is refreshed via setHTML), so a closure captured at creation time would
+    // go stale if the call's coordinates/fields changed on a later poll.
+    const bindAddToRoutePopup = (popup: mapboxgl.Popup) => {
+      const onOpen = () => {
+        const popupEl = popup.getElement();
+        const onPopupClick = (evt: MouseEvent) => {
+          const target = evt.target as HTMLElement;
+          const btn = target.closest('[data-action="add-to-route"]') as HTMLElement | null;
+          if (!btn) return;
+          const callNumber = btn.dataset.callNumber;
+          const currentCall = callsRef.current.find((c) => c.call_number === callNumber);
+          if (currentCall) addCallToRoute(currentCall);
+        };
+        popupEl?.addEventListener('click', onPopupClick);
+        popup.once('close', () => popupEl?.removeEventListener('click', onPopupClick));
+      };
+      popup.on('open', onOpen);
+    };
+
     for (const call of calls) {
       if (call.latitude == null || call.longitude == null) continue;
       currentIds.add(call.id);
+      const isQueued = multiStopQueue.some((s) => s.callNumber === call.call_number);
 
       const existing = callMarkersRef.current.get(call.id);
       if (existing) {
         existing.setLngLat([call.longitude, call.latitude]);
         const popup = existing.getPopup();
-        if (popup) popup.setHTML(buildCallPopupHtml(call));
+        if (popup) popup.setHTML(buildCallPopupHtml(call, isQueued));
       } else {
         const el = buildCallMarkerEl(call);
+        const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
+          .setHTML(buildCallPopupHtml(call, isQueued));
+        bindAddToRoutePopup(popup);
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([call.longitude, call.latitude])
-          .setPopup(
-            new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
-              .setHTML(buildCallPopupHtml(call))
-          )
+          .setPopup(popup)
           .addTo(map);
         callMarkersRef.current.set(call.id, marker);
       }
@@ -767,7 +809,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         callMarkersRef.current.delete(id);
       }
     });
-  }, [calls, mapLoaded]);
+  }, [calls, mapLoaded, multiStopQueue, addCallToRoute]);
 
   // ── Self-Position (GPS Blue Dot) ───────────────────────────────────────────
 
@@ -1000,10 +1042,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
         { id: 'directions', label: 'Directions', active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin'), color: '#3b82f6', description: 'Point-to-point routing' },
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
-        { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
+        { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1762,6 +1804,27 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {activeFloatingTool === 'nav-overlay' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
           <NavOverlayTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
+        </div>
+      )}
+      {multiStopPanelOpen && (
+        <div className="absolute top-16 right-3 z-30">
+          <MultiStopRoutePanel
+            queue={multiStopQueue}
+            units={units}
+            selectedUnit={multiStopUnit}
+            result={routing.multiStopRoute}
+            loading={routing.multiStopLoading}
+            isMobile={isMobile}
+            onSelectUnit={setMultiStopUnit}
+            onRemoveStop={(callNumber) => setMultiStopQueue((q) => q.filter((s) => s.callNumber !== callNumber))}
+            onClear={() => { setMultiStopQueue([]); routing.clearMultiStop(); }}
+            onOptimize={() => {
+              const unit = units.find((u) => u.call_sign === multiStopUnit);
+              if (unit?.latitude != null && unit?.longitude != null && multiStopUnit) {
+                routing.showMultiStopRoute(multiStopUnit, { lat: unit.latitude, lng: unit.longitude }, multiStopQueue);
+              }
+            }}
+          />
         </div>
       )}
 
