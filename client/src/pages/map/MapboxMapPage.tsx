@@ -91,6 +91,8 @@ import MapOverlaysPanel from './components/MapOverlaysPanel';
 import type { OverlayToggle } from './components/MapOverlaysPanel';
 import ToolbarDropdownGroup from './components/ToolbarDropdownGroup';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
+import RulerTool from './components/RulerTool';
+import BufferRingTool from './components/BufferRingTool';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -354,6 +356,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const tilequery = useMapboxTilequery(mapLoaded ? mapRef.current : null);
   const [identifyEnabled, setIdentifyEnabled] = useState(false);
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
+  // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
+  // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
+  const [rulerOpen, setRulerOpen] = useState(false);
+  const [bufferRingOpen, setBufferRingOpen] = useState(false);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
@@ -982,9 +988,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
         { id: 'optimize', label: 'Route Optimizer', active: optimization.result !== null, onToggle: () => optimization.result ? optimization.clear() : undefined, color: '#8b5cf6', description: 'TSP route optimization' },
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
+        { id: 'ruler', label: 'Ruler', active: rulerOpen, onToggle: () => setRulerOpen((v) => { if (!v) setBufferRingOpen(false); return !v; }), color: '#d4a017', description: 'Multi-point distance measurement' },
+        { id: 'buffer-ring', label: 'Buffer Ring', active: bufferRingOpen, onToggle: () => setBufferRingOpen((v) => { if (!v) setRulerOpen(false); return !v; }), color: '#f08228', description: 'Radius rings around a point' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, optimization, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, rulerOpen, bufferRingOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1726,6 +1734,18 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         count={safetyAlertFeed.count}
         loading={safetyAlertFeed.loading}
       />
+
+      {/* Measurement & Analysis Tools — Ruler / Buffer Ring */}
+      {rulerOpen && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <RulerTool map={mapRef.current} onClose={() => setRulerOpen(false)} />
+        </div>
+      )}
+      {bufferRingOpen && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <BufferRingTool map={mapRef.current} onClose={() => setBufferRingOpen(false)} />
+        </div>
+      )}
 
       {/* Layers Panel */}
       <MapOverlaysPanel
