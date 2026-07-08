@@ -31,6 +31,7 @@ import {
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { addLocationMapSection } from './recordPdfGenerator';
 
 // ── Data Interface ───────────────────────────────────────────
 
@@ -163,6 +164,21 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // Service-address map — same static-image + tactical-overlay treatment as
+  // the CFS/property maps (reuses recordPdfGenerator's addLocationMapSection
+  // rather than re-implementing the Mapbox Static Images call). Best-effort:
+  // silently omitted if geocoding/the token/the network call fails, since
+  // fetchLocationMapImage never throws.
+  y = await addLocationMapSection(doc, {
+    title: 'Service Address Map',
+    lat: data.recipientGps?.lat ?? null,
+    lng: data.recipientGps?.lng ?? null,
+    address: data.recipientAddress,
+    caption: data.recipientAddress,
+    style: 'mapbox/streets-v12',
+    zoom: 17,
+  }, y);
 
   // ── Section 3: Document / Case Information ─────────────────
   y = checkPageBreak(doc, y, 20);
