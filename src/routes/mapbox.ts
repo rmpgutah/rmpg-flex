@@ -162,7 +162,7 @@ mapbox.get('/matrix', async (c) => {
 });
 
 // ── Optimization ───────────────────────────────────────────
-// GET /api/mapbox/optimization?coordinates=&profile=&source=&destination=&roundtrip=
+// GET /api/mapbox/optimization?coordinates=&profile=&source=&destination=&roundtrip=&steps=&annotations=
 mapbox.get('/optimization', async (c) => {
   const tk = token(c);
   if (!tk) return tokenMissing(c);
@@ -176,7 +176,13 @@ mapbox.get('/optimization', async (c) => {
     roundtrip: c.req.query('roundtrip') || 'false',
     geometries: 'geojson',
     overview: 'full',
+    steps: c.req.query('steps') || 'false',
   });
+  // Per-leg duration/distance (used to rebuild the drawn line minus the
+  // synthetic return-to-start leg — see useMapRouting.ts's showMultiStopRoute
+  // comment on why this is solved as a roundtrip) is opt-in, same as Directions.
+  const annotations = c.req.query('annotations');
+  if (annotations) params.set('annotations', annotations);
   try {
     const data = await mbFetch(`${MB}/optimized-trips/v1/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
     return c.json(data);
