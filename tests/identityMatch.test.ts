@@ -81,4 +81,8 @@ describe('identityMatch — dob/age gate', () => {
   it('person has no dob but hit has an age => age-only comparison is impossible (no person age to compare), so false', () => {
     expect(identityMatch(hit({ first_name: 'John', last_name: 'Smith', age: 35 }), person({ dob: '' }))).toBe(false);
   });
+
+  it('person has a dob but the hit carries no dob/age at all => true (absence is not disconfirming, name already matched)', () => {
+    expect(identityMatch(hit({ first_name: 'John', last_name: 'Smith' }), person({ dob: '1990-01-01' }))).toBe(true);
+  });
 });

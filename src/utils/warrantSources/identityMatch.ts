@@ -61,10 +61,20 @@ function ageFromDob(dob: string | null | undefined): number | null {
 }
 
 /**
- * DOB/age confirmation. Exact DOB match wins when both sides have one.
- * Otherwise falls back to age-tolerance comparison (person's DOB-derived age
- * vs. the hit's reported age). If NEITHER side has any usable DOB or age,
- * there is no positive evidence to confirm identity — reject.
+ * DOB/age confirmation. Exact DOB match wins when both sides have one — a
+ * mismatch here is a hard reject, not a fallback to age tolerance. Otherwise
+ * falls back to age-tolerance comparison (person's DOB-derived age vs. the
+ * hit's reported age). If the PERSON has no usable identity data (no dob,
+ * hence no derivable age) AND the hit also carries none, there is no
+ * positive evidence anywhere to confirm identity — reject.
+ *
+ * Absence of age/dob ON THE HIT ALONE, when the person DOES have a dob, is
+ * NOT disconfirming — this mirrors reconcile.ts's pre-existing, deliberate
+ * ageDisconfirms() invariant ("absence of an age on the hit is not
+ * disconfirming"). The name gate (nameMatches) already did the primary
+ * identity-narrowing work; this gate's job is to catch an actual CONFLICT
+ * in DOB/age evidence, not to demand redundant corroboration when none
+ * exists to conflict with.
  */
 function dobOrAgeConfirms(hit: RawWarrantHit, person: PersonRow): boolean {
   const personDob = person.dob || null;
@@ -82,6 +92,11 @@ function dobOrAgeConfirms(hit: RawWarrantHit, person: PersonRow): boolean {
   if (personAge != null && hitAge != null) {
     return Math.abs(personAge - hitAge) <= AGE_MATCH_TOLERANCE;
   }
+  // Person has usable identity data but the hit carries none — pass through
+  // (no conflicting evidence, so nothing to reject on).
+  if (personAge != null && hitAge == null && !hitDob) return true;
+  // Neither side has any usable identity data to compare — no positive
+  // evidence exists anywhere to confirm identity.
   return false;
 }
 

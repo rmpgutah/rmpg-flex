@@ -94,28 +94,35 @@ Concretely: `reconcileHits` gets one added line near its top —
 every existing reference to `hits` in the function body operates on
 `identityChecked` instead.
 
-### 3. `utahWarrantPoller.ts` — apply the same gate
+### 3. `utahWarrantPoller.ts` — explicitly OUT OF SCOPE (revised)
 
-The poller currently calls `warrants.utah.gov`'s `/persons/:id/warrants`
-endpoint for a specific upstream person ID it already resolved via a prior
-name-based lookup against the local person — but does not re-verify the
-returned `UtahApiWarrant`/person-stub name against the local `PersonRow`
-before persisting to `utah_warrants`. Add the same `identityMatch()` check
-(using the poller's existing `PersonStub`/`FetchedWarrant` shape, mapped to
-the shared `RawWarrantHit`-compatible fields) immediately before a fetched
-warrant is queued for insertion. A person/warrant pair failing the gate is
-dropped from that run's results (counted neither as found nor as an error —
-it's a deliberate non-match, not a failure) and logged via `log.info` (the
-structured logger already in use in this file) for auditability.
+Investigation during planning found the Utah poller already has its own
+namesake guard, `isLikelyMatch()` (`utahWarrantPoller.ts:151-158`): age
+(DOB-derived, ±1 tolerance) plus middle-initial agreement when both sides
+have one. Critically, it also has a **documented, deliberate policy** for
+DOB-less local persons (~25% of the roster): rather than skip them, it
+attributes the namesake anyway, accepting the false-positive risk in
+exchange for never leaving a person unchecked (operator decision,
+2026-05-24). The Utah API is also already queried BY the local person's
+first+last name, so the upstream candidate set is pre-filtered by name
+server-side before `isLikelyMatch` even runs — unlike Ada County/Natrona,
+which search by last name only with no server-side first-name filtering.
 
-The poller's own local `ageFromDob`/`AGE_MATCH_TOLERANCE` are **removed** in
-favor of importing from the new shared `identityMatch.ts` module (Task 1's
-module becomes the single source of truth, per the design note in section 1).
+Applying this design's stricter `identityMatch()` (which rejects when
+neither side has DOB/age) to Utah would silently reverse that prior,
+intentional operator policy. Per explicit decision: **`utahWarrantPoller.ts`
+is not touched by this work.** `isLikelyMatch` and its local
+`ageFromDob`/`AGE_MATCH_TOLERANCE` stay exactly as they are. The new
+`identityMatch.ts` module (section 1) has ONE consumer: `reconcile.ts`,
+used for the Ada County and Natrona `fetchForPerson` adapters, which have no
+comparable existing safeguard today.
 
 ### 4. What does NOT change
 
 - Full-list adapters (Socrata/ArcGIS/PDF/XML/CSV/FBI/UtahCounty) — no `person_id`
   linking today, none added by this work.
+- `utahWarrantPoller.ts` — see section 3; explicitly out of scope, existing
+  `isLikelyMatch` policy preserved as-is.
 - `src/routes/warrants.ts`'s `/search-all` endpoint and `matchesDobOrAge()` in
   `warrantNationalSearch.ts` — different use case (interactive, human-initiated
   query where the human is the one confirming identity), left untouched.
@@ -128,14 +135,11 @@ module becomes the single source of truth, per the design note in section 1).
   (nickname/first-initial), last-name-mismatch fail, DOB-exact-match pass,
   age-tolerance pass/fail at the ±1 boundary, both-sides-missing-dob/age fail,
   `full_name`-fallback parsing when discrete name fields are blank.
-- `tests/warrantReconcile.test.ts` (extend existing, if present — check via
-  `grep -rl "reconcileHits" tests/` first): add cases proving a name-mismatched
-  hit is excluded from `reconcileHits`'s output (not just downgraded), and that
-  a previously-`'unverified'`-but-linked hit under the OLD semantics no longer
-  appears at all when it also fails the new name gate.
-- `tests/utahWarrantPoller.test.ts` (extend existing, if present): add a case
-  proving a name-mismatched upstream result is dropped, not persisted, and
-  doesn't inflate `errors`.
+- `tests/warrantSources/reconcile.test.ts` (extend existing — confirmed present):
+  add cases proving a name-mismatched hit is excluded from `reconcileHits`'s
+  output (not just downgraded), and that a previously-`'unverified'`-but-linked
+  hit under the OLD semantics no longer appears at all when it also fails the
+  new name gate.
 
 ## Migration/schema
 
