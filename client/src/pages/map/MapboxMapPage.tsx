@@ -94,6 +94,7 @@ import SafetyAlertTicker from './components/SafetyAlertTicker';
 import RulerTool from './components/RulerTool';
 import BufferRingTool from './components/BufferRingTool';
 import AnnotationTool from './components/AnnotationTool';
+import DrawGeofenceTool from './components/DrawGeofenceTool';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -359,7 +360,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
   // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
   // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | null>(null);
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | 'draw-geofence' | null>(null);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
@@ -944,6 +945,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
         { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
         { id: 'annotation', label: 'Annotations', active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation'), color: '#3b82f6', description: 'Pin notes on the map' },
+        { id: 'draw-geofence', label: 'Draw Geofence', active: activeFloatingTool === 'draw-geofence', onToggle: () => setActiveFloatingTool((v) => v === 'draw-geofence' ? null : 'draw-geofence'), color: '#a855f7', description: 'Draw a custom alert/exclusion zone' },
       ],
     },
     {
@@ -1740,6 +1742,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {activeFloatingTool === 'annotation' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
           <AnnotationTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
+        </div>
+      )}
+      {activeFloatingTool === 'draw-geofence' && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <DrawGeofenceTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
         </div>
       )}
 
