@@ -400,3 +400,45 @@ export function removeMapboxTerrain(map: mapboxgl.Map): void {
   try { map.setTerrain(null); } catch { /* ignore */ }
   safeRemoveSource(map, TERRAIN_DEM_SOURCE);
 }
+
+/**
+ * Classify a Mapbox GL JS runtime `error` event (fired for a bad/expired
+ * token, a network failure, a missing style, etc.) so a caller can decide
+ * whether to surface it to the user. Mapbox's own async style/tile-load
+ * failures do NOT throw a catchable exception — they only fire this event —
+ * so a component that doesn't listen for it renders a blank/black map with
+ * zero indication of what's wrong (confirmed live: a bad token produces a
+ * silent 401 against api.mapbox.com, no CSP block, no thrown error).
+ * Mirrors the classification MapCore.ts already does for the main map page.
+ */
+export interface MapboxErrorClassification {
+  message: string;
+  isAuthErr: boolean;
+  isNetworkErr: boolean;
+  isStyleErr: boolean;
+}
+
+export function classifyMapboxError(e: { error?: { message?: string; status?: number } }): MapboxErrorClassification {
+  const message = e.error?.message || 'Mapbox map error';
+  const status = e.error?.status;
+  const msgLower = message.toLowerCase();
+
+  const isNetworkErr =
+    msgLower.includes('failed to fetch') ||
+    msgLower.includes('networkerror') ||
+    msgLower.includes('network request failed');
+
+  const isAuthErr =
+    status === 401 || status === 403 ||
+    msgLower.includes('access token') ||
+    msgLower.includes('not authorized') ||
+    msgLower.includes('unauthorized') ||
+    msgLower.includes('forbidden') ||
+    msgLower.includes('invalid token') ||
+    msgLower.includes('token is not authorized') ||
+    msgLower.includes('not configured');
+
+  const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
+
+  return { message, isAuthErr, isNetworkErr, isStyleErr };
+}
