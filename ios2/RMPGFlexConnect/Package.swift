@@ -29,6 +29,7 @@ let package = Package(
         .library(name: "FeatureRunPlate", targets: ["FeatureRunPlate"]),
         .library(name: "FeatureReports", targets: ["FeatureReports"]),
         .library(name: "FeatureMap", targets: ["FeatureMap"]),
+        .library(name: "CoreCarPlay", targets: ["CoreCarPlay"]),
     ],
     dependencies: [],
     targets: [
@@ -42,7 +43,7 @@ let package = Package(
         .target(name: "FeatureFleet", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
         .target(name: "FeatureServe", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
         .target(name: "FeatureWarrants", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem"]),
-        .target(name: "FeatureShell", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CorePush", "FeatureDispatch", "FeatureRecords", "FeatureIncidents", "FeatureCases", "FeaturePatrol", "FeatureFleet", "FeatureServe", "FeatureWarrants", "FeatureQuickActions", "FeatureCFS", "FeatureDuty", "FeatureRunID", "FeatureRunPlate", "FeatureReports", "FeatureMap"]),
+        .target(name: "FeatureShell", dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "CorePush", "FeatureDispatch", "FeatureRecords", "FeatureIncidents", "FeatureCases", "FeaturePatrol", "FeatureFleet", "FeatureServe", "FeatureWarrants", "FeatureQuickActions", "FeatureCFS", "FeatureDuty", "FeatureRunID", "FeatureRunPlate", "FeatureReports", "FeatureMap", "CoreCarPlay"]),
         .target(name: "DesignSystem", dependencies: []),
         .target(name: "CoreOffline", dependencies: ["CoreAPI"]),
         .target(name: "CorePush", dependencies: ["CoreAPI"]),
@@ -69,5 +70,7 @@ let package = Package(
         .testTarget(name: "FeatureReportsTests", dependencies: ["FeatureReports"], path: "Packages/FeatureReports/Tests/FeatureReportsTests"),
         .target(name: "FeatureMap", dependencies: ["CoreAPI", "CoreLocationService", "DesignSystem", "FeatureCFS"], path: "Packages/FeatureMap/Sources/FeatureMap"),
         .testTarget(name: "FeatureMapTests", dependencies: ["FeatureMap"], path: "Packages/FeatureMap/Tests/FeatureMapTests"),
+        .target(name: "CoreCarPlay", dependencies: [], path: "Packages/CoreCarPlay/Sources/CoreCarPlay"),
+        .testTarget(name: "CoreCarPlayTests", dependencies: ["CoreCarPlay"], path: "Packages/CoreCarPlay/Tests/CoreCarPlayTests"),
     ]
 )
