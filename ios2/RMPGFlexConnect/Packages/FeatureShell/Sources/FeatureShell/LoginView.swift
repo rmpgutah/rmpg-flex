@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
+#endif
 import DesignSystem
 import CoreAuth
 
@@ -13,10 +15,17 @@ public struct LoginView: View {
     }
 
     private var sealImage: Image {
+        #if os(iOS)
         guard let data = sealPNGData(), let uiImage = UIImage(data: data) else {
             return Image(systemName: "lock")
         }
         return Image(uiImage: uiImage)
+        #else
+        guard let data = sealPNGData(), let nsImage = NSImage(data: data) else {
+            return Image(systemName: "lock")
+        }
+        return Image(nsImage: nsImage)
+        #endif
     }
 
     private func sealPNGData() -> Data? {

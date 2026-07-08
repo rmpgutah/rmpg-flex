@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "FeatureMap",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "FeatureMap", targets: ["FeatureMap"])],
     dependencies: [
         .package(path: "../CoreAPI"),

@@ -45,9 +45,15 @@ public final class LocationTracker {
         delegate.onAuthChange = { [weak self] status in
             Task { @MainActor [weak self] in
                 self?.authorizationStatus = status
+                #if os(iOS)
                 if status == .authorizedWhenInUse || status == .authorizedAlways {
                     self?.manager.startUpdatingLocation()
                 }
+                #else
+                if status == .authorizedAlways {
+                    self?.manager.startUpdatingLocation()
+                }
+                #endif
             }
         }
     }
@@ -57,9 +63,18 @@ public final class LocationTracker {
         isTracking = true
         switch manager.authorizationStatus {
         case .notDetermined:
+            #if os(iOS)
             manager.requestWhenInUseAuthorization()
+            #else
+            manager.requestAlwaysAuthorization()
+            #endif
+        #if os(iOS)
         case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
+        #else
+        case .authorizedAlways:
+            manager.startUpdatingLocation()
+        #endif
         default:
             break
         }

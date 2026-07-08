@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "FeatureRunPlate",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "FeatureRunPlate", targets: ["FeatureRunPlate"])],
     dependencies: [
         .package(path: "../CoreAPI"),

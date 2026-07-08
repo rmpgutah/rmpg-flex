@@ -10,17 +10,23 @@ public actor AudioRecorderService {
     public init() {}
 
     public func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
+        #if os(iOS)
+        return await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { granted in
                 continuation.resume(returning: granted)
             }
         }
+        #else
+        return true
+        #endif
     }
 
     public func startRecording() throws {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default)
         try session.setActive(true)
+        #endif
 
         let tempDir = FileManager.default.temporaryDirectory
         let url = tempDir.appendingPathComponent("recording_\(UUID().uuidString).m4a")
