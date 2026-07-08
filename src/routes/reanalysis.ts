@@ -48,7 +48,9 @@ async function ensureReanalysisSchema(db: D1Database): Promise<void> {
     ['vehicle_sightings',  'original_confidence',       'REAL'],
     ['audit_log',          'analytics_replayed_at',    'TEXT'],
     ['gps_breadcrumbs',    'analytics_replayed_at',    'TEXT'],
-    ['calls_for_service',  'analytics_replayed_at',    'TEXT'],
+    // calls_for_service sits at D1's 100-column cap, so this marker lives in
+    // the calls_for_service_ext overflow table instead (see migration 0178).
+    ['calls_for_service_ext', 'analytics_replayed_at', 'TEXT'],
     ['citations',          'analytics_replayed_at',    'TEXT'],
     ['incidents',          'analytics_replayed_at',    'TEXT'],
     ['alpr_captures',      'original_plate_confidence','REAL'],
@@ -355,15 +357,21 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
     }
 
     // 4. calls_for_service → flex_events
+    // analytics_replayed_at lives on calls_for_service_ext (see migration
+    // 0178) — calls_for_service itself is at the D1 100-column cap. A row
+    // with no ext counterpart yet is treated as unreplayed (LEFT JOIN +
+    // ext.id IS NULL), same as ext.analytics_replayed_at IS NULL.
     {
       const rows = await query<{
         id: number; call_number: string | null; call_type: string | null;
         status: string | null; priority: string | null;
         lat: number | null; lng: number | null; created_at: string;
       }>(db,
-        `SELECT id, call_number, call_type, status, priority, lat, lng, created_at
-         FROM calls_for_service WHERE id > ? AND analytics_replayed_at IS NULL
-         ORDER BY id ASC LIMIT ?`,
+        `SELECT c.id, c.call_number, c.call_type, c.status, c.priority, c.lat, c.lng, c.created_at
+         FROM calls_for_service c
+         LEFT JOIN calls_for_service_ext e ON e.id = c.id
+         WHERE c.id > ? AND (e.id IS NULL OR e.analytics_replayed_at IS NULL)
+         ORDER BY c.id ASC LIMIT ?`,
         curCfs, limit + 1,
       ).catch(() => []);
 
@@ -383,7 +391,19 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
           category: 'dispatch',
         }));
         nextCfs = batch[batch.length - 1].id;
-        await sendEvents(events, 'calls_for_service', curCfs, nextCfs);
+        if (c.env.EVENTS) {
+          await c.env.EVENTS.send(events);
+          // Upsert into the ext table (may not have a row for this id yet)
+          // instead of the generic sendEvents() UPDATE, which assumes the
+          // marker column lives on the same table the rows were read from.
+          await execute(db,
+            `INSERT INTO calls_for_service_ext (id, analytics_replayed_at)
+             SELECT id, datetime('now') FROM calls_for_service WHERE id > ? AND id <= ?
+             ON CONFLICT(id) DO UPDATE SET analytics_replayed_at = excluded.analytics_replayed_at`,
+            curCfs, nextCfs,
+          );
+          replayed += events.length;
+        }
       }
     }
 
