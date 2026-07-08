@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchLocalVehicle, buildLocalInsertFromFleetio } from '../src/utils/fleetio/pull';
+import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction } from '../src/utils/fleetio/pull';
 import type { FleetioVehicle } from '../src/utils/fleetio/types';
 import type { LocalVehicleForMatch } from '../src/utils/fleetio/pull';
 
@@ -83,5 +83,23 @@ describe('buildLocalInsertFromFleetio', () => {
       color: null,
       status: 'in_service',
     });
+  });
+});
+
+describe('decideMatchAction', () => {
+  // Guards fleetio_links' UNIQUE(rmpg_table, rmpg_id) — a second link
+  // attempt for an rmpg_id that already has one must be a conflict, not
+  // another insert (which would throw and abort the whole /pull reconcile).
+  it('links when the matched local row has no existing link', () => {
+    expect(decideMatchAction(1, new Set())).toBe('link');
+    expect(decideMatchAction(1, new Set([2, 3]))).toBe('link');
+  });
+
+  it('flags a conflict when the matched local row already has a link', () => {
+    // Scenario: local row already linked to a different Fleet.io vehicle,
+    // either from an earlier /pull run or an earlier vehicle in this same
+    // run matching the same local row via a shared VIN/plate/name.
+    expect(decideMatchAction(1, new Set([1]))).toBe('conflict');
+    expect(decideMatchAction(2, new Set([1, 2, 3]))).toBe('conflict');
   });
 });
