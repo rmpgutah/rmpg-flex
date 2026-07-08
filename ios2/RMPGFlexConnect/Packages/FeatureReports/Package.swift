@@ -8,10 +8,11 @@ let package = Package(
     dependencies: [
         .package(path: "../CoreAPI"),
         .package(path: "../CoreOffline"),
+        .package(path: "../CoreAuth"),
         .package(path: "../DesignSystem"),
     ],
     targets: [
-        .target(name: "FeatureReports", dependencies: ["CoreAPI", "CoreOffline", "DesignSystem"]),
+        .target(name: "FeatureReports", dependencies: ["CoreAPI", "CoreOffline", "CoreAuth", "DesignSystem"]),
         .testTarget(name: "FeatureReportsTests", dependencies: ["FeatureReports"]),
     ]
 )

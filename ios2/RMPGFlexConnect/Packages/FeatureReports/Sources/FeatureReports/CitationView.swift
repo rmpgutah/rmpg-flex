@@ -4,6 +4,7 @@ import DesignSystem
 public struct CitationView: View {
     @State private var vm = CitationViewModel()
     @Environment(\.dismiss) private var dismiss
+    private let offline = ReportsOfflineCoordinator.shared
 
     public init() {}
 
@@ -40,6 +41,9 @@ public struct CitationView: View {
                 Section {
                     Toggle("Print Citation", isOn: $vm.printEnabled)
                 }
+                Section {
+                    PendingSyncBadge(pendingCount: offline.pendingCount, isOnline: offline.isOnline)
+                }
             }
             .navigationTitle("CITATION")
             .toolbar {
@@ -55,6 +59,12 @@ public struct CitationView: View {
             }
             .overlay {
                 if vm.isIssuing { ProgressView() }
+            }
+            .task { await offline.refresh() }
+            .alert("Queued", isPresented: $vm.wasQueuedOffline) {
+                Button("OK") {}
+            } message: {
+                Text("Citation queued — will sync automatically when back online.")
             }
         }
     }
@@ -76,13 +86,31 @@ final class CitationViewModel {
     var printEnabled = true
     var isIssuing = false
     var error: String?
+    var wasQueuedOffline = false
 
     var canSubmit: Bool { !firstName.isEmpty && !lastName.isEmpty && !location.isEmpty && !plate.isEmpty }
 
     func issue() async {
         isIssuing = true
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        if printEnabled { await printCitation() }
+        let payload: [String: Any] = [
+            "first_name": firstName,
+            "last_name": lastName,
+            "dob": dob,
+            "dl_number": dlNumber,
+            "dl_state": dlState,
+            "violation_type": violationType,
+            "location": location,
+            "speed": speed,
+            "plate": plate,
+            "vehicle_info": vehicleInfo,
+            "color": color,
+        ]
+        let outcome = await ReportsOfflineCoordinator.shared.submitJSON(
+            endpoint: "/api/records/citations",
+            json: payload
+        )
+        wasQueuedOffline = (outcome == .queuedOffline)
+        if printEnabled, outcome == .sentLive { await printCitation() }
         isIssuing = false
     }
 

@@ -4,6 +4,7 @@ import DesignSystem
 public struct FieldInterviewCardView: View {
     @State private var vm = FieldInterviewViewModel()
     @Environment(\.dismiss) private var dismiss
+    private let offline = ReportsOfflineCoordinator.shared
 
     public init() {}
 
@@ -38,6 +39,9 @@ public struct FieldInterviewCardView: View {
                         Text("No Action").tag("no_action")
                     }
                 }
+                Section {
+                    PendingSyncBadge(pendingCount: offline.pendingCount, isOnline: offline.isOnline)
+                }
             }
             .navigationTitle("FIELD INTERVIEW")
             .toolbar {
@@ -54,10 +58,13 @@ public struct FieldInterviewCardView: View {
             .overlay {
                 if vm.isSubmitting { ProgressView() }
             }
-            .alert("Saved", isPresented: $vm.didSucceed) {
+            .task { await offline.refresh() }
+            .alert(vm.wasQueuedOffline ? "Queued" : "Saved", isPresented: $vm.didSucceed) {
                 Button("OK") { dismiss() }
             } message: {
-                Text("FI Card #\(vm.resultNumber) created.")
+                Text(vm.wasQueuedOffline
+                     ? "FI Card queued — will sync automatically when back online."
+                     : "FI Card #\(vm.resultNumber) created.")
             }
             .alert("Error", isPresented: .init(
                 get: { vm.error != nil },
@@ -88,6 +95,7 @@ final class FieldInterviewViewModel {
     var error: String?
     var didSucceed = false
     var resultNumber = ""
+    var wasQueuedOffline = false
 
     var canSubmit: Bool {
         !firstName.isEmpty && !lastName.isEmpty && !location.isEmpty
@@ -96,8 +104,25 @@ final class FieldInterviewViewModel {
     func submit() async {
         isSubmitting = true
         error = nil
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        let payload: [String: Any] = [
+            "first_name": firstName,
+            "last_name": lastName,
+            "date_of_birth": dateOfBirth,
+            "phone": phone,
+            "location": location,
+            "city": city,
+            "contact_reason": contactReason,
+            "narrative": narrative,
+            "plate": plate,
+            "vehicle_description": vehicleDescription,
+            "disposition": disposition,
+        ]
+        let outcome = await ReportsOfflineCoordinator.shared.submitJSON(
+            endpoint: "/api/reports/field-interviews",
+            json: payload
+        )
         isSubmitting = false
+        wasQueuedOffline = (outcome == .queuedOffline)
         resultNumber = "FI-\(Int.random(in: 1000...9999))"
         didSucceed = true
     }
