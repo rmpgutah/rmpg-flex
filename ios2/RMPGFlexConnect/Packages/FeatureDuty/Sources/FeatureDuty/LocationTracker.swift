@@ -81,6 +81,18 @@ public final class LocationTracker {
         startFlushLoop()
     }
 
+    // Patrol vehicle location tracking is an iOS-only feature at runtime —
+    // `authorizedWhenInUse` doesn't exist on macOS's CLAuthorizationStatus.
+    // macOS support here exists only so this package's tests can build/run
+    // on the CI macOS runner, not because it ever ships on macOS.
+    private static func isAuthorized(_ status: CLAuthorizationStatus) -> Bool {
+        #if os(iOS)
+        return status == .authorizedWhenInUse || status == .authorizedAlways
+        #else
+        return status == .authorizedAlways
+        #endif
+    }
+
     public func stop() {
         isTracking = false
         manager.stopUpdatingLocation()
