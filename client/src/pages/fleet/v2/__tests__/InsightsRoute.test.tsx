@@ -8,13 +8,17 @@ import { InsightsRoute, readSavedPeriod } from '../routes/InsightsRoute';
 // the "mapbox unavailable" failure chip instead of the success path the
 // PR-8c assertions check. The mock returns a no-op stub with the minimum
 // surface area FleetMapCard touches: addControl, fitBounds, setCenter,
-// setZoom, remove + the LngLatBounds/Marker/Popup classes.
+// setZoom, on/off (InsightsRoute now registers a style.load basemap-theme
+// listener — see mapboxBasemap.ts), remove + the LngLatBounds/Marker/Popup
+// classes.
 vi.mock('mapbox-gl', () => {
   class FakeMap {
     addControl() { return this; }
     fitBounds() { return this; }
     setCenter() { return this; }
     setZoom() { return this; }
+    on() { return this; }
+    off() { return this; }
     remove() { /* noop */ }
   }
   class FakeMarker {

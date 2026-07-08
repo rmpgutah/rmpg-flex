@@ -5,8 +5,16 @@ import {
   setMapboxStyle, addMapboxTerrain,
 } from '../../../utils/mapboxLoader';
 import { getMapboxTokenStatus } from '../../../utils/mapboxApiKey';
+import { applyRmpgBasemap, type BasemapVariant } from '../../../utils/mapboxBasemap';
 import { devLog, devWarn } from '../../../utils/devLog';
 import type { MapStyleId } from '../utils/mapConstants';
+import { isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
+
+function basemapVariantFor(styleId: MapStyleId): BasemapVariant {
+  if (isSatelliteStyle(styleId)) return 'satellite';
+  if (isLightMapStyle(styleId)) return 'light';
+  return 'dark';
+}
 import { useMapDaylight, type UseMapDaylightResult } from '../../../hooks/useMapDaylight';
 import { useMapProjection } from '../../../hooks/useMapProjection';
 import { useMapAtmosphere } from '../../../hooks/useMapAtmosphere';
@@ -67,6 +75,11 @@ export function useMapCore({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const tokenRef = useRef<string | null>(null);
+  // Tracks the CURRENTLY active style id so the persistent basemap re-skin
+  // listener (registered once, fires on every style.load — including
+  // subsequent changeStyle() swaps) re-skins for whichever style is live at
+  // the time, not whichever style was active when the listener was attached.
+  const activeStyleRef = useRef<MapStyleId>(mapStyle);
   const [token, setToken] = useState<string | null>(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -141,6 +154,13 @@ export function useMapCore({
           mapStyle,
         );
         mapRef.current = map;
+        activeStyleRef.current = mapStyle;
+        // Brand the basemap on every style (re-applies after changeStyle()
+        // swaps too, since 'style.load' fires again on setStyle) — makes the
+        // main /map page follow the same theme-reactive re-skin as every
+        // other Mapbox surface in the app (SightingsMap, ForensicTrackMap,
+        // DispatchMiniMap, etc.) instead of rendering a raw stock style.
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantFor(activeStyleRef.current) }));
 
         // Track whether the map has successfully loaded at least once.
         // Individual tile/source errors after successful load should NOT
@@ -294,6 +314,7 @@ export function useMapCore({
   const changeStyle = useCallback((styleId: MapStyleId) => {
     const map = mapRef.current;
     if (!map) return;
+    activeStyleRef.current = styleId;
     setMapboxStyle(map, styleId);
     map.once('style.load', () => {
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
