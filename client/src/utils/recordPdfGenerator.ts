@@ -1690,7 +1690,7 @@ function sunTimes(d: Date, lat: number, lng: number): { sunrise: Date; sunset: D
   return { sunrise: fromJulian(Jtransit - w / (2 * Math.PI)), sunset: fromJulian(Jtransit + w / (2 * Math.PI)) };
 }
 
-async function addLocationMapSection(
+export async function addLocationMapSection(
   doc: jsPDF,
   opts: {
     title: string;
