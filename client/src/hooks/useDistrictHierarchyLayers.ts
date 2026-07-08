@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — District Hierarchy Layer Manager (Area/Section/Zone)
+// RMPG Flex — District Hierarchy Layer Manager (Area/Sector/Zone)
 // ============================================================
 // Area, Section, and Zone have no geometry of their own — they are
 // groupings of the ~719 beat polygons (beat.geojson). This hook builds
@@ -9,7 +9,7 @@
 // the County + Municipality overlays supply the reference boundaries.
 // Beat itself stays in useGeoJsonLayers.
 //
-// The Area›Section›Zone›Beat mapping comes from
+// The Area›Sector›Zone›Beat mapping comes from
 // /dispatch/geography/districts (dispatch_areas › sectors › zones › beats),
 // joined to each beat polygon on city_code == zone_id (zone_code) — the
 // established key the rest of the map already assumes.
@@ -21,7 +21,7 @@ import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
-export type HierarchyLevelId = 'area' | 'section' | 'zone';
+export type HierarchyLevelId = 'area' | 'sector' | 'zone';
 
 export interface HierarchyLayerConfig {
   id: HierarchyLevelId;
@@ -32,14 +32,14 @@ export interface HierarchyLayerConfig {
 
 export const HIERARCHY_CONFIGS: HierarchyLayerConfig[] = [
   { id: 'area', label: 'Area', description: 'Top-level patrol areas', minzoom: 7 },
-  { id: 'section', label: 'Section', description: 'Spillman sections (SL1, DV1…)', minzoom: 8 },
+  { id: 'sector', label: 'Sector', description: 'Spillman sectors (SL1, DV1…)', minzoom: 8 },
   { id: 'zone', label: 'Zone', description: 'Zones / communities', minzoom: 9 },
 ];
 
 // Per-level feature-property names baked onto each beat at tag time.
 const FIELD: Record<HierarchyLevelId, { key: string; name: string; color: string }> = {
   area: { key: '_area', name: '_areaName', color: '_areaColor' },
-  section: { key: '_section', name: '_sectionName', color: '_sectionColor' },
+  sector: { key: '_sector', name: '_sectorName', color: '_sectorColor' },
   zone: { key: '_zone', name: '_zoneName', color: '_zoneColor' },
 };
 
@@ -223,7 +223,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
               + `<div style="font-weight:bold;font-size:12px;color:${color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${esc(String(p[f.name] || cfg.label))}</div>`
               + `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${cfg.label}</div>`
               + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Area:</span> ${esc(String(p._areaName || '—'))}</div>`
-              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Section:</span> ${esc(String(p._sectionName || '—'))}</div>`
+              + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Sector:</span> ${esc(String(p._sectorName || '—'))}</div>`
               + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> ${esc(String(p._zoneName || '—'))}</div>`
               + `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> ${esc(String(p.beat_code || p.beat_id || '—'))}</div>`
               + `</div>`;
