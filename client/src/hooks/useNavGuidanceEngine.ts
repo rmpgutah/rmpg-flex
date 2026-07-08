@@ -21,7 +21,7 @@
 // ============================================================
 
 import { useState, useCallback, useRef } from 'react';
-import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { apiFetch } from './useApi';
 import {
   snapToRoute,
   type RouteInfo,
@@ -160,17 +160,17 @@ export function useNavGuidanceEngine() {
     const gen = genRef.current;
     setRouteLoading(true);
     try {
-      const token = await getMapboxAccessToken();
-      if (!token) return null;
-
+      // Routed through the Worker's /api/mapbox/directions proxy
+      // (src/routes/mapbox.ts) rather than hitting api.mapbox.com directly
+      // with an embedded public token — the officer's live turn-by-turn
+      // route no longer depends on the client holding any Mapbox credential
+      // at all; the MAPBOX_ACCESS_TOKEN secret stays server-side. Uses the
+      // same auth (rmpg_token bearer) as every other apiFetch call.
       const coordStr = `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`;
-      const url =
-        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}` +
-        `?access_token=${token}&geometries=geojson&overview=full&steps=true&annotations=congestion`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch<{ routes?: any[] }>(
+        `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
+        `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
+      );
       const route = data.routes?.[0];
       if (!route) throw new Error('No route found');
       if (gen !== genRef.current) return null; // guidance changed mid-fetch — discard
