@@ -17,7 +17,9 @@
 //   GET    /:id/stream                range-supporting playback
 //                                      (auth via ?token=<JWT>)
 //
-// Storage layout in R2 (bucket: env.UPLOADS):
+// Storage layout in R2 (bucket: env.RECORDINGS; videos uploaded before the
+// RECORDINGS binding existed remain in env.UPLOADS — the stream route falls
+// back to UPLOADS when a key isn't found in RECORDINGS):
 //   bodycam-videos/<uuid>             finished video (referenced by
 //                                     bodycam_videos.file_path)
 //
@@ -89,7 +91,7 @@ bodycamVideosRouter.post('/', async (c) => {
     const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
     const mimeType = file.type || 'video/mp4';
 
-    await c.env.UPLOADS.put(r2Key, file.stream(), {
+    await c.env.RECORDINGS.put(r2Key, file.stream(), {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -163,7 +165,7 @@ bodycamVideosRouter.post('/upload-init', async (c) => {
     }
 
     const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
-    const mp = await c.env.UPLOADS.createMultipartUpload(r2Key, {
+    const mp = await c.env.RECORDINGS.createMultipartUpload(r2Key, {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -223,7 +225,7 @@ bodycamVideosRouter.post('/upload-chunk', async (c) => {
       return c.json({ error: 'chunkIndex out of range' }, 400);
     }
 
-    const mp = c.env.UPLOADS.resumeMultipartUpload(session.r2Key, uploadId);
+    const mp = c.env.RECORDINGS.resumeMultipartUpload(session.r2Key, uploadId);
     const partNumber = chunkIndex + 1;
     const uploaded = await mp.uploadPart(partNumber, chunk);
 
@@ -293,7 +295,7 @@ bodycamVideosRouter.post('/upload-complete', async (c) => {
       }, 400);
     }
 
-    const mp = c.env.UPLOADS.resumeMultipartUpload(session.r2Key, uploadId);
+    const mp = c.env.RECORDINGS.resumeMultipartUpload(session.r2Key, uploadId);
     // R2 requires the parts array ascending by partNumber.
     const sortedParts = session.parts.slice().sort((a, b) => a.partNumber - b.partNumber);
     await mp.complete(sortedParts);
@@ -350,7 +352,7 @@ bodycamVideosRouter.delete('/upload-abort/:uploadId', async (c) => {
     if (!sessionRaw) return c.json({ ok: true, already_gone: true });
 
     const session = JSON.parse(sessionRaw) as UploadSession;
-    const mp = c.env.UPLOADS.resumeMultipartUpload(session.r2Key, uploadId);
+    const mp = c.env.RECORDINGS.resumeMultipartUpload(session.r2Key, uploadId);
     await mp.abort().catch((err) => {
       // R2 returns a 404-equivalent if the multipart already expired
       // or was already aborted; swallow so the KV delete still runs
@@ -431,9 +433,13 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
       }
     }
 
+    // New uploads land in RECORDINGS; anything uploaded before that binding
+    // existed is still in UPLOADS under the same key.
     const obj = r2Range
-      ? await c.env.UPLOADS.get(row.file_path, { range: r2Range })
-      : await c.env.UPLOADS.get(row.file_path);
+      ? (await c.env.RECORDINGS.get(row.file_path, { range: r2Range })
+        ?? await c.env.UPLOADS.get(row.file_path, { range: r2Range }))
+      : (await c.env.RECORDINGS.get(row.file_path)
+        ?? await c.env.UPLOADS.get(row.file_path));
     if (!obj) return c.json({ error: 'File not in storage' }, 404);
 
     const totalSize = obj.size;

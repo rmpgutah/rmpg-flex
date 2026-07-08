@@ -17,6 +17,16 @@ export type Bindings = {
   // Desktop/mobile installers R2 bucket. Served via /downloads/* and
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
+  // Body-cam + radio audio recordings. New writes go here; recordings
+  // stored before this binding existed remain in UPLOADS under their
+  // original r2_key.
+  RECORDINGS: R2Bucket;
+  // Map tile assets. No route uses this yet.
+  TILES: R2Bucket;
+  // General-purpose buckets provisioned in Cloudflare, not yet assigned
+  // a purpose or wired to any route.
+  FILES: R2Bucket;
+  BAP_FILES: R2Bucket;
   JWT_SECRET: string;
   // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
   // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
