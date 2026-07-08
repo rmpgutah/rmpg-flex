@@ -95,6 +95,8 @@ import RulerTool from './components/RulerTool';
 import BufferRingTool from './components/BufferRingTool';
 import AnnotationTool from './components/AnnotationTool';
 import DrawGeofenceTool from './components/DrawGeofenceTool';
+import GpsReplayTool from './components/GpsReplayTool';
+import NavOverlayTool from './components/NavOverlayTool';
 import { useSafetyAlertFeed } from '../../hooks/useSafetyAlertFeed';
 import { useMapCore } from './modules/MapCore';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from './utils/mapMarkers';
@@ -360,7 +362,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const identifyPopupRef = useRef<mapboxgl.Popup | null>(null);
   // Ruler + Buffer Ring — built, tested (RulerTool.test.tsx / BufferRingTool.test.tsx)
   // but never mounted anywhere in the app until now (2026-07 dead-code sweep).
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | 'draw-geofence' | null>(null);
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'ruler' | 'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
   const repeatAddresses = useMapboxRepeatAddresses(mapLoaded ? mapRef.current : null);
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
@@ -930,6 +932,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
         { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
         { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
+        { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
+        { id: 'nav-overlay', label: 'Point-to-Point Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
       ],
     },
     {
@@ -1747,6 +1751,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {activeFloatingTool === 'draw-geofence' && mapRef.current && (
         <div className="absolute top-16 right-3 z-30">
           <DrawGeofenceTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
+        </div>
+      )}
+      {activeFloatingTool === 'gps-replay' && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <GpsReplayTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
+        </div>
+      )}
+      {activeFloatingTool === 'nav-overlay' && mapRef.current && (
+        <div className="absolute top-16 right-3 z-30">
+          <NavOverlayTool map={mapRef.current} onClose={() => setActiveFloatingTool(null)} />
         </div>
       )}
 
