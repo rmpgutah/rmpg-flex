@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_SATELLITE,
-  MAPBOX_STYLE_STREETS, MAPBOX_STYLE_LIGHT,
+  MAPBOX_STYLE_STREETS, MAPBOX_STYLE_LIGHT, classifyMapboxError,
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
@@ -290,6 +290,15 @@ export default function NavMapView({
 
         map.on('error', (e) => {
           console.warn('[NavMapView] mapbox error:', e?.error?.message || e);
+          // Mapbox's async style/tile-load failures (bad/expired token, etc.)
+          // only fire this event — they never throw a catchable exception —
+          // so without this the map silently rendered blank/black with zero
+          // indication of what's wrong. Only surface auth errors; network
+          // blips are retried internally by Mapbox GL and shouldn't interrupt
+          // the view (this component is used while driving).
+          if (cancelled) return;
+          const { message, isAuthErr } = classifyMapboxError(e);
+          if (isAuthErr) setError(message);
         });
       } catch (err: any) {
         if (cancelled) return;
