@@ -435,6 +435,31 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
 });
 
 /**
+ * Records a skipped_conflict as an unresolved fleetio_conflicts row instead
+ * of only a transient outcome — otherwise it's permanent (the local row
+ * never becomes eligible to link, so every future /pull re-skips it) yet
+ * invisible outside the 10-item audit sample. Surfacing it here means it
+ * shows up in GET /fleetio/health's unresolved_conflicts, same as any other
+ * conflict, so an admin can actually act on it (e.g. archive/rename one of
+ * the colliding local rows, or resolve manually).
+ */
+async function recordPullConflict(
+  db: D1Database,
+  rmpgId: number,
+  existingFleetioId: number | null,
+  collidingFleetioId: number,
+): Promise<void> {
+  await execute(
+    db,
+    `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value)
+     VALUES ('fleet_vehicles', ?, 'fleetio_id', ?, ?)`,
+    rmpgId,
+    existingFleetioId !== null ? String(existingFleetioId) : null,
+    String(collidingFleetioId),
+  );
+}
+
+/**
  * POST /pull — Admin. Reconciles RMPG's fleet_vehicles against Fleet.io's
  * existing vehicle roster, in the opposite direction from /seed.
  *
@@ -450,6 +475,10 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
  *     fleet_vehicles row from Fleet.io's data + links it)
  *   - Fleet.io-archived                            -> skipped_archived
  *   - no usable name to seed a new row with        -> skipped_no_name
+ *   - matches a local row already linked to a       -> skipped_conflict
+ *     DIFFERENT Fleet.io vehicle (would violate      (recorded into
+ *     fleetio_links' unique index)                   fleetio_conflicts,
+ *                                                      not just skipped)
  *
  * Linking existing vehicles here is what actually fixes /seed's 422s: its
  * LEFT JOIN over fleetio_links will skip them on the next run.
@@ -478,6 +507,11 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   // more than one Fleet.io vehicle can otherwise match the same local row
   // (duplicate VIN/plate/name, or a row already linked from an earlier run).
   const linkedRmpgIds = new Set(existingLinks.map((r) => r.rmpg_id));
+  // rmpg_id -> the fleetio_id it's linked to, so a conflict row can record
+  // *which* Fleet.io vehicle already owns the local row (not just that one
+  // exists) — otherwise an admin resolving fleetio_conflicts has no idea
+  // what the collision even was.
+  const linkedFleetioIdByRmpgId = new Map(existingLinks.map((r) => [r.rmpg_id, r.fleetio_id]));
 
   const outcomes: PullOutcome[] = [];
   let page = 1;
@@ -498,6 +532,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
         const match = matchLocalVehicle(fioVehicle, locals);
         if (match) {
           if (decideMatchAction(match.id, linkedRmpgIds) === 'conflict') {
+            await recordPullConflict(db, match.id, linkedFleetioIdByRmpgId.get(match.id) ?? null, fioVehicle.id);
             outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_conflict', rmpg_id: match.id });
             continue;
           }
@@ -508,6 +543,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
             match.id, fioVehicle.id,
           );
           linkedRmpgIds.add(match.id);
+          linkedFleetioIdByRmpgId.set(match.id, fioVehicle.id);
           outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: match.id });
           continue;
         }
@@ -524,6 +560,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
           // (e.g. differing VIN/plate casing) — link rather than error,
           // unless that row is already linked to a different Fleet.io vehicle.
           if (decideMatchAction(dup.id, linkedRmpgIds) === 'conflict') {
+            await recordPullConflict(db, dup.id, linkedFleetioIdByRmpgId.get(dup.id) ?? null, fioVehicle.id);
             outcomes.push({ fleetio_id: fioVehicle.id, status: 'skipped_conflict', rmpg_id: dup.id });
             continue;
           }
@@ -534,6 +571,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
             dup.id, fioVehicle.id,
           );
           linkedRmpgIds.add(dup.id);
+          linkedFleetioIdByRmpgId.set(dup.id, fioVehicle.id);
           outcomes.push({ fleetio_id: fioVehicle.id, status: 'linked_existing', rmpg_id: dup.id });
           continue;
         }
@@ -552,6 +590,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
           newId, fioVehicle.id,
         );
         linkedRmpgIds.add(newId);
+        linkedFleetioIdByRmpgId.set(newId, fioVehicle.id);
         outcomes.push({ fleetio_id: fioVehicle.id, status: 'created', rmpg_id: newId });
         locals.push({ id: newId, vin: insertRow.vin, plate_number: insertRow.plate_number, vehicle_number: insertRow.vehicle_number, vehicle_name: insertRow.vehicle_name });
       }
@@ -569,7 +608,10 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     created: outcomes.filter((o) => o.status === 'created').length,
     linked_existing: outcomes.filter((o) => o.status === 'linked_existing').length,
     already_linked: outcomes.filter((o) => o.status === 'already_linked').length,
-    skipped: outcomes.filter((o) => o.status === 'skipped_no_name' || o.status === 'skipped_archived' || o.status === 'skipped_conflict').length,
+    skipped: outcomes.filter((o) => o.status === 'skipped_no_name' || o.status === 'skipped_archived').length,
+    // Kept separate from `skipped` — these are real data problems recorded
+    // into fleetio_conflicts (see recordPullConflict), not benign no-ops.
+    conflicts: outcomes.filter((o) => o.status === 'skipped_conflict').length,
   };
 
   await recordAudit(c, {
