@@ -101,7 +101,7 @@ mapbox.get('/reverse-geocode', async (c) => {
 });
 
 // ── Directions ─────────────────────────────────────────────
-// GET /api/mapbox/directions?coordinates=&profile=&alternatives=  → { routes: [...] }
+// GET /api/mapbox/directions?coordinates=&profile=&alternatives=&annotations=  → { routes: [...] }
 mapbox.get('/directions', async (c) => {
   const tk = token(c);
   if (!tk) return tokenMissing(c);
@@ -115,6 +115,12 @@ mapbox.get('/directions', async (c) => {
     geometries: c.req.query('geometries') || 'geojson',
     steps: c.req.query('steps') || 'true',
   });
+  // Per-segment congestion (used by the nav guidance engine's traffic-colored
+  // route line) is opt-in on Mapbox's side — only forward it when a caller
+  // actually asks for it, since it inflates the response for callers that
+  // just want the polyline.
+  const annotations = c.req.query('annotations');
+  if (annotations) params.set('annotations', annotations);
   try {
     const data = await mbFetch(`${MB}/directions/v5/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
     return c.json({ routes: data?.routes ?? [], waypoints: data?.waypoints ?? [], code: data?.code });
