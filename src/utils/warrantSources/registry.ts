@@ -18,11 +18,12 @@ import { adaCountyAdapter } from './adapters/adaCounty';
 import { natronaAdapter } from './adapters/natrona';
 import { fbiAdapter } from './adapters/fbi';
 import { utahCountyAdapter } from './adapters/utahCounty';
+import { ohioPvalAdapter } from './adapters/ohioPval';
 import { getConfigAdapters } from './configRegistry';
 import { query } from '../db';
 
 /** All known source adapters (code-resident). */
-export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter, fbiAdapter, utahCountyAdapter];
+export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter, fbiAdapter, utahCountyAdapter, ohioPvalAdapter];
 
 /**
  * Adapters that have an ENABLED warrant_scraper_config row (enabled = 1).
