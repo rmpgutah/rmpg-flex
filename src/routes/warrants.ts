@@ -9,7 +9,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
-import { getEnabledAdapters } from '../utils/warrantSources/registry';
+import { getAllEnabledAdapters } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
@@ -316,19 +316,17 @@ warrants.post('/search-all', async (c) => {
 warrants.get('/national-coverage', async (c) => {
   const db = getDb(c.env);
 
-  const configRows = await query<{ state: string | null; enabled: number }>(
-    db, `SELECT state, enabled FROM national_warrant_sources WHERE enabled = 1`,
-  );
-  const codeAdapters = await getEnabledAdapters(db);
+  // Single source of truth: the SAME enabled-adapter computation the real
+  // scan uses (getAllEnabledAdapters — code adapters gated by
+  // warrant_scraper_config, the always-on FBI/Utah-County adapters, and
+  // config-driven national_warrant_sources rows, deduped by meta.key). This
+  // route used to recompute this independently and could drift from what
+  // actually gets scanned; it no longer can.
+  const adapters = await getAllEnabledAdapters(db);
 
   const stateSources = new Map<string, number>();
-  for (const row of configRows) {
-    if (!row.state) continue;
-    const code = row.state.toUpperCase();
-    stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
-  }
-  for (const adapter of codeAdapters) {
-    if (adapter.meta.state === 'US') continue;
+  for (const adapter of adapters) {
+    if (adapter.meta.state === 'US') continue;  // federal (FBI) isn't state-specific coverage
     const code = adapter.meta.state.toUpperCase();
     stateSources.set(code, (stateSources.get(code) ?? 0) + 1);
   }
