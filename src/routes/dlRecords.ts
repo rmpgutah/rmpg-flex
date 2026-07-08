@@ -324,9 +324,10 @@ Transcribe exactly what is printed. dl_state is the issuing state's 2-letter cod
       image: Array.from(bytes),
       prompt,
       max_tokens: 800,
-    }) as { response?: string; description?: string };
+    }) as { response?: unknown; description?: unknown };
 
-    const raw = (out?.response || out?.description || '').trim();
+    const rawValue = out?.response ?? out?.description ?? '';
+    const raw = (typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue)).trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ success: false, error: 'Vision model returned no structured data', raw_ocr: raw.slice(0, 500) });
