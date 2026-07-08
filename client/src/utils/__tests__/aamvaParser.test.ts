@@ -73,6 +73,21 @@ describe('parseAamva — full field extraction', () => {
     expect(r.raw_elements.DAQ).toBe('123456789');
     expect(r.raw_elements.ZUA).toBe('01');
   });
+
+  it('does not bleed the next subfile into the last field when there is no separator between them', () => {
+    // Real encoders don't guarantee a newline between the last field of one
+    // subfile and the header of the next — they rely on the directory's
+    // offset/length instead. Strip the "\n\r" between "DDK1" and "ZUZUA01"
+    // (shifting the ZU directory offset by the same 2 bytes) to prove the
+    // DL subfile's last field ("DDK") doesn't swallow the ZU subfile's bytes.
+    const noSeparator = UTAH_V8
+      .replace('ZU02910010', 'ZU02890010')
+      .replace('DDK1\n\rZUZUA01\n', 'DDK1ZUZUA01\n');
+    const r2 = parseAamva(noSeparator);
+    expect(r2.raw_elements.DDK).toBe('1');
+    expect(r2.raw_elements.ZUA).toBe('01');
+    expect(r2.is_organ_donor).toBe(true);
+  });
 });
 
 describe('parseAamva — version/format variants', () => {
