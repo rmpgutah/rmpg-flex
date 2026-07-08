@@ -9,6 +9,11 @@ import AVFoundation
 
 private final class ScannerViewController: UIViewController {
     var onScan: ((String) -> Void)?
+    /// Fires when the camera can't be started at all (permission denied/
+    /// restricted, or no capture device) — without this, a denied/no-device
+    /// state left the officer staring at a permanently black, silently dead
+    /// preview with no indication anything was wrong.
+    var onError: ((String) -> Void)?
     private var session: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
 
@@ -19,22 +24,47 @@ private final class ScannerViewController: UIViewController {
     }
 
     private func requestAndSetup() {
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-            DispatchQueue.main.async {
-                if granted { self?.setupSession() }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            setupSession()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.setupSession()
+                    } else {
+                        self?.onError?("Camera access was denied. Enable it in Settings > RMPG Flex Connect > Camera.")
+                    }
+                }
             }
+        case .denied, .restricted:
+            onError?("Camera access is disabled for this app. Enable it in Settings > RMPG Flex Connect > Camera.")
+        @unknown default:
+            onError?("Camera unavailable.")
         }
     }
 
     private func setupSession() {
+        guard let device = AVCaptureDevice.default(for: .video) else {
+            onError?("No camera available on this device.")
+            return
+        }
+        guard let input = try? AVCaptureDeviceInput(device: device) else {
+            onError?("Could not access the camera.")
+            return
+        }
         let sess = AVCaptureSession()
-        guard let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device),
-              sess.canAddInput(input) else { return }
+        guard sess.canAddInput(input) else {
+            onError?("Could not configure the camera.")
+            return
+        }
         sess.addInput(input)
 
         let output = AVCaptureMetadataOutput()
-        guard sess.canAddOutput(output) else { return }
+        guard sess.canAddOutput(output) else {
+            onError?("Could not configure the barcode scanner.")
+            return
+        }
         sess.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: DispatchQueue(label: "ScanQueue"))
         output.metadataObjectTypes = [.pdf417]
@@ -73,10 +103,12 @@ extension ScannerViewController: AVCaptureMetadataOutputObjectsDelegate {
 
 private struct ScannerView: UIViewControllerRepresentable {
     let onScan: (String) -> Void
+    var onError: (String) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> ScannerViewController {
         let vc = ScannerViewController()
         vc.onScan = onScan
+        vc.onError = onError
         return vc
     }
 
@@ -149,6 +181,10 @@ final class ScanViewModel {
         guard phase == .scanning else { return }
         guard let result = AamvaParser.parse(raw) else { return }
         phase = .preview(result)
+    }
+
+    func handleError(_ message: String) {
+        phase = .error(message)
     }
 
     func importPerson(_ result: AamvaResult) async {
@@ -229,7 +265,7 @@ public struct ScanTabView: View {
     private var scanningView: some View {
         ZStack {
 #if os(iOS)
-            ScannerView { raw in vm.handleScan(raw) }
+            ScannerView(onScan: { raw in vm.handleScan(raw) }, onError: { message in vm.handleError(message) })
                 .ignoresSafeArea()
 #else
             theme.colors.surfaceMuted.ignoresSafeArea()
@@ -375,7 +411,7 @@ public struct ScanTabView: View {
             Image(systemName: "xmark.circle")
                 .font(.system(size: 56))
                 .foregroundStyle(theme.colors.critical)
-            Text("Import Failed")
+            Text("Error")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(theme.colors.textPrimary)
             Text(msg)

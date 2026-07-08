@@ -12,8 +12,6 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
-    "cap:ios": "npx cap sync ios",
-    "cap:open:ios": "npx cap open ios",
     "cap:android": "npx cap sync android",
     "cap:open:android": "npx cap open android"
   },
@@ -22,7 +20,6 @@
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
-    "@capacitor/ios": "^8.4.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
     "@deck.gl/core": "^9.3.6",

@@ -467,48 +467,6 @@ public struct DocumentScannerView: View {
     }
 }
 
-struct CameraCaptureView: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture, onCancel: onCancel) }
-
-    @MainActor
-    class Coordinator: NSObject, @preconcurrency VNDocumentCameraViewControllerDelegate {
-        let onCapture: ([UIImage]) -> Void
-        let onCancel: () -> Void
-        init(onCapture: @escaping ([UIImage]) -> Void, onCancel: @escaping () -> Void) {
-            self.onCapture = onCapture
-            self.onCancel = onCancel
-        }
-        // Dismissal is owned entirely by the SwiftUI `.sheet(isPresented:)` binding
-        // (via onCapture/onCancel setting showCamera = false) — calling
-        // controller.dismiss(animated:) here too raced with that and could tear
-        // down the parent scanner sheet instead of just this nested one.
-        // VisionKit natively supports multi-page capture in one session — the
-        // officer scans front, taps "Keep Scanning" for the back, then "Save".
-        // Every page captured in that session comes back here at once.
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            guard scan.pageCount > 0 else { onCancel(); return }
-            let images = (0..<scan.pageCount).map { scan.imageOfPage(at: $0) }
-            onCapture(images)
-        }
-        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
-            onCancel()
-        }
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            onCancel()
-        }
-    }
-}
-
 struct GalleryPickerView: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
     var sourceType: UIImagePickerController.SourceType = .photoLibrary
