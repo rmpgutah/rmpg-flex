@@ -49,7 +49,7 @@ let package = Package(
         .target(name: "CoreLocationService", dependencies: ["CoreAPI"]),
         .target(name: "CoreAudioService", dependencies: []),
         .target(name: "CoreIDScan", dependencies: ["DesignSystem"]),
-        .target(name: "FeatureQuickActions", dependencies: ["CoreAPI", "CoreIDScan", "DesignSystem"]),
+        .target(name: "FeatureQuickActions", dependencies: ["CoreAPI", "CoreIDScan", "DesignSystem", "FeatureRunPlate", "FeatureReports", "FeatureRunID"]),
 
         // Ported in from Packages/ — these had no naming collision with the
         // targets above, so unlike CoreAPI/DesignSystem/FeatureShell/etc.
