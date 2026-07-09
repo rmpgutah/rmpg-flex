@@ -26,6 +26,7 @@ import NavSettingsPanel, {
   saveNavPrefs,
 } from './navigation/NavSettingsPanel';
 import { tripDrivingScore, type HarshCounts } from './navigation/drivingScore';
+import { harshEventColor } from './navigation/drivingScoreColor';
 
 // Export a completed trip's breadcrumb track to GPX 1.1 (mapping / evidence) or
 // CSV (spreadsheets). route_points carry { lat, lng, ts?, speed?, heading? }.
@@ -873,11 +874,6 @@ function FavoritesPanel({
 // (same gold line + gradient fill), and per-point color uses the same
 // good/caution/bad thresholds as HudDrivingScore in hud/HudInstruments.tsx
 // (0-1 harsh events = green, 2-5 = amber, 6+ = red).
-function driveScoreColor(counts: HarshCounts): string {
-  const events = counts.harsh_accel_count + counts.harsh_brake_count + counts.harsh_corner_count;
-  return events >= 6 ? '#ef4444' : events >= 2 ? '#f59e0b' : '#22c55e';
-}
-
 function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; start_time: string })[] }) {
   const chrono = useMemo(() => [...trend].reverse(), [trend]);
   const scores = useMemo(() => chrono.map((t) => tripDrivingScore(t)), [chrono]);
@@ -920,7 +916,7 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
               {chrono.map((t, i) => {
                 const cx = n < 2 ? 0 : (i / (n - 1)) * W;
                 const cy = H - Math.min(H, (scores[i] / 100) * H);
-                return <circle key={t.id} cx={cx} cy={cy} r="2.5" fill={driveScoreColor(t)} />;
+                return <circle key={t.id} cx={cx} cy={cy} r="2.5" fill={harshEventColor(t.harsh_accel_count + t.harsh_brake_count + t.harsh_corner_count)} />;
               })}
             </svg>
           )}

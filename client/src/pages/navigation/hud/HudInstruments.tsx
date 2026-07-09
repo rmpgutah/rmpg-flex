@@ -17,6 +17,7 @@ import {
   type SpeedUnit, speedInUnit, speedSuffix, speedColor, speedBands, formatHeading,
 } from './hudUnits';
 import { GAUGE_R, GAUGE_CIRC, GAUGE_SWEEP, gaugeTick } from './gaugeGeometry';
+import { harshEventColor } from '../drivingScoreColor';
 
 const prefersReducedMotion = (): boolean => {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -403,7 +404,7 @@ export function HudDrivingScore({
   peakLong, peakLat, hardBrakes, hardAccels,
 }: { peakLong: number; peakLat: number; hardBrakes: number; hardAccels: number }) {
   const events = hardBrakes + hardAccels;
-  const color = events >= 6 ? '#ef4444' : events >= 2 ? '#f59e0b' : '#22c55e';
+  const color = harshEventColor(events);
   return (
     <div className="flex flex-col px-1.5 py-1 border border-rmpg-800" style={{ borderRadius: 2, background: 'rgba(20,20,20,0.6)' }} title="Driving score — peak g + hard events">
       <div className="text-[7px] uppercase tracking-wider text-rmpg-600 leading-none">Drive</div>
