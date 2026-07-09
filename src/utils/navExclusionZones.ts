@@ -22,19 +22,32 @@ export interface LngLat {
 
 /**
  * True if any point along routeCoords falls inside any active exclusion
- * zone's polygon. Zones with unparsable/missing geometry are skipped
- * rather than throwing — a malformed geofence shouldn't break routing.
+ * zone's polygon. Zones with unparsable JSON are skipped silently — a
+ * malformed geofence shouldn't break routing. Zones whose JSON is valid
+ * but whose geometry shape isn't one we handle (e.g. MultiPolygon, a
+ * FeatureCollection, or a Feature whose geometry.type isn't Polygon) are
+ * ALSO skipped (we only ever check the outer ring of a single Polygon),
+ * but that's a real active exclusion zone silently never firing — report
+ * it via onUnrecognizedShape so it doesn't go unnoticed indefinitely.
  */
-export function routeCrossesExclusionZone(routeCoords: LngLat[], zones: ExclusionZone[]): boolean {
+export function routeCrossesExclusionZone(
+  routeCoords: LngLat[],
+  zones: ExclusionZone[],
+  onUnrecognizedShape?: (zone: ExclusionZone, shapeType: string | undefined) => void,
+): boolean {
   for (const zone of zones) {
-    let polygon: number[][] | undefined;
+    let parsed: any;
     try {
-      const parsed = JSON.parse(zone.geojsonData);
-      polygon = parsed?.type === 'Polygon' ? parsed.coordinates?.[0] : parsed?.geometry?.coordinates?.[0];
+      parsed = JSON.parse(zone.geojsonData);
     } catch {
+      continue; // malformed JSON — silently skip
+    }
+    const polygon: number[][] | undefined =
+      parsed?.type === 'Polygon' ? parsed.coordinates?.[0] : parsed?.geometry?.coordinates?.[0];
+    if (!polygon) {
+      onUnrecognizedShape?.(zone, parsed?.geometry?.type ?? parsed?.type);
       continue;
     }
-    if (!polygon) continue;
     for (const point of routeCoords) {
       if (pointInPolygon(point.lng, point.lat, [polygon])) return true;
     }

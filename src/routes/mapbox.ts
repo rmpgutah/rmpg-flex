@@ -19,6 +19,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { notConfigured } from '../utils/notConfigured';
 import { routeCrossesExclusionZone, type ExclusionZone, type LngLat } from '../utils/navExclusionZones';
+import { log } from '../utils/logger';
 
 const mapbox = new Hono<Env>();
 
@@ -157,9 +158,14 @@ async function checkExclusionZones(c: any, routes: any[]): Promise<boolean> {
     const zones: ExclusionZone[] = (results ?? []).map((r: any) => ({ id: r.id, geojsonData: r.geojson_data }));
     if (zones.length === 0) return false;
 
-    return routeCrossesExclusionZone(routeCoords, zones);
+    return routeCrossesExclusionZone(routeCoords, zones, (zone, shapeType) => {
+      log.warn('Exclusion zone has an unrecognized geometry shape — skipped in routing check', {
+        zoneId: zone.id,
+        shapeType,
+      });
+    });
   } catch (err) {
-    console.warn('[mapbox] exclusion zone check failed', err);
+    log.error('Exclusion zone check failed', {}, err instanceof Error ? err : new Error(String(err)));
     return false;
   }
 }
