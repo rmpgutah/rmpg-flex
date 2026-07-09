@@ -38,6 +38,7 @@ import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
+  HudDeviceHealthBadge,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit } from './navigation/hud/useSpeedLimit';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
@@ -64,6 +65,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
+import { useBattery } from '../components/BatteryIndicator';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -474,6 +476,7 @@ export default function NavigationPage() {
   const canExport = user?.role === 'admin' || user?.role === 'manager';
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
+  const battery = useBattery();
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
   // ── Clear-route confirm dialog ──
   const [clearRouteConfirmOpen, setClearRouteConfirmOpen] = useState(false);
@@ -2472,6 +2475,11 @@ export default function NavigationPage() {
             <HudQualityPill accuracy={gps.accuracy ?? null} />
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
+            <HudDeviceHealthBadge
+              batteryLevel={battery.supported ? battery.level : null}
+              batteryCharging={battery.charging}
+              gpsAccuracy={gps.accuracy ?? null}
+            />
             <span className="flex-1" />
             {canExport && (
               <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />

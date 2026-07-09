@@ -521,6 +521,32 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
   );
 }
 
+// ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
+const GPS_DEGRADED_M = 500;
+const BATTERY_LOW_PCT = 20;
+
+export function HudDeviceHealthBadge({
+  batteryLevel, batteryCharging, gpsAccuracy,
+}: { batteryLevel: number | null; batteryCharging: boolean; gpsAccuracy: number | null }) {
+  const lowBattery = batteryLevel != null && batteryLevel < BATTERY_LOW_PCT && !batteryCharging;
+  const gpsDegraded = gpsAccuracy != null && gpsAccuracy > GPS_DEGRADED_M;
+  if (!lowBattery && !gpsDegraded) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {lowBattery && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #ef4444', color: '#ef4444', borderRadius: 2 }} title="Device battery low">
+          Low battery {batteryLevel}%
+        </span>
+      )}
+      {gpsDegraded && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 2 }} title="GPS fix accuracy degraded">
+          GPS degraded ±{Math.round(gpsAccuracy!)}m
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── #70 — parked badge ──────────────────────────────────────────────────────────
 export function HudParkedBadge() {
   return (
