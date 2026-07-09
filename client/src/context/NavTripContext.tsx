@@ -254,16 +254,24 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   // ── Weather-aware hazard polling ──────────────────────────────────────────
   // Low-frequency poll (every 10 minutes, NOT per-GPS-tick) of the officer's
   // current-position weather via the existing fetchWeather() util — same
-  // calling convention as WeatherWidget.tsx (no args = geolocation-or-SLC-
-  // fallback; the util has its own internal 10-minute cache/dedup, so this
-  // interval just triggers a periodic re-check rather than hammering the API).
-  // Matches the interval-with-cleanup pattern used by useCachedBasemap.ts.
+  // client/util as WeatherWidget.tsx, but called WITH this provider's own
+  // live GPS fix (gps.latitude/gps.longitude, already tracked above for trip
+  // detection) rather than fetchWeather's own no-arg one-shot geolocation
+  // prompt + hardcoded SLC fallback. Falling back to that no-arg behavior only
+  // when a GPS fix isn't yet available avoids silently reporting weather for
+  // the wrong place while a unit patrols far from SLC. Read the coords via a
+  // ref (not an effect dependency) so the polling interval isn't torn down
+  // and recreated on every GPS tick — matches the interval-with-cleanup
+  // pattern used by useCachedBasemap.ts and the activeTripIdRef pattern above.
   const [weatherHazard, setWeatherHazard] = useState<string | null>(null);
+  const gpsPositionRef = useRef({ lat: gps.latitude, lng: gps.longitude });
+  gpsPositionRef.current = { lat: gps.latitude, lng: gps.longitude };
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
-        const w = await fetchWeather();
+        const { lat, lng } = gpsPositionRef.current;
+        const w = lat != null && lng != null ? await fetchWeather(lat, lng) : await fetchWeather();
         if (cancelled || !w) return;
         setWeatherHazard(weatherHazardLabel({ conditionCode: w.conditionCode, windSpeed: w.windSpeed }));
       } catch (err) {
