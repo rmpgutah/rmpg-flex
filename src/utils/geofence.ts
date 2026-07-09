@@ -145,7 +145,7 @@ async function loadBeats(env: Bindings): Promise<BeatShape[]> {
 }
 
 // Ray-casting (even-odd) test for a single ring.
-function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
+export function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const xi = ring[i][0], yi = ring[i][1];
@@ -159,7 +159,7 @@ function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
 }
 
 // Inside the outer ring AND outside every hole.
-function pointInPolygon(lng: number, lat: number, rings: number[][][]): boolean {
+export function pointInPolygon(lng: number, lat: number, rings: number[][][]): boolean {
   if (rings.length === 0 || !pointInRing(lng, lat, rings[0])) return false;
   for (let i = 1; i < rings.length; i++) {
     if (pointInRing(lng, lat, rings[i])) return false; // in a hole

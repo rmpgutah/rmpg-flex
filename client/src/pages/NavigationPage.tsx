@@ -38,8 +38,10 @@ import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
+  HudDeviceHealthBadge, HudOverSpeedBanner,
 } from './navigation/hud/HudInstruments';
-import { useSpeedLimit } from './navigation/hud/useSpeedLimit';
+import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
+import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import {
@@ -53,6 +55,8 @@ import { snapToRoute, type RouteStep } from '../hooks/useMapRouting';
 import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
 import { useNavTrip } from '../context/NavTripContext';
 import { whenStyleReady } from './map/utils/safeAddSource';
+import { getTaggedBeats } from './map/utils/districtGeoData';
+import { useCachedBasemap } from '../hooks/useCachedBasemap';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -64,6 +68,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
+import { useBattery } from '../components/BatteryIndicator';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -474,6 +479,7 @@ export default function NavigationPage() {
   const canExport = user?.role === 'admin' || user?.role === 'manager';
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
+  const battery = useBattery();
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
   // ── Clear-route confirm dialog ──
   const [clearRouteConfirmOpen, setClearRouteConfirmOpen] = useState(false);
@@ -584,6 +590,85 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProgress?.fraction, mapReady, routeRender]);
 
+  const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
+
+  // ── #2 — offline/cached basemap fallback. Not a true offline basemap
+  // (Mapbox vector tiles aren't cacheable to disk under the current
+  // license) — when live tiles have been failing to load for 5+ seconds we
+  // force-show the #8 district/beat schematic backdrop (below) at full
+  // opacity so the HUD isn't a blank screen, reusing that layer/source
+  // rather than building a second independent rendering path.
+  const { degraded: mapDegraded } = useCachedBasemap(mapReady ? mapInstanceRef.current : null);
+
+  // ── #8 — district/beat boundary overlay (fill + outline, default hidden) ──
+  // Reuses getTaggedBeats() — the same loader/dataset useDistrictHierarchyLayers
+  // (client/src/hooks/useDistrictHierarchyLayers.ts) was written against — so
+  // this avoids a redundant fetch/tag pass over the 719 beat polygons. NOTE:
+  // that hook is dead code (not wired into any live page), and the main map's
+  // ACTUAL live beat overlay is MapboxMapPage.tsx's loadBeatOverlay, which
+  // fetches /beats.geojson directly (a different source), paints solid gold
+  // (#d4a017, fill-opacity 0.04/line-opacity 0.35), and defaults ON — none of
+  // that is a fit here (different defaults, different data source, would mean
+  // a second redundant fetch on this page). So the styling below (per-zone
+  // ['get', '_zoneColor'], fill-opacity 0.12 + a line outline, default OFF) is
+  // an independent choice for this HUD, not a mirror of any live reference.
+  // Source/layers are added once per map instance (guarded by hasSource/
+  // hasLayer) with `visibility: 'none'`; the toggle effect below flips
+  // visibility without re-adding.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    let cancelled = false;
+    getTaggedBeats().then((fc) => {
+      if (cancelled) return;
+      whenStyleReady(map, () => {
+        try {
+          if (!hasSource(map, 'rmpg-districts-source')) {
+            map.addSource('rmpg-districts-source', { type: 'geojson', data: fc });
+          }
+          if (!hasLayer(map, 'rmpg-districts-fill')) {
+            map.addLayer({
+              id: 'rmpg-districts-fill',
+              type: 'fill',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'fill-color': ['get', '_zoneColor'] as any, 'fill-opacity': 0.12 },
+            });
+          }
+          if (!hasLayer(map, 'rmpg-districts-outline')) {
+            map.addLayer({
+              id: 'rmpg-districts-outline',
+              type: 'line',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'line-color': ['get', '_zoneColor'] as any, 'line-width': 1, 'line-opacity': 0.6 },
+            });
+          }
+          // Re-apply current toggle state (e.g. after a style switch rebuilds sources/layers).
+          // Also force-visible when the live basemap is degraded (#2 fallback backdrop).
+          const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
+          if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+          if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+        } catch { /* style race — toggle effect below re-applies once ready */ }
+      });
+    }).catch(() => { /* overlay is optional */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
+
+  // Flip district/beat overlay visibility on toggle OR on degraded-basemap
+  // fallback (#2 — layers may not exist yet if this fires before the
+  // add-effect above resolves — guarded by hasLayer).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
+    try {
+      if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+    } catch { /* style not ready */ }
+  }, [showDistricts, mapDegraded, mapReady]);
+
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
   const insetMapRef = useRef<any>(null);
@@ -633,7 +718,11 @@ export default function NavigationPage() {
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const deepLinkConsumedRef = useRef(false);
+  // Tracks the last "lat|lng|destination" key already routed, so re-entering
+  // the SAME deep-link (e.g. a stale browser back/forward entry) doesn't
+  // re-route, but clicking a DIFFERENT favorite/pin while already on this
+  // page (new lat/lng in the URL) does. See dep array below.
+  const deepLinkConsumedKeyRef = useRef<string | null>(null);
   const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
@@ -688,6 +777,32 @@ export default function NavigationPage() {
   // #64 — arrived banner transient state.
   const [arrivedLabel, setArrivedLabel] = useState<string | null>(null);
   const arrivedFiredRef = useRef<string | null>(null);
+  // #3 — configurable over-speed alert: threshold from shared nav prefs
+  // (persisted via NavSettingsPanel's loadNavPrefs/saveNavPrefs, localStorage
+  // key rmpg_nav_prefs), transient fire timestamp + auto-hiding banner state.
+  // NavigationPage stays mounted for a whole shift, so the threshold must stay
+  // live-reactive to a setting change made elsewhere — not just read at mount.
+  const [overSpeedThresholdMph, setOverSpeedThresholdMph] = useState(() => loadNavPrefs().overSpeedThresholdMph);
+  const [lastOverSpeedAt, setLastOverSpeedAt] = useState<number | null>(null);
+  const [showOverSpeedBanner, setShowOverSpeedBanner] = useState(false);
+  const overSpeedHideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      setOverSpeedThresholdMph(detail ? detail.overSpeedThresholdMph : loadNavPrefs().overSpeedThresholdMph);
+    };
+    // Same-tab saves (custom event) and other-tab saves (native storage event).
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') setOverSpeedThresholdMph(loadNavPrefs().overSpeedThresholdMph);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
@@ -699,6 +814,23 @@ export default function NavigationPage() {
   const { limitMph, buffer: limitBuffer } = useSpeedLimit(gps.latitude, gps.longitude);
   // #46 — effective tone gate: prefs.alertsOn AND not transiently muted.
   const tonesOn = alertsOn && !hudMuted;
+
+  // #3 — configurable over-speed alert: fire on cooldown, show banner a few
+  // seconds so it doesn't flicker off the instant speed dips below threshold.
+  useEffect(() => {
+    if (overSpeedThresholdMph <= 0 || displayMph == null) return;
+    const now = Date.now();
+    if (!shouldFireOverSpeedAlert(displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, now)) return;
+    setLastOverSpeedAt(now);
+    setShowOverSpeedBanner(true);
+    playNavTone(tonesOn, 4000, 990);
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+    overSpeedHideTimerRef.current = window.setTimeout(() => setShowOverSpeedBanner(false), 4000);
+  }, [displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, tonesOn]);
+
+  useEffect(() => () => {
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+  }, []);
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
   useEffect(() => {
@@ -996,29 +1128,34 @@ export default function NavigationPage() {
   }, []);
 
   // ── Deep-link: ?destination=<label>&lat=<val>&lng=<val> or ?lat=<val>&lng=<val> ──
-  // Runs once after map is ready. Strips params after consuming so refresh
-  // doesn't re-trigger the route. useRef guard prevents double-fire.
+  // Fires whenever the lat/lng/destination params change — not just on mount —
+  // so clicking "Go" on a second favorite (or a new pin) while already on this
+  // page re-routes instead of being a no-op. Strips params after consuming so
+  // a refresh doesn't re-trigger the route; the "last consumed key" ref (not a
+  // one-shot boolean) still guards against a duplicate fire for the SAME params
+  // (e.g. React StrictMode's double-invoke in dev, or a stale history entry).
+  const latParam = searchParams.get('lat');
+  const lngParam = searchParams.get('lng');
+  const destParam = searchParams.get('destination');
   useEffect(() => {
-    if (!mapReady || deepLinkConsumedRef.current) return;
-    const latParam = searchParams.get('lat');
-    const lngParam = searchParams.get('lng');
-    const destParam = searchParams.get('destination');
-    if (latParam && lngParam) {
-      const lat = Number(latParam);
-      const lng = Number(lngParam);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        deepLinkConsumedRef.current = true;
-        const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        const next = new URLSearchParams(searchParams);
-        next.delete('lat'); next.delete('lng'); next.delete('destination');
-        setSearchParams(next, { replace: true });
-        if (gps.latitude != null && gps.longitude != null) {
-          routeToDestination(lat, lng, label).catch(() => {});
-        }
+    if (!mapReady) return;
+    if (!latParam || !lngParam) return;
+    const key = `${latParam}|${lngParam}|${destParam ?? ''}`;
+    if (deepLinkConsumedKeyRef.current === key) return;
+    const lat = Number(latParam);
+    const lng = Number(lngParam);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      deepLinkConsumedKeyRef.current = key;
+      const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      const next = new URLSearchParams(searchParams);
+      next.delete('lat'); next.delete('lng'); next.delete('destination');
+      setSearchParams(next, { replace: true });
+      if (gps.latitude != null && gps.longitude != null) {
+        routeToDestination(lat, lng, label).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady]);
+  }, [mapReady, latParam, lngParam, destParam]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   useEffect(() => {
@@ -1553,6 +1690,18 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tripOpen, gps.capturedCount],
   );
+  // Trip-replay scrub points for the same drawer — same retrigger key as
+  // movementReport (capturedCount), so this doesn't recompute on every
+  // render/GPS tick while the drawer sits paused.
+  const replayPoints = useMemo(
+    () => (tripOpen ? gps.getCapturedTrack().map((p) => ({
+      lat: p.lat, lng: p.lng, time: p.timestamp,
+      speed: p.speed != null ? p.speed * 2.236936 : null, // m/s → mph
+      heading: p.heading,
+    })) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tripOpen, gps.capturedCount],
+  );
   const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
@@ -1993,6 +2142,19 @@ export default function NavigationPage() {
           Initializing map…
         </div>
       )}
+      {/* #2 — offline/cached basemap fallback indicator. The schematic
+          district/beat backdrop itself is a map layer (rmpg-districts-fill/
+          -outline, forced visible above) so it renders within the map canvas
+          under the HUD's DOM instruments — this badge is just the "why" label,
+          pointer-events-none so it never blocks touch/click on the HUD. */}
+      {mapDegraded && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-2 py-1 rounded-none bg-surface-raised/90 text-[10px] font-bold uppercase tracking-widest"
+          style={{ marginTop: 'env(safe-area-inset-top, 0px)', color: 'var(--sev-warn)', border: '1px solid var(--sev-warn)' }}
+        >
+          Live tiles unavailable — schematic backdrop
+        </div>
+      )}
 
       {/* Tactical viewport framing — corner brackets (non-interactive) for a
           command-display feel; sized to clear the header and dashboard. */}
@@ -2169,6 +2331,15 @@ export default function NavigationPage() {
             <div className="flex-1 min-w-0">
               <div className="text-rmpg-100 text-[15px] font-semibold leading-tight truncate" title={step.instruction}>{step.instruction}</div>
               <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
+              {guidance && guidance.waypoints.length > 0 && (
+                <div className="text-[9px] font-mono uppercase tracking-wide text-rmpg-400">
+                  Stop {(() => {
+                    const activeIdx = guidance.waypoints.findIndex(w => !w.completed);
+                    const displayIdx = activeIdx === -1 ? guidance.waypoints.length : activeIdx;
+                    return displayIdx + 1;
+                  })()} of {guidance.waypoints.length}
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
@@ -2400,6 +2571,7 @@ export default function NavigationPage() {
           sessionMs={sessionMs}
           climbFt={climbFt}
           elevFt={elevFt}
+          points={replayPoints}
           onClose={() => setTripOpen(false)}
         />
       )}
@@ -2423,6 +2595,13 @@ export default function NavigationPage() {
       {arrivedLabel && (
         <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
           <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+        </div>
+      )}
+
+      {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
+      {showOverSpeedBanner && limitMph != null && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
+          <HudOverSpeedBanner limitMph={limitMph} />
         </div>
       )}
 
@@ -2457,12 +2636,18 @@ export default function NavigationPage() {
               followActive={followActive} onRecenter={recenterMap}
               onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
               pitched={pitched} onTogglePitch={togglePitch}
+              showDistricts={showDistricts} onToggleDistricts={() => setShowDistricts((v) => !v)}
             />
             <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
             <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
             <HudQualityPill accuracy={gps.accuracy ?? null} />
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
+            <HudDeviceHealthBadge
+              batteryLevel={battery.supported ? battery.level : null}
+              batteryCharging={battery.charging}
+              gpsAccuracy={gps.accuracy ?? null}
+            />
             <span className="flex-1" />
             {canExport && (
               <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
@@ -2494,7 +2679,6 @@ export default function NavigationPage() {
                 buffer={limitBuffer}
                 heading={dir}
                 night={nightTheme}
-                onOverLimitTone={() => playNavTone(tonesOn, 4000, 990)}
               />
               <button
                 type="button"

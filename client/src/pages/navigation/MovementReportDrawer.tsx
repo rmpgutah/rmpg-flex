@@ -6,12 +6,14 @@
 // which derives speed from position so it works on cellular too.
 // ============================================================
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, X, Gauge, TimerReset, Octagon, TrendingUp, TrendingDown,
   CornerUpRight, AlertTriangle, Satellite, Route as RouteIcon,
+  Play, Pause, Navigation2,
 } from 'lucide-react';
 import type { MovementReport, DrivingEvent } from './vehicleTelemetry';
+import { replayIndexAt, replayDurationMs, type ReplayPoint } from './tripReplay';
 
 function fmtDur(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -118,6 +120,124 @@ function FrictionCircle({ report, liveLongG, liveLatG }: { report: MovementRepor
   );
 }
 
+const SPEED_MULTIPLIERS = [1, 2, 4, 8] as const;
+
+function fmtReplayClock(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  } catch {
+    return '—';
+  }
+}
+
+// ── Trip replay — scrub/play through the already-fetched breadcrumb track.
+// No map here (this drawer is purely tabular/chart), so playback drives a
+// numeric readout (lat/lng/speed/heading @ the replay index) rather than a
+// moving marker. ──
+function TripReplay({ points }: { points: ReplayPoint[] }) {
+  const [playing, setPlaying] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [speedMultiplier, setSpeedMultiplier] = useState(4);
+  const rafRef = useRef<number | null>(null);
+  const lastFrameRef = useRef<number | null>(null);
+
+  const durationMs = useMemo(() => replayDurationMs(points), [points]);
+  const replayIdx = replayIndexAt(points, elapsedMs, speedMultiplier);
+  const current = points[replayIdx];
+
+  useEffect(() => {
+    if (!playing) {
+      lastFrameRef.current = null;
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+    const tick = (now: number) => {
+      if (lastFrameRef.current == null) lastFrameRef.current = now;
+      const dt = now - lastFrameRef.current;
+      lastFrameRef.current = now;
+      setElapsedMs((prev) => {
+        const next = prev + dt;
+        if (next >= durationMs) {
+          setPlaying(false);
+          return durationMs;
+        }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      lastFrameRef.current = null;
+    };
+  }, [playing, durationMs]);
+
+  if (points.length < 2 || durationMs <= 0) return null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 text-[8px] uppercase tracking-wider text-rmpg-600 mb-1">
+        <Navigation2 className="w-2.5 h-2.5 text-brand-500" /> Trip replay
+        <span className="ml-auto font-mono text-rmpg-500">{current ? fmtReplayClock(current.time) : '—'}</span>
+      </div>
+      <div className="bg-surface-sunken/60 border border-rmpg-800 px-2 py-1.5 space-y-1.5" style={{ borderRadius: 2 }}>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={playing ? 'Pause replay' : 'Play replay'}
+            onClick={() => {
+              if (!playing && elapsedMs >= durationMs) setElapsedMs(0);
+              setPlaying((p) => !p);
+            }}
+            className="shrink-0 w-6 h-6 flex items-center justify-center bg-surface-raised/60 border border-rmpg-700 text-rmpg-200 hover:text-brand-400"
+            style={{ borderRadius: 2 }}
+          >
+            {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={durationMs}
+            step={100}
+            value={elapsedMs}
+            onChange={(e) => {
+              setPlaying(false);
+              setElapsedMs(Number(e.target.value));
+            }}
+            aria-label="Replay position"
+            className="flex-1 accent-brand-500"
+          />
+          <div className="flex items-center gap-0.5 shrink-0">
+            {SPEED_MULTIPLIERS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setSpeedMultiplier(m)}
+                className={`px-1 py-0.5 text-[8px] font-mono border ${
+                  m === speedMultiplier
+                    ? 'border-brand-400 text-brand-400'
+                    : 'border-rmpg-800 text-rmpg-500'
+                }`}
+                style={{ borderRadius: 2 }}
+              >
+                {m}x
+              </button>
+            ))}
+          </div>
+        </div>
+        {current && (
+          <div className="grid grid-cols-4 gap-1 text-[9px] font-mono text-rmpg-400">
+            <span>{current.lat.toFixed(5)}</span>
+            <span>{current.lng.toFixed(5)}</span>
+            <span>{current.speed != null ? `${Math.round(current.speed)} mph` : '—'}</span>
+            <span>{current.heading != null ? `${Math.round(current.heading)}°` : '—'}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   report: MovementReport;
   liveMph: number | null;
@@ -128,10 +248,13 @@ interface Props {
   climbFt?: number;
   /** Live ground elevation (ft) at the unit, or null until DEM tiles load. */
   elevFt?: number | null;
+  /** Raw breadcrumb track for the "trip replay" scrubber, chronological. Optional —
+   *  when omitted (or too short), the replay section simply doesn't render. */
+  points?: ReplayPoint[];
   onClose: () => void;
 }
 
-export default function MovementReportDrawer({ report, liveMph, liveLongG, liveLatG, sessionMs, climbFt, elevFt, onClose }: Props) {
+export default function MovementReportDrawer({ report, liveMph, liveLongG, liveLatG, sessionMs, climbFt, elevFt, points, onClose }: Props) {
   const total = report.movingMs + report.idleMs;
   const movePct = total > 0 ? Math.round((report.movingMs / total) * 100) : 0;
 
@@ -167,6 +290,9 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
             <Stat label="Elevation" value={elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—'} />
           </div>
         </div>
+
+        {/* trip replay */}
+        {points && points.length >= 2 && <TripReplay points={points} />}
 
         {/* speed profile */}
         <div>

@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Download, Volume2, VolumeX, Crosshair, Plus, Minus, Box, ChevronDown, ChevronUp,
   Navigation2, CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, Square, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Square, Layers, type LucideIcon,
 } from 'lucide-react';
 import {
   type SpeedUnit, speedInUnit, speedSuffix, speedColor, speedBands, formatHeading,
@@ -41,7 +41,7 @@ const maneuverIconFor = (type: string, modifier?: string): LucideIcon => {
 };
 
 export function HudSpeedGauge({
-  mph, unit, limitMph, buffer, heading, max = 120, onOverLimitTone, night,
+  mph, unit, limitMph, buffer, heading, max = 120, night,
 }: {
   mph: number | null;
   unit: SpeedUnit;
@@ -49,7 +49,6 @@ export function HudSpeedGauge({
   buffer: number;
   heading: number | null;
   max?: number;
-  onOverLimitTone?: () => void;
   night?: boolean;
 }) {
   // #51 — EMA smoothing on incoming mph so the needle/number don't flicker.
@@ -92,7 +91,10 @@ export function HudSpeedGauge({
     if (over10 && !over10ArmedRef.current) {
       over10ArmedRef.current = true;
       setFlash(true);
-      onOverLimitTone?.();
+      // #3 — tone firing for over-limit alerts now lives solely in the
+      // configurable shouldFireOverSpeedAlert() mechanism in NavigationPage.tsx
+      // (respects the user's threshold + a proper cooldown). This visual flash
+      // ring stays independent of that — it's a fixed +10mph glance cue.
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
       flashTimer.current = window.setTimeout(() => setFlash(false), 900);
     } else if (!over10) {
@@ -463,10 +465,12 @@ export function HudMuteToggle({ muted, onToggle }: { muted: boolean; onToggle: (
 // ── #47/#62/#63 — lower-HUD control cluster (recenter / zoom / tilt) ─────────────
 export function HudMapControls({
   followActive, onRecenter, onZoomIn, onZoomOut, pitched, onTogglePitch,
+  showDistricts, onToggleDistricts,
 }: {
   followActive: boolean; onRecenter: () => void;
   onZoomIn: () => void; onZoomOut: () => void;
   pitched: boolean; onTogglePitch: () => void;
+  showDistricts?: boolean; onToggleDistricts?: () => void;
 }) {
   const btn = "flex items-center justify-center w-8 h-8 border";
   return (
@@ -488,6 +492,12 @@ export function HudMapControls({
         <Box className="w-4 h-4" />
         <span className="text-[7px] font-bold ml-0.5">{pitched ? '3D' : '2D'}</span>
       </button>
+      {onToggleDistricts && (
+        <button type="button" onClick={onToggleDistricts} aria-label={showDistricts ? 'Hide district/beat overlay' : 'Show district/beat overlay'} title={showDistricts ? 'District/beat overlay on' : 'District/beat overlay off'}
+          className={btn} style={{ borderRadius: 2, borderColor: showDistricts ? '#d4a017' : '#3a3a3a', color: showDistricts ? '#d4a017' : 'var(--rmpg-400)', background: showDistricts ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+          <Layers className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -517,6 +527,41 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
       <Flag className="w-4 h-4 shrink-0" style={{ color: '#22c55e' }} />
       <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#22c55e' }}>Arrived — {label}</span>
       <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-rmpg-100 text-[11px] font-bold">✕</button>
+    </div>
+  );
+}
+
+// ── #3 — configurable over-speed alert banner ────────────────────────────────
+export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl animate-pulse" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #ef4444', borderRadius: 2, boxShadow: '0 0 16px rgba(239,68,68,0.4)' }}>
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#ef4444' }}>Over limit — posted {limitMph} mph</span>
+    </div>
+  );
+}
+
+// ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
+const GPS_DEGRADED_M = 500;
+const BATTERY_LOW_PCT = 20;
+
+export function HudDeviceHealthBadge({
+  batteryLevel, batteryCharging, gpsAccuracy,
+}: { batteryLevel: number | null; batteryCharging: boolean; gpsAccuracy: number | null }) {
+  const lowBattery = batteryLevel != null && batteryLevel < BATTERY_LOW_PCT && !batteryCharging;
+  const gpsDegraded = gpsAccuracy != null && gpsAccuracy > GPS_DEGRADED_M;
+  if (!lowBattery && !gpsDegraded) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {lowBattery && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #ef4444', color: '#ef4444', borderRadius: 2 }} title="Device battery low">
+          Low battery {batteryLevel}%
+        </span>
+      )}
+      {gpsDegraded && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 2 }} title="GPS fix accuracy degraded">
+          GPS degraded ±{Math.round(gpsAccuracy!)}m
+        </span>
+      )}
     </div>
   );
 }

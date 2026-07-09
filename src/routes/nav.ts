@@ -74,6 +74,15 @@ function routeDistance(points: RoutePoint[]): number {
  *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
  *  safe to call at the top of the read + start paths. */
 const STALE_ACTIVE_MIN = 10;
+// KNOWN GAP: this only reaps status = 'active' trips. A trip stuck in
+// 'paused' (e.g. a station-geofence pause whose resume event never fires —
+// missed websocket message, app closed at the station, etc.) is NOT touched
+// here and will sit indefinitely. It's low risk — /trip/current's IN-list
+// below is ('pending','active') only, so a stuck paused trip won't surface
+// as the "current trip" or block /trip/start's active-trip guard — but it IS
+// a real data-hygiene gap: a paused trip can become permanently orphaned.
+// Not fixed here; tracked as a follow-up to extend this sweep (or
+// /trip/current's IN-list) to also consider 'paused'.
 async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
   await execute(db,
     `UPDATE nav_trip_log
@@ -220,6 +229,56 @@ nav.put('/trip/:id/confirm', async (c) => {
   } catch (err) {
     console.error('[nav] PUT /trip/:id/confirm failed:', err);
     return c.json({ error: 'Failed to confirm trip' }, 500);
+  }
+});
+
+// ── PUT /nav/trip/:id/pause — pause an active trip (e.g. station geofence enter)
+nav.put('/trip/:id/pause', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'active') return c.json({ error: `Trip is ${trip.status}, not active` }, 400);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'paused' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/pause failed:', err);
+    return c.json({ error: 'Failed to pause trip' }, 500);
+  }
+});
+
+// ── PUT /nav/trip/:id/resume — resume a paused trip (e.g. station geofence exit)
+nav.put('/trip/:id/resume', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'paused') return c.json({ error: `Trip is ${trip.status}, not paused` }, 400);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'active' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/resume failed:', err);
+    return c.json({ error: 'Failed to resume trip' }, 500);
   }
 });
 
