@@ -8,6 +8,7 @@ export interface NavFavorite {
   lat: number;
   lng: number;
   address: string | null;
+  is_staging?: number | null;
   created_at: string;
 }
 

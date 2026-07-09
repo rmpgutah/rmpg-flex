@@ -38,6 +38,21 @@ import { harshEventColor } from './navigation/drivingScoreColor';
 function tripFileStamp(trip: NavTrip): string {
   return `${(trip.start_time || '').replace(/[: ]/g, '-').slice(0, 16) || 'trip'}-${trip.id}`;
 }
+
+// Small local haversine — mirrors the pattern used elsewhere in the nav
+// hooks (e.g. useNavTravel.ts's haversineMiles), but that one isn't
+// exported, so a minimal equivalent lives here for staging-favorite
+// proximity (Task 12).
+function haversineMilesLocal(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8; // Earth radius, miles
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 function exportTripGpx(trip: NavTrip): void {
   const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
   if (pts.length === 0) return;
@@ -223,6 +238,24 @@ export default function NavPage() {
   const [saveFavoriteTarget, setSaveFavoriteTarget] = useState<{ lat: number; lng: number } | null>(null);
   const [saveFavoriteName, setSaveFavoriteName] = useState('');
   const saveFavoriteOpen = saveFavoriteTarget != null;
+
+  // -- Staging/parking suggestions near an active call (Task 12) --
+  // NavPage's trip model (NavTrip) has no call_id or destination lat/lng —
+  // it tracks driving trips, not a linked CFS — so there is no "active call
+  // location" available on this page to anchor against. The closest usable
+  // proxy is the officer's own live GPS fix (gps.latitude/longitude from
+  // NavTripContext), which approximates the call scene once the officer has
+  // responded there. Any nav_favorites row flagged is_staging within
+  // STAGING_RADIUS_MILES of that position is surfaced as a suggestion.
+  const STAGING_RADIUS_MILES = 0.5;
+  const nearbyStagingFavorites = useMemo(() => {
+    if (gps?.latitude == null || gps?.longitude == null) return [];
+    return favorites.filter((fav) => {
+      if (!fav.is_staging) return false;
+      const dist = haversineMilesLocal(gps.latitude!, gps.longitude!, fav.lat, fav.lng);
+      return dist <= STAGING_RADIUS_MILES;
+    });
+  }, [favorites, gps?.latitude, gps?.longitude]);
 
   // -- Driving score trend (Task 8) — fetches recent closed trips' harsh-event
   // counts for the active unit (falls back to the current officer if no unit
@@ -693,6 +726,7 @@ export default function NavPage() {
       {favoritesOpen && (
         <FavoritesPanel
           favorites={favorites}
+          nearbyStaging={nearbyStagingFavorites}
           onClose={() => setFavoritesOpen(false)}
           onSaveCurrentPosition={handleSaveCurrentPositionAsFavorite}
           canSaveCurrentPosition={gps.latitude != null && gps.longitude != null}
@@ -768,9 +802,10 @@ export default function NavPage() {
 // -- Favorites Panel (bottom sheet, styled after NavSettingsPanel) --
 
 function FavoritesPanel({
-  favorites, onClose, onSaveCurrentPosition, canSaveCurrentPosition, getNavigateHref, onRemove,
+  favorites, nearbyStaging, onClose, onSaveCurrentPosition, canSaveCurrentPosition, getNavigateHref, onRemove,
 }: {
   favorites: NavFavorite[];
+  nearbyStaging: NavFavorite[];
   onClose: () => void;
   onSaveCurrentPosition: () => void;
   canSaveCurrentPosition: boolean;
@@ -813,6 +848,32 @@ function FavoritesPanel({
       </div>
 
       <div className="p-3 space-y-2">
+        {nearbyStaging.length > 0 && (
+          <div className="rounded-sm border border-subtle p-2 space-y-1.5" style={{ background: 'var(--surface-sunken)' }}>
+            <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+              Staging Spots Nearby
+            </div>
+            {nearbyStaging.map((fav) => (
+              <div key={fav.id} className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-rmpg-300 truncate">{fav.label}</div>
+                  <div className="text-[9px] font-mono text-rmpg-500">
+                    {fav.address || `${fav.lat.toFixed(5)}, ${fav.lng.toFixed(5)}`}
+                  </div>
+                </div>
+                <Link
+                  to={getNavigateHref(fav)}
+                  className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors shrink-0"
+                  style={{ color: '#d4a017' }}
+                  title={`Navigate to ${fav.label}`}
+                >
+                  <Compass size={10} /> Go
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onSaveCurrentPosition}
