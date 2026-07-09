@@ -35,4 +35,18 @@ describe('nextAnnouncement', () => {
     expect(result?.thresholdM).toBe(30);
     expect(result?.text).toContain('now');
   });
+
+  it('announces "now" (not "in one mile") on a fresh start already close to the turn', () => {
+    // Regression: a cold start (app mount mid-maneuver, or right after a
+    // reroute) has an EMPTY alreadyAnnounced set even though distance is
+    // already small. The smallest crossed threshold must win, not the
+    // largest — otherwise a driver 20m from the turn hears "in one mile".
+    const result = nextAnnouncement(
+      { ...maneuver, distanceMetersRemaining: 20 },
+      new Set(),
+    );
+    expect(result?.thresholdM).toBe(30);
+    expect(result?.text).toContain('now');
+    expect(result?.text).not.toContain('one mile');
+  });
 });

@@ -13,8 +13,13 @@ export interface Maneuver {
   distanceMetersRemaining: number;
 }
 
-// 1mi, 0.5mi, 0.25mi, "now" (~100ft)
-const ANNOUNCE_THRESHOLDS_M = [1609, 805, 402, 30];
+// "now" (~100ft), 0.25mi, 0.5mi, 1mi — ASCENDING so the loop below finds the
+// SMALLEST crossed-and-unannounced threshold first. This matters on cold
+// start: if the ref resets (app mount mid-maneuver, post-reroute) with an
+// empty `alreadyAnnounced` set at e.g. 20m remaining, we must announce
+// "now", not "in one mile" — a descending order would return the largest
+// threshold satisfying `distance <= t` first, which is wrong.
+const ANNOUNCE_THRESHOLDS_M = [30, 402, 805, 1609];
 
 /**
  * Given the current maneuver and which thresholds have already been

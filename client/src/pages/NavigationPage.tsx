@@ -2253,19 +2253,28 @@ export default function NavigationPage() {
   }, [activeRoute, routeProgress]);
   // Task 14 — distance-threshold turn-by-turn voice announcements. Tracks
   // which cadence thresholds (1mi/0.5mi/0.25mi/now) have already been
-  // spoken for the CURRENT maneuver, resetting when the maneuver changes
-  // (step.instruction is stable per Mapbox step; identity via text is
-  // sufficient since consecutive steps rarely share instructions).
+  // spoken for the CURRENT maneuver, resetting when the maneuver changes.
+  // Identity is (activeRoute object reference, index of `step` within
+  // activeRoute.steps) — NOT instruction text alone. Instruction text
+  // repeats often ("Continue straight" appears on many steps), and a
+  // reroute can hand back a brand-new steps array whose current step
+  // happens to share text with the old one at a very different distance;
+  // either case would silently suppress announcements if keyed on text.
+  // A fresh route fetch always produces a new RouteInfo object (see
+  // useMapRouting's fetchRoute), so comparing the object reference catches
+  // reroutes even when the step index coincidentally lines up.
   // Speaking itself goes through announceManeuver (voiceAlerts.ts), which
   // already owns voice selection + the global voice-alerts toggle — we
   // additionally gate on the HUD's own transient mute (hudMuted) since
   // that's a nav-local control the dispatch pipeline doesn't know about.
   const announcedThresholdsRef = useRef<Set<number>>(new Set());
-  const announcedForInstructionRef = useRef<string | null>(null);
+  const announcedKeyRef = useRef<{ route: typeof activeRoute; stepIndex: number } | null>(null);
   useEffect(() => {
-    if (!step || distanceToTurnMeters == null) return;
-    if (announcedForInstructionRef.current !== step.instruction) {
-      announcedForInstructionRef.current = step.instruction;
+    if (!step || distanceToTurnMeters == null || !activeRoute) return;
+    const stepIndex = activeRoute.steps.indexOf(step);
+    const prevKey = announcedKeyRef.current;
+    if (!prevKey || prevKey.route !== activeRoute || prevKey.stepIndex !== stepIndex) {
+      announcedKeyRef.current = { route: activeRoute, stepIndex };
       announcedThresholdsRef.current = new Set();
     }
     const announcement = nextAnnouncement(
@@ -2278,7 +2287,7 @@ export default function NavigationPage() {
         void announceManeuver(announcement.text, announcement.thresholdM === 30);
       }
     }
-  }, [step, distanceToTurnMeters, hudMuted]);
+  }, [step, distanceToTurnMeters, activeRoute, hudMuted]);
   // #70 — parked: speed ~0 for >5s (dims non-essential tiles, shows badge).
   const parkedSinceRef = useRef<number | null>(null);
   const liveMph = hasFix ? displayMph : null;
