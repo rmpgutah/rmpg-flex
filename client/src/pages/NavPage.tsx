@@ -25,6 +25,7 @@ import NavSettingsPanel, {
   loadNavPrefs,
   saveNavPrefs,
 } from './navigation/NavSettingsPanel';
+import { tripDrivingScore, type HarshCounts } from './navigation/drivingScore';
 
 // Export a completed trip's breadcrumb track to GPX 1.1 (mapping / evidence) or
 // CSV (spreadsheets). route_points carry { lat, lng, ts?, speed?, heading? }.
@@ -214,6 +215,25 @@ export default function NavPage() {
   const [saveFavoriteTarget, setSaveFavoriteTarget] = useState<{ lat: number; lng: number } | null>(null);
   const [saveFavoriteName, setSaveFavoriteName] = useState('');
   const saveFavoriteOpen = saveFavoriteTarget != null;
+
+  // -- Driving score trend (Task 8) — fetches recent closed trips' harsh-event
+  // counts for the active unit (falls back to the current officer if no unit
+  // is on-duty) and derives a per-trip 0-100 score client-side via
+  // tripDrivingScore(). Same unit_id resolution as NavTripContext's socket
+  // filter (gps.unitId, set from the officer's active on-duty unit). --
+  const [scoreTrend, setScoreTrend] = useState<(HarshCounts & { id: number; start_time: string })[]>([]);
+  const scoreTrendUnitId = gps?.unitId ?? null;
+  const scoreTrendOfficerId = scoreTrendUnitId == null ? (user?.id ?? null) : null;
+  useEffect(() => {
+    if (scoreTrendUnitId == null && scoreTrendOfficerId == null) return;
+    const qs = scoreTrendUnitId != null
+      ? `unit_id=${scoreTrendUnitId}`
+      : `officer_id=${scoreTrendOfficerId}`;
+    apiFetch<(HarshCounts & { id: number; start_time: string })[]>(`/dispatch/trips/score-trend?${qs}&limit=20`)
+      .then(setScoreTrend)
+      .catch(() => setScoreTrend([]));
+  }, [scoreTrendUnitId, scoreTrendOfficerId]);
+
   const setPref = useCallback(<K extends keyof NavPrefs>(key: K, value: NavPrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
@@ -622,6 +642,7 @@ export default function NavPage() {
             canDownloadReport={canDownloadReport}
           />
         )}
+        {scoreTrend.length > 0 && <DrivingScoreTrend trend={scoreTrend} />}
       </div>
 
       {/* #74 Acquiring-GPS / no-fix full-screen empty state */}
@@ -836,6 +857,72 @@ function FavoritesPanel({
             </div>
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+// -- Driving Score trend (Task 8) --
+//
+// Line chart of the last N closed trips' derived driving score, oldest to
+// newest left-to-right. The API returns newest-first (matching the /trips
+// listing convention), so it's reversed here before charting. Styling
+// mirrors navigation/MovementReportDrawer.tsx's SpeedProfile area chart
+// (same gold line + gradient fill), and per-point color uses the same
+// good/caution/bad thresholds as HudDrivingScore in hud/HudInstruments.tsx
+// (0-1 harsh events = green, 2-5 = amber, 6+ = red).
+function driveScoreColor(counts: HarshCounts): string {
+  const events = counts.harsh_accel_count + counts.harsh_brake_count + counts.harsh_corner_count;
+  return events >= 6 ? '#ef4444' : events >= 2 ? '#f59e0b' : '#22c55e';
+}
+
+function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; start_time: string })[] }) {
+  const chrono = useMemo(() => [...trend].reverse(), [trend]);
+  const scores = useMemo(() => chrono.map((t) => tripDrivingScore(t)), [chrono]);
+  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const W = 300, H = 84;
+  const n = chrono.length;
+  const path = useMemo(() => {
+    if (n < 2) return { area: '', line: '' };
+    const x = (i: number) => (i / (n - 1)) * W;
+    const y = (score: number) => H - Math.min(H, (score / 100) * H);
+    const pts = scores.map((s, i) => `${x(i).toFixed(1)},${y(s).toFixed(1)}`);
+    return { area: `0,${H} ${pts.join(' ')} ${W},${H}`, line: pts.join(' ') };
+  }, [n, scores]);
+
+  return (
+    <div className="rounded-sm border border-subtle p-3" style={{ background: 'var(--surface-raised)' }}>
+      <PanelTitleBar title="DRIVING SCORE" icon={Gauge} />
+      <div className="flex items-center gap-3 mt-2">
+        <div className="font-mono font-bold text-[20px] tabular-nums shrink-0" style={{ color: avg >= 85 ? '#22c55e' : avg >= 60 ? '#f59e0b' : '#ef4444' }}>
+          {avg}
+        </div>
+        <div className="text-[9px] uppercase tracking-wider text-rmpg-500 shrink-0">
+          avg / last {n} trip{n === 1 ? '' : 's'}
+        </div>
+        <div className="flex-1 min-w-0">
+          {n < 2 ? (
+            <div className="flex items-center justify-center text-[10px] text-rmpg-600" style={{ height: H }}>
+              Not enough closed trips yet
+            </div>
+          ) : (
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H }} aria-hidden="true">
+              <defs>
+                <linearGradient id="score-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#d4a017" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="#d4a017" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <polyline points={path.area} fill="url(#score-fill)" stroke="none" />
+              <polyline points={path.line} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              {chrono.map((t, i) => {
+                const cx = n < 2 ? 0 : (i / (n - 1)) * W;
+                const cy = H - Math.min(H, (scores[i] / 100) * H);
+                return <circle key={t.id} cx={cx} cy={cy} r="2.5" fill={driveScoreColor(t)} />;
+              })}
+            </svg>
+          )}
+        </div>
       </div>
     </div>
   );
