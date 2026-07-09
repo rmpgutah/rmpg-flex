@@ -552,6 +552,21 @@ export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
   );
 }
 
+// ── generic geofence zone-entry alert (alert / patrol_required zones) ───────────
+const ZONE_ALERT_LABELS: Record<string, string> = {
+  alert: 'Entering: Alert Zone',
+  patrol_required: 'Entering: Patrol-Required Zone',
+};
+
+export function HudZoneAlertBanner({ zoneType }: { zoneType: string }) {
+  const label = ZONE_ALERT_LABELS[zoneType] ?? 'Entering: Restricted Zone';
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #f59e0b', borderRadius: 2, boxShadow: '0 0 16px rgba(245,158,11,0.4)' }}>
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#f59e0b' }}>{label}</span>
+    </div>
+  );
+}
+
 // ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
 // The device-health badge is an interruption-worthy ALERT ("something's
 // wrong"), not a routine fix-quality readout like HudQualityPill — it

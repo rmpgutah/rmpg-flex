@@ -23,6 +23,7 @@ import type { NavWaypoint } from '../hooks/waypointAdvance';
 import { useWebSocket } from './WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import { stationPauseAction, type GeofenceAlertPayload } from './stationPauseLogic';
+import { zoneEntryAlert, type ZoneAlertResult } from './zoneAlertLogic';
 
 type NavTripDetection = ReturnType<typeof useNavTripDetection>;
 
@@ -44,6 +45,10 @@ export interface NavTripContextValue extends NavTripDetection {
    *  badge — a locally-tracked mirror of the trip's server-side status, not a
    *  round-trip poll, since the pause/resume calls already originate here. */
   isTripPaused: boolean;
+  /** Transient "entering zone" HUD notice for generic (non-station) alert
+   *  geofences — set by the same geofence_alert subscription that drives
+   *  station pause/resume, auto-cleared a few seconds after each enter event. */
+  zoneAlert: ZoneAlertResult | null;
 }
 
 /** Shape returned per-row by GET /api/dispatch/routing/unit/:unitId
@@ -194,6 +199,15 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   }, [trip.currentTrip?.status]);
   const isTripPaused = isTripPausedLocal || trip.currentTrip?.status === 'paused';
 
+  // Transient generic zone-entry notice (alert / patrol_required zones).
+  // Auto-dismissed a few seconds after each enter event, matching the
+  // HudArrivedBanner/HudOverSpeedBanner auto-dismiss pattern in NavigationPage.
+  const [zoneAlert, setZoneAlert] = useState<ZoneAlertResult | null>(null);
+  const zoneAlertHideTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (zoneAlertHideTimerRef.current != null) window.clearTimeout(zoneAlertHideTimerRef.current);
+  }, []);
+
   useEffect(() => {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -207,6 +221,13 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
       // Ignore broadcasts for other units — see comment above.
       const myUnitId = myUnitIdRef.current;
       if (!myUnitId || payload.unitId !== myUnitId) return;
+
+      const zoneAlertResult = zoneEntryAlert(payload);
+      if (zoneAlertResult) {
+        setZoneAlert(zoneAlertResult);
+        if (zoneAlertHideTimerRef.current != null) window.clearTimeout(zoneAlertHideTimerRef.current);
+        zoneAlertHideTimerRef.current = window.setTimeout(() => setZoneAlert(null), 5000);
+      }
 
       const action = stationPauseAction(payload);
       if (!action) return;
@@ -225,7 +246,7 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   }, [subscribe]);
 
   return (
-    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused, zoneAlert }}>
       {children}
     </NavTripContext.Provider>
   );

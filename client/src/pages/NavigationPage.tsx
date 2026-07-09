@@ -38,7 +38,7 @@ import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
-  HudDeviceHealthBadge, HudOverSpeedBanner,
+  HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
 import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
@@ -523,6 +523,7 @@ export default function NavigationPage() {
   // paints the route line on its own map (the effects just below).
   const navCtx = useNavTrip();
   const isTripPaused = navCtx?.isTripPaused ?? false;
+  const zoneAlert = navCtx?.zoneAlert ?? null;
   const guidance = navCtx?.guidance ?? null;
   const activeRoute = guidance?.activeRoute ?? null;
   const routeProgress = guidance?.routeProgress ?? null;
@@ -2747,6 +2748,13 @@ export default function NavigationPage() {
       {showOverSpeedBanner && limitMph != null && (
         <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 268 }}>
           <HudOverSpeedBanner limitMph={limitMph} />
+        </div>
+      )}
+
+      {/* ── Generic geofence zone-entry alert (lower HUD overlay) ── */}
+      {zoneAlert?.show && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 326 }}>
+          <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
         </div>
       )}
 
