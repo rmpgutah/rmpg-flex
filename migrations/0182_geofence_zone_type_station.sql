@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS nav_trip_log_new (
   purpose TEXT DEFAULT 'patrol',
   device_type TEXT,
   notes TEXT,
+  call_id INTEGER REFERENCES calls_for_service(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -67,20 +68,21 @@ INSERT INTO nav_trip_log_new (
   start_lat, start_lng, start_accuracy, start_location, start_time,
   end_lat, end_lng, end_accuracy, end_location, end_time,
   distance_miles, max_speed_mph, duration_seconds, route_points,
-  status, detected_by, purpose, device_type, notes, created_at, updated_at
+  status, detected_by, purpose, device_type, notes, call_id, created_at, updated_at
 )
 SELECT
   id, officer_id, vehicle_id, unit_id,
   start_lat, start_lng, start_accuracy, start_location, start_time,
   end_lat, end_lng, end_accuracy, end_location, end_time,
   distance_miles, max_speed_mph, duration_seconds, route_points,
-  status, detected_by, purpose, device_type, notes, created_at, updated_at
+  status, detected_by, purpose, device_type, notes, call_id, created_at, updated_at
 FROM nav_trip_log;
 
 DROP TABLE IF EXISTS nav_trip_log;
 ALTER TABLE nav_trip_log_new RENAME TO nav_trip_log;
 
-CREATE INDEX IF NOT EXISTS idx_nav_trip_officer ON nav_trip_log(officer_id, status);
-CREATE INDEX IF NOT EXISTS idx_nav_trip_vehicle ON nav_trip_log(vehicle_id, status);
-CREATE INDEX IF NOT EXISTS idx_nav_trip_unit ON nav_trip_log(unit_id, status);
-CREATE INDEX IF NOT EXISTS idx_nav_trip_time ON nav_trip_log(start_time);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_officer ON nav_trip_log(officer_id);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_vehicle ON nav_trip_log(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_unit ON nav_trip_log(unit_id);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_call ON nav_trip_log(call_id);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_status ON nav_trip_log(status);
