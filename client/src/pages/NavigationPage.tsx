@@ -44,6 +44,8 @@ import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpe
 import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
+import { nextAnnouncement } from './navigation/hud/voiceGuidance';
+import { announceManeuver } from '../utils/voiceAlerts';
 import {
   type SpeedUnit, loadSpeedUnit, saveSpeedUnit, formatSpeed, formatHeading,
   formatDistanceLong, formatDistanceMi, formatDuration as hudFormatDuration,
@@ -2249,6 +2251,34 @@ export default function NavigationPage() {
     }
     return null;
   }, [activeRoute, routeProgress]);
+  // Task 14 — distance-threshold turn-by-turn voice announcements. Tracks
+  // which cadence thresholds (1mi/0.5mi/0.25mi/now) have already been
+  // spoken for the CURRENT maneuver, resetting when the maneuver changes
+  // (step.instruction is stable per Mapbox step; identity via text is
+  // sufficient since consecutive steps rarely share instructions).
+  // Speaking itself goes through announceManeuver (voiceAlerts.ts), which
+  // already owns voice selection + the global voice-alerts toggle — we
+  // additionally gate on the HUD's own transient mute (hudMuted) since
+  // that's a nav-local control the dispatch pipeline doesn't know about.
+  const announcedThresholdsRef = useRef<Set<number>>(new Set());
+  const announcedForInstructionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!step || distanceToTurnMeters == null) return;
+    if (announcedForInstructionRef.current !== step.instruction) {
+      announcedForInstructionRef.current = step.instruction;
+      announcedThresholdsRef.current = new Set();
+    }
+    const announcement = nextAnnouncement(
+      { instruction: step.instruction, distanceMetersRemaining: distanceToTurnMeters },
+      announcedThresholdsRef.current,
+    );
+    if (announcement) {
+      announcedThresholdsRef.current.add(announcement.thresholdM);
+      if (!hudMuted) {
+        void announceManeuver(announcement.text, announcement.thresholdM === 30);
+      }
+    }
+  }, [step, distanceToTurnMeters, hudMuted]);
   // #70 — parked: speed ~0 for >5s (dims non-essential tiles, shows badge).
   const parkedSinceRef = useRef<number | null>(null);
   const liveMph = hasFix ? displayMph : null;
