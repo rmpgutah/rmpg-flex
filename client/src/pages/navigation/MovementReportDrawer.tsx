@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { MovementReport, DrivingEvent } from './vehicleTelemetry';
 import { replayIndexAt, replayDurationMs, type ReplayPoint } from './tripReplay';
+import TripReplayMap from './TripReplayMap';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 function fmtDur(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -131,9 +133,9 @@ function fmtReplayClock(iso: string): string {
 }
 
 // ── Trip replay — scrub/play through the already-fetched breadcrumb track.
-// No map here (this drawer is purely tabular/chart), so playback drives a
-// numeric readout (lat/lng/speed/heading @ the replay index) rather than a
-// moving marker. ──
+// TripReplayMap renders the polyline + moving marker (passive — camera is
+// fixed to the trip's bounds on load, no follow/click-to-scrub); the numeric
+// readout (lat/lng/speed/heading @ the replay index) stays below it. ──
 function TripReplay({ points }: { points: ReplayPoint[] }) {
   const [playing, setPlaying] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -180,7 +182,8 @@ function TripReplay({ points }: { points: ReplayPoint[] }) {
         <Navigation2 className="w-2.5 h-2.5 text-brand-500" /> Trip replay
         <span className="ml-auto font-mono text-rmpg-500">{current ? fmtReplayClock(current.time) : '—'}</span>
       </div>
-      <div className="bg-surface-sunken/60 border border-rmpg-800 px-2 py-1.5 space-y-1.5" style={{ borderRadius: 2 }}>
+      <TripReplayMap points={points} replayIdx={replayIdx} />
+      <div className="bg-surface-sunken/60 border border-rmpg-800 px-2 py-1.5 space-y-1.5 mt-1.5" style={{ borderRadius: 2 }}>
         <div className="flex items-center gap-2">
           <button
             type="button"
