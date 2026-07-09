@@ -2374,7 +2374,7 @@ export default function NavigationPage() {
             </div>
           )}
           {!offRoute && excludedZoneWarning && (
-            <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase text-amber-400 border-t border-rmpg-800">
+            <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase border-t border-rmpg-800" style={{ color: 'var(--sev-warn)' }}>
               <AlertTriangle className="w-3 h-3" /> Route avoids a restricted zone
             </div>
           )}
