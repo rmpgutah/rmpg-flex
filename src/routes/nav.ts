@@ -223,6 +223,55 @@ nav.put('/trip/:id/confirm', async (c) => {
   }
 });
 
+// ── PUT /nav/trip/:id/pause — pause an active trip (e.g. station geofence enter)
+nav.put('/trip/:id/pause', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'paused' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/pause failed:', err);
+    return c.json({ error: 'Failed to pause trip' }, 500);
+  }
+});
+
+// ── PUT /nav/trip/:id/resume — resume a paused trip (e.g. station geofence exit)
+nav.put('/trip/:id/resume', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'paused') return c.json({ error: `Trip is ${trip.status}, not paused` }, 400);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'active' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/resume failed:', err);
+    return c.json({ error: 'Failed to resume trip' }, 500);
+  }
+});
+
 // ── PUT /nav/trip/:id/update — append route breadcrumbs
 nav.put('/trip/:id/update', async (c) => {
   try {

@@ -15,10 +15,13 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useNavGuidanceEngine, type NavGuidanceEngine } from '../hooks/useNavGuidanceEngine';
+import { useWebSocket } from './WebSocketContext';
+import { apiFetch } from '../hooks/useApi';
+import { stationPauseAction, type GeofenceAlertPayload } from './stationPauseLogic';
 
 type NavTripDetection = ReturnType<typeof useNavTripDetection>;
 
@@ -78,6 +81,39 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (position) updateOrigin(position.latitude, position.longitude);
   }, [position, updateOrigin]);
+
+  // ── Station geofence auto pause/resume ────────────────────
+  // When a unit's live GPS enters a 'station'-type geofence zone, auto-pause
+  // the active nav trip; on exit, auto-resume it. Read activeTripId via a ref
+  // (not the effect dependency) so the subscription isn't torn down and
+  // re-created on every trip start/stop — it just needs the latest value at
+  // event time.
+  const { subscribe } = useWebSocket();
+  const activeTripIdRef = useRef(trip.detection.activeTripId);
+  activeTripIdRef.current = trip.detection.activeTripId;
+
+  useEffect(() => {
+    const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const payload: GeofenceAlertPayload = {
+        unitId: data.unit_id,
+        zoneId: data.zone_id,
+        zoneType: data.zone_type,
+        eventType: data.event_type,
+      };
+      const action = stationPauseAction(payload);
+      if (!action) return;
+
+      const tripId = activeTripIdRef.current;
+      if (!tripId) return;
+
+      apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' }).catch((err) => {
+        console.error(`[NavTripContext] station geofence ${action} failed:`, err);
+      });
+    });
+
+    return () => { unsubGeofence(); };
+  }, [subscribe]);
 
   return (
     <NavTripContext.Provider value={{ ...trip, gps, guidance }}>
