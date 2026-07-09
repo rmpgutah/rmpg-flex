@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import type { MovementReport, DrivingEvent } from './vehicleTelemetry';
 import { replayIndexAt, replayDurationMs, type ReplayPoint } from './tripReplay';
-import { parseTimestamp } from '../../utils/dateUtils';
 
 function fmtDur(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -125,7 +124,7 @@ const SPEED_MULTIPLIERS = [1, 2, 4, 8] as const;
 
 function fmtReplayClock(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch {
     return '—';
   }
