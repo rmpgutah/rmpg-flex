@@ -18,6 +18,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { notConfigured } from '../utils/notConfigured';
+import { routeCrossesExclusionZone, type ExclusionZone, type LngLat } from '../utils/navExclusionZones';
 
 const mapbox = new Hono<Env>();
 
@@ -123,9 +124,45 @@ mapbox.get('/directions', async (c) => {
   if (annotations) params.set('annotations', annotations);
   try {
     const data = await mbFetch(`${MB}/directions/v5/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
-    return c.json({ routes: data?.routes ?? [], waypoints: data?.waypoints ?? [], code: data?.code });
+    const routes = data?.routes ?? [];
+    const excludedZoneWarning = await checkExclusionZones(c, routes);
+    return c.json({
+      routes,
+      waypoints: data?.waypoints ?? [],
+      code: data?.code,
+      ...(excludedZoneWarning ? { excludedZoneWarning: true } : {}),
+    });
   } catch (err) { return fail(c, err, 'directions'); }
 });
+
+// Best-effort exclusion-zone check for a Directions response's route
+// geometry. Only meaningful when the geometry is GeoJSON (the /directions
+// handler above defaults geometries=geojson, so route.geometry.coordinates
+// is present unless a caller explicitly asked for polyline/polyline6).
+// Never throws — a geofence lookup failure shouldn't block routing.
+async function checkExclusionZones(c: any, routes: any[]): Promise<boolean> {
+  try {
+    const db = c.env?.DB;
+    if (!db || !Array.isArray(routes) || routes.length === 0) return false;
+    const coords: unknown = routes[0]?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length === 0) return false;
+    const routeCoords: LngLat[] = coords
+      .filter((pt: unknown): pt is number[] => Array.isArray(pt) && pt.length >= 2)
+      .map((pt: number[]) => ({ lng: pt[0], lat: pt[1] }));
+    if (routeCoords.length === 0) return false;
+
+    const { results } = await db
+      .prepare(`SELECT id, geojson_data FROM geofence_zones WHERE is_active = 1 AND zone_type = 'exclusion'`)
+      .all();
+    const zones: ExclusionZone[] = (results ?? []).map((r: any) => ({ id: r.id, geojsonData: r.geojson_data }));
+    if (zones.length === 0) return false;
+
+    return routeCrossesExclusionZone(routeCoords, zones);
+  } catch (err) {
+    console.warn('[mapbox] exclusion zone check failed', err);
+    return false;
+  }
+}
 
 // ── Isochrone ──────────────────────────────────────────────
 // GET /api/mapbox/isochrone?lng=&lat=&minutes=&profile=  → { features: [...] }
