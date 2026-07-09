@@ -26,7 +26,7 @@ import {
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
-  Route as RouteIcon, Grid3X3, type LucideIcon,
+  Route as RouteIcon, Grid3X3, Printer, type LucideIcon,
 } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
@@ -50,6 +50,7 @@ import {
   etaToMinutes, arrivalClockFrom, formatCountdown, truncateLabel,
 } from './navigation/hud/hudUnits';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
+import { generateNavBriefing } from '../utils/navBriefingPdf';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { snapToRoute, type RouteStep } from '../hooks/useMapRouting';
 import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
@@ -1383,6 +1384,29 @@ export default function NavigationPage() {
     mapInstanceRef.current.fitBounds(bounds, { padding: 60, maxZoom: 16 });
   };
 
+  // #9 — printable pre-trip route briefing sheet. Reads the app-wide guidance
+  // engine's CURRENT route state (turn-by-turn steps, destination, ETA,
+  // multi-stop waypoints) — best invoked once a route is actively planned/
+  // navigated, since that's the only place this state is populated end-to-end.
+  const handlePrintBriefing = () => {
+    if (!activeRoute) return;
+    const officerName =
+      (user as any)?.full_name ||
+      `${(user as any)?.first_name || ''} ${(user as any)?.last_name || ''}`.trim() ||
+      (user as any)?.username || undefined;
+    generateNavBriefing({
+      route: activeRoute,
+      destinationLabel: destLabel || activeRoute.callNumber,
+      destLat: guidance?.destination?.lat ?? null,
+      destLng: guidance?.destination?.lng ?? null,
+      originLat: gps.latitude ?? null,
+      originLng: gps.longitude ?? null,
+      waypoints: guidance?.waypoints,
+      officerName,
+      unitCallSign: gps.unitCallSign,
+    }).catch((err) => console.error('[navBriefing] Failed to generate briefing PDF:', err));
+  };
+
   // Tick once a second so session-duration + the clock re-render even when parked.
   useEffect(() => {
     const iv = setInterval(() => force((n) => n + 1), 1000);
@@ -2487,6 +2511,10 @@ export default function NavigationPage() {
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handlePrintBriefing} title="Print pre-trip briefing" aria-label="Print pre-trip briefing"
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
+                <Printer className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => setClearRouteConfirmOpen(true)} title="Clear route" aria-label="Clear route"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-red-400 hover:border-red-500" style={{ borderRadius: 2 }}>
