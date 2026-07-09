@@ -56,6 +56,7 @@ import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidan
 import { useNavTrip } from '../context/NavTripContext';
 import { whenStyleReady } from './map/utils/safeAddSource';
 import { getTaggedBeats } from './map/utils/districtGeoData';
+import { useCachedBasemap } from '../hooks/useCachedBasemap';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -591,6 +592,14 @@ export default function NavigationPage() {
 
   const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
 
+  // ── #2 — offline/cached basemap fallback. Not a true offline basemap
+  // (Mapbox vector tiles aren't cacheable to disk under the current
+  // license) — when live tiles have been failing to load for 5+ seconds we
+  // force-show the #8 district/beat schematic backdrop (below) at full
+  // opacity so the HUD isn't a blank screen, reusing that layer/source
+  // rather than building a second independent rendering path.
+  const { degraded: mapDegraded } = useCachedBasemap(mapReady ? mapInstanceRef.current : null);
+
   // ── #8 — district/beat boundary overlay (fill + outline, default hidden) ──
   // Reuses getTaggedBeats() — the same loader/dataset useDistrictHierarchyLayers
   // (client/src/hooks/useDistrictHierarchyLayers.ts) was written against — so
@@ -636,7 +645,8 @@ export default function NavigationPage() {
             });
           }
           // Re-apply current toggle state (e.g. after a style switch rebuilds sources/layers).
-          const vis = showDistricts ? 'visible' : 'none';
+          // Also force-visible when the live basemap is degraded (#2 fallback backdrop).
+          const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
           if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
           if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
         } catch { /* style race — toggle effect below re-applies once ready */ }
@@ -646,17 +656,18 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady]);
 
-  // Flip district/beat overlay visibility on toggle (layers may not exist yet
-  // if this fires before the add-effect above resolves — guarded by hasLayer).
+  // Flip district/beat overlay visibility on toggle OR on degraded-basemap
+  // fallback (#2 — layers may not exist yet if this fires before the
+  // add-effect above resolves — guarded by hasLayer).
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
-    const vis = showDistricts ? 'visible' : 'none';
+    const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
     try {
       if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
       if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
     } catch { /* style not ready */ }
-  }, [showDistricts, mapReady]);
+  }, [showDistricts, mapDegraded, mapReady]);
 
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2129,6 +2140,19 @@ export default function NavigationPage() {
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-600 text-xs pointer-events-none">
           <Crosshair className="w-4 h-4 mr-2 animate-pulse text-brand-500" />
           Initializing map…
+        </div>
+      )}
+      {/* #2 — offline/cached basemap fallback indicator. The schematic
+          district/beat backdrop itself is a map layer (rmpg-districts-fill/
+          -outline, forced visible above) so it renders within the map canvas
+          under the HUD's DOM instruments — this badge is just the "why" label,
+          pointer-events-none so it never blocks touch/click on the HUD. */}
+      {mapDegraded && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-2 py-1 rounded-none bg-surface-raised/90 text-[10px] font-bold uppercase tracking-widest"
+          style={{ marginTop: 'env(safe-area-inset-top, 0px)', color: 'var(--sev-warn)', border: '1px solid var(--sev-warn)' }}
+        >
+          Live tiles unavailable — schematic backdrop
         </div>
       )}
 
