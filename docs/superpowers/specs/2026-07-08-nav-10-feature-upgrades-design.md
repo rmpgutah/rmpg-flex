@@ -45,15 +45,21 @@ a follow-up, not fixed here.
 ## The 10 features
 
 ### 1. Multi-stop routing
-Extend `NavTripContext` / `useNavGuidanceEngine` to accept an ordered list of
-waypoints instead of a single destination. New `waypoints: NavWaypoint[]`
-state (id, lat, lng, label, completed) alongside the existing single
-`destination`. The engine routes leg-by-leg: on arrival at waypoint N
-(existing arrival-detection radius), auto-advances to N+1 and requests a new
-route from the Mapbox proxy for the next leg. `NavigationPage.tsx`'s
-maneuver banner and progress bar are leg-scoped; a new compact "stop N of M"
-indicator sits above them. `NavPage.tsx` gets an "Add stop" affordance when
-starting a trip from a call list with multiple pending calls.
+`utils/routeOptimizer.ts` (`optimizeStops`/`estimateDriveMinutes`) and the
+`dispatch_unit_routes` table already do multi-stop waypoint ordering for a
+unit's queued calls — via `RouteBuilderPage.tsx`/`POST /dispatch/routing/optimize`
+— but that's a dispatcher pre-planning tool, not wired into live turn-by-turn
+on `/navigation`. Rather than build a second waypoint-ordering scheme, extend
+`NavTripContext`/`useNavGuidanceEngine` to *consume* an existing saved route:
+new `waypoints: NavWaypoint[]` state (id, lat, lng, label, completed),
+populated either manually or by loading a unit's active
+`dispatch_unit_routes` row (`GET /dispatch/routing/unit/:unitId`) when one
+exists. The engine routes leg-by-leg: on arrival at waypoint N (existing
+arrival-detection radius), auto-advances to N+1, requests a new route from
+the Mapbox proxy for the next leg, and calls the existing
+`POST /dispatch/routing/:id/complete-stop` so the dispatch-side route stays in
+sync. `NavigationPage.tsx`'s maneuver banner and progress bar become
+leg-scoped; a new compact "stop N of M" indicator sits above them.
 
 ### 2. Offline/cached-tile basemap fallback
 New `hooks/useCachedBasemap.ts`: on successful `style.load`, snapshot the
