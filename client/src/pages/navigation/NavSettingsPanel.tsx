@@ -82,6 +82,17 @@ export function brightnessForHour(hour: number): number {
   return DAY - (DAY - NIGHT) * (hour - 19); // 19–20: ramp down into evening
 }
 
+// #103 — single source of truth for "what brightness should the screen be right
+// now", given a prefs blob. Both NavPage.tsx (trip tracker) and
+// NavigationPage.tsx (live drive HUD) share the SAME rmpg_nav_prefs localStorage
+// key, so brightnessMode must be resolved in exactly one place — otherwise one
+// page can silently drift out of sync with the other (e.g. one dims for Auto,
+// the other stays pinned to the stale manual value). Always call this instead
+// of inlining `brightnessMode === 'auto' ? brightnessForHour(...) : brightness`.
+export function getEffectiveBrightness(prefs: Pick<NavPrefs, 'brightness' | 'brightnessMode'>): number {
+  return prefs.brightnessMode === 'auto' ? brightnessForHour(new Date().getHours()) : prefs.brightness;
+}
+
 export function loadNavPrefs(): NavPrefs {
   try {
     const raw = localStorage.getItem(NAV_PREFS_STORAGE_KEY);
@@ -330,7 +341,7 @@ export default function NavSettingsPanel({
         />
         <Slider
           label={prefs.brightnessMode === 'auto' ? 'Brightness (auto, time of day)' : 'Brightness'}
-          value={prefs.brightnessMode === 'auto' ? brightnessForHour(new Date().getHours()) : prefs.brightness}
+          value={getEffectiveBrightness(prefs)}
           onChange={(v) => setPref('brightness', v)}
           disabled={prefs.brightnessMode === 'auto'}
         />

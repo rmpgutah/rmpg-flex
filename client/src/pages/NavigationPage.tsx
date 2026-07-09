@@ -41,7 +41,7 @@ import {
   HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
-import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, brightnessForHour, type NavPrefs } from './navigation/NavSettingsPanel';
+import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import { nextAnnouncement } from './navigation/hud/voiceGuidance';
@@ -2330,13 +2330,12 @@ export default function NavigationPage() {
   // via the alert/brightness model; here we derive night from the local hour as a
   // self-contained fallback so the footer dims without depending on other lanes).
   const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
-  // #103 — effective brightness: manual slider value, or (in 'auto' mode) the
-  // curve derived from the SAME local-hour signal nightTheme reads above —
-  // recomputed each render (cheap Date().getHours() read) so a shift that
+  // #103 — effective brightness resolved via the SHARED getEffectiveBrightness
+  // helper (also used by NavPage.tsx's overlay) so both pages that read the
+  // same rmpg_nav_prefs blob can never silently diverge on Auto-mode behavior.
+  // Recomputed each render (cheap Date().getHours() read) so a shift that
   // straddles the dawn/dusk ramp windows dims smoothly without a remount.
-  const effectiveBrightness = brightnessPrefs.brightnessMode === 'auto'
-    ? brightnessForHour(new Date().getHours())
-    : brightnessPrefs.brightness;
+  const effectiveBrightness = getEffectiveBrightness(brightnessPrefs);
 
   // Measure the live turn-banner height so the corner panels can flow below it.
   // ResizeObserver catches every content change (added steps, off-route row,

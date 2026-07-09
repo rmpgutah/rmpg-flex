@@ -29,6 +29,7 @@ import NavSettingsPanel, {
   type NavPrefs,
   loadNavPrefs,
   saveNavPrefs,
+  getEffectiveBrightness,
 } from './navigation/NavSettingsPanel';
 import { tripDrivingScore, type HarshCounts } from './navigation/drivingScore';
 import { harshEventColor } from './navigation/drivingScoreColor';
@@ -459,15 +460,18 @@ export default function NavPage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-base relative">
-      {/* #76 Brightness/dim overlay for night driving */}
-      {prefs.brightness < 1 && (
+      {/* #76/#103 Brightness/dim overlay for night driving — resolved via the
+          shared getEffectiveBrightness() (also used by NavigationPage.tsx's
+          overlay) so Auto mode behaves identically on both pages that share
+          the same rmpg_nav_prefs blob. */}
+      {getEffectiveBrightness(prefs) < 1 && (
         <div
           aria-hidden
           style={{
             position: 'absolute',
             inset: 0,
             background: '#000',
-            opacity: (1 - prefs.brightness) * 0.6,
+            opacity: (1 - getEffectiveBrightness(prefs)) * 0.6,
             pointerEvents: 'none',
             zIndex: 50,
           }}
