@@ -279,12 +279,15 @@ export function HudStatTile({
 }
 
 // ── #40 — GPS fix-quality pill ──────────────────────────────────────────────────
+export const GPS_GOOD_THRESHOLD_M = 10;
+export const GPS_POOR_THRESHOLD_M = 30;
+
 export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   const a = accuracy;
   const { color, label } = a == null
     ? { color: 'var(--rmpg-500)', label: 'NO FIX' }
-    : a < 10 ? { color: '#22c55e', label: 'GOOD' }
-      : a < 30 ? { color: '#f59e0b', label: 'FAIR' }
+    : a < GPS_GOOD_THRESHOLD_M ? { color: '#22c55e', label: 'GOOD' }
+      : a < GPS_POOR_THRESHOLD_M ? { color: '#f59e0b', label: 'FAIR' }
         : { color: '#ef4444', label: 'POOR' };
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${color}`, color, borderRadius: 2 }} title="GPS fix quality">
@@ -542,7 +545,13 @@ export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
 }
 
 // ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
-const GPS_DEGRADED_M = 500;
+// The device-health badge is an interruption-worthy ALERT ("something's
+// wrong"), not a routine fix-quality readout like HudQualityPill — it
+// intentionally fires much later than the pill turns red (routine urban
+// multipath regularly pushes accuracy past POOR without anything actually
+// being wrong). Derived from the pill's POOR threshold so the relationship
+// is explicit rather than two independently-chosen magic numbers.
+const GPS_DEGRADED_M = GPS_POOR_THRESHOLD_M * 16; // 480m ≈ 500m, same practical alert point
 const BATTERY_LOW_PCT = 20;
 
 export function HudDeviceHealthBadge({
