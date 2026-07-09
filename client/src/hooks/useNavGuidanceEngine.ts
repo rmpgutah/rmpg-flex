@@ -301,25 +301,9 @@ export function useNavGuidanceEngine() {
     return queryRoute({ lat: originLat, lng: originLng }, dest);
   }, [queryRoute]);
 
-  /** Begin a multi-stop route: sets the waypoint list and routes to the first
-   *  incomplete stop via the same startGuidance path a single-destination
-   *  route uses. Each waypoint's `id`/`label` become the route's
-   *  callNumber/label so the existing HUD ("to <label>") needs no changes. */
-  const startMultiStop = useCallback((
-    unitCallSign: string,
-    originLat: number,
-    originLng: number,
-    stops: NavWaypoint[],
-  ): Promise<RouteInfo | null> => {
-    waypointsRef.current = stops;
-    setWaypoints(stops);
-    const idx = nextWaypointIndex(stops);
-    if (idx === null) return Promise.resolve(null);
-    const wp = stops[idx];
-    return startGuidance(unitCallSign, String(wp.id), originLat, originLng, wp.lat, wp.lng, wp.label);
-  }, [startGuidance]);
-
-  /** End guidance and clear all derived state. */
+  /** End guidance and clear all derived state. Declared above startMultiStop
+   *  (which calls it directly) so both can be reached from the exhaustive
+   *  dep array without a temporal-dead-zone reference error. */
   const stopGuidance = useCallback(() => {
     genRef.current += 1;
     queryInFlightRef.current = false;
@@ -336,6 +320,31 @@ export function useNavGuidanceEngine() {
     setRouteRender(null);
     setOffRoute(false);
   }, []);
+
+  /** Begin a multi-stop route: sets the waypoint list and routes to the first
+   *  incomplete stop via the same startGuidance path a single-destination
+   *  route uses. Each waypoint's `id`/`label` become the route's
+   *  callNumber/label so the existing HUD ("to <label>") needs no changes. */
+  const startMultiStop = useCallback((
+    unitCallSign: string,
+    originLat: number,
+    originLng: number,
+    stops: NavWaypoint[],
+  ): Promise<RouteInfo | null> => {
+    const idx = nextWaypointIndex(stops);
+    if (idx === null) {
+      // Every stop already completed — there is nothing to route to. Clear
+      // via the same path stopGuidance uses so a stale destination/route from
+      // a PRIOR session can never linger silently (this mirrors stopGuidance
+      // exactly rather than duplicating its clear list).
+      stopGuidance();
+      return Promise.resolve(null);
+    }
+    waypointsRef.current = stops;
+    setWaypoints(stops);
+    const wp = stops[idx];
+    return startGuidance(unitCallSign, String(wp.id), originLat, originLng, wp.lat, wp.lng, wp.label);
+  }, [startGuidance, stopGuidance]);
 
   /** Read the live destination from inside async closures / stale renders. */
   const getDestination = useCallback((): GuidanceDestination | null => destRef.current, []);

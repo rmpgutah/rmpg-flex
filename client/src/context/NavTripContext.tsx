@@ -142,7 +142,6 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('[NavTripContext] loadUnitRoute failed:', err);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position, gps.latitude, gps.longitude, guidance]);
 
   // ── Station geofence auto pause/resume ────────────────────
