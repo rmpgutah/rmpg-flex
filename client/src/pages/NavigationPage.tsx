@@ -38,9 +38,10 @@ import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
-  HudDeviceHealthBadge,
+  HudDeviceHealthBadge, HudOverSpeedBanner,
 } from './navigation/hud/HudInstruments';
-import { useSpeedLimit } from './navigation/hud/useSpeedLimit';
+import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
+import { loadNavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import {
@@ -695,6 +696,13 @@ export default function NavigationPage() {
   // #64 — arrived banner transient state.
   const [arrivedLabel, setArrivedLabel] = useState<string | null>(null);
   const arrivedFiredRef = useRef<string | null>(null);
+  // #3 — configurable over-speed alert: threshold from shared nav prefs
+  // (persisted via NavSettingsPanel's loadNavPrefs/saveNavPrefs, localStorage
+  // key rmpg_nav_prefs), transient fire timestamp + auto-hiding banner state.
+  const [overSpeedThresholdMph] = useState(() => loadNavPrefs().overSpeedThresholdMph);
+  const [lastOverSpeedAt, setLastOverSpeedAt] = useState<number | null>(null);
+  const [showOverSpeedBanner, setShowOverSpeedBanner] = useState(false);
+  const overSpeedHideTimerRef = useRef<number | null>(null);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
@@ -706,6 +714,23 @@ export default function NavigationPage() {
   const { limitMph, buffer: limitBuffer } = useSpeedLimit(gps.latitude, gps.longitude);
   // #46 — effective tone gate: prefs.alertsOn AND not transiently muted.
   const tonesOn = alertsOn && !hudMuted;
+
+  // #3 — configurable over-speed alert: fire on cooldown, show banner a few
+  // seconds so it doesn't flicker off the instant speed dips below threshold.
+  useEffect(() => {
+    if (overSpeedThresholdMph <= 0 || displayMph == null) return;
+    const now = Date.now();
+    if (!shouldFireOverSpeedAlert(displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, now)) return;
+    setLastOverSpeedAt(now);
+    setShowOverSpeedBanner(true);
+    playNavTone(tonesOn, 4000, 990);
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+    overSpeedHideTimerRef.current = window.setTimeout(() => setShowOverSpeedBanner(false), 4000);
+  }, [displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, tonesOn]);
+
+  useEffect(() => () => {
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+  }, []);
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
   useEffect(() => {
@@ -2435,6 +2460,13 @@ export default function NavigationPage() {
       {arrivedLabel && (
         <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
           <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+        </div>
+      )}
+
+      {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
+      {showOverSpeedBanner && limitMph != null && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
+          <HudOverSpeedBanner limitMph={limitMph} />
         </div>
       )}
 

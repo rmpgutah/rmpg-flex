@@ -521,6 +521,15 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
   );
 }
 
+// ── #3 — configurable over-speed alert banner ────────────────────────────────
+export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl animate-pulse" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #ef4444', borderRadius: 2, boxShadow: '0 0 16px rgba(239,68,68,0.4)' }}>
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#ef4444' }}>Over limit — posted {limitMph} mph</span>
+    </div>
+  );
+}
+
 // ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
 const GPS_DEGRADED_M = 500;
 const BATTERY_LOW_PCT = 20;
