@@ -55,6 +55,7 @@ import { snapToRoute, type RouteStep } from '../hooks/useMapRouting';
 import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
 import { useNavTrip } from '../context/NavTripContext';
 import { whenStyleReady } from './map/utils/safeAddSource';
+import { getTaggedBeats } from './map/utils/districtGeoData';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -587,6 +588,67 @@ export default function NavigationPage() {
     } catch { /* style not ready */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProgress?.fraction, mapReady, routeRender]);
+
+  const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
+
+  // ── #8 — district/beat boundary overlay (fill + outline, default hidden) ──
+  // Reuses the same tagged-beat dataset/loader as the main dispatch map's
+  // district hierarchy layer (useDistrictHierarchyLayers) — zone-level fill
+  // color ['get', '_zoneColor'] baked onto each of the 719 beat polygons by
+  // getTaggedBeats(). Source/layers are added once per map instance (guarded
+  // by hasSource/hasLayer) with `visibility: 'none'`; the toggle effect below
+  // flips visibility without re-adding.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    let cancelled = false;
+    getTaggedBeats().then((fc) => {
+      if (cancelled) return;
+      whenStyleReady(map, () => {
+        try {
+          if (!hasSource(map, 'rmpg-districts-source')) {
+            map.addSource('rmpg-districts-source', { type: 'geojson', data: fc });
+          }
+          if (!hasLayer(map, 'rmpg-districts-fill')) {
+            map.addLayer({
+              id: 'rmpg-districts-fill',
+              type: 'fill',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'fill-color': ['get', '_zoneColor'] as any, 'fill-opacity': 0.12 },
+            });
+          }
+          if (!hasLayer(map, 'rmpg-districts-outline')) {
+            map.addLayer({
+              id: 'rmpg-districts-outline',
+              type: 'line',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'line-color': ['get', '_zoneColor'] as any, 'line-width': 1, 'line-opacity': 0.6 },
+            });
+          }
+          // Re-apply current toggle state (e.g. after a style switch rebuilds sources/layers).
+          const vis = showDistricts ? 'visible' : 'none';
+          if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+          if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+        } catch { /* style race — toggle effect below re-applies once ready */ }
+      });
+    }).catch(() => { /* overlay is optional */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
+
+  // Flip district/beat overlay visibility on toggle (layers may not exist yet
+  // if this fires before the add-effect above resolves — guarded by hasLayer).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const vis = showDistricts ? 'visible' : 'none';
+    try {
+      if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+    } catch { /* style not ready */ }
+  }, [showDistricts, mapReady]);
 
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2520,6 +2582,7 @@ export default function NavigationPage() {
               followActive={followActive} onRecenter={recenterMap}
               onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
               pitched={pitched} onTogglePitch={togglePitch}
+              showDistricts={showDistricts} onToggleDistricts={() => setShowDistricts((v) => !v)}
             />
             <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
             <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
