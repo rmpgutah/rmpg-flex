@@ -24,6 +24,8 @@ import { useWebSocket } from './WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import { stationPauseAction, type GeofenceAlertPayload } from './stationPauseLogic';
 import { zoneEntryAlert, type ZoneAlertResult } from './zoneAlertLogic';
+import { fetchWeather } from '../utils/weather';
+import { weatherHazardLabel } from '../pages/navigation/weatherHazard';
 
 type NavTripDetection = ReturnType<typeof useNavTripDetection>;
 
@@ -49,6 +51,10 @@ export interface NavTripContextValue extends NavTripDetection {
    *  geofences — set by the same geofence_alert subscription that drives
    *  station pause/resume, auto-cleared a few seconds after each enter event. */
   zoneAlert: ZoneAlertResult | null;
+  /** Short hazard label ("Icy conditions" / "Snow" / "High wind" /
+   *  "Low visibility") derived from the officer's current-position weather,
+   *  or null when nothing hazardous is reported. Drives HudWeatherBadge. */
+  weatherHazard: string | null;
 }
 
 /** Shape returned per-row by GET /api/dispatch/routing/unit/:unitId
@@ -245,8 +251,32 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
     return () => { unsubGeofence(); };
   }, [subscribe]);
 
+  // ── Weather-aware hazard polling ──────────────────────────────────────────
+  // Low-frequency poll (every 10 minutes, NOT per-GPS-tick) of the officer's
+  // current-position weather via the existing fetchWeather() util — same
+  // calling convention as WeatherWidget.tsx (no args = geolocation-or-SLC-
+  // fallback; the util has its own internal 10-minute cache/dedup, so this
+  // interval just triggers a periodic re-check rather than hammering the API).
+  // Matches the interval-with-cleanup pattern used by useCachedBasemap.ts.
+  const [weatherHazard, setWeatherHazard] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const w = await fetchWeather();
+        if (cancelled || !w) return;
+        setWeatherHazard(weatherHazardLabel({ conditionCode: w.conditionCode, windSpeed: w.windSpeed }));
+      } catch (err) {
+        console.error('[NavTripContext] weather poll failed:', err);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 10 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   return (
-    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused, zoneAlert }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused, zoneAlert, weatherHazard }}>
       {children}
     </NavTripContext.Provider>
   );

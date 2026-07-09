@@ -599,6 +599,22 @@ export function HudDeviceHealthBadge({
   );
 }
 
+// ── weather hazard badge ─────────────────────────────────────────────────────────
+// Hidden unless there's something to say (matches HudDeviceHealthBadge). Uses
+// var(--sev-warn) — same token as HudZoneAlertBanner — never a hardcoded hex.
+export function HudWeatherBadge({ hazard }: { hazard: string | null }) {
+  if (!hazard) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono"
+      style={{ border: '1px solid var(--sev-warn)', color: 'var(--sev-warn)', borderRadius: 2 }}
+      title="Weather hazard"
+    >
+      {hazard}
+    </span>
+  );
+}
+
 // ── #70 — parked badge ──────────────────────────────────────────────────────────
 export function HudParkedBadge() {
   return (

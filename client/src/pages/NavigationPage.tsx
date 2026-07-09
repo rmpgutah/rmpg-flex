@@ -38,7 +38,7 @@ import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
-  HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner,
+  HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
 import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
@@ -524,6 +524,7 @@ export default function NavigationPage() {
   const navCtx = useNavTrip();
   const isTripPaused = navCtx?.isTripPaused ?? false;
   const zoneAlert = navCtx?.zoneAlert ?? null;
+  const weatherHazard = navCtx?.weatherHazard ?? null;
   const guidance = navCtx?.guidance ?? null;
   const activeRoute = guidance?.activeRoute ?? null;
   const routeProgress = guidance?.routeProgress ?? null;
@@ -2803,6 +2804,7 @@ export default function NavigationPage() {
               batteryCharging={battery.charging}
               gpsAccuracy={gps.accuracy ?? null}
             />
+            <HudWeatherBadge hazard={weatherHazard} />
             <span className="flex-1" />
             {canExport && (
               <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
