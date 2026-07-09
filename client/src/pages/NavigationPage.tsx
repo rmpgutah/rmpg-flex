@@ -41,7 +41,7 @@ import {
   HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
-import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
+import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, brightnessForHour, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import { nextAnnouncement } from './navigation/hud/voiceGuidance';
@@ -617,6 +617,34 @@ export default function NavigationPage() {
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key === null || e.key === 'rmpg_nav_prefs') setHudTiles(loadNavPrefs().hudTiles);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  // #103 — brightness + brightnessMode: same live-reactive load/event pattern
+  // as hudTiles above (settings panel lives in NavPage.tsx, this page just
+  // reacts). 'auto' derives from the same local-hour signal nightTheme reads
+  // below via brightnessForHour(), rather than a separate ambient-light source.
+  const [brightnessPrefs, setBrightnessPrefs] = useState(() => {
+    const p = loadNavPrefs();
+    return { brightness: p.brightness, brightnessMode: p.brightnessMode };
+  });
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      const p = detail ?? loadNavPrefs();
+      setBrightnessPrefs({ brightness: p.brightness, brightnessMode: p.brightnessMode });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') {
+        const p = loadNavPrefs();
+        setBrightnessPrefs({ brightness: p.brightness, brightnessMode: p.brightnessMode });
+      }
     };
     window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
     window.addEventListener('storage', onStorage);
@@ -2302,6 +2330,13 @@ export default function NavigationPage() {
   // via the alert/brightness model; here we derive night from the local hour as a
   // self-contained fallback so the footer dims without depending on other lanes).
   const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
+  // #103 — effective brightness: manual slider value, or (in 'auto' mode) the
+  // curve derived from the SAME local-hour signal nightTheme reads above —
+  // recomputed each render (cheap Date().getHours() read) so a shift that
+  // straddles the dawn/dusk ramp windows dims smoothly without a remount.
+  const effectiveBrightness = brightnessPrefs.brightnessMode === 'auto'
+    ? brightnessForHour(new Date().getHours())
+    : brightnessPrefs.brightness;
 
   // Measure the live turn-banner height so the corner panels can flow below it.
   // ResizeObserver catches every content change (added steps, off-route row,
@@ -2370,6 +2405,16 @@ export default function NavigationPage() {
     </div>
   ) : (
     <div ref={rootRef} className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden">
+      {/* #103 — brightness/dim overlay (manual slider or auto time-of-day curve),
+          same visual treatment as NavPage.tsx's #76 overlay. z-index above the
+          map/HUD but pointer-events-none so it never blocks touch. */}
+      {effectiveBrightness < 1 && (
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6, zIndex: 45 }}
+        />
+      )}
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
       {mapError && (

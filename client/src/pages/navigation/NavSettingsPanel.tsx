@@ -5,6 +5,7 @@ export type NavUnits = 'imperial' | 'metric';
 export type NavClock = '12h' | '24h';
 export type NavTheme = 'day' | 'night';
 export type NavOrientation = 'north-up' | 'heading-up';
+export type NavBrightnessMode = 'manual' | 'auto';
 
 export interface NavLayerPrefs {
   crime: boolean;
@@ -27,7 +28,8 @@ export interface NavPrefs {
   theme: NavTheme;
   orientation: NavOrientation;
   volume: number;       // 0..1
-  brightness: number;   // 0..1
+  brightness: number;   // 0..1 — manual value; ignored while brightnessMode is 'auto'
+  brightnessMode: NavBrightnessMode; // #103 — 'auto' derives brightness from local hour (see brightnessForHour)
   layers: NavLayerPrefs;
   crimeLookbackDays: number;
   crimeClasses: { person: boolean; property: boolean; society: boolean; cfs: boolean };
@@ -50,6 +52,7 @@ export const DEFAULT_NAV_PREFS: NavPrefs = {
   orientation: 'heading-up',
   volume: 0.7,
   brightness: 1,
+  brightnessMode: 'manual', // preserves existing manual-slider behavior for anyone with saved prefs
   layers: { crime: false, crash: false, trail: true, alerts: true },
   crimeLookbackDays: 7,
   crimeClasses: { person: true, property: true, society: true, cfs: true },
@@ -63,6 +66,21 @@ const THEME_SWATCH: Record<NavTheme, { base: string; label: string }> = {
   day: { base: '#f4f1ea', label: 'Day' },
   night: { base: '#0a0a0a', label: 'Night' },
 };
+
+// #103 — Adaptive brightness curve: full brightness 07:00–19:00, dimmed to 0.35
+// overnight, with a 1hr linear ramp on each edge (06:00–07:00 and 19:00–20:00)
+// instead of a hard cutoff so the screen doesn't jump when a shift straddles
+// dawn/dusk. Reuses whatever local-hour fraction the caller passes in — driven
+// by the SAME hour signal the day/night theme resolves from (see NavigationPage's
+// nightTheme derivation), not a separate ambient-light source.
+export function brightnessForHour(hour: number): number {
+  const DAY = 1;
+  const NIGHT = 0.35;
+  if (hour >= 7 && hour < 19) return DAY;
+  if (hour >= 20 || hour < 6) return NIGHT;
+  if (hour >= 6 && hour < 7) return NIGHT + (DAY - NIGHT) * (hour - 6); // ramp up into morning
+  return DAY - (DAY - NIGHT) * (hour - 19); // 19–20: ramp down into evening
+}
 
 export function loadNavPrefs(): NavPrefs {
   try {
@@ -152,7 +170,7 @@ function Segmented<T extends string>({
 }
 
 function Slider({
-  label, value, onChange, min = 0, max = 100, formatValue,
+  label, value, onChange, min = 0, max = 100, formatValue, disabled,
 }: {
   label: string;
   value: number;
@@ -162,11 +180,13 @@ function Slider({
   max?: number;
   /** Formats the raw slider value for display. Defaults to the original "NN%" percent format. */
   formatValue?: (raw: number) => string;
+  /** Read-only: still reflects `value` (e.g. a computed auto value), but can't be dragged. */
+  disabled?: boolean;
 }) {
   const raw = formatValue ? value : Math.round(value * 100);
   const display = formatValue ? formatValue(value) : `${raw}%`;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1" style={disabled ? { opacity: 0.5 } : undefined}>
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</span>
         <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{display}</span>
@@ -176,6 +196,7 @@ function Slider({
         min={min}
         max={max}
         value={raw}
+        disabled={disabled}
         onChange={(e) => onChange(formatValue ? Number(e.target.value) : Number(e.target.value) / 100)}
         className="w-full"
         style={{ accentColor: '#d4a017' }}
@@ -301,7 +322,18 @@ export default function NavSettingsPanel({
         />
 
         <Slider label="Voice volume" value={prefs.volume} onChange={(v) => setPref('volume', v)} />
-        <Slider label="Brightness" value={prefs.brightness} onChange={(v) => setPref('brightness', v)} />
+        <Segmented<NavBrightnessMode>
+          label="Brightness mode"
+          value={prefs.brightnessMode}
+          options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]}
+          onChange={(v) => setPref('brightnessMode', v)}
+        />
+        <Slider
+          label={prefs.brightnessMode === 'auto' ? 'Brightness (auto, time of day)' : 'Brightness'}
+          value={prefs.brightnessMode === 'auto' ? brightnessForHour(new Date().getHours()) : prefs.brightness}
+          onChange={(v) => setPref('brightness', v)}
+          disabled={prefs.brightnessMode === 'auto'}
+        />
         <Slider
           label="Over-speed alert (mph over limit)"
           value={prefs.overSpeedThresholdMph}
