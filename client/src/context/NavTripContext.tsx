@@ -183,6 +183,15 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   // itself (e.g. the app was reopened while already paused at the station).
   const [isTripPausedLocal, setIsTripPausedLocal] = useState(false);
   useEffect(() => { setIsTripPausedLocal(false); }, [trip.detection.activeTripId]);
+  // Also reset if the server-truth trip has closed out from under us (e.g. the
+  // stale reaper fired on this paused trip) — otherwise a local-true set by an
+  // earlier pause could outlive the trip it referred to and leave the badge
+  // stuck on for a trip that's actually completed/cancelled.
+  useEffect(() => {
+    if (trip.currentTrip?.status === 'completed' || trip.currentTrip?.status === 'cancelled') {
+      setIsTripPausedLocal(false);
+    }
+  }, [trip.currentTrip?.status]);
   const isTripPaused = isTripPausedLocal || trip.currentTrip?.status === 'paused';
 
   useEffect(() => {

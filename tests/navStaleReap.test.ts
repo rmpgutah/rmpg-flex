@@ -36,6 +36,12 @@ function fakeDb(initialTrips: any[] = []) {
                   .sort((a, b) => (b.start_time || '').localeCompare(a.start_time || ''));
                 return candidates[0] ?? null;
               }
+              // /trip/start's duplicate-trip guard
+              if (sql.includes('SELECT id, status FROM nav_trip_log') && sql.includes("status IN ('active', 'paused')")) {
+                const officerId = args[0];
+                const existing = trips.find((t) => t.officer_id === officerId && (t.status === 'active' || t.status === 'paused'));
+                return existing ? { id: existing.id, status: existing.status } : null;
+              }
               return null;
             },
             async run() {
@@ -110,5 +116,28 @@ describe('nav stale-trip reap', () => {
     expect(body.trip).not.toBeNull();
     expect(body.trip?.id).toBe(3);
     expect(body.trip?.status).toBe('paused');
+  });
+
+  it('POST /trip/start is blocked (409) by an existing non-stale paused trip', async () => {
+    // Regression test: the duplicate-trip guard in /trip/start used to check
+    // status = 'active' only, so a paused trip (recently updated, not eligible
+    // for the stale reap above) didn't block starting a second trip — an
+    // officer paused at a station could end up with two concurrent trips.
+    const db = fakeDb([
+      { id: 4, officer_id: 7, status: 'paused', start_time: minutesAgoSql(5), updated_at: minutesAgoSql(1) },
+    ]);
+    const app = appWithUser(7, db);
+
+    const res = await app.request('/trip/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ start_lat: 40.7, start_lng: -111.9 }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json() as { error: string; trip_id: number };
+    expect(body.error).toContain('Paused trip already exists');
+    expect(body.trip_id).toBe(4);
+    // No second trip was created.
+    expect(db.trips.length).toBe(1);
   });
 });

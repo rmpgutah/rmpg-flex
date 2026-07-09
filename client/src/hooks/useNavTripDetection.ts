@@ -504,6 +504,13 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   // Same fix as the route-update interval: bind only to the trip id + tracking
   // flag (read fix + lastMovementAt from refs), never to `position`, or the 30s
   // interval is reset every GPS fix and the 5-minute stationary check never runs.
+  // TODO: activeTripId now stays set while a trip is 'paused' (see fetchCurrentTrip
+  // above), so this interval keeps running during a pause too. A stale
+  // lastMovementAt from before the pause could theoretically let this timer fire
+  // and call endCurrentTrip on a paused trip — harmless today because
+  // /trip/:id/end rejects non-active/pending trips server-side (400, caught
+  // silently), but it's a latent race worth tightening (e.g. skip the check
+  // outright while currentTrip.status === 'paused') if it ever stops being a no-op.
   useEffect(() => {
     if (!activeTripId || !isTracking) return;
     const check = setInterval(() => {

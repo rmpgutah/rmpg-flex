@@ -141,12 +141,16 @@ nav.post('/trip/start', async (c) => {
       `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
-    // Prevent duplicate active trips (a genuinely fresh active trip still blocks —
-    // you're already on one; stale ones were just auto-closed above)
-    const existing = await queryFirst<{ id: number }>(db,
-      `SELECT id FROM nav_trip_log WHERE officer_id = ? AND status = 'active' LIMIT 1`, userId);
+    // Prevent duplicate active/paused trips (a genuinely fresh active trip still
+    // blocks — you're already on one; stale ones were just auto-closed above).
+    // 'paused' is included for the same reason GET /trip/current's IN-list and
+    // closeStaleActiveTrips now include it: a trip dwelling at a station
+    // geofence is still the officer's one trip in progress — without this an
+    // officer paused at the station could start a second, concurrent trip.
+    const existing = await queryFirst<{ id: number; status: string }>(db,
+      `SELECT id, status FROM nav_trip_log WHERE officer_id = ? AND status IN ('active', 'paused') LIMIT 1`, userId);
     if (existing) {
-      return c.json({ error: 'Active trip already exists', trip_id: existing.id }, 409);
+      return c.json({ error: `${existing.status === 'paused' ? 'Paused' : 'Active'} trip already exists`, trip_id: existing.id }, 409);
     }
 
     // Determine vehicle: explicit > take-home > unit assignment
