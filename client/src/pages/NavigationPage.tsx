@@ -2309,7 +2309,11 @@ export default function NavigationPage() {
               <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
               {guidance && guidance.waypoints.length > 0 && (
                 <div className="text-[9px] font-mono uppercase tracking-wide text-rmpg-400">
-                  Stop {(guidance.waypoints.findIndex(w => !w.completed) ?? guidance.waypoints.length) + 1} of {guidance.waypoints.length}
+                  Stop {(() => {
+                    const activeIdx = guidance.waypoints.findIndex(w => !w.completed);
+                    const displayIdx = activeIdx === -1 ? guidance.waypoints.length : activeIdx;
+                    return displayIdx + 1;
+                  })()} of {guidance.waypoints.length}
                 </div>
               )}
             </div>
