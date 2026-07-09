@@ -85,6 +85,7 @@ import { useMapWeatherRadar } from '../../hooks/useMapWeatherRadar';
 import { useMapBookmarks } from '../../hooks/useMapBookmarks';
 import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
+import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
@@ -520,6 +521,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
+  const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
@@ -1020,6 +1022,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       label: 'Map & 3D',
       layers: [
         { id: 'beats', label: 'Beat Boundaries', active: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
+        ...districtHierarchy.hierarchyConfigs.map(cfg => ({
+          id: `district-${cfg.id}`,
+          label: cfg.label,
+          active: districtHierarchy.hierarchyStates[cfg.id]?.visible ?? false,
+          onToggle: () => districtHierarchy.toggleHierarchyLayer(cfg.id),
+          color: '#d4a017',
+          description: cfg.description,
+        })),
         { id: 'terrain', label: '3D Terrain', active: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
         { id: 'buildings', label: '3D Buildings', active: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
         { id: 'selfpos', label: 'My Position', active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
@@ -1055,7 +1065,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
