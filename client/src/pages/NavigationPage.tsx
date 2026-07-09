@@ -1679,6 +1679,18 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tripOpen, gps.capturedCount],
   );
+  // Trip-replay scrub points for the same drawer — same retrigger key as
+  // movementReport (capturedCount), so this doesn't recompute on every
+  // render/GPS tick while the drawer sits paused.
+  const replayPoints = useMemo(
+    () => (tripOpen ? gps.getCapturedTrack().map((p) => ({
+      lat: p.lat, lng: p.lng, time: p.timestamp,
+      speed: p.speed != null ? p.speed * 2.236936 : null, // m/s → mph
+      heading: p.heading,
+    })) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tripOpen, gps.capturedCount],
+  );
   const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
@@ -2526,11 +2538,7 @@ export default function NavigationPage() {
           sessionMs={sessionMs}
           climbFt={climbFt}
           elevFt={elevFt}
-          points={gps.getCapturedTrack().map((p) => ({
-            lat: p.lat, lng: p.lng, time: p.timestamp,
-            speed: p.speed != null ? p.speed * 2.236936 : null, // m/s → mph
-            heading: p.heading,
-          }))}
+          points={replayPoints}
           onClose={() => setTripOpen(false)}
         />
       )}

@@ -213,12 +213,12 @@ function TripReplay({ points }: { points: ReplayPoint[] }) {
                 key={m}
                 type="button"
                 onClick={() => setSpeedMultiplier(m)}
-                className="px-1 py-0.5 text-[8px] font-mono border"
-                style={{
-                  borderRadius: 2,
-                  borderColor: m === speedMultiplier ? '#d4a017' : 'var(--border-subtle)',
-                  color: m === speedMultiplier ? '#d4a017' : 'var(--text-secondary, #999)',
-                }}
+                className={`px-1 py-0.5 text-[8px] font-mono border ${
+                  m === speedMultiplier
+                    ? 'border-brand-400 text-brand-400'
+                    : 'border-rmpg-800 text-rmpg-500'
+                }`}
+                style={{ borderRadius: 2 }}
               >
                 {m}x
               </button>
