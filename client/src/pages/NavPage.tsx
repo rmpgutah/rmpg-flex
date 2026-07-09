@@ -6,7 +6,12 @@ import {
   Settings, Satellite, WifiOff, Star,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
+import { getMapboxToken } from '../utils/mapboxApiKey';
+import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { useMapHeatmap, type HeatmapPoint } from '../hooks/useMapHeatmap';
 import { useNavFavorites, type NavFavorite } from '../hooks/useNavFavorites';
 import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -646,6 +651,7 @@ export default function NavPage() {
           />
         )}
         {scoreTrend.length > 0 && <DrivingScoreTrend trend={scoreTrend} />}
+        {tripHistory.length > 0 && <RouteHeatmapPanel trips={tripHistory} />}
       </div>
 
       {/* #74 Acquiring-GPS / no-fix full-screen empty state */}
@@ -921,6 +927,134 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
             </svg>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// -- Route/Pattern Heatmap (Task 10) --
+//
+// Reuses the existing Mapbox heatmap infra (useMapHeatmap — same hook that
+// drives the Crime Heatmap on the full Map page) to visualize an officer's
+// OWN historical trip routes rather than incident density. Data comes from
+// the trip history already fetched for the History tab / driving-score
+// trend above (tripHistory / /nav/trip/history), so this is purely a data
+// adapter: flatten every closed trip's route_points into HeatmapPoint[]
+// and feed the same hook. A small dedicated Mapbox map instance is mounted
+// here (mirrors DashboardMiniMap.tsx's minimal init pattern) since NavPage's
+// primary NavMapView doesn't expose its underlying mapboxgl.Map instance.
+const ROUTE_HEATMAP_TOKEN_TIMEOUT_MS = 8_000;
+
+function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const points = useMemo<HeatmapPoint[]>(() => {
+    const pts: HeatmapPoint[] = [];
+    for (const trip of trips) {
+      const route = Array.isArray(trip.route_points) ? trip.route_points : [];
+      for (const p of route) {
+        if (typeof p.lat === 'number' && typeof p.lng === 'number') {
+          pts.push({ latitude: p.lat, longitude: p.lng, weight: 0.5 });
+        }
+      }
+    }
+    return pts;
+  }, [trips]);
+
+  const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let cancelled = false;
+
+    injectMapboxStyles();
+
+    (async () => {
+      try {
+        const tokenPromise = getMapboxToken();
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), ROUTE_HEATMAP_TOKEN_TIMEOUT_MS));
+        const token = await Promise.race([tokenPromise, timeoutPromise]);
+        if (!token || cancelled || !containerRef.current) {
+          if (!cancelled) setError('Mapbox token not configured');
+          return;
+        }
+
+        mapboxgl.accessToken = token;
+        const center: [number, number] = points.length
+          ? [points[0].longitude, points[0].latitude]
+          : [-111.891, 40.7608];
+        const map = new mapboxgl.Map({
+          container: containerRef.current,
+          style: 'mapbox://styles/mapbox/dark-v11',
+          center,
+          zoom: 11,
+          interactive: true,
+          attributionControl: false,
+          dragRotate: false,
+          pitchWithRotate: false,
+        });
+        map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+        map.on('load', () => { if (!cancelled) setMapLoaded(true); });
+        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
+        mapRef.current = map;
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+    // Map is created once per panel mount; point data is synced separately below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Enable the heatmap layer + push points once the map + data are ready,
+  // and fit the camera to the route bounds.
+  useEffect(() => {
+    if (!mapLoaded || points.length === 0) return;
+    heatmap.updatePoints(points);
+    heatmap.setEnabled(true);
+
+    const map = mapRef.current;
+    if (map) {
+      const bounds = new mapboxgl.LngLatBounds();
+      points.forEach((p) => bounds.extend([p.longitude, p.latitude]));
+      map.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
+    }
+    // heatmap is a stable-shaped object from the hook; only re-run on data change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded, points]);
+
+  return (
+    <div className="rounded-sm border border-subtle p-3" style={{ background: 'var(--surface-raised)' }}>
+      <PanelTitleBar title="MY ROUTES" icon={MapPinned} />
+      <div className="relative mt-2 rounded-sm overflow-hidden" style={{ height: 220 }}>
+        <div ref={containerRef} className="w-full h-full" />
+        {!mapLoaded && !error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/80">
+            <Loader2 className="w-5 h-5 text-rmpg-400 animate-spin" />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/90 px-4 text-center">
+            <span className="text-[10px] text-rmpg-400">{error}</span>
+          </div>
+        )}
+        {mapLoaded && !error && points.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/80 px-4 text-center">
+            <span className="text-[10px] text-rmpg-500">No trip breadcrumb data yet</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-1.5 text-[9px] uppercase tracking-wider text-rmpg-500">
+        Density of GPS breadcrumbs across your last {trips.length} trip{trips.length === 1 ? '' : 's'}
       </div>
     </div>
   );
