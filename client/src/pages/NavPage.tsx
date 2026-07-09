@@ -944,6 +944,13 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
 // here (mirrors DashboardMiniMap.tsx's minimal init pattern) since NavPage's
 // primary NavMapView doesn't expose its underlying mapboxgl.Map instance.
 const ROUTE_HEATMAP_TOKEN_TIMEOUT_MS = 8_000;
+// Breadcrumbs are logged every few seconds, so 50 trips of any real length
+// can flatten into tens of thousands of points — rebuilding the GeoJSON
+// heatmap source with that many points in one synchronous call is a real
+// jank risk on mobile MDTs. Cap the total via stride sampling (take every
+// Nth point) rather than dropping whole trips, so route shape/coverage
+// across the full history is preserved.
+const ROUTE_HEATMAP_MAX_POINTS = 5_000;
 
 function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -952,16 +959,20 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
   const [error, setError] = useState<string | null>(null);
 
   const points = useMemo<HeatmapPoint[]>(() => {
-    const pts: HeatmapPoint[] = [];
+    const all: HeatmapPoint[] = [];
     for (const trip of trips) {
       const route = Array.isArray(trip.route_points) ? trip.route_points : [];
       for (const p of route) {
         if (typeof p.lat === 'number' && typeof p.lng === 'number') {
-          pts.push({ latitude: p.lat, longitude: p.lng, weight: 0.5 });
+          all.push({ latitude: p.lat, longitude: p.lng, weight: 0.5 });
         }
       }
     }
-    return pts;
+    if (all.length <= ROUTE_HEATMAP_MAX_POINTS) return all;
+    const stride = Math.ceil(all.length / ROUTE_HEATMAP_MAX_POINTS);
+    const sampled: HeatmapPoint[] = [];
+    for (let i = 0; i < all.length; i += stride) sampled.push(all[i]);
+    return sampled;
   }, [trips]);
 
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
@@ -975,8 +986,12 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
     (async () => {
       try {
         const tokenPromise = getMapboxToken();
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), ROUTE_HEATMAP_TOKEN_TIMEOUT_MS));
+        let timeoutId: ReturnType<typeof setTimeout>;
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutId = setTimeout(() => resolve(null), ROUTE_HEATMAP_TOKEN_TIMEOUT_MS);
+        });
         const token = await Promise.race([tokenPromise, timeoutPromise]);
+        clearTimeout(timeoutId!);
         if (!token || cancelled || !containerRef.current) {
           if (!cancelled) setError('Mapbox token not configured');
           return;
@@ -1044,7 +1059,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         )}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center bg-surface-base/90 px-4 text-center">
-            <span className="text-[10px] text-rmpg-400">{error}</span>
+            <span className="text-[10px]" style={{ color: 'var(--sev-warn)' }}>{error}</span>
           </div>
         )}
         {mapLoaded && !error && points.length === 0 && (
