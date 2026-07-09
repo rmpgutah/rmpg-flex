@@ -633,7 +633,11 @@ export default function NavigationPage() {
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const deepLinkConsumedRef = useRef(false);
+  // Tracks the last "lat|lng|destination" key already routed, so re-entering
+  // the SAME deep-link (e.g. a stale browser back/forward entry) doesn't
+  // re-route, but clicking a DIFFERENT favorite/pin while already on this
+  // page (new lat/lng in the URL) does. See dep array below.
+  const deepLinkConsumedKeyRef = useRef<string | null>(null);
   const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
@@ -996,29 +1000,34 @@ export default function NavigationPage() {
   }, []);
 
   // ── Deep-link: ?destination=<label>&lat=<val>&lng=<val> or ?lat=<val>&lng=<val> ──
-  // Runs once after map is ready. Strips params after consuming so refresh
-  // doesn't re-trigger the route. useRef guard prevents double-fire.
+  // Fires whenever the lat/lng/destination params change — not just on mount —
+  // so clicking "Go" on a second favorite (or a new pin) while already on this
+  // page re-routes instead of being a no-op. Strips params after consuming so
+  // a refresh doesn't re-trigger the route; the "last consumed key" ref (not a
+  // one-shot boolean) still guards against a duplicate fire for the SAME params
+  // (e.g. React StrictMode's double-invoke in dev, or a stale history entry).
+  const latParam = searchParams.get('lat');
+  const lngParam = searchParams.get('lng');
+  const destParam = searchParams.get('destination');
   useEffect(() => {
-    if (!mapReady || deepLinkConsumedRef.current) return;
-    const latParam = searchParams.get('lat');
-    const lngParam = searchParams.get('lng');
-    const destParam = searchParams.get('destination');
-    if (latParam && lngParam) {
-      const lat = Number(latParam);
-      const lng = Number(lngParam);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        deepLinkConsumedRef.current = true;
-        const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        const next = new URLSearchParams(searchParams);
-        next.delete('lat'); next.delete('lng'); next.delete('destination');
-        setSearchParams(next, { replace: true });
-        if (gps.latitude != null && gps.longitude != null) {
-          routeToDestination(lat, lng, label).catch(() => {});
-        }
+    if (!mapReady) return;
+    if (!latParam || !lngParam) return;
+    const key = `${latParam}|${lngParam}|${destParam ?? ''}`;
+    if (deepLinkConsumedKeyRef.current === key) return;
+    const lat = Number(latParam);
+    const lng = Number(lngParam);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      deepLinkConsumedKeyRef.current = key;
+      const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      const next = new URLSearchParams(searchParams);
+      next.delete('lat'); next.delete('lng'); next.delete('destination');
+      setSearchParams(next, { replace: true });
+      if (gps.latitude != null && gps.longitude != null) {
+        routeToDestination(lat, lng, label).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady]);
+  }, [mapReady, latParam, lngParam, destParam]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   useEffect(() => {

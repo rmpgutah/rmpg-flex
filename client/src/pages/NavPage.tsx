@@ -210,6 +210,10 @@ export default function NavPage() {
   // -- Saved/favorite destinations (Task 2) --
   const { favorites, save: saveFavorite, remove: removeFavorite } = useNavFavorites();
   const [favoritesOpen, setFavoritesOpen] = useState(false);
+  // Name-and-save dialog state (replaces window.prompt — see handlers below).
+  const [saveFavoriteTarget, setSaveFavoriteTarget] = useState<{ lat: number; lng: number } | null>(null);
+  const [saveFavoriteName, setSaveFavoriteName] = useState('');
+  const saveFavoriteOpen = saveFavoriteTarget != null;
   const setPref = useCallback(<K extends keyof NavPrefs>(key: K, value: NavPrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
@@ -289,6 +293,7 @@ export default function NavPage() {
         if (endTripConfirmOpen) { e.stopPropagation(); setEndTripConfirmOpen(false); return; }
         if (clearPinsConfirmOpen) { e.stopPropagation(); setClearPinsConfirmOpen(false); return; }
         if (settingsOpen) { e.stopPropagation(); setSettingsOpen(false); return; }
+        if (saveFavoriteOpen) { e.stopPropagation(); closeSaveFavorite(); return; }
         if (favoritesOpen) { e.stopPropagation(); setFavoritesOpen(false); return; }
         return;
       }
@@ -304,7 +309,7 @@ export default function NavPage() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [endTripConfirmOpen, clearPinsConfirmOpen, settingsOpen, favoritesOpen, activeTripEarly, gps, hasTakeHome, handleManualStart]);
+  }, [endTripConfirmOpen, clearPinsConfirmOpen, settingsOpen, saveFavoriteOpen, favoritesOpen, activeTripEarly, gps, hasTakeHome, handleManualStart]);
 
   // -- Drop pin --
   const handleDropPin = useCallback((pin: DroppedPin) => {
@@ -312,30 +317,43 @@ export default function NavPage() {
   }, []);
   dropPinHandlerRef.current = handleDropPin;
 
-  // -- Favorites: save a dropped pin as a favorite destination --
-  const handleSavePinAsFavorite = useCallback((pin: DroppedPin) => {
-    // Reuse the same inline-naming pattern the codebase already uses elsewhere
-    // (window.prompt) rather than inventing a new label-entry UI.
-    const label = window.prompt('Save this pin as a favorite. Label:', pin.label);
-    if (label == null) return; // cancelled
-    const trimmed = label.trim();
+  // -- Favorites: name-and-save handlers (replaces window.prompt — this
+  //    codebase deliberately moved off native prompt()/confirm() dialogs in
+  //    GeographyPage/CaseManagement/DailyActivityReports/Reports/Incidents/
+  //    CourtTracker in favor of an in-page ConfirmDialog with a text input;
+  //    same pattern reused here so favorites naming is themed, Esc-aware,
+  //    and validated like every other "add" flow on this page). --
+  const openSaveFavorite = useCallback((lat: number, lng: number, defaultLabel: string) => {
+    setSaveFavoriteTarget({ lat, lng });
+    setSaveFavoriteName(defaultLabel);
+  }, []);
+
+  const closeSaveFavorite = useCallback(() => {
+    setSaveFavoriteTarget(null);
+    setSaveFavoriteName('');
+  }, []);
+
+  const confirmSaveFavorite = useCallback(() => {
+    const target = saveFavoriteTarget;
+    if (!target) return;
+    const trimmed = saveFavoriteName.trim();
     if (!trimmed) return;
-    saveFavorite(trimmed, pin.lat, pin.lng).catch(() => {
+    saveFavorite(trimmed, target.lat, target.lng).catch(() => {
       addToast('Failed to save favorite', 'error');
     });
-  }, [saveFavorite, addToast]);
+    closeSaveFavorite();
+  }, [saveFavoriteTarget, saveFavoriteName, saveFavorite, addToast, closeSaveFavorite]);
+
+  // -- Favorites: save a dropped pin as a favorite destination --
+  const handleSavePinAsFavorite = useCallback((pin: DroppedPin) => {
+    openSaveFavorite(pin.lat, pin.lng, pin.label);
+  }, [openSaveFavorite]);
 
   // -- Favorites: save the current GPS position as a favorite destination --
   const handleSaveCurrentPositionAsFavorite = useCallback(() => {
     if (gps?.latitude == null || gps?.longitude == null) return;
-    const label = window.prompt('Save current position as a favorite. Label:', 'Current Position');
-    if (label == null) return;
-    const trimmed = label.trim();
-    if (!trimmed) return;
-    saveFavorite(trimmed, gps.latitude, gps.longitude).catch(() => {
-      addToast('Failed to save favorite', 'error');
-    });
-  }, [gps?.latitude, gps?.longitude, saveFavorite, addToast]);
+    openSaveFavorite(gps.latitude, gps.longitude, 'Current Position');
+  }, [gps?.latitude, gps?.longitude, openSaveFavorite]);
 
   // -- Favorites: navigate to a favorite via the existing Drive Mode deep-link
   //    (/navigation?destination=&lat=&lng= is already consumed by NavigationPage
@@ -673,6 +691,45 @@ export default function NavPage() {
         message={`Remove all ${droppedPins.length} dropped pin${droppedPins.length === 1 ? '' : 's'} from the map?`}
         confirmLabel="Clear Pins"
         confirmVariant="danger"
+      />
+
+      {/* Save Favorite dialog (replaces window.prompt — see handler comment above) */}
+      <ConfirmDialog
+        isOpen={saveFavoriteOpen}
+        onClose={closeSaveFavorite}
+        onConfirm={confirmSaveFavorite}
+        title="Save Favorite"
+        message="Enter a label for this saved destination."
+        confirmLabel="Save"
+        confirmVariant="default"
+        confirmDisabled={!saveFavoriteName.trim()}
+        details={
+          <div className="mt-1">
+            <label className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-1">
+              Label
+            </label>
+            <input
+              autoFocus
+              type="text"
+              value={saveFavoriteName}
+              onChange={(e) => setSaveFavoriteName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && saveFavoriteName.trim()) {
+                  e.preventDefault();
+                  confirmSaveFavorite();
+                }
+              }}
+              className="input-dark text-[12px] w-full"
+              placeholder="e.g. Station HQ"
+              maxLength={120}
+            />
+            {saveFavoriteTarget && (
+              <div className="mt-2 text-[10px] font-mono text-rmpg-500">
+                {saveFavoriteTarget.lat.toFixed(5)}, {saveFavoriteTarget.lng.toFixed(5)}
+              </div>
+            )}
+          </div>
+        }
       />
     </div>
   );
