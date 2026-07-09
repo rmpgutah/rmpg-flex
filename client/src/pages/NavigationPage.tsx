@@ -592,12 +592,20 @@ export default function NavigationPage() {
   const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
 
   // ── #8 — district/beat boundary overlay (fill + outline, default hidden) ──
-  // Reuses the same tagged-beat dataset/loader as the main dispatch map's
-  // district hierarchy layer (useDistrictHierarchyLayers) — zone-level fill
-  // color ['get', '_zoneColor'] baked onto each of the 719 beat polygons by
-  // getTaggedBeats(). Source/layers are added once per map instance (guarded
-  // by hasSource/hasLayer) with `visibility: 'none'`; the toggle effect below
-  // flips visibility without re-adding.
+  // Reuses getTaggedBeats() — the same loader/dataset useDistrictHierarchyLayers
+  // (client/src/hooks/useDistrictHierarchyLayers.ts) was written against — so
+  // this avoids a redundant fetch/tag pass over the 719 beat polygons. NOTE:
+  // that hook is dead code (not wired into any live page), and the main map's
+  // ACTUAL live beat overlay is MapboxMapPage.tsx's loadBeatOverlay, which
+  // fetches /beats.geojson directly (a different source), paints solid gold
+  // (#d4a017, fill-opacity 0.04/line-opacity 0.35), and defaults ON — none of
+  // that is a fit here (different defaults, different data source, would mean
+  // a second redundant fetch on this page). So the styling below (per-zone
+  // ['get', '_zoneColor'], fill-opacity 0.12 + a line outline, default OFF) is
+  // an independent choice for this HUD, not a mirror of any live reference.
+  // Source/layers are added once per map instance (guarded by hasSource/
+  // hasLayer) with `visibility: 'none'`; the toggle effect below flips
+  // visibility without re-adding.
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
