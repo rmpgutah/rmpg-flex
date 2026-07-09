@@ -126,7 +126,7 @@ const SPEED_MULTIPLIERS = [1, 2, 4, 8] as const;
 
 function fmtReplayClock(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return parseTimestamp(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch {
     return '—';
   }
