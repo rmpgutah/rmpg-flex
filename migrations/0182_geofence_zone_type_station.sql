@@ -86,3 +86,4 @@ CREATE INDEX IF NOT EXISTS idx_nav_trip_vehicle ON nav_trip_log(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_nav_trip_unit ON nav_trip_log(unit_id);
 CREATE INDEX IF NOT EXISTS idx_nav_trip_call ON nav_trip_log(call_id);
 CREATE INDEX IF NOT EXISTS idx_nav_trip_status ON nav_trip_log(status);
+CREATE INDEX IF NOT EXISTS idx_nav_trip_time ON nav_trip_log(start_time);
