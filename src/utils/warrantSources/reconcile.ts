@@ -158,15 +158,15 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
     // discrepancy (not a namesake), so it doesn't weaken the invariant that a
     // DOB-less person or a decisive >1-off age reads unverified.
     //
-    // NOTE: since the identityMatch pre-filter above (identityChecked) was
-    // added, every hit reaching this point already passed dobOrAgeConfirms
-    // individually — which requires personDob to be present and rejects any
-    // individually-conflicting age. So in practice `!personHasDob` is always
-    // false and `ageDisconfirms` can no longer return true here; this branch
-    // is now unreachable-in-practice defense-in-depth, not dead code that can
-    // misbehave, but don't rely on it doing real filtering — that job now
-    // belongs to identityMatch.ts. Left in place rather than removed so a
-    // future change to the pre-filter doesn't silently lose this safety net.
+    // NOTE: with the identityMatch pre-filter, this branch is currently
+    // unreachable ONLY because today's per-person sources (Ada/Natrona)
+    // emit `age` but never `date_of_birth`, so dobOrAgeConfirms always
+    // goes through the age-tolerance path (which rejects >1yr conflicts).
+    // If a future source emits both DOB and age, dobOrAgeConfirms passes
+    // on exact-DOB alone WITHOUT checking age, and ageDisconfirms below can
+    // again return true. Kept as defense-in-depth, not dead code — don't
+    // rely on it doing real filtering today, but it's a real safety net
+    // against tomorrow's source shape.
     let confidence: 'confirmed' | 'unverified';
     if (!personHasDob) {
       confidence = 'unverified';
