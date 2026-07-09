@@ -107,7 +107,7 @@ nav.get('/trip/current', async (c) => {
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
        LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
-       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active')
+       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active','paused')
        ORDER BY ntl.start_time DESC LIMIT 1`,
       userId);
     if (!trip) return c.json({ trip: null });

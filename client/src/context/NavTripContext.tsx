@@ -172,11 +172,18 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   myUnitIdRef.current = gps.unitId;
 
   // Local mirror of the trip's paused/active status, driven by the same
-  // pause/resume calls this subscription already makes — see isTripPaused
-  // on NavTripContextValue. Reset when the active trip changes (a fresh
-  // trip is never paused).
-  const [isTripPaused, setIsTripPaused] = useState(false);
-  useEffect(() => { setIsTripPaused(false); }, [trip.detection.activeTripId]);
+  // pause/resume calls this subscription already makes — flips the badge
+  // instantly without waiting for the next /trip/current poll. Reset when
+  // the active trip changes (a fresh trip is never paused).
+  //
+  // This is OR'd with the server-truth `trip.currentTrip.status` below (now
+  // that GET /trip/current's status filter includes 'paused' — see nav.ts —
+  // a trip adopted on mount/foreground can itself report 'paused') so the
+  // badge is correct even when this tab never fired the pause/resume call
+  // itself (e.g. the app was reopened while already paused at the station).
+  const [isTripPausedLocal, setIsTripPausedLocal] = useState(false);
+  useEffect(() => { setIsTripPausedLocal(false); }, [trip.detection.activeTripId]);
+  const isTripPaused = isTripPausedLocal || trip.currentTrip?.status === 'paused';
 
   useEffect(() => {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
@@ -199,7 +206,7 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
       if (!tripId) return;
 
       apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' })
-        .then(() => setIsTripPaused(action === 'pause'))
+        .then(() => setIsTripPausedLocal(action === 'pause'))
         .catch((err) => {
           console.error(`[NavTripContext] station geofence ${action} failed:`, err);
         });

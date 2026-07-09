@@ -117,15 +117,29 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
       const res = await apiFetch<{ trip: NavTrip | null }>('/nav/trip/current');
       if (res?.trip) {
         setCurrentTrip(res.trip);
+        // 'paused' is treated as in-progress here (same as 'active') — the trip
+        // is still the officer's current trip, just dwelling at a station
+        // geofence. Nulling activeTripId for a paused trip (as this used to do,
+        // since only 'active'/'pending' were checked) made the client think
+        // nothing was in progress on the next mount/foreground fetch: the
+        // paused badge would flip off even though the trip is still paused
+        // server-side, AND movement detection would re-arm from scratch —
+        // risking a duplicate trip being started on the next drive away from
+        // the station instead of resuming the existing one.
+        const isInProgress = res.trip!.status === 'active' || res.trip!.status === 'paused';
         setDetection((prev) => ({
           ...prev,
-          activeTripId: res.trip!.status === 'active' ? res.trip!.id : null,
+          activeTripId: isInProgress ? res.trip!.id : null,
           pendingTripId: res.trip!.status === 'pending' ? res.trip!.id : null,
           // Seed lastMovementAt when ADOPTING an active trip from the server (app
           // reopened mid-trip). The auto-end interval bails on `!lastMovementAt`,
           // so without a baseline an adopted trip could only ever auto-end after
           // the next significant move — park immediately after reopening and it
-          // would hang active until the server's stale reaper caught it.
+          // would hang active until the server's stale reaper caught it. Do NOT
+          // seed it for a paused trip — being stopped is the expected, intended
+          // state of a pause, not idle abandonment, and /trip/:id/end already
+          // rejects non-active/pending trips server-side (see PUT /trip/:id/end),
+          // so there's no auto-end risk left to guard against here.
           lastMovementAt: res.trip!.status === 'active'
             ? (prev.lastMovementAt ?? Date.now())
             : prev.lastMovementAt,

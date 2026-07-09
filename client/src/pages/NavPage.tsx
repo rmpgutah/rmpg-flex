@@ -53,6 +53,7 @@ function exportTripCsv(trip: NavTrip): void {
 const STATUS_COLOR: Record<NavTripStatus, string> = {
   pending: '#f59e0b',
   active: '#22c55e',
+  paused: '#38bdf8',
   completed: '#3b82f6',
   cancelled: '#6b7280',
 };
@@ -60,6 +61,7 @@ const STATUS_COLOR: Record<NavTripStatus, string> = {
 const STATUS_LABEL: Record<NavTripStatus, string> = {
   pending: 'Pending',
   active: 'Active',
+  paused: 'Paused',
   completed: 'Completed',
   cancelled: 'Cancelled',
 };

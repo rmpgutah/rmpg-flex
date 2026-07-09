@@ -31,7 +31,8 @@ function fakeDb(initialTrips: any[] = []) {
               if (sql.includes('FROM nav_trip_log ntl')) {
                 const officerId = args[0];
                 const candidates = trips
-                  .filter((t) => t.officer_id === officerId && (t.status === 'pending' || t.status === 'active'))
+                  .filter((t) => t.officer_id === officerId
+                    && (t.status === 'pending' || t.status === 'active' || t.status === 'paused'))
                   .sort((a, b) => (b.start_time || '').localeCompare(a.start_time || ''));
                 return candidates[0] ?? null;
               }
@@ -90,5 +91,24 @@ describe('nav stale-trip reap', () => {
     const res = await app.request('/trip/current', { method: 'GET' });
     expect(res.status).toBe(200);
     expect(db.trips[0].status).toBe('paused');
+  });
+
+  it('GET /trip/current returns a non-stale paused trip as the current trip (not null)', async () => {
+    // Regression test: /trip/current's SELECT used to filter on
+    // status IN ('pending','active') only, so a genuinely-paused trip (e.g.
+    // dwelling at a station geofence) was invisible to the client — it would
+    // see { trip: null } and wrongly conclude nothing was in progress, risking
+    // a duplicate trip on the next drive-away. The filter now includes 'paused'.
+    const db = fakeDb([
+      { id: 3, officer_id: 7, status: 'paused', start_time: minutesAgoSql(15), updated_at: minutesAgoSql(2) },
+    ]);
+    const app = appWithUser(7, db);
+
+    const res = await app.request('/trip/current', { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { trip: { id: number; status: string } | null };
+    expect(body.trip).not.toBeNull();
+    expect(body.trip?.id).toBe(3);
+    expect(body.trip?.status).toBe('paused');
   });
 });
