@@ -1,0 +1,53 @@
+import { Hono } from 'hono';
+import type { Env } from '../types';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+
+const navFavorites = new Hono<Env>();
+
+interface FavoriteRow {
+  id: number;
+  user_id: number;
+  label: string;
+  lat: number;
+  lng: number;
+  address: string | null;
+  created_at: string;
+}
+
+// GET /api/nav/favorites — this user's saved destinations, newest first.
+navFavorites.get('/', async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const rows = await query<FavoriteRow>(db,
+    'SELECT * FROM nav_favorites WHERE user_id = ? ORDER BY created_at DESC', userId);
+  return c.json(rows);
+});
+
+// POST /api/nav/favorites — save a new favorite.
+navFavorites.post('/', async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ label: string; lat: number; lng: number; address?: string }>();
+  if (!body.label || typeof body.lat !== 'number' || typeof body.lng !== 'number') {
+    return c.json({ error: 'label, lat, lng are required' }, 400);
+  }
+  const result = await execute(db,
+    'INSERT INTO nav_favorites (user_id, label, lat, lng, address) VALUES (?, ?, ?, ?, ?)',
+    userId, body.label, body.lat, body.lng, body.address ?? null);
+  return c.json({ success: true, id: result.meta.last_row_id });
+});
+
+// DELETE /api/nav/favorites/:id — remove a favorite (owner only).
+navFavorites.delete('/:id', async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const id = Number(c.req.param('id'));
+  if (!id || isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const row = await queryFirst<{ user_id: number }>(db, 'SELECT user_id FROM nav_favorites WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.user_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+  await execute(db, 'DELETE FROM nav_favorites WHERE id = ?', id);
+  return c.json({ success: true });
+});
+
+export default navFavorites;
