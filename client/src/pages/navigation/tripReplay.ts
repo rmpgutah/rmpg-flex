@@ -11,7 +11,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 export interface ReplayPoint {
   lat: number;
   lng: number;
-  time: string; // ISO
+  time: string; // naive server timestamp ("YYYY-MM-DD HH:MM:SS") — parse via parseTimestamp(), never new Date()
   speed: number | null;
   heading: number | null;
 }
