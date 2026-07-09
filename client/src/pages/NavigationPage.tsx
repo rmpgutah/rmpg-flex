@@ -2307,6 +2307,11 @@ export default function NavigationPage() {
             <div className="flex-1 min-w-0">
               <div className="text-rmpg-100 text-[15px] font-semibold leading-tight truncate" title={step.instruction}>{step.instruction}</div>
               <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
+              {guidance && guidance.waypoints.length > 0 && (
+                <div className="text-[9px] font-mono uppercase tracking-wide text-rmpg-400">
+                  Stop {(guidance.waypoints.findIndex(w => !w.completed) ?? guidance.waypoints.length) + 1} of {guidance.waypoints.length}
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"

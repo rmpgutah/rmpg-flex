@@ -15,10 +15,11 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useNavGuidanceEngine, type NavGuidanceEngine } from '../hooks/useNavGuidanceEngine';
+import type { NavWaypoint } from '../hooks/waypointAdvance';
 import { useWebSocket } from './WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import { stationPauseAction, type GeofenceAlertPayload } from './stationPauseLogic';
@@ -34,6 +35,34 @@ export interface NavTripContextValue extends NavTripDetection {
    *  officer is on Dispatch, Records, or any other page — leaving /navigation
    *  no longer resets navigation. The HUD only renders this engine's state. */
   guidance: NavGuidanceEngine;
+  /** Load a unit's most recent saved route (built in RouteBuilderPage,
+   *  /api/dispatch/routing/unit/:unitId) and hand it to the guidance engine
+   *  as a multi-stop route. No-ops if the unit has no active saved route. */
+  loadUnitRoute: (unitId: string) => Promise<void>;
+}
+
+/** Shape returned per-row by GET /api/dispatch/routing/unit/:unitId
+ *  (src/routes/dispatch/routing.ts) — mirrors SavedRoute in RouteBuilderPage.
+ *  Note: the row carries `waypoints_json` (the full per-stop objects with
+ *  completion state), NOT `optimized_order_json` — that field is written on
+ *  /save but not selected back by this endpoint. */
+interface SavedUnitRoute {
+  id: number;
+  unit_id: string;
+  waypoints_json: string;
+  status: string;
+  created_at: string;
+}
+
+/** One stop inside a saved route's `waypoints_json`, per
+ *  src/routes/dispatch/routing.ts POST /optimize's waypoint shape. */
+interface SavedRouteWaypoint {
+  call_id: number;
+  call_number: string;
+  latitude: number;
+  longitude: number;
+  location_address?: string;
+  completed?: boolean;
 }
 
 const NavTripContext = createContext<NavTripContextValue | null>(null);
@@ -81,6 +110,40 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (position) updateOrigin(position.latitude, position.longitude);
   }, [position, updateOrigin]);
+
+  /** Load the unit's most recent active saved route and start multi-stop
+   *  guidance from the live GPS fix (falling back to the route's saved
+   *  origin if no live fix is available yet). */
+  const loadUnitRoute = useCallback(async (unitId: string): Promise<void> => {
+    if (!unitId) return;
+    try {
+      const rows = await apiFetch<SavedUnitRoute[]>(`/api/dispatch/routing/unit/${unitId}`);
+      const route = Array.isArray(rows) ? rows.find((r) => r.status === 'active') : undefined;
+      if (!route) return;
+
+      let stops: SavedRouteWaypoint[] = [];
+      try { stops = JSON.parse(route.waypoints_json || '[]'); } catch { stops = []; }
+      const waypoints: NavWaypoint[] = stops
+        .filter((s) => s.latitude != null && s.longitude != null)
+        .map((s) => ({
+          id: s.call_id,
+          lat: s.latitude,
+          lng: s.longitude,
+          label: s.call_number || s.location_address || `Stop ${s.call_id}`,
+          completed: s.completed === true,
+        }));
+      if (waypoints.length === 0) return;
+
+      const originLat = position?.latitude ?? gps.latitude;
+      const originLng = position?.longitude ?? gps.longitude;
+      if (originLat == null || originLng == null) return;
+
+      await guidance.startMultiStop(unitId, originLat, originLng, waypoints);
+    } catch (err) {
+      console.error('[NavTripContext] loadUnitRoute failed:', err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position, gps.latitude, gps.longitude, guidance]);
 
   // ── Station geofence auto pause/resume ────────────────────
   // When a unit's live GPS enters a 'station'-type geofence zone, auto-pause
@@ -133,7 +196,7 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   }, [subscribe]);
 
   return (
-    <NavTripContext.Provider value={{ ...trip, gps, guidance }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute }}>
       {children}
     </NavTripContext.Provider>
   );
