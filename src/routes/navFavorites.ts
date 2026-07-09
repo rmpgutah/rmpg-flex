@@ -28,12 +28,16 @@ navFavorites.post('/', async (c) => {
   const db = getDb(c.env);
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ label: string; lat: number; lng: number; address?: string }>();
-  if (!body.label || typeof body.lat !== 'number' || typeof body.lng !== 'number') {
+  const label = typeof body.label === 'string' ? body.label.trim() : '';
+  if (!label || typeof body.lat !== 'number' || typeof body.lng !== 'number') {
     return c.json({ error: 'label, lat, lng are required' }, 400);
+  }
+  if (body.lat < -90 || body.lat > 90 || body.lng < -180 || body.lng > 180) {
+    return c.json({ error: 'lat must be in [-90, 90] and lng must be in [-180, 180]' }, 400);
   }
   const result = await execute(db,
     'INSERT INTO nav_favorites (user_id, label, lat, lng, address) VALUES (?, ?, ?, ?, ?)',
-    userId, body.label, body.lat, body.lng, body.address ?? null);
+    userId, label, body.lat, body.lng, body.address ?? null);
   return c.json({ success: true, id: result.meta.last_row_id });
 });
 

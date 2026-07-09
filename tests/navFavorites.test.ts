@@ -76,4 +76,42 @@ describe('nav favorites CRUD', () => {
     const deleteRes = await app.request(`/${created.id}`, { method: 'DELETE' });
     expect(deleteRes.status).toBe(200);
   });
+
+  it('rejects invalid input with 400', async () => {
+    const db = fakeDb();
+    const app = appWithUser(7, db);
+
+    const missingLabel = await app.request('/', {
+      method: 'POST',
+      body: JSON.stringify({ label: '   ', lat: 40.76, lng: -111.89 }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(missingLabel.status).toBe(400);
+
+    const badLat = await app.request('/', {
+      method: 'POST',
+      body: JSON.stringify({ label: 'HQ', lat: 999, lng: -111.89 }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(badLat.status).toBe(400);
+
+    const badLng = await app.request('/', {
+      method: 'POST',
+      body: JSON.stringify({ label: 'HQ', lat: 40.76, lng: -999 }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(badLng.status).toBe(400);
+
+    const listRes = await app.request('/');
+    const list = await listRes.json() as Array<{ label: string }>;
+    expect(list).toHaveLength(0);
+  });
+
+  it('returns 404 when deleting a nonexistent id', async () => {
+    const db = fakeDb();
+    const app = appWithUser(7, db);
+
+    const deleteRes = await app.request('/999', { method: 'DELETE' });
+    expect(deleteRes.status).toBe(404);
+  });
 });
