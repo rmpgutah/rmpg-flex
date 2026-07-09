@@ -80,6 +80,16 @@ describe('nav trip pause/resume', () => {
     expect(body.error).toContain('not paused');
   });
 
+  it('rejects pausing a trip that is not active', async () => {
+    const db = fakeDb([{ id: 5, officer_id: 7, status: 'completed' }]);
+    const app = appWithUser(7, db);
+
+    const res = await app.request('/trip/5/pause', { method: 'PUT' });
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('not active');
+  });
+
   it('rejects pause/resume from a non-owning user with 403', async () => {
     const db = fakeDb([{ id: 4, officer_id: 7, status: 'active' }]);
     const otherApp = appWithUser(99, db);

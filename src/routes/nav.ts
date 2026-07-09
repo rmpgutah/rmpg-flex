@@ -74,6 +74,15 @@ function routeDistance(points: RoutePoint[]): number {
  *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
  *  safe to call at the top of the read + start paths. */
 const STALE_ACTIVE_MIN = 10;
+// KNOWN GAP: this only reaps status = 'active' trips. A trip stuck in
+// 'paused' (e.g. a station-geofence pause whose resume event never fires —
+// missed websocket message, app closed at the station, etc.) is NOT touched
+// here and will sit indefinitely. It's low risk — /trip/current's IN-list
+// below is ('pending','active') only, so a stuck paused trip won't surface
+// as the "current trip" or block /trip/start's active-trip guard — but it IS
+// a real data-hygiene gap: a paused trip can become permanently orphaned.
+// Not fixed here; tracked as a follow-up to extend this sweep (or
+// /trip/current's IN-list) to also consider 'paused'.
 async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
   await execute(db,
     `UPDATE nav_trip_log
@@ -235,6 +244,7 @@ nav.put('/trip/:id/pause', async (c) => {
       'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
     if (!trip) return c.json({ error: 'Trip not found' }, 404);
     if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'active') return c.json({ error: `Trip is ${trip.status}, not active` }, 400);
 
     await execute(db,
       `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now','localtime')

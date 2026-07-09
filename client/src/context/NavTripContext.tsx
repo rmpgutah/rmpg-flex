@@ -88,9 +88,21 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   // (not the effect dependency) so the subscription isn't torn down and
   // re-created on every trip start/stop — it just needs the latest value at
   // event time.
+  //
+  // `geofence_alert` is broadcast to EVERY connected client (broadcastAll in
+  // src/routes/dispatch/gps.ts), not scoped to a unit — every officer's app
+  // receives every unit's enter/exit events. Without filtering by unit here,
+  // any unit crossing a station geofence would pause/resume every OTHER
+  // officer's trip too. `gps.unitId` (from the provider's own read-only GPS
+  // instance, above) is this officer's own assigned unit — only act when the
+  // event's unit matches it. Read via a ref for the same reason as
+  // activeTripIdRef: the subscription shouldn't be torn down/recreated as
+  // unitId resolves.
   const { subscribe } = useWebSocket();
   const activeTripIdRef = useRef(trip.detection.activeTripId);
   activeTripIdRef.current = trip.detection.activeTripId;
+  const myUnitIdRef = useRef(gps.unitId);
+  myUnitIdRef.current = gps.unitId;
 
   useEffect(() => {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
@@ -101,6 +113,11 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
         zoneType: data.zone_type,
         eventType: data.event_type,
       };
+
+      // Ignore broadcasts for other units — see comment above.
+      const myUnitId = myUnitIdRef.current;
+      if (!myUnitId || payload.unitId !== myUnitId) return;
+
       const action = stationPauseAction(payload);
       if (!action) return;
 
