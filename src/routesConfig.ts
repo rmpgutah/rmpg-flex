@@ -218,6 +218,7 @@ import downloads from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
+import navFavorites from './routes/navFavorites';
 import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
@@ -451,6 +452,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
     note: 'Nav trip logging: auto-detect vehicle movement, breadcrumb trails, take-home vehicle support' },
+  { prefix: '/api/nav/favorites', router: navFavorites, auth: 'required',
+    note: 'Saved/favorite navigation destinations (nav_favorites table, mig 0181). CRUD scoped to owning user.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/pawn', router: pawn, auth: 'required',

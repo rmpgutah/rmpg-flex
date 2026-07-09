@@ -165,6 +165,108 @@ describe('useNavGuidanceEngine', () => {
   });
 });
 
+describe('useNavGuidanceEngine — multi-stop (startMultiStop / waypoint advance)', () => {
+  // A 2-stop route: stop 1 sits at the midpoint of COORDS (~40.767,-111.891,
+  // matching the single-destination test's "roughly halfway" fix), stop 2 at
+  // the route's far end (40.780,-111.891). Both are within the module's
+  // WAYPOINT_ARRIVAL_METERS (241m) of those exact coordinates when the GPS
+  // fix lands exactly on them, so arrival is deterministic without needing
+  // to know the constant's exact value from the test file.
+  const waypoints = [
+    { id: 'stop-1', lat: 40.767, lng: -111.891, label: 'Stop 1', completed: false },
+    { id: 'stop-2', lat: 40.780, lng: -111.891, label: 'Stop 2', completed: false },
+  ];
+
+  it('startMultiStop routes to the first incomplete stop, exactly like startGuidance', async () => {
+    const { result } = renderHook(() => useNavGuidanceEngine());
+
+    await act(async () => {
+      await result.current.startMultiStop('NAV', 40.760, -111.891, waypoints);
+    });
+
+    expect(result.current.waypoints).toHaveLength(2);
+    expect(result.current.waypoints[0].completed).toBe(false);
+    expect(result.current.destination).toMatchObject({ callNumber: 'stop-1', label: 'Stop 1' });
+    expect(result.current.activeRoute).not.toBeNull();
+  });
+
+  it('advances to the next leg on arrival at an intermediate waypoint, then reaches final arrival like the single-destination path', async () => {
+    const { result } = renderHook(() => useNavGuidanceEngine());
+
+    await act(async () => {
+      await result.current.startMultiStop('NAV', 40.760, -111.891, waypoints);
+    });
+    expect(result.current.destination?.callNumber).toBe('stop-1');
+
+    // Simulate a GPS fix landing exactly on stop 1 — inside the arrival
+    // radius. updateOrigin should mark stop 1 completed and re-invoke
+    // routing toward stop 2 (the SAME startGuidance path a single-destination
+    // reroute uses — no separate arrival codepath for intermediate stops).
+    await act(async () => {
+      result.current.updateOrigin(40.767, -111.891);
+    });
+
+    await waitFor(() => {
+      expect(result.current.destination?.callNumber).toBe('stop-2');
+    });
+    expect(result.current.waypoints[0].completed).toBe(true);
+    expect(result.current.waypoints[1].completed).toBe(false);
+    // A fresh route was queried toward stop 2 — activeRoute/routeGeom exist
+    // and progress resets, mirroring what startGuidance does on every call.
+    expect(result.current.activeRoute).not.toBeNull();
+    expect(result.current.routeProgress?.fraction).toBe(0);
+
+    // Now simulate arrival at the FINAL waypoint (stop 2). Once all
+    // waypoints are complete, updateOrigin must fall through to the exact
+    // same code path a single-destination "arrived" fix takes: no further
+    // startGuidance call, destination/routeGeom stay pointed at the last
+    // leg, and routeProgress keeps updating via snapToRoute (this is what
+    // lets NavigationPage's existing crow-flight "Arrived" banner fire
+    // unmodified — see NavigationPage.tsx destCrowMi).
+    const fetchCallsBeforeFinalArrival = (global.fetch as any).mock.calls.length;
+    await act(async () => {
+      result.current.updateOrigin(40.780, -111.891);
+    });
+
+    await waitFor(() => {
+      const p = result.current.routeProgress;
+      expect(p).not.toBeNull();
+      expect(p!.fraction).toBeGreaterThan(0.9);
+    });
+    expect(result.current.waypoints.every((w) => w.completed)).toBe(true);
+    // No new Directions fetch — arrival at the final stop is detected via
+    // the ordinary snapToRoute progress math the single-destination path
+    // already uses, not a fresh startGuidance() call.
+    expect((global.fetch as any).mock.calls.length).toBe(fetchCallsBeforeFinalArrival);
+    expect(result.current.destination?.callNumber).toBe('stop-2');
+  });
+
+  it('startMultiStop with an all-completed waypoint list clears any prior destination, mirroring stopGuidance', async () => {
+    const { result } = renderHook(() => useNavGuidanceEngine());
+
+    // Establish a prior single-destination route first.
+    await act(async () => {
+      await result.current.startGuidance('NAV', 'dest', 40.760, -111.891, 40.780, -111.891);
+    });
+    expect(result.current.destination).not.toBeNull();
+
+    const allDone = waypoints.map((w) => ({ ...w, completed: true }));
+    await act(async () => {
+      await result.current.startMultiStop('NAV', 40.760, -111.891, allDone);
+    });
+
+    // Matches stopGuidance()'s full clear list — no stale destination from
+    // the earlier session lingers.
+    expect(result.current.destination).toBeNull();
+    expect(result.current.activeRoute).toBeNull();
+    expect(result.current.routeProgress).toBeNull();
+    expect(result.current.routeGeom).toBeNull();
+    expect(result.current.routeRender).toBeNull();
+    expect(result.current.waypoints).toEqual([]);
+    expect(result.current.getDestination()).toBeNull();
+  });
+});
+
 describe('buildCongestionGradient', () => {
   it('builds a step expression with strictly increasing stops', () => {
     const expr = buildCongestionGradient([0, 100, 200, 300], 300, ['low', 'moderate', 'heavy']);

@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 
-interface BatteryState {
+export interface BatteryState {
   level: number;      // 0–100
   charging: boolean;
   supported: boolean;
@@ -26,7 +26,7 @@ declare global {
   }
 }
 
-function useBattery(): BatteryState {
+export function useBattery(): BatteryState {
   const [state, setState] = useState<BatteryState>({ level: 100, charging: false, supported: false });
 
   useEffect(() => {

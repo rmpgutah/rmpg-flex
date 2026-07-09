@@ -24,9 +24,15 @@ export interface NavPrefs {
   crimeLookbackDays: number;
   crimeClasses: { person: boolean; property: boolean; society: boolean; cfs: boolean };
   lastSearchQuery: string;
+  overSpeedThresholdMph: number; // 0 disables the alert
 }
 
 export const NAV_PREFS_STORAGE_KEY = 'rmpg_nav_prefs';
+// Fired on every save so other mounted components (e.g. the drive HUD in
+// NavigationPage.tsx, which stays mounted for a whole shift) can react to a
+// changed setting immediately — the native `storage` event only fires in
+// OTHER tabs/windows, never same-tab, so a same-tab custom event is needed too.
+export const NAV_PREFS_CHANGED_EVENT = 'rmpg-nav-prefs-changed';
 
 export const DEFAULT_NAV_PREFS: NavPrefs = {
   units: 'imperial',
@@ -39,6 +45,7 @@ export const DEFAULT_NAV_PREFS: NavPrefs = {
   crimeLookbackDays: 7,
   crimeClasses: { person: true, property: true, society: true, cfs: true },
   lastSearchQuery: '',
+  overSpeedThresholdMph: 10,
 };
 
 // #93 theme swatch base colors used for the live preview beside the segmented control.
@@ -68,6 +75,11 @@ export function saveNavPrefs(prefs: NavPrefs) {
     localStorage.setItem(NAV_PREFS_STORAGE_KEY, JSON.stringify(prefs));
   } catch {
     /* quota / private mode — non-fatal */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent<NavPrefs>(NAV_PREFS_CHANGED_EVENT, { detail: prefs }));
+  } catch {
+    /* non-fatal */
   }
 }
 
@@ -129,24 +141,31 @@ function Segmented<T extends string>({
 }
 
 function Slider({
-  label, value, onChange,
+  label, value, onChange, min = 0, max = 100, formatValue,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  /** Raw input[type=range] bounds. Defaults preserve the original 0–100% behavior. */
+  min?: number;
+  max?: number;
+  /** Formats the raw slider value for display. Defaults to the original "NN%" percent format. */
+  formatValue?: (raw: number) => string;
 }) {
+  const raw = formatValue ? value : Math.round(value * 100);
+  const display = formatValue ? formatValue(value) : `${raw}%`;
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</span>
-        <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{Math.round(value * 100)}%</span>
+        <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{display}</span>
       </div>
       <input
         type="range"
-        min={0}
-        max={100}
-        value={Math.round(value * 100)}
-        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        min={min}
+        max={max}
+        value={raw}
+        onChange={(e) => onChange(formatValue ? Number(e.target.value) : Number(e.target.value) / 100)}
         className="w-full"
         style={{ accentColor: '#d4a017' }}
         aria-label={label}
@@ -272,6 +291,14 @@ export default function NavSettingsPanel({
 
         <Slider label="Voice volume" value={prefs.volume} onChange={(v) => setPref('volume', v)} />
         <Slider label="Brightness" value={prefs.brightness} onChange={(v) => setPref('brightness', v)} />
+        <Slider
+          label="Over-speed alert (mph over limit)"
+          value={prefs.overSpeedThresholdMph}
+          onChange={(v) => setPref('overSpeedThresholdMph', v)}
+          min={0}
+          max={30}
+          formatValue={(v) => (v === 0 ? 'Off' : `+${v} mph`)}
+        />
 
         <div className="space-y-1">
           <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>Map layers</div>

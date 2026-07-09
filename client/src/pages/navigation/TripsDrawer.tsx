@@ -242,6 +242,9 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             liveLongG={0}
             liveLatG={0}
             sessionMs={durMs}
+            points={detail?.points?.map((p) => ({
+              lat: p.lat, lng: p.lng, time: p.time, speed: p.speed, heading: p.heading,
+            }))}
             onClose={() => setSelectedTripId(null)}
           />
         ) : (
