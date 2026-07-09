@@ -3,10 +3,11 @@ import {
   Navigation, MapPin, Clock, Route, Car, Play, Square, History,
   Gauge, Footprints, AlertTriangle, CheckCircle, Loader2, RefreshCw,
   Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
-  Settings, Satellite, WifiOff,
+  Settings, Satellite, WifiOff, Star,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useNavFavorites, type NavFavorite } from '../hooks/useNavFavorites';
 import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
@@ -205,6 +206,10 @@ export default function NavPage() {
   // #71/#81/#84/#93 Persisted nav prefs + settings popover open-state.
   const [prefs, setPrefs] = useState<NavPrefs>(loadNavPrefs);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // -- Saved/favorite destinations (Task 2) --
+  const { favorites, save: saveFavorite, remove: removeFavorite } = useNavFavorites();
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const setPref = useCallback(<K extends keyof NavPrefs>(key: K, value: NavPrefs[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
@@ -284,6 +289,7 @@ export default function NavPage() {
         if (endTripConfirmOpen) { e.stopPropagation(); setEndTripConfirmOpen(false); return; }
         if (clearPinsConfirmOpen) { e.stopPropagation(); setClearPinsConfirmOpen(false); return; }
         if (settingsOpen) { e.stopPropagation(); setSettingsOpen(false); return; }
+        if (favoritesOpen) { e.stopPropagation(); setFavoritesOpen(false); return; }
         return;
       }
 
@@ -298,13 +304,51 @@ export default function NavPage() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [endTripConfirmOpen, clearPinsConfirmOpen, settingsOpen, activeTripEarly, gps, hasTakeHome, handleManualStart]);
+  }, [endTripConfirmOpen, clearPinsConfirmOpen, settingsOpen, favoritesOpen, activeTripEarly, gps, hasTakeHome, handleManualStart]);
 
   // -- Drop pin --
   const handleDropPin = useCallback((pin: DroppedPin) => {
     setDroppedPins((prev) => [...prev, pin]);
   }, []);
   dropPinHandlerRef.current = handleDropPin;
+
+  // -- Favorites: save a dropped pin as a favorite destination --
+  const handleSavePinAsFavorite = useCallback((pin: DroppedPin) => {
+    // Reuse the same inline-naming pattern the codebase already uses elsewhere
+    // (window.prompt) rather than inventing a new label-entry UI.
+    const label = window.prompt('Save this pin as a favorite. Label:', pin.label);
+    if (label == null) return; // cancelled
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    saveFavorite(trimmed, pin.lat, pin.lng).catch(() => {
+      addToast('Failed to save favorite', 'error');
+    });
+  }, [saveFavorite, addToast]);
+
+  // -- Favorites: save the current GPS position as a favorite destination --
+  const handleSaveCurrentPositionAsFavorite = useCallback(() => {
+    if (gps?.latitude == null || gps?.longitude == null) return;
+    const label = window.prompt('Save current position as a favorite. Label:', 'Current Position');
+    if (label == null) return;
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    saveFavorite(trimmed, gps.latitude, gps.longitude).catch(() => {
+      addToast('Failed to save favorite', 'error');
+    });
+  }, [gps?.latitude, gps?.longitude, saveFavorite, addToast]);
+
+  // -- Favorites: navigate to a favorite via the existing Drive Mode deep-link
+  //    (/navigation?destination=&lat=&lng= is already consumed by NavigationPage
+  //    to call routeToDestination — reuse it rather than a second trip-start path).
+  const favoriteNavigateHref = useCallback((fav: NavFavorite) => (
+    `/navigation?destination=${encodeURIComponent(fav.label)}&lat=${fav.lat}&lng=${fav.lng}`
+  ), []);
+
+  const handleRemoveFavorite = useCallback((id: number) => {
+    removeFavorite(id).catch(() => {
+      addToast('Failed to delete favorite', 'error');
+    });
+  }, [removeFavorite, addToast]);
 
   // -- PDF downloads --
   const handleDownloadAllTrips = () => {
@@ -397,6 +441,23 @@ export default function NavPage() {
               </span>
             );
           })()}
+          {/* Favorites (saved destinations) */}
+          <button
+            type="button"
+            aria-label="Favorite destinations"
+            aria-expanded={favoritesOpen}
+            onClick={() => setFavoritesOpen((o) => !o)}
+            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+            style={{
+              width: 24, height: 22,
+              borderColor: favoritesOpen ? '#d4a017' : '#222',
+              color: favoritesOpen ? '#d4a017' : 'var(--rmpg-400)',
+              background: favoritesOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
+            }}
+            title="Favorite destinations"
+          >
+            <Star size={12} fill={favorites.length > 0 ? 'currentColor' : 'none'} />
+          </button>
           {/* #81 Gear / settings */}
           <button
             type="button"
@@ -437,17 +498,37 @@ export default function NavPage() {
           pins={droppedPins}
         />
         {droppedPins.length > 0 && (
-          <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
-            <span className="text-rmpg-400">
-              <Pin size={9} className="inline" /> {droppedPins.length} pin{droppedPins.length === 1 ? '' : 's'} on map
-            </span>
-            <button
-              type="button"
-              onClick={() => setClearPinsConfirmOpen(true)}
-              className="flex items-center gap-1 hover:underline text-rmpg-400"
-            >
-              <Trash2 size={9} /> Clear pins
-            </button>
+          <div className="mt-1 text-[9px] font-mono space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-rmpg-400">
+                <Pin size={9} className="inline" /> {droppedPins.length} pin{droppedPins.length === 1 ? '' : 's'} on map
+              </span>
+              <button
+                type="button"
+                onClick={() => setClearPinsConfirmOpen(true)}
+                className="flex items-center gap-1 hover:underline text-rmpg-400"
+              >
+                <Trash2 size={9} /> Clear pins
+              </button>
+            </div>
+            {/* Most recent pin — quick "save as favorite" action */}
+            {(() => {
+              const lastPin = droppedPins[droppedPins.length - 1];
+              return (
+                <div className="flex items-center justify-between px-1.5 py-1 rounded-sm border border-subtle" style={{ background: 'var(--surface-sunken)' }}>
+                  <span className="text-rmpg-300 truncate">{lastPin.label}</span>
+                  <button
+                    type="button"
+                    aria-label="Save pin as favorite"
+                    onClick={() => handleSavePinAsFavorite(lastPin)}
+                    className="flex items-center gap-1 hover:underline"
+                    style={{ color: '#d4a017' }}
+                  >
+                    <Star size={9} /> Save
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -560,6 +641,18 @@ export default function NavPage() {
         />
       )}
 
+      {/* Favorites popover (bottom sheet, matches NavSettingsPanel pattern) */}
+      {favoritesOpen && (
+        <FavoritesPanel
+          favorites={favorites}
+          onClose={() => setFavoritesOpen(false)}
+          onSaveCurrentPosition={handleSaveCurrentPositionAsFavorite}
+          canSaveCurrentPosition={gps.latitude != null && gps.longitude != null}
+          getNavigateHref={favoriteNavigateHref}
+          onRemove={handleRemoveFavorite}
+        />
+      )}
+
       {/* Confirm: End Trip */}
       <ConfirmDialog
         isOpen={endTripConfirmOpen}
@@ -581,6 +674,112 @@ export default function NavPage() {
         confirmLabel="Clear Pins"
         confirmVariant="danger"
       />
+    </div>
+  );
+}
+
+// -- Favorites Panel (bottom sheet, styled after NavSettingsPanel) --
+
+function FavoritesPanel({
+  favorites, onClose, onSaveCurrentPosition, canSaveCurrentPosition, getNavigateHref, onRemove,
+}: {
+  favorites: NavFavorite[];
+  onClose: () => void;
+  onSaveCurrentPosition: () => void;
+  canSaveCurrentPosition: boolean;
+  getNavigateHref: (fav: NavFavorite) => string;
+  onRemove: (id: number) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-[1200] panel-beveled"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Favorite destinations"
+      style={{
+        background: 'rgba(5,5,5,0.95)',
+        borderTop: '1px solid var(--border-default)',
+        borderTopLeftRadius: 2,
+        borderTopRightRadius: 2,
+        boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+          Favorite Destinations
+        </span>
+        <button
+          type="button"
+          aria-label="Close favorite destinations"
+          onClick={onClose}
+          className="flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+          style={{
+            width: 36, height: 36, borderRadius: 2,
+            background: 'var(--surface-base)', border: '1px solid var(--border-default)', color: '#888',
+          }}
+        >
+          &times;
+        </button>
+      </div>
+
+      <div className="p-3 space-y-2">
+        <button
+          type="button"
+          onClick={onSaveCurrentPosition}
+          disabled={!canSaveCurrentPosition}
+          className="w-full py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
+        >
+          <Star size={11} /> Save Current Position
+        </button>
+
+        {favorites.length === 0 ? (
+          <div className="rounded-sm border border-subtle p-4 text-center" style={{ background: 'var(--surface-sunken)' }}>
+            <Star size={20} className="mx-auto mb-1.5" style={{ color: 'var(--rmpg-500)' }} />
+            <p className="text-[10px] text-rmpg-500">No favorites saved yet</p>
+            <p className="text-[9px] text-rmpg-600 mt-1">
+              Drop a pin on the map or save your current position to add one.
+            </p>
+          </div>
+        ) : (
+          favorites.map((fav) => (
+            <div
+              key={fav.id}
+              className="flex items-center justify-between gap-2 rounded-sm border border-subtle p-2"
+              style={{ background: 'var(--surface-sunken)' }}
+            >
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-rmpg-300 truncate">{fav.label}</div>
+                <div className="text-[9px] font-mono text-rmpg-500">
+                  {fav.address || `${fav.lat.toFixed(5)}, ${fav.lng.toFixed(5)}`}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Link
+                  to={getNavigateHref(fav)}
+                  className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors"
+                  style={{ color: '#d4a017' }}
+                  title={`Navigate to ${fav.label}`}
+                >
+                  <Compass size={10} /> Go
+                </Link>
+                <button
+                  type="button"
+                  aria-label={`Delete favorite ${fav.label}`}
+                  onClick={() => onRemove(fav.id)}
+                  className="flex items-center justify-center px-1.5 py-1 rounded-sm border border-subtle hover:border-strong transition-colors text-rmpg-400"
+                  title="Delete favorite"
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

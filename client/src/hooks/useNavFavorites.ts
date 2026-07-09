@@ -1,0 +1,48 @@
+import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from './useApi';
+
+export interface NavFavorite {
+  id: number;
+  user_id: number;
+  label: string;
+  lat: number;
+  lng: number;
+  address: string | null;
+  created_at: string;
+}
+
+/**
+ * Saved/favorite nav destinations — thin CRUD wrapper over
+ * `GET/POST/DELETE /api/nav/favorites` (server route from Task 1).
+ */
+export function useNavFavorites() {
+  const [favorites, setFavorites] = useState<NavFavorite[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(() => {
+    setLoading(true);
+    apiFetch<NavFavorite[]>('/nav/favorites')
+      .then(setFavorites)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(reload, [reload]);
+
+  const save = useCallback(async (label: string, lat: number, lng: number, address?: string) => {
+    await apiFetch('/nav/favorites', {
+      method: 'POST',
+      body: JSON.stringify({ label, lat, lng, address }),
+    });
+    reload();
+  }, [reload]);
+
+  const remove = useCallback(async (id: number) => {
+    // Optimistic removal — the DELETE route returns 403/404 on failure, but
+    // a slow/offline delete shouldn't leave a stale favorite sitting in the list.
+    setFavorites((prev) => prev.filter((f) => f.id !== id));
+    await apiFetch(`/nav/favorites/${id}`, { method: 'DELETE' });
+  }, []);
+
+  return { favorites, loading, save, remove, reload };
+}
