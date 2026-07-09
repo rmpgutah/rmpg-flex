@@ -41,7 +41,7 @@ const maneuverIconFor = (type: string, modifier?: string): LucideIcon => {
 };
 
 export function HudSpeedGauge({
-  mph, unit, limitMph, buffer, heading, max = 120, onOverLimitTone, night,
+  mph, unit, limitMph, buffer, heading, max = 120, night,
 }: {
   mph: number | null;
   unit: SpeedUnit;
@@ -49,7 +49,6 @@ export function HudSpeedGauge({
   buffer: number;
   heading: number | null;
   max?: number;
-  onOverLimitTone?: () => void;
   night?: boolean;
 }) {
   // #51 — EMA smoothing on incoming mph so the needle/number don't flicker.
@@ -92,7 +91,10 @@ export function HudSpeedGauge({
     if (over10 && !over10ArmedRef.current) {
       over10ArmedRef.current = true;
       setFlash(true);
-      onOverLimitTone?.();
+      // #3 — tone firing for over-limit alerts now lives solely in the
+      // configurable shouldFireOverSpeedAlert() mechanism in NavigationPage.tsx
+      // (respects the user's threshold + a proper cooldown). This visual flash
+      // ring stays independent of that — it's a fixed +10mph glance cue.
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
       flashTimer.current = window.setTimeout(() => setFlash(false), 900);
     } else if (!over10) {

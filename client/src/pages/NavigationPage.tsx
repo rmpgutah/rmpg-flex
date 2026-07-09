@@ -41,7 +41,7 @@ import {
   HudDeviceHealthBadge, HudOverSpeedBanner,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
-import { loadNavPrefs } from './navigation/NavSettingsPanel';
+import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import {
@@ -699,10 +699,29 @@ export default function NavigationPage() {
   // #3 — configurable over-speed alert: threshold from shared nav prefs
   // (persisted via NavSettingsPanel's loadNavPrefs/saveNavPrefs, localStorage
   // key rmpg_nav_prefs), transient fire timestamp + auto-hiding banner state.
-  const [overSpeedThresholdMph] = useState(() => loadNavPrefs().overSpeedThresholdMph);
+  // NavigationPage stays mounted for a whole shift, so the threshold must stay
+  // live-reactive to a setting change made elsewhere — not just read at mount.
+  const [overSpeedThresholdMph, setOverSpeedThresholdMph] = useState(() => loadNavPrefs().overSpeedThresholdMph);
   const [lastOverSpeedAt, setLastOverSpeedAt] = useState<number | null>(null);
   const [showOverSpeedBanner, setShowOverSpeedBanner] = useState(false);
   const overSpeedHideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      setOverSpeedThresholdMph(detail ? detail.overSpeedThresholdMph : loadNavPrefs().overSpeedThresholdMph);
+    };
+    // Same-tab saves (custom event) and other-tab saves (native storage event).
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') setOverSpeedThresholdMph(loadNavPrefs().overSpeedThresholdMph);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
@@ -2543,7 +2562,6 @@ export default function NavigationPage() {
                 buffer={limitBuffer}
                 heading={dir}
                 night={nightTheme}
-                onOverLimitTone={() => playNavTone(tonesOn, 4000, 990)}
               />
               <button
                 type="button"

@@ -28,6 +28,11 @@ export interface NavPrefs {
 }
 
 export const NAV_PREFS_STORAGE_KEY = 'rmpg_nav_prefs';
+// Fired on every save so other mounted components (e.g. the drive HUD in
+// NavigationPage.tsx, which stays mounted for a whole shift) can react to a
+// changed setting immediately — the native `storage` event only fires in
+// OTHER tabs/windows, never same-tab, so a same-tab custom event is needed too.
+export const NAV_PREFS_CHANGED_EVENT = 'rmpg-nav-prefs-changed';
 
 export const DEFAULT_NAV_PREFS: NavPrefs = {
   units: 'imperial',
@@ -70,6 +75,11 @@ export function saveNavPrefs(prefs: NavPrefs) {
     localStorage.setItem(NAV_PREFS_STORAGE_KEY, JSON.stringify(prefs));
   } catch {
     /* quota / private mode — non-fatal */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent<NavPrefs>(NAV_PREFS_CHANGED_EVENT, { detail: prefs }));
+  } catch {
+    /* non-fatal */
   }
 }
 
