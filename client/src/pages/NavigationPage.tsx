@@ -599,7 +599,39 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProgress?.fraction, mapReady, routeRender]);
 
+  // #12 — customizable HUD layout: show/hide prefs for optional tiles
+  // (drivingScore/deviceHealth/districtOverlay/weather/backupUnits). Same
+  // live-reactive load/event pattern as overSpeedThresholdMph below — this
+  // page stays mounted for a whole shift, so a setting change made elsewhere
+  // (NavPage.tsx's settings panel) must be picked up without a remount.
+  // Declared up here (ahead of showDistricts/showBackupUnits) because the
+  // district-overlay effects immediately below reference it.
+  const [hudTiles, setHudTiles] = useState(() => loadNavPrefs().hudTiles);
+
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      setHudTiles(detail ? detail.hudTiles : loadNavPrefs().hudTiles);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') setHudTiles(loadNavPrefs().hudTiles);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
   const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
+  // #12 higher-level kill switch: settings-level hudTiles.districtOverlay gates
+  // whether the per-session showDistricts toggle can take effect at all — it
+  // does NOT get overwritten by the session toggle, and turning the settings
+  // pref off does not clear the session toggle's own state (it just stops it
+  // from rendering), so re-enabling the pref restores whatever showDistricts
+  // was already set to.
+  const districtsEnabled = hudTiles.districtOverlay && showDistricts;
 
   // ── #2 — offline/cached basemap fallback. Not a true offline basemap
   // (Mapbox vector tiles aren't cacheable to disk under the current
@@ -655,7 +687,7 @@ export default function NavigationPage() {
           }
           // Re-apply current toggle state (e.g. after a style switch rebuilds sources/layers).
           // Also force-visible when the live basemap is degraded (#2 fallback backdrop).
-          const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
+          const vis = (districtsEnabled || mapDegraded) ? 'visible' : 'none';
           if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
           if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
         } catch { /* style race — toggle effect below re-applies once ready */ }
@@ -671,12 +703,12 @@ export default function NavigationPage() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
-    const vis = (showDistricts || mapDegraded) ? 'visible' : 'none';
+    const vis = (districtsEnabled || mapDegraded) ? 'visible' : 'none';
     try {
       if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
       if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
     } catch { /* style not ready */ }
-  }, [showDistricts, mapDegraded, mapReady]);
+  }, [districtsEnabled, mapDegraded, mapReady]);
 
   // ── Nearby backup-unit overlay (default off) ──────────────────────────────
   // Mirrors MapboxMapPage.tsx's unit-marker approach exactly (buildUnitMarkerEl/
@@ -688,6 +720,10 @@ export default function NavigationPage() {
   // roster endpoint MapboxMapPage polls) — /dispatch/gps/my-unit (used by the
   // auto-route effect above) identifies which row in that roster is "me".
   const [showBackupUnits, setShowBackupUnits] = useState(false);
+  // #12 higher-level kill switch, same pattern as districtsEnabled above —
+  // settings-level hudTiles.backupUnits gates the per-session showBackupUnits
+  // toggle without clobbering its state.
+  const backupUnitsEnabled = hudTiles.backupUnits && showBackupUnits;
   const [myUnitId, setMyUnitId] = useState<string | null>(null);
   const [myCallId, setMyCallId] = useState<string | null>(null);
   const [backupUnits, setBackupUnits] = useState<MapUnit[]>([]);
@@ -703,7 +739,7 @@ export default function NavigationPage() {
   // bails out once a route is active) so the backup filter keeps working for
   // the whole shift.
   useEffect(() => {
-    if (!showBackupUnits) { setMyUnitId(null); setMyCallId(null); return; }
+    if (!backupUnitsEnabled) { setMyUnitId(null); setMyCallId(null); return; }
     let cancelled = false;
     const poll = async () => {
       try {
@@ -717,7 +753,7 @@ export default function NavigationPage() {
     poll();
     const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [showBackupUnits]);
+  }, [backupUnitsEnabled]);
 
   // Roster poll — filtered to units sharing myCallId, excluding my own unit.
   // KNOWN GAP: call-assignment membership only refreshes every
@@ -727,7 +763,7 @@ export default function NavigationPage() {
   // a false "another unit is right behind me" signal. Acceptable for v1;
   // revisit if this proves to be a real safety complaint in the field.
   useEffect(() => {
-    if (!showBackupUnits || !myCallId) { setBackupUnits([]); return; }
+    if (!backupUnitsEnabled || !myCallId) { setBackupUnits([]); return; }
     let cancelled = false;
     const poll = async () => {
       try {
@@ -742,12 +778,12 @@ export default function NavigationPage() {
     poll();
     const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [showBackupUnits, myCallId, myUnitId]);
+  }, [backupUnitsEnabled, myCallId, myUnitId]);
 
   // Live position nudges between roster polls (same 'unit_position' frame
   // MapboxMapPage.tsx handles — see its comment for the payload shape).
   useEffect(() => {
-    if (!showBackupUnits) return;
+    if (!backupUnitsEnabled) return;
     const unsub = subscribe('unit_position', (msg: any) => {
       const data = msg.data || msg;
       const uid = data.unit_id ?? data.unit?.id;
@@ -760,7 +796,7 @@ export default function NavigationPage() {
         : u)));
     });
     return () => { unsub(); };
-  }, [showBackupUnits, subscribe]);
+  }, [backupUnitsEnabled, subscribe]);
 
   // Render/update/remove backup-unit markers — mirrors MapboxMapPage.tsx's
   // unit-marker effect verbatim.
@@ -768,7 +804,7 @@ export default function NavigationPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
 
-    if (!showBackupUnits) {
+    if (!backupUnitsEnabled) {
       backupMarkersRef.current.forEach((marker) => marker.remove());
       backupMarkersRef.current.clear();
       return;
@@ -802,7 +838,7 @@ export default function NavigationPage() {
         backupMarkersRef.current.delete(id);
       }
     });
-  }, [backupUnits, showBackupUnits, mapReady]);
+  }, [backupUnits, backupUnitsEnabled, mapReady]);
 
   // Full cleanup on unmount — belt-and-suspenders alongside the toggle-off
   // branch above (which fires on every render while the toggle is off, but
@@ -2818,8 +2854,8 @@ export default function NavigationPage() {
               followActive={followActive} onRecenter={recenterMap}
               onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
               pitched={pitched} onTogglePitch={togglePitch}
-              showDistricts={showDistricts} onToggleDistricts={() => setShowDistricts((v) => !v)}
-              showBackupUnits={showBackupUnits} onToggleBackupUnits={() => setShowBackupUnits((v) => !v)}
+              showDistricts={showDistricts} onToggleDistricts={hudTiles.districtOverlay ? () => setShowDistricts((v) => !v) : undefined}
+              showBackupUnits={showBackupUnits} onToggleBackupUnits={hudTiles.backupUnits ? () => setShowBackupUnits((v) => !v) : undefined}
             />
             <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
             <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
@@ -2827,12 +2863,14 @@ export default function NavigationPage() {
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
             {isTripPaused && <HudPausedBadge />}
-            <HudDeviceHealthBadge
-              batteryLevel={battery.supported ? battery.level : null}
-              batteryCharging={battery.charging}
-              gpsAccuracy={gps.accuracy ?? null}
-            />
-            <HudWeatherBadge hazard={weatherHazard} />
+            {hudTiles.deviceHealth && (
+              <HudDeviceHealthBadge
+                batteryLevel={battery.supported ? battery.level : null}
+                batteryCharging={battery.charging}
+                gpsAccuracy={gps.accuracy ?? null}
+              />
+            )}
+            {hudTiles.weather && <HudWeatherBadge hazard={weatherHazard} />}
             <span className="flex-1" />
             {canExport && (
               <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
@@ -2933,12 +2971,14 @@ export default function NavigationPage() {
               </div>
               {/* #32 — driving-score chip + #41/#42 — next-maneuver mini + micro-bar */}
               <div className="flex items-stretch gap-1.5">
-                <HudDrivingScore
-                  peakLong={Math.max(peakGRef.current.accel, peakGRef.current.brake)}
-                  peakLat={peakGRef.current.lat}
-                  hardBrakes={hardBrakesRef.current}
-                  hardAccels={hardAccelsRef.current}
-                />
+                {hudTiles.drivingScore && (
+                  <HudDrivingScore
+                    peakLong={Math.max(peakGRef.current.accel, peakGRef.current.brake)}
+                    peakLat={peakGRef.current.lat}
+                    hardBrakes={hardBrakesRef.current}
+                    hardAccels={hardAccelsRef.current}
+                  />
+                )}
                 {step && (
                   <HudNextManeuver
                     maneuverType={step.maneuverType}

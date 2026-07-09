@@ -13,6 +13,14 @@ export interface NavLayerPrefs {
   alerts: boolean;
 }
 
+export interface NavHudTilePrefs {
+  drivingScore: boolean;
+  deviceHealth: boolean;
+  districtOverlay: boolean;
+  weather: boolean;
+  backupUnits: boolean;
+}
+
 export interface NavPrefs {
   units: NavUnits;
   clock: NavClock;
@@ -25,6 +33,7 @@ export interface NavPrefs {
   crimeClasses: { person: boolean; property: boolean; society: boolean; cfs: boolean };
   lastSearchQuery: string;
   overSpeedThresholdMph: number; // 0 disables the alert
+  hudTiles: NavHudTilePrefs;
 }
 
 export const NAV_PREFS_STORAGE_KEY = 'rmpg_nav_prefs';
@@ -46,6 +55,7 @@ export const DEFAULT_NAV_PREFS: NavPrefs = {
   crimeClasses: { person: true, property: true, society: true, cfs: true },
   lastSearchQuery: '',
   overSpeedThresholdMph: 10,
+  hudTiles: { drivingScore: true, deviceHealth: true, districtOverlay: true, weather: true, backupUnits: true },
 };
 
 // #93 theme swatch base colors used for the live preview beside the segmented control.
@@ -64,6 +74,7 @@ export function loadNavPrefs(): NavPrefs {
       ...parsed,
       layers: { ...DEFAULT_NAV_PREFS.layers, ...(parsed?.layers ?? {}) },
       crimeClasses: { ...DEFAULT_NAV_PREFS.crimeClasses, ...(parsed?.crimeClasses ?? {}) },
+      hudTiles: { ...DEFAULT_NAV_PREFS.hudTiles, ...(parsed?.hudTiles ?? {}) },
     };
   } catch {
     return { ...DEFAULT_NAV_PREFS };
@@ -307,6 +318,17 @@ export default function NavSettingsPanel({
             <LayerToggle label="Crash" checked={prefs.layers.crash} onChange={(v) => setPref('layers', { ...prefs.layers, crash: v })} />
             <LayerToggle label="Trail" checked={prefs.layers.trail} onChange={(v) => setPref('layers', { ...prefs.layers, trail: v })} />
             <LayerToggle label="Alerts" checked={prefs.layers.alerts} onChange={(v) => setPref('layers', { ...prefs.layers, alerts: v })} />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>HUD tiles</div>
+          <div className="grid grid-cols-2 gap-2">
+            <LayerToggle label="Driving score" checked={prefs.hudTiles.drivingScore} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, drivingScore: v })} />
+            <LayerToggle label="Device health" checked={prefs.hudTiles.deviceHealth} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, deviceHealth: v })} />
+            <LayerToggle label="District overlay" checked={prefs.hudTiles.districtOverlay} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, districtOverlay: v })} />
+            <LayerToggle label="Weather" checked={prefs.hudTiles.weather} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, weather: v })} />
+            <LayerToggle label="Backup units" checked={prefs.hudTiles.backupUnits} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, backupUnits: v })} />
           </div>
         </div>
       </div>
