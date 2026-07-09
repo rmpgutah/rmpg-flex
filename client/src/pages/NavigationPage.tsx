@@ -690,11 +690,17 @@ export default function NavigationPage() {
   const [backupUnits, setBackupUnits] = useState<MapUnit[]>([]);
   const backupMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
+  // Poll cadence matches MapboxMapPage.tsx's REFRESH_INTERVAL_MS (30s) — live
+  // position is already covered by the unit_position WS push below, so the
+  // roster/call-assignment poll only needs to be as fresh as the dispatch
+  // map's own tolerance, not tighter.
+  const BACKUP_UNITS_POLL_MS = 30000;
+
   // Identify "me" — polled independently of the auto-route effect above (which
   // bails out once a route is active) so the backup filter keeps working for
   // the whole shift.
   useEffect(() => {
-    if (!showBackupUnits) return;
+    if (!showBackupUnits) { setMyUnitId(null); setMyCallId(null); return; }
     let cancelled = false;
     const poll = async () => {
       try {
@@ -706,11 +712,17 @@ export default function NavigationPage() {
       } catch { /* best-effort */ }
     };
     poll();
-    const timer = setInterval(poll, 15000);
+    const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
     return () => { cancelled = true; clearInterval(timer); };
   }, [showBackupUnits]);
 
   // Roster poll — filtered to units sharing myCallId, excluding my own unit.
+  // KNOWN GAP: call-assignment membership only refreshes every
+  // BACKUP_UNITS_POLL_MS, while position (below) updates instantly via WS —
+  // so a unit that gets cleared from the call keeps gliding live on this
+  // overlay for up to that interval after it's no longer actually backup,
+  // a false "another unit is right behind me" signal. Acceptable for v1;
+  // revisit if this proves to be a real safety complaint in the field.
   useEffect(() => {
     if (!showBackupUnits || !myCallId) { setBackupUnits([]); return; }
     let cancelled = false;
@@ -725,7 +737,7 @@ export default function NavigationPage() {
       } catch { /* best-effort */ }
     };
     poll();
-    const timer = setInterval(poll, 10000);
+    const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
     return () => { cancelled = true; clearInterval(timer); };
   }, [showBackupUnits, myCallId, myUnitId]);
 
