@@ -850,7 +850,7 @@ function FavoritesPanel({
       <div className="p-3 space-y-2">
         {nearbyStaging.length > 0 && (
           <div className="rounded-sm border border-subtle p-2 space-y-1.5" style={{ background: 'var(--surface-sunken)' }}>
-            <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-brand-gold-500">
               Staging Spots Nearby
             </div>
             {nearbyStaging.map((fav) => (
@@ -863,8 +863,7 @@ function FavoritesPanel({
                 </div>
                 <Link
                   to={getNavigateHref(fav)}
-                  className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors shrink-0"
-                  style={{ color: '#d4a017' }}
+                  className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors shrink-0 text-brand-gold-500"
                   title={`Navigate to ${fav.label}`}
                 >
                   <Compass size={10} /> Go
