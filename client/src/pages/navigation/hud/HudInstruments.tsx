@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Download, Volume2, VolumeX, Crosshair, Plus, Minus, Box, ChevronDown, ChevronUp,
   Navigation2, CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, Square, Layers, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Square, Layers, Users, type LucideIcon,
 } from 'lucide-react';
 import {
   type SpeedUnit, speedInUnit, speedSuffix, speedColor, speedBands, formatHeading,
@@ -470,11 +470,13 @@ export function HudMuteToggle({ muted, onToggle }: { muted: boolean; onToggle: (
 export function HudMapControls({
   followActive, onRecenter, onZoomIn, onZoomOut, pitched, onTogglePitch,
   showDistricts, onToggleDistricts,
+  showBackupUnits, onToggleBackupUnits,
 }: {
   followActive: boolean; onRecenter: () => void;
   onZoomIn: () => void; onZoomOut: () => void;
   pitched: boolean; onTogglePitch: () => void;
   showDistricts?: boolean; onToggleDistricts?: () => void;
+  showBackupUnits?: boolean; onToggleBackupUnits?: () => void;
 }) {
   const btn = "flex items-center justify-center w-8 h-8 border";
   return (
@@ -500,6 +502,12 @@ export function HudMapControls({
         <button type="button" onClick={onToggleDistricts} aria-label={showDistricts ? 'Hide district/beat overlay' : 'Show district/beat overlay'} title={showDistricts ? 'District/beat overlay on' : 'District/beat overlay off'}
           className={btn} style={{ borderRadius: 2, borderColor: showDistricts ? '#d4a017' : '#3a3a3a', color: showDistricts ? '#d4a017' : 'var(--rmpg-400)', background: showDistricts ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
           <Layers className="w-4 h-4" />
+        </button>
+      )}
+      {onToggleBackupUnits && (
+        <button type="button" onClick={onToggleBackupUnits} aria-label={showBackupUnits ? 'Hide nearby backup units' : 'Show nearby backup units'} title={showBackupUnits ? 'Backup unit overlay on' : 'Backup unit overlay off'}
+          className={btn} style={{ borderRadius: 2, borderColor: showBackupUnits ? '#d4a017' : '#3a3a3a', color: showBackupUnits ? '#d4a017' : 'var(--rmpg-400)', background: showBackupUnits ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+          <Users className="w-4 h-4" />
         </button>
       )}
     </div>

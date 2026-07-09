@@ -67,8 +67,11 @@ import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { useWebSocket } from '../context/WebSocketContext';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { useBattery } from '../components/BatteryIndicator';
+import type { MapUnit } from './map/utils/mapConstants';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './map/utils/mapMarkers';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -480,6 +483,7 @@ export default function NavigationPage() {
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
   const battery = useBattery();
+  const { subscribe } = useWebSocket();
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
   // ── Clear-route confirm dialog ──
   const [clearRouteConfirmOpen, setClearRouteConfirmOpen] = useState(false);
@@ -670,6 +674,128 @@ export default function NavigationPage() {
       if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
     } catch { /* style not ready */ }
   }, [showDistricts, mapDegraded, mapReady]);
+
+  // ── Nearby backup-unit overlay (default off) ──────────────────────────────
+  // Mirrors MapboxMapPage.tsx's unit-marker approach exactly (buildUnitMarkerEl/
+  // applyUnitMarkerState/buildUnitPopupHtml from map/utils/mapMarkers.ts, real
+  // mapboxgl.Marker objects kept in a ref map keyed by unit id) — filtered to
+  // units on the SAME call as this officer (not the whole fleet, which would be
+  // clutter on a drive HUD). "Same call" = MapUnit.current_call_id matching the
+  // officer's own current_call_id, both sourced from /dispatch/units (the same
+  // roster endpoint MapboxMapPage polls) — /dispatch/gps/my-unit (used by the
+  // auto-route effect above) identifies which row in that roster is "me".
+  const [showBackupUnits, setShowBackupUnits] = useState(false);
+  const [myUnitId, setMyUnitId] = useState<string | null>(null);
+  const [myCallId, setMyCallId] = useState<string | null>(null);
+  const [backupUnits, setBackupUnits] = useState<MapUnit[]>([]);
+  const backupMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+
+  // Identify "me" — polled independently of the auto-route effect above (which
+  // bails out once a route is active) so the backup filter keeps working for
+  // the whole shift.
+  useEffect(() => {
+    if (!showBackupUnits) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const resp = await apiFetch<any>('/dispatch/gps/my-unit').catch(() => null);
+        const unit = resp && typeof resp === 'object' ? ('unit' in resp ? resp.unit : resp) : null;
+        if (cancelled || !unit || unit.id == null) return;
+        setMyUnitId(String(unit.id));
+        setMyCallId(unit.current_call_id != null ? String(unit.current_call_id) : null);
+      } catch { /* best-effort */ }
+    };
+    poll();
+    const timer = setInterval(poll, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [showBackupUnits]);
+
+  // Roster poll — filtered to units sharing myCallId, excluding my own unit.
+  useEffect(() => {
+    if (!showBackupUnits || !myCallId) { setBackupUnits([]); return; }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const units = await apiFetch<MapUnit[]>('/dispatch/units').catch(() => null);
+        if (cancelled || !units) return;
+        setBackupUnits(units.filter((u) =>
+          String(u.current_call_id) === myCallId &&
+          String(u.id) !== myUnitId &&
+          u.latitude != null && u.longitude != null));
+      } catch { /* best-effort */ }
+    };
+    poll();
+    const timer = setInterval(poll, 10000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [showBackupUnits, myCallId, myUnitId]);
+
+  // Live position nudges between roster polls (same 'unit_position' frame
+  // MapboxMapPage.tsx handles — see its comment for the payload shape).
+  useEffect(() => {
+    if (!showBackupUnits) return;
+    const unsub = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setBackupUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+    return () => { unsub(); };
+  }, [showBackupUnits, subscribe]);
+
+  // Render/update/remove backup-unit markers — mirrors MapboxMapPage.tsx's
+  // unit-marker effect verbatim.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    if (!showBackupUnits) {
+      backupMarkersRef.current.forEach((marker) => marker.remove());
+      backupMarkersRef.current.clear();
+      return;
+    }
+
+    const currentIds = new Set<string>();
+    for (const unit of backupUnits) {
+      if (unit.latitude == null || unit.longitude == null) continue;
+      currentIds.add(unit.id);
+      const existing = backupMarkersRef.current.get(unit.id);
+      if (existing) {
+        existing.setLngLat([unit.longitude, unit.latitude]);
+        const popup = existing.getPopup();
+        if (popup) popup.setHTML(buildUnitPopupHtml(unit));
+        applyUnitMarkerState(existing.getElement(), unit);
+      } else {
+        const el = buildUnitMarkerEl(unit);
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([unit.longitude, unit.latitude])
+          .setPopup(
+            new mapboxgl.Popup({ offset: 18, closeButton: false, className: 'mapbox-popup-dark' })
+              .setHTML(buildUnitPopupHtml(unit))
+          )
+          .addTo(map);
+        backupMarkersRef.current.set(unit.id, marker);
+      }
+    }
+    backupMarkersRef.current.forEach((marker, id) => {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        backupMarkersRef.current.delete(id);
+      }
+    });
+  }, [backupUnits, showBackupUnits, mapReady]);
+
+  // Full cleanup on unmount — belt-and-suspenders alongside the toggle-off
+  // branch above (which fires on every render while the toggle is off, but
+  // won't fire on an unmount that happens while it's still on).
+  useEffect(() => () => {
+    backupMarkersRef.current.forEach((marker) => marker.remove());
+    backupMarkersRef.current.clear();
+  }, []);
 
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2644,6 +2770,7 @@ export default function NavigationPage() {
               onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
               pitched={pitched} onTogglePitch={togglePitch}
               showDistricts={showDistricts} onToggleDistricts={() => setShowDistricts((v) => !v)}
+              showBackupUnits={showBackupUnits} onToggleBackupUnits={() => setShowBackupUnits((v) => !v)}
             />
             <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
             <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
