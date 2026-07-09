@@ -31,13 +31,6 @@ function emptyPointFeature(): GeoJSON.Feature<GeoJSON.Point> {
   return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } };
 }
 
-/**
- * Assumes `points` is already loaded and stable by the time this mounts —
- * the parent (TripReplay) only renders this once points.length >= 2, and
- * this component's camera (center + one-time fitBounds) is only computed
- * at mount, so a `points` array that starts empty and fills in later would
- * leave the camera stuck at its initial fallback position.
- */
 interface TripReplayMapProps {
   points: ReplayPoint[];
   replayIdx: number;
@@ -125,14 +118,6 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
             },
           });
 
-          if (points.length >= 2) {
-            const bounds = new mapboxgl.LngLatBounds();
-            for (const p of points) bounds.extend([p.lng, p.lat]);
-            try {
-              map.fitBounds(bounds, { padding: 16, duration: 0 });
-            } catch { /* ignore — degenerate bounds (all-identical points) */ }
-          }
-
           mapRef.current = map;
           setMapReady(true);
         });
@@ -157,6 +142,16 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Refit camera whenever the points set changes (new trip selected) ──
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || points.length < 2) return;
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const p of points) bounds.extend([p.lng, p.lat]);
+    try {
+      mapRef.current.fitBounds(bounds, { padding: 16, duration: 0 });
+    } catch { /* ignore — degenerate bounds (all-identical points) */ }
+  }, [mapReady, points]);
 
   // ── Update traveled/remaining/marker on replayIdx change ───
   useEffect(() => {
