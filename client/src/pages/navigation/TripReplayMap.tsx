@@ -31,6 +31,13 @@ function emptyPointFeature(): GeoJSON.Feature<GeoJSON.Point> {
   return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } };
 }
 
+/**
+ * Assumes `points` is already loaded and stable by the time this mounts —
+ * the parent (TripReplay) only renders this once points.length >= 2, and
+ * this component's camera (center + one-time fitBounds) is only computed
+ * at mount, so a `points` array that starts empty and fills in later would
+ * leave the camera stuck at its initial fallback position.
+ */
 interface TripReplayMapProps {
   points: ReplayPoint[];
   replayIdx: number;
