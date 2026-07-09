@@ -2526,6 +2526,11 @@ export default function NavigationPage() {
           sessionMs={sessionMs}
           climbFt={climbFt}
           elevFt={elevFt}
+          points={gps.getCapturedTrack().map((p) => ({
+            lat: p.lat, lng: p.lng, time: p.timestamp,
+            speed: p.speed != null ? p.speed * 2.236936 : null, // m/s → mph
+            heading: p.heading,
+          }))}
           onClose={() => setTripOpen(false)}
         />
       )}
