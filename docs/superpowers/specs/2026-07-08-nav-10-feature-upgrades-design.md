@@ -27,6 +27,21 @@ command R&D) and (b) reuse infra that already exists elsewhere in the app:
   (`getTaggedBeats()`), used by the main map's district layers. #8 reuses this
   loader rather than re-fetching/re-parsing beat polygons.
 
+**Correction (post-audit-2):** a second pass while drafting the implementation
+plan found the subsystem already has **two parallel trip-tracking systems**:
+`nav_trip_log` (`src/routes/nav.ts`, officer-based, driven by `NavTripContext`,
+feeds `NavPage.tsx`) and `unit_trips` (`src/routes/dispatch/trips.ts`,
+unit-based, auto-computed server-side from the GPS pipeline in `gps.ts`,
+**already has** `call_id`, `harsh_accel_count`/`harsh_brake_count`/
+`harsh_corner_count`, `max_lat_g`, `stop_count`, `idle_seconds` — feeding
+`TripsDrawer.tsx`, already live on `/navigation`). The original #5 (trip↔call
+linkage) and #7 (hard-brake/turn flagging) were already built there — building
+them against `nav_trip_log` would have created a *third* redundant
+implementation. Both are replaced below (see #5, #7). This existing
+`nav_trip_log`/`unit_trips` duplication itself is a separate, larger
+reconciliation problem, explicitly **out of scope** for this spec — flagged as
+a follow-up, not fixed here.
+
 ## The 10 features
 
 ### 1. Multi-stop routing
@@ -67,29 +82,44 @@ New `nav_favorites` D1 table (user_id, label, lat, lng, address, created_at) +
 trip's destination, and to quick-start a trip to a saved favorite. Migration:
 next free integer prefix per `migrations/README.md`.
 
-### 5. Better trip↔call linkage & search
-`NavTripContext`'s trip-detection already links a trip to the active call
-when one exists (per the fix noted in its file header) — audit whether that
-link is actually persisted onto the `nav_trips` row (`call_id` column) and
-surfaced. Add: (a) a `call_id` filter/search box to `TripsDrawer.tsx`, (b) a
-"View call" link on trip rows that have one, (c) backfill for historical
-trips where GPS timestamps overlap a call's dispatch/clear window (best-
-effort, admin-triggered one-off script, not a live feature).
+### 5. Custom avoidance zones (replaces original "trip↔call linkage" — already built in `unit_trips`)
+`geofence_zones.zone_type` already has an `'exclusion'` value in its CHECK
+constraint (migration `0047_spillman_modules.sql`) but nothing in the routing
+path consumes it — zones of that type exist only for display/alerting today.
+Wire exclusion zones into route requests: when building a Mapbox Directions
+request (the server-side proxy from PR #2681), fetch active `is_active=1`
+`geofence_zones` rows where `zone_type='exclusion'`, convert their
+`geojson_data` polygons to Mapbox's `exclude`/`waypoints` avoidance params
+(Mapbox Directions API supports point/polygon exclusion via the `exclude`
+parameter for certain classes, or via routing the request around the polygon
+centroid if the API tier doesn't support polygon exclusion directly — confirm
+which during implementation and fall back to a post-route validity check that
+flags/rejects a route crossing an exclusion zone if true polygon exclusion
+isn't available). No client change needed beyond surfacing "route avoids N
+restricted zones" in the guidance summary.
 
-### 6. Driving score trends
-`HudDrivingScore` already computes a per-trip score. Add a `driving_score`
-column to `nav_trips` (persisted at trip completion) and a new trends view in
-`NavPage.tsx` (or a drawer) — line chart of score over the officer's last N
-trips, using the existing `dataviz` conventions for chart styling. Read-only
-aggregate query, no new scoring logic.
+### 6. Driving score trends (reusing existing `unit_trips` harsh-event columns)
+`unit_trips` already persists `harsh_accel_count`, `harsh_brake_count`,
+`harsh_corner_count`, and `max_lat_g` per trip — no new scoring computation or
+schema needed. Add a read-only aggregate endpoint (`GET
+/dispatch/trips/score-trend?unit_id=&officer_id=&limit=`) computing a simple
+score per trip (`100 - harsh_event_total * weight`, matching `HudDrivingScore`'s
+existing color-threshold logic in `HudInstruments.tsx` for consistency) and a
+trends view in `NavPage.tsx` (or a drawer) — line chart of score over the
+officer's last N trips, using the existing `dataviz` conventions for chart
+styling.
 
-### 7. Hard-brake/hard-turn event auto-flagging
-`useNavTravel.ts` already samples speed/heading; add delta-based thresholds
-(deceleration > X mph/s, heading change > Y°/s at speed) to flag an event.
-Flagged events get a `nav_trip_events` row (trip_id, type, lat, lng, ts,
-severity) and a marker on the trip's map view in `NavPage.tsx` /
-`MovementReportDrawer.tsx`. This is telemetry/reporting only — no live HUD
-interruption, so it doesn't add distraction risk while driving.
+### 7. Trip replay (replaces original "hard-brake/turn flagging" — already built in `unit_trips`)
+Neither `MovementReportDrawer.tsx` nor `TripsDrawer.tsx` currently animates a
+trip's breadcrumb path — `TripDetail.points` (from `useTripDetail`, already
+fetched) is only rendered statically. Add a replay control (play/pause/scrub,
+speed multiplier) to `MovementReportDrawer.tsx`: step through `points` on a
+`requestAnimationFrame`-driven timer scaled by each point's real timestamp
+delta, moving a marker along the route on the existing map instance and
+updating the speed/heading readouts live as it plays. Supervisor-facing only
+(opened from `TripsDrawer`, same access as today's static report) — no new
+data, no new endpoint, pure client-side animation over data already on the
+page.
 
 ### 8. Always-on district/beat boundary overlay
 `NavigationPage.tsx`'s map adds a toggleable layer sourced from the existing
@@ -112,10 +142,11 @@ Consume the existing `geofence_alert` websocket event (already broadcasting
 zone enter/exit) in `NavTripContext`: when a unit enters a zone flagged
 `zone_type = 'station'` (new zone-type value on the existing `geofence_zones`
 table — no schema change needed, just data + a check), auto-pause active trip
-distance/duration accumulation; resume on exit. Prevents parking-lot idling
-at the station from inflating trip stats. Needs one admin action per station
-to draw/tag its geofence zone (existing admin UI for `geofence_zones`,
-confirm it supports zone_type tagging — audit during implementation).
+distance/duration accumulation on the `nav_trip_log` row (via `/nav/trip/:id/update`);
+resume on exit. Prevents parking-lot idling at the station from inflating trip
+stats. Needs one admin action per station to draw/tag its geofence zone
+(existing admin UI for `geofence_zones`, confirm it supports zone_type tagging
+— audit during implementation).
 
 ## Non-goals
 - No weather-API integration, fuel/range routing, voice-command control,
@@ -128,9 +159,10 @@ confirm it supports zone_type tagging — audit during implementation).
 
 ## Data model changes
 - `nav_favorites` (new table) — #4
-- `nav_trips.call_id` (verify/backfill, may already exist) — #5
-- `nav_trips.driving_score` (new column) — #6
-- `nav_trip_events` (new table) — #7
+- No new column needed for #6 — reuses existing `unit_trips.harsh_*_count`/`max_lat_g`.
+- No new table needed for #5 — no schema change, only a new server-side
+  routing consumption of existing `geofence_zones` rows.
+- No new table needed for #7 — pure client-side animation over already-fetched data.
 - `geofence_zones.zone_type` value `'station'` (data convention, confirm
   column supports arbitrary values — likely no schema change) — #10
 
@@ -140,7 +172,8 @@ CLAUDE.md's migration process.
 
 ## Testing
 - Unit tests for new pure logic: waypoint leg-advance (#1), over-speed
-  threshold/cooldown (#3), hard-brake/turn delta detection (#7).
+  threshold/cooldown (#3), exclusion-zone routing decision (#5), replay
+  timing/scrub math (#7).
 - Manual browser verification via preview tooling for each HUD-visible change
   (#3, #8, #9) — confirm no visual clutter when conditions aren't met.
 - No live-vehicle testing required for this pass (per the consolidation
@@ -151,15 +184,15 @@ CLAUDE.md's migration process.
 ## Build order
 Given these are largely independent, implementation can fan out in parallel
 by feature after the shared pieces land first:
-1. Land migrations (#4, #6, #7) together in one PR.
+1. Land the `nav_favorites` migration (#4) first — the only schema change.
 2. Land #9 (export `useBattery`) first since #9's badge is small and unblocks
    nothing else, but is a good warm-up.
-3. #5, #6, #7, #10 (reporting/consumption of existing data) can proceed in
-   parallel — no shared surface area.
+3. #5 (exclusion-zone routing), #6 (score trend endpoint), #7 (replay), #10
+   (station pause/resume) can proceed in parallel — no shared surface area.
 4. #3, #8, #9 (HUD additions) can proceed in parallel — all touch
    `HudInstruments.tsx` but as independent new exports, low conflict risk.
 5. #1 (multi-stop) and #2 (offline fallback) touch the guidance engine and
    map bootstrap respectively — do these last, one at a time, since they're
    the highest-risk/most-central changes.
 6. #4 (favorites) is fully independent (new table + new UI section) — can
-   run anytime after migrations land.
+   run anytime after its migration lands.
