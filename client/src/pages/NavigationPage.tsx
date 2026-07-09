@@ -2601,7 +2601,7 @@ export default function NavigationPage() {
 
       {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
       {showOverSpeedBanner && limitMph != null && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 268 }}>
           <HudOverSpeedBanner limitMph={limitMph} />
         </div>
       )}
