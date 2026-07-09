@@ -525,6 +525,7 @@ export default function NavigationPage() {
   const routeGeom = guidance?.routeGeom ?? null;
   const routeRender = guidance?.routeRender ?? null;
   const offRoute = guidance?.offRoute ?? false;
+  const excludedZoneWarning = guidance?.excludedZoneWarning ?? false;
 
   // Draw / clear the engine's route on the drive map. Re-runs when the engine
   // produces a new route (including reroutes while this page was unmounted)
@@ -2370,6 +2371,11 @@ export default function NavigationPage() {
           {offRoute && (
             <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase text-red-400 animate-pulse border-t border-rmpg-800">
               <AlertTriangle className="w-3 h-3" /> Off route — recalculating
+            </div>
+          )}
+          {!offRoute && excludedZoneWarning && (
+            <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase text-amber-400 border-t border-rmpg-800">
+              <AlertTriangle className="w-3 h-3" /> Route avoids a restricted zone
             </div>
           )}
           {/* Upcoming maneuvers (the next few turns) */}

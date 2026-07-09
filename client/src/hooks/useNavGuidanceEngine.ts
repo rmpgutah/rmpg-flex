@@ -155,6 +155,10 @@ export function useNavGuidanceEngine() {
   const [offRoute, setOffRoute] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
   const [waypoints, setWaypoints] = useState<NavWaypoint[]>([]);
+  // Set from the Directions response (src/routes/mapbox.ts) when the chosen
+  // route crosses an active exclusion geofence zone. Server-computed only —
+  // no count, just a boolean, so the HUD copy stays generic.
+  const [excludedZoneWarning, setExcludedZoneWarning] = useState(false);
 
   const destRef = useRef<GuidanceDestination | null>(null);
   const waypointsRef = useRef<NavWaypoint[]>([]);
@@ -184,7 +188,7 @@ export function useNavGuidanceEngine() {
       // at all; the MAPBOX_ACCESS_TOKEN secret stays server-side. Uses the
       // same auth (rmpg_token bearer) as every other apiFetch call.
       const coordStr = `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`;
-      const data = await apiFetch<{ routes?: any[] }>(
+      const data = await apiFetch<{ routes?: any[]; excludedZoneWarning?: boolean }>(
         `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
         `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
       );
@@ -246,6 +250,7 @@ export function useNavGuidanceEngine() {
       lastOriginRef.current = origin;
       lastQueryTimeRef.current = Date.now();
       setOffRoute(false);
+      setExcludedZoneWarning(data.excludedZoneWarning === true);
       setRouteGeom({ coords, cum, totalMeters: total });
       setRouteRender({
         geometry: { type: 'LineString', coordinates: coords },
@@ -319,6 +324,7 @@ export function useNavGuidanceEngine() {
     setRouteGeom(null);
     setRouteRender(null);
     setOffRoute(false);
+    setExcludedZoneWarning(false);
   }, []);
 
   /** Begin a multi-stop route: sets the waypoint list and routes to the first
@@ -428,6 +434,7 @@ export function useNavGuidanceEngine() {
     routeGeom,
     routeRender,
     offRoute,
+    excludedZoneWarning,
     routeLoading,
     waypoints,
     startGuidance,
