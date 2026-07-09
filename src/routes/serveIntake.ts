@@ -72,6 +72,7 @@ import { recordAudit } from '../utils/auditLog';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -195,6 +196,14 @@ const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer']
 function isPdf(mime: string): boolean { return mime === 'application/pdf'; }
 function isImage(mime: string): boolean { return mime.startsWith('image/'); }
 
+function emptyExtraction(model: string, error?: string): ExtractionResult {
+  return {
+    success: false, documentType: 'other', confidence: 0,
+    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
+    model, ms: 0, error,
+  };
+}
+
 // Minimum browser-extracted text length to trust a PDF as "born-digital"
 // and skip the OCR container. A court summons cover page alone is ~800
 // chars; 200 comfortably clears sparse single-page exhibits while still
@@ -302,12 +311,33 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
+      let text: string;
+      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        text = clientText;
+        ocrEngine = 'pdfjs-client';
+      } else {
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch (e) {
+          log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
+            traceId: c.get('traceId'),
+            error: e instanceof Error ? e.message : String(e),
+          });
+          text = clientText;
+          ocrEngine = 'container-unavailable';
+        }
+      }
+      extraction = text.trim().length >= 20
+        ? await ocrText(c.env, text)
+        : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -415,12 +445,6 @@ si.post('/upload', async (c) => {
     ex: ExtractionResult;   // per-document field extraction
     error?: string;          // file-level (read/store) error
   }
-
-  const emptyExtraction = (model: string, error?: string): ExtractionResult => ({
-    success: false, documentType: 'other', confidence: 0,
-    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
-    model, ms: 0, error,
-  });
 
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
     const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
