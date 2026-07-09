@@ -15,7 +15,7 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useNavGuidanceEngine, type NavGuidanceEngine } from '../hooks/useNavGuidanceEngine';
@@ -39,6 +39,11 @@ export interface NavTripContextValue extends NavTripDetection {
    *  /api/dispatch/routing/unit/:unitId) and hand it to the guidance engine
    *  as a multi-stop route. No-ops if the unit has no active saved route. */
   loadUnitRoute: (unitId: string) => Promise<void>;
+  /** True while the active trip is paused for a station-geofence dwell (set by
+   *  the auto pause/resume subscription below). Drives the HUD's "Trip Paused"
+   *  badge — a locally-tracked mirror of the trip's server-side status, not a
+   *  round-trip poll, since the pause/resume calls already originate here. */
+  isTripPaused: boolean;
 }
 
 /** Shape returned per-row by GET /api/dispatch/routing/unit/:unitId
@@ -166,6 +171,13 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   const myUnitIdRef = useRef(gps.unitId);
   myUnitIdRef.current = gps.unitId;
 
+  // Local mirror of the trip's paused/active status, driven by the same
+  // pause/resume calls this subscription already makes — see isTripPaused
+  // on NavTripContextValue. Reset when the active trip changes (a fresh
+  // trip is never paused).
+  const [isTripPaused, setIsTripPaused] = useState(false);
+  useEffect(() => { setIsTripPaused(false); }, [trip.detection.activeTripId]);
+
   useEffect(() => {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -186,16 +198,18 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
       const tripId = activeTripIdRef.current;
       if (!tripId) return;
 
-      apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' }).catch((err) => {
-        console.error(`[NavTripContext] station geofence ${action} failed:`, err);
-      });
+      apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' })
+        .then(() => setIsTripPaused(action === 'pause'))
+        .catch((err) => {
+          console.error(`[NavTripContext] station geofence ${action} failed:`, err);
+        });
     });
 
     return () => { unsubGeofence(); };
   }, [subscribe]);
 
   return (
-    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused }}>
       {children}
     </NavTripContext.Provider>
   );

@@ -574,3 +574,12 @@ export function HudParkedBadge() {
     </span>
   );
 }
+
+// ── paused-trip badge (station-geofence pause) ──────────────────────────────────
+export function HudPausedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono text-rmpg-400" style={{ border: '1px solid #3a3a3a', borderRadius: 2, background: 'rgba(20,20,20,0.7)' }} title="Trip tracking paused (station geofence)">
+      Trip Paused
+    </span>
+  );
+}

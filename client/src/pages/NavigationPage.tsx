@@ -37,7 +37,7 @@ import TripsDrawer from './navigation/TripsDrawer';
 import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
-  HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
+  HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
   HudDeviceHealthBadge, HudOverSpeedBanner,
 } from './navigation/hud/HudInstruments';
 import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
@@ -518,6 +518,7 @@ export default function NavigationPage() {
   // starts nor resets it. This page only renders the engine's state and
   // paints the route line on its own map (the effects just below).
   const navCtx = useNavTrip();
+  const isTripPaused = navCtx?.isTripPaused ?? false;
   const guidance = navCtx?.guidance ?? null;
   const activeRoute = guidance?.activeRoute ?? null;
   const routeProgress = guidance?.routeProgress ?? null;
@@ -2643,6 +2644,7 @@ export default function NavigationPage() {
             <HudQualityPill accuracy={gps.accuracy ?? null} />
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
+            {isTripPaused && <HudPausedBadge />}
             <HudDeviceHealthBadge
               batteryLevel={battery.supported ? battery.level : null}
               batteryCharging={battery.charging}
