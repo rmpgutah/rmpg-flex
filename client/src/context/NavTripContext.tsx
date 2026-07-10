@@ -256,13 +256,15 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   // current-position weather via the existing fetchWeather() util — same
   // client/util as WeatherWidget.tsx, but called WITH this provider's own
   // live GPS fix (gps.latitude/gps.longitude, already tracked above for trip
-  // detection) rather than fetchWeather's own no-arg one-shot geolocation
-  // prompt + hardcoded SLC fallback. Falling back to that no-arg behavior only
-  // when a GPS fix isn't yet available avoids silently reporting weather for
-  // the wrong place while a unit patrols far from SLC. Read the coords via a
-  // ref (not an effect dependency) so the polling interval isn't torn down
-  // and recreated on every GPS tick — matches the interval-with-cleanup
-  // pattern used by useCachedBasemap.ts and the activeTripIdRef pattern above.
+  // detection). This provider is mounted app-wide (App.tsx), not just on nav
+  // pages, so we NEVER fall back to fetchWeather()'s no-arg one-shot
+  // geolocation prompt + hardcoded SLC fallback — that would fire a
+  // geolocation prompt and report wrong-location weather for every logged-in
+  // user before a real GPS fix has arrived. Skip the poll entirely until a
+  // real fix is available. Read the coords via a ref (not an effect
+  // dependency) so the polling interval isn't torn down and recreated on
+  // every GPS tick — matches the interval-with-cleanup pattern used by
+  // useCachedBasemap.ts and the activeTripIdRef pattern above.
   const [weatherHazard, setWeatherHazard] = useState<string | null>(null);
   const gpsPositionRef = useRef({ lat: gps.latitude, lng: gps.longitude });
   gpsPositionRef.current = { lat: gps.latitude, lng: gps.longitude };
@@ -271,7 +273,10 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
     const poll = async () => {
       try {
         const { lat, lng } = gpsPositionRef.current;
-        const w = lat != null && lng != null ? await fetchWeather(lat, lng) : await fetchWeather();
+        // Skip until we have a real GPS fix — don't fall back to the no-arg
+        // geolocation-prompt + SLC default (wrong place, prompt on app load).
+        if (lat == null || lng == null) return;
+        const w = await fetchWeather(lat, lng);
         if (cancelled || !w) return;
         setWeatherHazard(weatherHazardLabel({ conditionCode: w.conditionCode, windSpeed: w.windSpeed }));
       } catch (err) {

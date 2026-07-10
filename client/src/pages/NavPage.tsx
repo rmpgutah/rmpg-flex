@@ -1054,8 +1054,12 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         const timeoutPromise = new Promise<null>((resolve) => {
           timeoutId = setTimeout(() => resolve(null), ROUTE_HEATMAP_TOKEN_TIMEOUT_MS);
         });
-        const token = await Promise.race([tokenPromise, timeoutPromise]);
-        clearTimeout(timeoutId!);
+        let token: string | null;
+        try {
+          token = await Promise.race([tokenPromise, timeoutPromise]);
+        } finally {
+          clearTimeout(timeoutId!);
+        }
         if (!token || cancelled || !containerRef.current) {
           if (!cancelled) setError('Mapbox token not configured');
           return;
