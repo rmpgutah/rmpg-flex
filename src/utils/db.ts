@@ -265,3 +265,20 @@ export async function ensureNavFavoritesColumns(db: D1Database): Promise<void> {
   }
   _navFavoritesColumnsEnsured = await columnExists(db, 'nav_favorites', 'is_staging');
 }
+
+// ── users.dialer_oidc_sub reconciler ───────────────────────
+// Migration 0184_dialer_oidc_link.sql adds dialer_oidc_sub to users for
+// "Sign in with Dialer" OIDC SSO linking. Same self-heal situation as above.
+let _dialerOidcColumnsEnsured = false;
+
+export async function ensureDialerOidcColumns(db: D1Database): Promise<void> {
+  if (_dialerOidcColumnsEnsured) return;
+  try {
+    if (!(await columnExists(db, 'users', 'dialer_oidc_sub'))) {
+      await db.prepare(`ALTER TABLE users ADD COLUMN dialer_oidc_sub TEXT`).run();
+    }
+  } catch {
+    // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+  }
+  _dialerOidcColumnsEnsured = await columnExists(db, 'users', 'dialer_oidc_sub');
+}
