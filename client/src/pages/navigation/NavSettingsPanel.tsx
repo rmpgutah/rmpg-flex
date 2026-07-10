@@ -5,6 +5,7 @@ export type NavUnits = 'imperial' | 'metric';
 export type NavClock = '12h' | '24h';
 export type NavTheme = 'day' | 'night';
 export type NavOrientation = 'north-up' | 'heading-up';
+export type NavBrightnessMode = 'manual' | 'auto';
 
 export interface NavLayerPrefs {
   crime: boolean;
@@ -13,18 +14,28 @@ export interface NavLayerPrefs {
   alerts: boolean;
 }
 
+export interface NavHudTilePrefs {
+  drivingScore: boolean;
+  deviceHealth: boolean;
+  districtOverlay: boolean;
+  weather: boolean;
+  backupUnits: boolean;
+}
+
 export interface NavPrefs {
   units: NavUnits;
   clock: NavClock;
   theme: NavTheme;
   orientation: NavOrientation;
   volume: number;       // 0..1
-  brightness: number;   // 0..1
+  brightness: number;   // 0..1 — manual value; ignored while brightnessMode is 'auto'
+  brightnessMode: NavBrightnessMode; // #103 — 'auto' derives brightness from local hour (see brightnessForHour)
   layers: NavLayerPrefs;
   crimeLookbackDays: number;
   crimeClasses: { person: boolean; property: boolean; society: boolean; cfs: boolean };
   lastSearchQuery: string;
   overSpeedThresholdMph: number; // 0 disables the alert
+  hudTiles: NavHudTilePrefs;
 }
 
 export const NAV_PREFS_STORAGE_KEY = 'rmpg_nav_prefs';
@@ -41,11 +52,13 @@ export const DEFAULT_NAV_PREFS: NavPrefs = {
   orientation: 'heading-up',
   volume: 0.7,
   brightness: 1,
+  brightnessMode: 'manual', // preserves existing manual-slider behavior for anyone with saved prefs
   layers: { crime: false, crash: false, trail: true, alerts: true },
   crimeLookbackDays: 7,
   crimeClasses: { person: true, property: true, society: true, cfs: true },
   lastSearchQuery: '',
   overSpeedThresholdMph: 10,
+  hudTiles: { drivingScore: true, deviceHealth: true, districtOverlay: true, weather: true, backupUnits: true },
 };
 
 // #93 theme swatch base colors used for the live preview beside the segmented control.
@@ -53,6 +66,32 @@ const THEME_SWATCH: Record<NavTheme, { base: string; label: string }> = {
   day: { base: '#f4f1ea', label: 'Day' },
   night: { base: '#0a0a0a', label: 'Night' },
 };
+
+// #103 — Adaptive brightness curve: full brightness 07:00–19:00, dimmed to 0.35
+// overnight, with a 1hr linear ramp on each edge (06:00–07:00 and 19:00–20:00)
+// instead of a hard cutoff so the screen doesn't jump when a shift straddles
+// dawn/dusk. Reuses whatever local-hour fraction the caller passes in — driven
+// by the SAME hour signal the day/night theme resolves from (see NavigationPage's
+// nightTheme derivation), not a separate ambient-light source.
+export function brightnessForHour(hour: number): number {
+  const DAY = 1;
+  const NIGHT = 0.35;
+  if (hour >= 7 && hour < 19) return DAY;
+  if (hour >= 20 || hour < 6) return NIGHT;
+  if (hour >= 6 && hour < 7) return NIGHT + (DAY - NIGHT) * (hour - 6); // ramp up into morning
+  return DAY - (DAY - NIGHT) * (hour - 19); // 19–20: ramp down into evening
+}
+
+// #103 — single source of truth for "what brightness should the screen be right
+// now", given a prefs blob. Both NavPage.tsx (trip tracker) and
+// NavigationPage.tsx (live drive HUD) share the SAME rmpg_nav_prefs localStorage
+// key, so brightnessMode must be resolved in exactly one place — otherwise one
+// page can silently drift out of sync with the other (e.g. one dims for Auto,
+// the other stays pinned to the stale manual value). Always call this instead
+// of inlining `brightnessMode === 'auto' ? brightnessForHour(...) : brightness`.
+export function getEffectiveBrightness(prefs: Pick<NavPrefs, 'brightness' | 'brightnessMode'>): number {
+  return prefs.brightnessMode === 'auto' ? brightnessForHour(new Date().getHours()) : prefs.brightness;
+}
 
 export function loadNavPrefs(): NavPrefs {
   try {
@@ -64,6 +103,7 @@ export function loadNavPrefs(): NavPrefs {
       ...parsed,
       layers: { ...DEFAULT_NAV_PREFS.layers, ...(parsed?.layers ?? {}) },
       crimeClasses: { ...DEFAULT_NAV_PREFS.crimeClasses, ...(parsed?.crimeClasses ?? {}) },
+      hudTiles: { ...DEFAULT_NAV_PREFS.hudTiles, ...(parsed?.hudTiles ?? {}) },
     };
   } catch {
     return { ...DEFAULT_NAV_PREFS };
@@ -141,7 +181,7 @@ function Segmented<T extends string>({
 }
 
 function Slider({
-  label, value, onChange, min = 0, max = 100, formatValue,
+  label, value, onChange, min = 0, max = 100, formatValue, disabled,
 }: {
   label: string;
   value: number;
@@ -151,11 +191,13 @@ function Slider({
   max?: number;
   /** Formats the raw slider value for display. Defaults to the original "NN%" percent format. */
   formatValue?: (raw: number) => string;
+  /** Read-only: still reflects `value` (e.g. a computed auto value), but can't be dragged. */
+  disabled?: boolean;
 }) {
   const raw = formatValue ? value : Math.round(value * 100);
   const display = formatValue ? formatValue(value) : `${raw}%`;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1" style={disabled ? { opacity: 0.5 } : undefined}>
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</span>
         <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{display}</span>
@@ -165,6 +207,7 @@ function Slider({
         min={min}
         max={max}
         value={raw}
+        disabled={disabled}
         onChange={(e) => onChange(formatValue ? Number(e.target.value) : Number(e.target.value) / 100)}
         className="w-full"
         style={{ accentColor: '#d4a017' }}
@@ -290,7 +333,18 @@ export default function NavSettingsPanel({
         />
 
         <Slider label="Voice volume" value={prefs.volume} onChange={(v) => setPref('volume', v)} />
-        <Slider label="Brightness" value={prefs.brightness} onChange={(v) => setPref('brightness', v)} />
+        <Segmented<NavBrightnessMode>
+          label="Brightness mode"
+          value={prefs.brightnessMode}
+          options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]}
+          onChange={(v) => setPref('brightnessMode', v)}
+        />
+        <Slider
+          label={prefs.brightnessMode === 'auto' ? 'Brightness (auto, time of day)' : 'Brightness'}
+          value={getEffectiveBrightness(prefs)}
+          onChange={(v) => setPref('brightness', v)}
+          disabled={prefs.brightnessMode === 'auto'}
+        />
         <Slider
           label="Over-speed alert (mph over limit)"
           value={prefs.overSpeedThresholdMph}
@@ -307,6 +361,17 @@ export default function NavSettingsPanel({
             <LayerToggle label="Crash" checked={prefs.layers.crash} onChange={(v) => setPref('layers', { ...prefs.layers, crash: v })} />
             <LayerToggle label="Trail" checked={prefs.layers.trail} onChange={(v) => setPref('layers', { ...prefs.layers, trail: v })} />
             <LayerToggle label="Alerts" checked={prefs.layers.alerts} onChange={(v) => setPref('layers', { ...prefs.layers, alerts: v })} />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>HUD tiles</div>
+          <div className="grid grid-cols-2 gap-2">
+            <LayerToggle label="Driving score" checked={prefs.hudTiles.drivingScore} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, drivingScore: v })} />
+            <LayerToggle label="Device health" checked={prefs.hudTiles.deviceHealth} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, deviceHealth: v })} />
+            <LayerToggle label="District overlay" checked={prefs.hudTiles.districtOverlay} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, districtOverlay: v })} />
+            <LayerToggle label="Weather" checked={prefs.hudTiles.weather} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, weather: v })} />
+            <LayerToggle label="Backup units" checked={prefs.hudTiles.backupUnits} onChange={(v) => setPref('hudTiles', { ...prefs.hudTiles, backupUnits: v })} />
           </div>
         </div>
       </div>

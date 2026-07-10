@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, ensureNavFavoritesColumns } from '../utils/db';
 
 const navFavorites = new Hono<Env>();
 
@@ -11,23 +11,30 @@ interface FavoriteRow {
   lat: number;
   lng: number;
   address: string | null;
+  is_staging: number | null;
   created_at: string;
 }
 
 // GET /api/nav/favorites — this user's saved destinations, newest first.
+// ?staging=true restricts to favorites flagged as parking/staging spots.
 navFavorites.get('/', async (c) => {
   const db = getDb(c.env);
+  await ensureNavFavoritesColumns(db);
   const userId = c.get('userId') as number;
-  const rows = await query<FavoriteRow>(db,
-    'SELECT * FROM nav_favorites WHERE user_id = ? ORDER BY created_at DESC', userId);
+  const stagingOnly = c.req.query('staging') === 'true';
+  const sql = stagingOnly
+    ? 'SELECT * FROM nav_favorites WHERE user_id = ? AND is_staging = 1 ORDER BY created_at DESC'
+    : 'SELECT * FROM nav_favorites WHERE user_id = ? ORDER BY created_at DESC';
+  const rows = await query<FavoriteRow>(db, sql, userId);
   return c.json(rows);
 });
 
 // POST /api/nav/favorites — save a new favorite.
 navFavorites.post('/', async (c) => {
   const db = getDb(c.env);
+  await ensureNavFavoritesColumns(db);
   const userId = c.get('userId') as number;
-  const body = await c.req.json<{ label: string; lat: number; lng: number; address?: string }>();
+  const body = await c.req.json<{ label: string; lat: number; lng: number; address?: string; is_staging?: boolean }>();
   const label = typeof body.label === 'string' ? body.label.trim() : '';
   if (!label || typeof body.lat !== 'number' || typeof body.lng !== 'number') {
     return c.json({ error: 'label, lat, lng are required' }, 400);
@@ -35,9 +42,10 @@ navFavorites.post('/', async (c) => {
   if (body.lat < -90 || body.lat > 90 || body.lng < -180 || body.lng > 180) {
     return c.json({ error: 'lat must be in [-90, 90] and lng must be in [-180, 180]' }, 400);
   }
+  const isStaging = body.is_staging === true ? 1 : 0;
   const result = await execute(db,
-    'INSERT INTO nav_favorites (user_id, label, lat, lng, address) VALUES (?, ?, ?, ?, ?)',
-    userId, label, body.lat, body.lng, body.address ?? null);
+    'INSERT INTO nav_favorites (user_id, label, lat, lng, address, is_staging) VALUES (?, ?, ?, ?, ?, ?)',
+    userId, label, body.lat, body.lng, body.address ?? null, isStaging);
   return c.json({ success: true, id: result.meta.last_row_id });
 });
 

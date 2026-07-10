@@ -3648,7 +3648,7 @@ export interface CpgpsAlert {
 
 // ── Nav Trip Log ─────────────────────────────────────────────
 
-export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+export type NavTripStatus = 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
 
 export interface NavRoutePoint {
   lat: number;

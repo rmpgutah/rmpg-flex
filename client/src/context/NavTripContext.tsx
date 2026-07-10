@@ -15,7 +15,7 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useNavGuidanceEngine, type NavGuidanceEngine } from '../hooks/useNavGuidanceEngine';
@@ -23,6 +23,9 @@ import type { NavWaypoint } from '../hooks/waypointAdvance';
 import { useWebSocket } from './WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
 import { stationPauseAction, type GeofenceAlertPayload } from './stationPauseLogic';
+import { zoneEntryAlert, type ZoneAlertResult } from './zoneAlertLogic';
+import { fetchWeather } from '../utils/weather';
+import { weatherHazardLabel } from '../pages/navigation/weatherHazard';
 
 type NavTripDetection = ReturnType<typeof useNavTripDetection>;
 
@@ -39,6 +42,19 @@ export interface NavTripContextValue extends NavTripDetection {
    *  /api/dispatch/routing/unit/:unitId) and hand it to the guidance engine
    *  as a multi-stop route. No-ops if the unit has no active saved route. */
   loadUnitRoute: (unitId: string) => Promise<void>;
+  /** True while the active trip is paused for a station-geofence dwell (set by
+   *  the auto pause/resume subscription below). Drives the HUD's "Trip Paused"
+   *  badge — a locally-tracked mirror of the trip's server-side status, not a
+   *  round-trip poll, since the pause/resume calls already originate here. */
+  isTripPaused: boolean;
+  /** Transient "entering zone" HUD notice for generic (non-station) alert
+   *  geofences — set by the same geofence_alert subscription that drives
+   *  station pause/resume, auto-cleared a few seconds after each enter event. */
+  zoneAlert: ZoneAlertResult | null;
+  /** Short hazard label ("Icy conditions" / "Snow" / "High wind" /
+   *  "Low visibility") derived from the officer's current-position weather,
+   *  or null when nothing hazardous is reported. Drives HudWeatherBadge. */
+  weatherHazard: string | null;
 }
 
 /** Shape returned per-row by GET /api/dispatch/routing/unit/:unitId
@@ -166,6 +182,38 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   const myUnitIdRef = useRef(gps.unitId);
   myUnitIdRef.current = gps.unitId;
 
+  // Local mirror of the trip's paused/active status, driven by the same
+  // pause/resume calls this subscription already makes — flips the badge
+  // instantly without waiting for the next /trip/current poll. Reset when
+  // the active trip changes (a fresh trip is never paused).
+  //
+  // This is OR'd with the server-truth `trip.currentTrip.status` below (now
+  // that GET /trip/current's status filter includes 'paused' — see nav.ts —
+  // a trip adopted on mount/foreground can itself report 'paused') so the
+  // badge is correct even when this tab never fired the pause/resume call
+  // itself (e.g. the app was reopened while already paused at the station).
+  const [isTripPausedLocal, setIsTripPausedLocal] = useState(false);
+  useEffect(() => { setIsTripPausedLocal(false); }, [trip.detection.activeTripId]);
+  // Also reset if the server-truth trip has closed out from under us (e.g. the
+  // stale reaper fired on this paused trip) — otherwise a local-true set by an
+  // earlier pause could outlive the trip it referred to and leave the badge
+  // stuck on for a trip that's actually completed/cancelled.
+  useEffect(() => {
+    if (trip.currentTrip?.status === 'completed' || trip.currentTrip?.status === 'cancelled') {
+      setIsTripPausedLocal(false);
+    }
+  }, [trip.currentTrip?.status]);
+  const isTripPaused = isTripPausedLocal || trip.currentTrip?.status === 'paused';
+
+  // Transient generic zone-entry notice (alert / patrol_required zones).
+  // Auto-dismissed a few seconds after each enter event, matching the
+  // HudArrivedBanner/HudOverSpeedBanner auto-dismiss pattern in NavigationPage.
+  const [zoneAlert, setZoneAlert] = useState<ZoneAlertResult | null>(null);
+  const zoneAlertHideTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (zoneAlertHideTimerRef.current != null) window.clearTimeout(zoneAlertHideTimerRef.current);
+  }, []);
+
   useEffect(() => {
     const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -180,22 +228,68 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
       const myUnitId = myUnitIdRef.current;
       if (!myUnitId || payload.unitId !== myUnitId) return;
 
+      const zoneAlertResult = zoneEntryAlert(payload);
+      if (zoneAlertResult) {
+        setZoneAlert(zoneAlertResult);
+        if (zoneAlertHideTimerRef.current != null) window.clearTimeout(zoneAlertHideTimerRef.current);
+        zoneAlertHideTimerRef.current = window.setTimeout(() => setZoneAlert(null), 5000);
+      }
+
       const action = stationPauseAction(payload);
       if (!action) return;
 
       const tripId = activeTripIdRef.current;
       if (!tripId) return;
 
-      apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' }).catch((err) => {
-        console.error(`[NavTripContext] station geofence ${action} failed:`, err);
-      });
+      apiFetch(`/nav/trip/${tripId}/${action}`, { method: 'PUT' })
+        .then(() => setIsTripPausedLocal(action === 'pause'))
+        .catch((err) => {
+          console.error(`[NavTripContext] station geofence ${action} failed:`, err);
+        });
     });
 
     return () => { unsubGeofence(); };
   }, [subscribe]);
 
+  // ── Weather-aware hazard polling ──────────────────────────────────────────
+  // Low-frequency poll (every 10 minutes, NOT per-GPS-tick) of the officer's
+  // current-position weather via the existing fetchWeather() util — same
+  // client/util as WeatherWidget.tsx, but called WITH this provider's own
+  // live GPS fix (gps.latitude/gps.longitude, already tracked above for trip
+  // detection). This provider is mounted app-wide (App.tsx), not just on nav
+  // pages, so we NEVER fall back to fetchWeather()'s no-arg one-shot
+  // geolocation prompt + hardcoded SLC fallback — that would fire a
+  // geolocation prompt and report wrong-location weather for every logged-in
+  // user before a real GPS fix has arrived. Skip the poll entirely until a
+  // real fix is available. Read the coords via a ref (not an effect
+  // dependency) so the polling interval isn't torn down and recreated on
+  // every GPS tick — matches the interval-with-cleanup pattern used by
+  // useCachedBasemap.ts and the activeTripIdRef pattern above.
+  const [weatherHazard, setWeatherHazard] = useState<string | null>(null);
+  const gpsPositionRef = useRef({ lat: gps.latitude, lng: gps.longitude });
+  gpsPositionRef.current = { lat: gps.latitude, lng: gps.longitude };
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { lat, lng } = gpsPositionRef.current;
+        // Skip until we have a real GPS fix — don't fall back to the no-arg
+        // geolocation-prompt + SLC default (wrong place, prompt on app load).
+        if (lat == null || lng == null) return;
+        const w = await fetchWeather(lat, lng);
+        if (cancelled || !w) return;
+        setWeatherHazard(weatherHazardLabel({ conditionCode: w.conditionCode, windSpeed: w.windSpeed }));
+      } catch (err) {
+        console.error('[NavTripContext] weather poll failed:', err);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 10 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   return (
-    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute }}>
+    <NavTripContext.Provider value={{ ...trip, gps, guidance, loadUnitRoute, isTripPaused, zoneAlert, weatherHazard }}>
       {children}
     </NavTripContext.Provider>
   );

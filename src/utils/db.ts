@@ -246,3 +246,22 @@ export async function ensureTimeEntryColumns(db: D1Database): Promise<void> {
   }
   _timeEntryColumnsEnsured = await columnExists(db, 'time_entries', 'clock_in_local');
 }
+
+// ── nav_favorites staging-flag reconciler ──────────────────
+// Migration 0183_nav_favorites_staging.sql adds is_staging to
+// nav_favorites so officers can flag a saved destination as a
+// parking/staging spot. Same continue-on-error/no-IF-NOT-EXISTS
+// situation as above — self-heal at runtime, once per isolate.
+let _navFavoritesColumnsEnsured = false;
+
+export async function ensureNavFavoritesColumns(db: D1Database): Promise<void> {
+  if (_navFavoritesColumnsEnsured) return;
+  try {
+    if (!(await columnExists(db, 'nav_favorites', 'is_staging'))) {
+      await db.prepare(`ALTER TABLE nav_favorites ADD COLUMN is_staging INTEGER DEFAULT 0`).run();
+    }
+  } catch {
+    // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+  }
+  _navFavoritesColumnsEnsured = await columnExists(db, 'nav_favorites', 'is_staging');
+}

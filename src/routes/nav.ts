@@ -74,15 +74,9 @@ function routeDistance(points: RoutePoint[]): number {
  *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
  *  safe to call at the top of the read + start paths. */
 const STALE_ACTIVE_MIN = 10;
-// KNOWN GAP: this only reaps status = 'active' trips. A trip stuck in
-// 'paused' (e.g. a station-geofence pause whose resume event never fires —
-// missed websocket message, app closed at the station, etc.) is NOT touched
-// here and will sit indefinitely. It's low risk — /trip/current's IN-list
-// below is ('pending','active') only, so a stuck paused trip won't surface
-// as the "current trip" or block /trip/start's active-trip guard — but it IS
-// a real data-hygiene gap: a paused trip can become permanently orphaned.
-// Not fixed here; tracked as a follow-up to extend this sweep (or
-// /trip/current's IN-list) to also consider 'paused'.
+// Reaps both 'active' and 'paused' trips — a paused trip whose resume event
+// never fires (missed websocket message, app closed at the station) is
+// treated the same as a stale active one: closed out, not left orphaned.
 async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
   await execute(db,
     `UPDATE nav_trip_log
@@ -91,7 +85,7 @@ async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: numbe
          duration_seconds = CAST((julianday(COALESCE(updated_at, start_time)) - julianday(start_time)) * 86400 AS INTEGER),
          notes = COALESCE(notes, '') || ' [auto-closed: stale active trip — no update in ${STALE_ACTIVE_MIN}+ min]',
          updated_at = datetime('now','localtime')
-     WHERE officer_id = ? AND status = 'active'
+     WHERE officer_id = ? AND status IN ('active', 'paused')
        AND COALESCE(updated_at, start_time) < datetime('now','localtime','-${STALE_ACTIVE_MIN} minutes')`,
     userId);
 }
@@ -113,7 +107,7 @@ nav.get('/trip/current', async (c) => {
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
        LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
-       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active')
+       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active','paused')
        ORDER BY ntl.start_time DESC LIMIT 1`,
       userId);
     if (!trip) return c.json({ trip: null });
@@ -147,12 +141,16 @@ nav.post('/trip/start', async (c) => {
       `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
-    // Prevent duplicate active trips (a genuinely fresh active trip still blocks —
-    // you're already on one; stale ones were just auto-closed above)
-    const existing = await queryFirst<{ id: number }>(db,
-      `SELECT id FROM nav_trip_log WHERE officer_id = ? AND status = 'active' LIMIT 1`, userId);
+    // Prevent duplicate active/paused trips (a genuinely fresh active trip still
+    // blocks — you're already on one; stale ones were just auto-closed above).
+    // 'paused' is included for the same reason GET /trip/current's IN-list and
+    // closeStaleActiveTrips now include it: a trip dwelling at a station
+    // geofence is still the officer's one trip in progress — without this an
+    // officer paused at the station could start a second, concurrent trip.
+    const existing = await queryFirst<{ id: number; status: string }>(db,
+      `SELECT id, status FROM nav_trip_log WHERE officer_id = ? AND status IN ('active', 'paused') LIMIT 1`, userId);
     if (existing) {
-      return c.json({ error: 'Active trip already exists', trip_id: existing.id }, 409);
+      return c.json({ error: `${existing.status === 'paused' ? 'Paused' : 'Active'} trip already exists`, trip_id: existing.id }, 409);
     }
 
     // Determine vehicle: explicit > take-home > unit assignment

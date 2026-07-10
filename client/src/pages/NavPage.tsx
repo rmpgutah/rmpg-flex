@@ -6,7 +6,12 @@ import {
   Settings, Satellite, WifiOff, Star,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
+import { getMapboxToken } from '../utils/mapboxApiKey';
+import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { useMapHeatmap, type HeatmapPoint } from '../hooks/useMapHeatmap';
 import { useNavFavorites, type NavFavorite } from '../hooks/useNavFavorites';
 import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -24,13 +29,30 @@ import NavSettingsPanel, {
   type NavPrefs,
   loadNavPrefs,
   saveNavPrefs,
+  getEffectiveBrightness,
 } from './navigation/NavSettingsPanel';
 import { tripDrivingScore, type HarshCounts } from './navigation/drivingScore';
+import { harshEventColor } from './navigation/drivingScoreColor';
 
 // Export a completed trip's breadcrumb track to GPX 1.1 (mapping / evidence) or
 // CSV (spreadsheets). route_points carry { lat, lng, ts?, speed?, heading? }.
 function tripFileStamp(trip: NavTrip): string {
   return `${(trip.start_time || '').replace(/[: ]/g, '-').slice(0, 16) || 'trip'}-${trip.id}`;
+}
+
+// Small local haversine — mirrors the pattern used elsewhere in the nav
+// hooks (e.g. useNavTravel.ts's haversineMiles), but that one isn't
+// exported, so a minimal equivalent lives here for staging-favorite
+// proximity (Task 12).
+function haversineMilesLocal(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8; // Earth radius, miles
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 function exportTripGpx(trip: NavTrip): void {
   const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
@@ -53,6 +75,7 @@ function exportTripCsv(trip: NavTrip): void {
 const STATUS_COLOR: Record<NavTripStatus, string> = {
   pending: '#f59e0b',
   active: '#22c55e',
+  paused: '#38bdf8',
   completed: '#3b82f6',
   cancelled: '#6b7280',
 };
@@ -60,6 +83,7 @@ const STATUS_COLOR: Record<NavTripStatus, string> = {
 const STATUS_LABEL: Record<NavTripStatus, string> = {
   pending: 'Pending',
   active: 'Active',
+  paused: 'Paused',
   completed: 'Completed',
   cancelled: 'Cancelled',
 };
@@ -215,6 +239,24 @@ export default function NavPage() {
   const [saveFavoriteTarget, setSaveFavoriteTarget] = useState<{ lat: number; lng: number } | null>(null);
   const [saveFavoriteName, setSaveFavoriteName] = useState('');
   const saveFavoriteOpen = saveFavoriteTarget != null;
+
+  // -- Staging/parking suggestions near an active call (Task 12) --
+  // NavPage's trip model (NavTrip) has no call_id or destination lat/lng —
+  // it tracks driving trips, not a linked CFS — so there is no "active call
+  // location" available on this page to anchor against. The closest usable
+  // proxy is the officer's own live GPS fix (gps.latitude/longitude from
+  // NavTripContext), which approximates the call scene once the officer has
+  // responded there. Any nav_favorites row flagged is_staging within
+  // STAGING_RADIUS_MILES of that position is surfaced as a suggestion.
+  const STAGING_RADIUS_MILES = 0.5;
+  const nearbyStagingFavorites = useMemo(() => {
+    if (gps?.latitude == null || gps?.longitude == null) return [];
+    return favorites.filter((fav) => {
+      if (!fav.is_staging) return false;
+      const dist = haversineMilesLocal(gps.latitude!, gps.longitude!, fav.lat, fav.lng);
+      return dist <= STAGING_RADIUS_MILES;
+    });
+  }, [favorites, gps?.latitude, gps?.longitude]);
 
   // -- Driving score trend (Task 8) — fetches recent closed trips' harsh-event
   // counts for the active unit (falls back to the current officer if no unit
@@ -418,15 +460,18 @@ export default function NavPage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-base relative">
-      {/* #76 Brightness/dim overlay for night driving */}
-      {prefs.brightness < 1 && (
+      {/* #76/#103 Brightness/dim overlay for night driving — resolved via the
+          shared getEffectiveBrightness() (also used by NavigationPage.tsx's
+          overlay) so Auto mode behaves identically on both pages that share
+          the same rmpg_nav_prefs blob. */}
+      {getEffectiveBrightness(prefs) < 1 && (
         <div
           aria-hidden
           style={{
             position: 'absolute',
             inset: 0,
             background: '#000',
-            opacity: (1 - prefs.brightness) * 0.6,
+            opacity: (1 - getEffectiveBrightness(prefs)) * 0.6,
             pointerEvents: 'none',
             zIndex: 50,
           }}
@@ -643,6 +688,7 @@ export default function NavPage() {
           />
         )}
         {scoreTrend.length > 0 && <DrivingScoreTrend trend={scoreTrend} />}
+        {tripHistory.length > 0 && <RouteHeatmapPanel trips={tripHistory} />}
       </div>
 
       {/* #74 Acquiring-GPS / no-fix full-screen empty state */}
@@ -684,6 +730,7 @@ export default function NavPage() {
       {favoritesOpen && (
         <FavoritesPanel
           favorites={favorites}
+          nearbyStaging={nearbyStagingFavorites}
           onClose={() => setFavoritesOpen(false)}
           onSaveCurrentPosition={handleSaveCurrentPositionAsFavorite}
           canSaveCurrentPosition={gps.latitude != null && gps.longitude != null}
@@ -759,9 +806,10 @@ export default function NavPage() {
 // -- Favorites Panel (bottom sheet, styled after NavSettingsPanel) --
 
 function FavoritesPanel({
-  favorites, onClose, onSaveCurrentPosition, canSaveCurrentPosition, getNavigateHref, onRemove,
+  favorites, nearbyStaging, onClose, onSaveCurrentPosition, canSaveCurrentPosition, getNavigateHref, onRemove,
 }: {
   favorites: NavFavorite[];
+  nearbyStaging: NavFavorite[];
   onClose: () => void;
   onSaveCurrentPosition: () => void;
   canSaveCurrentPosition: boolean;
@@ -804,6 +852,31 @@ function FavoritesPanel({
       </div>
 
       <div className="p-3 space-y-2">
+        {nearbyStaging.length > 0 && (
+          <div className="rounded-sm border border-subtle p-2 space-y-1.5" style={{ background: 'var(--surface-sunken)' }}>
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-brand-gold-500">
+              Staging Spots Nearby
+            </div>
+            {nearbyStaging.map((fav) => (
+              <div key={fav.id} className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold text-rmpg-300 truncate">{fav.label}</div>
+                  <div className="text-[9px] font-mono text-rmpg-500">
+                    {fav.address || `${fav.lat.toFixed(5)}, ${fav.lng.toFixed(5)}`}
+                  </div>
+                </div>
+                <Link
+                  to={getNavigateHref(fav)}
+                  className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors shrink-0 text-brand-gold-500"
+                  title={`Navigate to ${fav.label}`}
+                >
+                  <Compass size={10} /> Go
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onSaveCurrentPosition}
@@ -871,11 +944,6 @@ function FavoritesPanel({
 // (same gold line + gradient fill), and per-point color uses the same
 // good/caution/bad thresholds as HudDrivingScore in hud/HudInstruments.tsx
 // (0-1 harsh events = green, 2-5 = amber, 6+ = red).
-function driveScoreColor(counts: HarshCounts): string {
-  const events = counts.harsh_accel_count + counts.harsh_brake_count + counts.harsh_corner_count;
-  return events >= 6 ? '#ef4444' : events >= 2 ? '#f59e0b' : '#22c55e';
-}
-
 function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; start_time: string })[] }) {
   const chrono = useMemo(() => [...trend].reverse(), [trend]);
   const scores = useMemo(() => chrono.map((t) => tripDrivingScore(t)), [chrono]);
@@ -918,11 +986,158 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
               {chrono.map((t, i) => {
                 const cx = n < 2 ? 0 : (i / (n - 1)) * W;
                 const cy = H - Math.min(H, (scores[i] / 100) * H);
-                return <circle key={t.id} cx={cx} cy={cy} r="2.5" fill={driveScoreColor(t)} />;
+                return <circle key={t.id} cx={cx} cy={cy} r="2.5" fill={harshEventColor(t.harsh_accel_count + t.harsh_brake_count + t.harsh_corner_count)} />;
               })}
             </svg>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// -- Route/Pattern Heatmap (Task 10) --
+//
+// Reuses the existing Mapbox heatmap infra (useMapHeatmap — same hook that
+// drives the Crime Heatmap on the full Map page) to visualize an officer's
+// OWN historical trip routes rather than incident density. Data comes from
+// the trip history already fetched for the History tab / driving-score
+// trend above (tripHistory / /nav/trip/history), so this is purely a data
+// adapter: flatten every closed trip's route_points into HeatmapPoint[]
+// and feed the same hook. A small dedicated Mapbox map instance is mounted
+// here (mirrors DashboardMiniMap.tsx's minimal init pattern) since NavPage's
+// primary NavMapView doesn't expose its underlying mapboxgl.Map instance.
+const ROUTE_HEATMAP_TOKEN_TIMEOUT_MS = 8_000;
+// Breadcrumbs are logged every few seconds, so 50 trips of any real length
+// can flatten into tens of thousands of points — rebuilding the GeoJSON
+// heatmap source with that many points in one synchronous call is a real
+// jank risk on mobile MDTs. Cap the total via stride sampling (take every
+// Nth point) rather than dropping whole trips, so route shape/coverage
+// across the full history is preserved.
+const ROUTE_HEATMAP_MAX_POINTS = 5_000;
+
+function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const points = useMemo<HeatmapPoint[]>(() => {
+    const all: HeatmapPoint[] = [];
+    for (const trip of trips) {
+      const route = Array.isArray(trip.route_points) ? trip.route_points : [];
+      for (const p of route) {
+        if (typeof p.lat === 'number' && typeof p.lng === 'number') {
+          all.push({ latitude: p.lat, longitude: p.lng, weight: 0.5 });
+        }
+      }
+    }
+    if (all.length <= ROUTE_HEATMAP_MAX_POINTS) return all;
+    const stride = Math.ceil(all.length / ROUTE_HEATMAP_MAX_POINTS);
+    const sampled: HeatmapPoint[] = [];
+    for (let i = 0; i < all.length; i += stride) sampled.push(all[i]);
+    return sampled;
+  }, [trips]);
+
+  const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let cancelled = false;
+
+    injectMapboxStyles();
+
+    (async () => {
+      try {
+        const tokenPromise = getMapboxToken();
+        let timeoutId: ReturnType<typeof setTimeout>;
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutId = setTimeout(() => resolve(null), ROUTE_HEATMAP_TOKEN_TIMEOUT_MS);
+        });
+        let token: string | null;
+        try {
+          token = await Promise.race([tokenPromise, timeoutPromise]);
+        } finally {
+          clearTimeout(timeoutId!);
+        }
+        if (!token || cancelled || !containerRef.current) {
+          if (!cancelled) setError('Mapbox token not configured');
+          return;
+        }
+
+        mapboxgl.accessToken = token;
+        const center: [number, number] = points.length
+          ? [points[0].longitude, points[0].latitude]
+          : [-111.891, 40.7608];
+        const map = new mapboxgl.Map({
+          container: containerRef.current,
+          style: 'mapbox://styles/mapbox/dark-v11',
+          center,
+          zoom: 11,
+          interactive: true,
+          attributionControl: false,
+          dragRotate: false,
+          pitchWithRotate: false,
+        });
+        map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+        map.on('load', () => { if (!cancelled) setMapLoaded(true); });
+        map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
+        mapRef.current = map;
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+    // Map is created once per panel mount; point data is synced separately below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Enable the heatmap layer + push points once the map + data are ready,
+  // and fit the camera to the route bounds.
+  useEffect(() => {
+    if (!mapLoaded || points.length === 0) return;
+    heatmap.updatePoints(points);
+    heatmap.setEnabled(true);
+
+    const map = mapRef.current;
+    if (map) {
+      const bounds = new mapboxgl.LngLatBounds();
+      points.forEach((p) => bounds.extend([p.longitude, p.latitude]));
+      map.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
+    }
+    // heatmap is a stable-shaped object from the hook; only re-run on data change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded, points]);
+
+  return (
+    <div className="rounded-sm border border-subtle p-3" style={{ background: 'var(--surface-raised)' }}>
+      <PanelTitleBar title="MY ROUTES" icon={MapPinned} />
+      <div className="relative mt-2 rounded-sm overflow-hidden" style={{ height: 220 }}>
+        <div ref={containerRef} className="w-full h-full" />
+        {!mapLoaded && !error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/80">
+            <Loader2 className="w-5 h-5 text-rmpg-400 animate-spin" />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/90 px-4 text-center">
+            <span className="text-[10px]" style={{ color: 'var(--sev-warn)' }}>{error}</span>
+          </div>
+        )}
+        {mapLoaded && !error && points.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-base/80 px-4 text-center">
+            <span className="text-[10px] text-rmpg-500">No trip breadcrumb data yet</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-1.5 text-[9px] uppercase tracking-wider text-rmpg-500">
+        Density of GPS breadcrumbs across your last {trips.length} trip{trips.length === 1 ? '' : 's'}
       </div>
     </div>
   );

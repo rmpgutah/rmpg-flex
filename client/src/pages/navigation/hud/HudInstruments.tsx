@@ -11,12 +11,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Download, Volume2, VolumeX, Crosshair, Plus, Minus, Box, ChevronDown, ChevronUp,
   Navigation2, CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, Square, Layers, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Square, Layers, Users, type LucideIcon,
 } from 'lucide-react';
 import {
   type SpeedUnit, speedInUnit, speedSuffix, speedColor, speedBands, formatHeading,
 } from './hudUnits';
 import { GAUGE_R, GAUGE_CIRC, GAUGE_SWEEP, gaugeTick } from './gaugeGeometry';
+import { harshEventColor } from '../drivingScoreColor';
 
 const prefersReducedMotion = (): boolean => {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -278,12 +279,15 @@ export function HudStatTile({
 }
 
 // ── #40 — GPS fix-quality pill ──────────────────────────────────────────────────
+export const GPS_GOOD_THRESHOLD_M = 10;
+export const GPS_POOR_THRESHOLD_M = 30;
+
 export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   const a = accuracy;
   const { color, label } = a == null
     ? { color: 'var(--rmpg-500)', label: 'NO FIX' }
-    : a < 10 ? { color: '#22c55e', label: 'GOOD' }
-      : a < 30 ? { color: '#f59e0b', label: 'FAIR' }
+    : a < GPS_GOOD_THRESHOLD_M ? { color: '#22c55e', label: 'GOOD' }
+      : a < GPS_POOR_THRESHOLD_M ? { color: '#f59e0b', label: 'FAIR' }
         : { color: '#ef4444', label: 'POOR' };
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${color}`, color, borderRadius: 2 }} title="GPS fix quality">
@@ -403,7 +407,7 @@ export function HudDrivingScore({
   peakLong, peakLat, hardBrakes, hardAccels,
 }: { peakLong: number; peakLat: number; hardBrakes: number; hardAccels: number }) {
   const events = hardBrakes + hardAccels;
-  const color = events >= 6 ? '#ef4444' : events >= 2 ? '#f59e0b' : '#22c55e';
+  const color = harshEventColor(events);
   return (
     <div className="flex flex-col px-1.5 py-1 border border-rmpg-800" style={{ borderRadius: 2, background: 'rgba(20,20,20,0.6)' }} title="Driving score — peak g + hard events">
       <div className="text-[7px] uppercase tracking-wider text-rmpg-600 leading-none">Drive</div>
@@ -466,11 +470,13 @@ export function HudMuteToggle({ muted, onToggle }: { muted: boolean; onToggle: (
 export function HudMapControls({
   followActive, onRecenter, onZoomIn, onZoomOut, pitched, onTogglePitch,
   showDistricts, onToggleDistricts,
+  showBackupUnits, onToggleBackupUnits,
 }: {
   followActive: boolean; onRecenter: () => void;
   onZoomIn: () => void; onZoomOut: () => void;
   pitched: boolean; onTogglePitch: () => void;
   showDistricts?: boolean; onToggleDistricts?: () => void;
+  showBackupUnits?: boolean; onToggleBackupUnits?: () => void;
 }) {
   const btn = "flex items-center justify-center w-8 h-8 border";
   return (
@@ -496,6 +502,12 @@ export function HudMapControls({
         <button type="button" onClick={onToggleDistricts} aria-label={showDistricts ? 'Hide district/beat overlay' : 'Show district/beat overlay'} title={showDistricts ? 'District/beat overlay on' : 'District/beat overlay off'}
           className={btn} style={{ borderRadius: 2, borderColor: showDistricts ? '#d4a017' : '#3a3a3a', color: showDistricts ? '#d4a017' : 'var(--rmpg-400)', background: showDistricts ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
           <Layers className="w-4 h-4" />
+        </button>
+      )}
+      {onToggleBackupUnits && (
+        <button type="button" onClick={onToggleBackupUnits} aria-label={showBackupUnits ? 'Hide nearby backup units' : 'Show nearby backup units'} title={showBackupUnits ? 'Backup unit overlay on' : 'Backup unit overlay off'}
+          className={btn} style={{ borderRadius: 2, borderColor: showBackupUnits ? '#d4a017' : '#3a3a3a', color: showBackupUnits ? '#d4a017' : 'var(--rmpg-400)', background: showBackupUnits ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+          <Users className="w-4 h-4" />
         </button>
       )}
     </div>
@@ -540,8 +552,29 @@ export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
   );
 }
 
+// ── generic geofence zone-entry alert (alert / patrol_required zones) ───────────
+const ZONE_ALERT_LABELS: Record<string, string> = {
+  alert: 'Entering: Alert Zone',
+  patrol_required: 'Entering: Patrol-Required Zone',
+};
+
+export function HudZoneAlertBanner({ zoneType }: { zoneType: string }) {
+  const label = ZONE_ALERT_LABELS[zoneType] ?? 'Entering: Restricted Zone';
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid var(--sev-warn)', borderRadius: 2 }}>
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--sev-warn)' }}>{label}</span>
+    </div>
+  );
+}
+
 // ── #9 — device health badge (low battery / degraded GPS) ───────────────────────
-const GPS_DEGRADED_M = 500;
+// The device-health badge is an interruption-worthy ALERT ("something's
+// wrong"), not a routine fix-quality readout like HudQualityPill — it
+// intentionally fires much later than the pill turns red (routine urban
+// multipath regularly pushes accuracy past POOR without anything actually
+// being wrong). Derived from the pill's POOR threshold so the relationship
+// is explicit rather than two independently-chosen magic numbers.
+const GPS_DEGRADED_M = GPS_POOR_THRESHOLD_M * 16; // 480m ≈ 500m, same practical alert point
 const BATTERY_LOW_PCT = 20;
 
 export function HudDeviceHealthBadge({
@@ -566,11 +599,36 @@ export function HudDeviceHealthBadge({
   );
 }
 
+// ── weather hazard badge ─────────────────────────────────────────────────────────
+// Hidden unless there's something to say (matches HudDeviceHealthBadge). Uses
+// var(--sev-warn) — same token as HudZoneAlertBanner — never a hardcoded hex.
+export function HudWeatherBadge({ hazard }: { hazard: string | null }) {
+  if (!hazard) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono"
+      style={{ border: '1px solid var(--sev-warn)', color: 'var(--sev-warn)', borderRadius: 2 }}
+      title="Weather hazard"
+    >
+      {hazard}
+    </span>
+  );
+}
+
 // ── #70 — parked badge ──────────────────────────────────────────────────────────
 export function HudParkedBadge() {
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono text-rmpg-400" style={{ border: '1px solid #3a3a3a', borderRadius: 2, background: 'rgba(20,20,20,0.7)' }} title="Vehicle stationary">
       <Square className="w-2 h-2" fill="currentColor" aria-hidden="true" />Parked
+    </span>
+  );
+}
+
+// ── paused-trip badge (station-geofence pause) ──────────────────────────────────
+export function HudPausedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono text-rmpg-400" style={{ border: '1px solid #3a3a3a', borderRadius: 2, background: 'rgba(20,20,20,0.7)' }} title="Trip tracking paused (station geofence)">
+      Trip Paused
     </span>
   );
 }
