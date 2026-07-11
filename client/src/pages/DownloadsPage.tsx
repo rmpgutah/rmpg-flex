@@ -347,7 +347,7 @@ export default function DownloadsPage() {
             )}
             <div>
               <h4 className="text-sm font-bold text-rmpg-100 mb-1">Dial Connect</h4>
-              <p className="text-xs" style={{ color: 'var(--rmpg-500)' }}>
+              <p className="text-xs text-rmpg-500">
                 E911 dispatch companion &mdash; install as an app on any device.
               </p>
             </div>
