@@ -17,12 +17,25 @@ import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
-import { injectMapboxStyles } from '../utils/mapboxLoader';
+import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
 import IconButton from './IconButton';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
 const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
+
+// `call.assigned_units` can arrive as id strings/numbers OR as full unit
+// objects (the call-detail endpoint returns objects). Normalize to a Set of
+// id-strings so assigned-unit matching works either way — `.includes(String(u.id))`
+// is always false when the array holds objects, which silently dropped every
+// assigned unit marker (and the map's fit-bounds) for a selected call. Mirrors
+// assignedUnitIdSet() in DispatchMiniMap.tsx.
+function assignedUnitIdSet(call: { assigned_units?: unknown } | null | undefined): Set<string> {
+  const a = (call as { assigned_units?: unknown } | null | undefined)?.assigned_units;
+  if (!Array.isArray(a)) return new Set();
+  return new Set(a.map((x) => String(x && typeof x === 'object' ? (x as { id: unknown }).id : x)));
+}
 
 interface MapboxMiniMapProps {
   call: CallForService | null;
@@ -68,33 +81,64 @@ function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
   return el;
 }
 
-/** Build a unit marker DOM element */
+/** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. Never rotates. */
 function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
   const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
   const el = document.createElement('div');
   el.style.cssText = `
-    display:flex;flex-direction:column;align-items:center;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
     filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));cursor:pointer;
   `;
 
+  const photoFrame = document.createElement('div');
+  photoFrame.style.cssText = `
+    width:40px;height:40px;border-radius:4px;overflow:hidden;
+    border:3px solid ${color};box-shadow:0 0 6px ${color}80;
+    background:#0a0a0a;
+  `;
+  const img = document.createElement('img');
+  img.src = '/icons/unit-vehicle.png';
+  img.alt = '';
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+  img.onerror = () => {
+    photoFrame.style.background = color;
+    img.remove();
+  };
+  photoFrame.appendChild(img);
+  el.appendChild(photoFrame);
+
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:8px;font-weight:900;
-    padding:2px 5px;border:1.5px solid rgba(255,255,255,0.8);
+    background:#0a0a0a;color:${color};font-size:8px;font-weight:900;
+    padding:1px 5px;border:1.2px solid ${color};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
-    border-radius:1px;box-shadow:0 0 6px ${color}40;
+    border-radius:1px;
   `;
   tag.textContent = callSign;
-
-  const caret = document.createElement('div');
-  caret.style.cssText = `
-    width:0;height:0;border-left:4px solid transparent;
-    border-right:4px solid transparent;border-top:5px solid ${color};
-  `;
-
   el.appendChild(tag);
-  el.appendChild(caret);
+
   return el;
+}
+
+// Recolor the stock dark-v11 basemap toward the app's steel-blue chrome
+// (--surface-base/--surface-deep in theme-palettes.css) so the map reads as
+// part of the same CAD console rather than a generic gray Mapbox dark style.
+// 'background' and 'water' are present in every Mapbox base style (classic
+// and Standard), so this is safe across style versions; each call is guarded
+// so a future style swap that drops a layer just no-ops instead of throwing.
+function applySteelBlueMapTheme(map: mapboxgl.Map): void {
+  const trySetPaint = (layerId: string, prop: string, value: unknown) => {
+    if (map.getLayer(layerId)) {
+      // setPaintProperty's prop union is keyed per-layer-type; this helper is
+      // intentionally generic across layers, so the exact literal type can't
+      // be threaded through without a much larger overload dance for two
+      // call sites — the runtime getLayer()+try/catch guard is what actually
+      // keeps this safe against a missing/renamed paint property.
+      try { (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(layerId, prop, value); } catch { /* layer exists but lacks this paint prop on this style version */ }
+    }
+  };
+  trySetPaint('background', 'background-color', '#0d1722');
+  trySetPaint('water', 'fill-color', '#0a1420');
 }
 
 export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: MapboxMiniMapProps) {
@@ -103,15 +147,22 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const assignedUnits = useMemo(() =>
-    units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
-    ),
-    [units, call?.assigned_units],
-  );
+  // With a call selected, show only units assigned to it (existing
+  // behavior). With no call selected — e.g. the CAD board before a call is
+  // picked — fall back to every unit with a GPS fix so the map isn't blank.
+  const assignedUnits = useMemo(() => {
+    const assignedIds = assignedUnitIdSet(call);
+    return units.filter(u => {
+      if (u.latitude == null || u.longitude == null) return false;
+      if (!call) return true;
+      return assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call.id));
+    });
+  }, [units, call]);
 
   // Initialize Mapbox map
   useEffect(() => {
@@ -153,11 +204,13 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         });
 
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
         map.on('load', () => {
           if (!cancelled) {
             setLoaded(true);
             setError(null);
+            applySteelBlueMapTheme(map);
 
             // Add compact geocoder control
             if (!geocoderRef.current) {
@@ -186,6 +239,26 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
         });
 
         mapRef.current = map;
+        // Registers this instance with mapboxLoader's shared print-swap
+        // registry — its module-level `beforeprint`/`afterprint` listeners
+        // (wired once at import time) swap every REGISTERED map to a light
+        // style and back. This mini-map never called it, so its dark style
+        // printed as-is (illegible dark tiles on white paper).
+        registerMapInstance(map, 'mapbox://styles/mapbox/dark-v11');
+
+        // Mapbox GL sizes its WebGL canvas to the container's dimensions AT
+        // CONSTRUCTION TIME and never re-syncs on its own. This mini-map sits
+        // inside a densely-nested, conditionally-rendered dispatch flex
+        // layout (sibling panels — code quick-panel, detail pane — mount/
+        // unmount and change how much width this panel actually gets), so
+        // the container can settle to its real size on a LATER layout pass
+        // than the one active when `new mapboxgl.Map()` ran above. Without
+        // an explicit resize(), the canvas stays locked to whatever (often
+        // zero/wrong) size it read at construction — Mapbox then renders a
+        // solid black canvas, which is exactly what this fixes.
+        const resizeObserver = new ResizeObserver(() => map.resize());
+        resizeObserver.observe(containerRef.current);
+        resizeObserverRef.current = resizeObserver;
       } catch (err: any) {
         if (!cancelled) {
           if (attempt < MAX_INIT_ATTEMPTS) {
@@ -201,10 +274,15 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
     return () => {
       cancelled = true;
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
       geocoderRef.current = null;
       if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
         mapRef.current.remove();
         mapRef.current = null;
       }
@@ -265,6 +343,18 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
     <div className={`relative bg-[#0a0a0a] border border-[#222] overflow-hidden ${fullHeight ? 'h-full' : 'h-[180px]'}`}>
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Steel-blue tint on just the WebGL canvas (grayscale→sepia→hue-rotate
+          is the standard CSS trick for tinting toward an arbitrary hue while
+          keeping the basemap's own shading/contrast) — scoped to
+          .mapboxgl-canvas specifically, NOT a full-panel overlay, so the
+          priority-colored unit/call marker pins (siblings within the map
+          container, not part of the canvas) keep their true colors. */}
+      <style>{`
+        .mapboxgl-canvas {
+          filter: grayscale(0.4) sepia(0.6) hue-rotate(178deg) saturate(2.4) brightness(0.85);
+        }
+      `}</style>
 
       {/* Geocoder compact dark theme override */}
       <style>{`

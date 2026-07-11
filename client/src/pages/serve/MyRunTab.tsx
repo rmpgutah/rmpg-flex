@@ -27,6 +27,7 @@ import { apiFetch } from '../../hooks/useApi';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ function priorityColor(p: string): string {
 /** POST a quick served/failed status update. Returns the new status string. */
 async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Promise<string> {
   const attemptType = result === 'served' ? 'personal' : 'failed';
-  const res = await apiFetch<{ jobStatus?: string }>(`/process-server/${jobId}/attempt`, {
+  const res = await apiFetch<{ queue_status: string }>(`/process-server/${jobId}/attempt`, {
     method: 'POST',
     body: JSON.stringify({
       attempt_type: attemptType,
@@ -68,7 +69,7 @@ async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Pr
       address_verified: false,
     }),
   });
-  return res?.jobStatus ?? result;
+  return res?.queue_status ?? result;
 }
 
 // ─── Navigate helper ──────────────────────────────────────────────────────────
@@ -227,10 +228,11 @@ function RunJobRow({ job, isNext, onOptimisticUpdate }: RunJobRowProps) {
 
 function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
+  const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
 
   const handleQuick = useCallback(async (result: 'served' | 'failed') => {
-    if (actioning) return;
+    if (isClosed || actioning) return;
     setActioning(result);
     try {
       const newStatus = (await quickStatusUpdate(job.id, result)) as ServeJob['status'];
@@ -267,7 +269,7 @@ function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticU
 
       {/* Meta */}
       <div className="flex items-center gap-3 mb-3 text-[9px] text-rmpg-600 uppercase">
-        {job.document_type && <span>{job.document_type}</span>}
+        {job.document_type && <span>{toDisplayLabel(job.document_type)}</span>}
         {job.deadline && <span>Due {job.deadline}</span>}
         {job.attempt_count > 0 && (
           <span className="text-amber-600">{job.attempt_count} prior attempt{job.attempt_count === 1 ? '' : 's'}</span>

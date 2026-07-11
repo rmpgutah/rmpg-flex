@@ -18,7 +18,6 @@
 //    into a metronome
 //  - 400ms throttle for burst mutations (multi-save loops)
 // ============================================================
-import { getLocalAudioMode } from './audioMode';
 import { playSoundAsset, startSoundAsset } from './soundAssets';
 
 export type ActionChimeKind = 'submit' | 'update' | 'delete';
@@ -53,7 +52,12 @@ export function chimeKindForMethod(method: string | undefined): ActionChimeKind 
 /** Play a chime directly (e.g. for client-only saves). Safe to call unconditionally. */
 export function playActionChime(kind: ActionChimeKind): void {
   try {
-    if (!actionChimesEnabled() || getLocalAudioMode() !== 'audible') return;
+    if (!actionChimesEnabled()) return;
+    try {
+      const m = localStorage.getItem('rmpg_unit_audio_mode');
+      if (m === 'silent' || m === 'vibrate') return;
+    } catch { /* localStorage unavailable */ }
+    
     const now = Date.now();
     if (now - lastChime < THROTTLE_MS) return;
     lastChime = now;
@@ -95,7 +99,12 @@ export function nackForApiFailure(method: string | undefined, url: string, statu
     if (!kind) return;
     if (BACKGROUND_PATHS.test(url)) return;
     if (status === 401) return;
-    if (!actionChimesEnabled() || getLocalAudioMode() !== 'audible') return;
+    if (!actionChimesEnabled()) return;
+    try {
+      const m = localStorage.getItem('rmpg_unit_audio_mode');
+      if (m === 'silent' || m === 'vibrate') return;
+    } catch { /* localStorage unavailable */ }
+    
     const now = Date.now();
     if (now - lastNack < THROTTLE_MS) return;
     lastNack = now;

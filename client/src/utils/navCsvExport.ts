@@ -7,6 +7,7 @@
 // ============================================================
 
 import { msToSpeed, type NavUnits } from './navUnits';
+import { parseTimestamp } from './dateUtils';
 
 export interface NavSample {
   /** epoch ms (or ISO string). */
@@ -41,7 +42,7 @@ function q(value: string | number | null | undefined): string {
 
 function isoOrEmpty(t: number | string | undefined): string {
   if (t == null) return '';
-  const d = typeof t === 'number' ? new Date(t) : new Date(t);
+  const d = typeof t === 'number' ? new Date(t) : parseTimestamp(t);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 

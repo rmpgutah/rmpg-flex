@@ -254,7 +254,7 @@ export default function PersonnelDashboard({
                     <span className="flex items-center gap-2 min-w-0">
                       <span className="led-dot led-red" />
                       <span className="text-rmpg-200 truncate">{g.property_name}</span>
-                      <span className="text-rmpg-500 capitalize">{g.shift_type}</span>
+                      <span className="text-rmpg-500 capitalize">{toDisplayLabel(g.shift_type)}</span>
                     </span>
                     <span className="text-[10px] font-mono text-red-400 flex-shrink-0">
                       {g.assigned_officers}/{g.required_officers} (−{g.gap})

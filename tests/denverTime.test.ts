@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nowDualStamp, toDenverWallClock } from '../src/utils/denverTime';
+import { nowDualStamp, toDenverWallClock, denverOffsetHours } from '../src/utils/denverTime';
 
 describe('toDenverWallClock', () => {
   it('formats a summer (MDT) UTC moment as Denver wall-clock', () => {
@@ -45,5 +45,19 @@ describe('nowDualStamp', () => {
     expect(parsed).toBeLessThanOrEqual(after);
     // Local always parses to a wall-clock string
     expect(stamp.local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe('denverOffsetHours', () => {
+  it('returns -6 during MDT (summer)', () => {
+    expect(denverOffsetHours(new Date('2026-06-22T20:30:00Z'))).toBe(-6);
+  });
+
+  it('returns -7 during MST (winter)', () => {
+    expect(denverOffsetHours(new Date('2026-12-15T20:30:00Z'))).toBe(-7);
+  });
+
+  it('returns -6 just after the spring-forward transition', () => {
+    expect(denverOffsetHours(new Date('2026-03-08T09:00:00Z'))).toBe(-6);
   });
 });

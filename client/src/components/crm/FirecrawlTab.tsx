@@ -10818,7 +10818,7 @@ function CodeRepoPanel() {
               {expandedId === r.id && (
                 <div className="border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2">
                   <div className="text-[10px] text-rmpg-400 font-mono truncate">URL: {r.repo_url}</div>
-                  {r.language && <div className="text-[10px] text-rmpg-400">Language: <span className="text-rmpg-300">{r.language}</span></div>}
+                  {r.language && <div className="text-[10px] text-rmpg-400">Language: <span className="text-rmpg-300">{toDisplayLabel(r.language)}</span></div>}
                   {r.summary && (
                     <div className="text-[10px] text-rmpg-300 whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-dark">{r.summary}</div>
                   )}

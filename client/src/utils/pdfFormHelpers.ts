@@ -7,7 +7,8 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb } from './pdfGenerator';
+import { getCachedSealBase64 } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
@@ -412,12 +413,13 @@ export function drawCodeReferenceTable(
   const colW = totalW / Math.max(cols, 1);
   const rowH = 3.2;
 
-  // Title bar
+  // Title bar — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03),
+  // dark text pairing (TEXT_TABLE_HDR_LIGHT, not TEXT_INVERTED).
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
   doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
   let curY = y + 4;
 
@@ -582,6 +584,15 @@ export function drawNibrsHeader(
   // header. registerArialFont is idempotent and per-document.
   const FONT_FAMILY = registerArialFont(doc);
   const AGENCY_LOCATION = 'SALT LAKE CITY, UTAH';
+  const AGENCY_TAGLINE = 'TO SERVE, CONSULT, AND PROTECT THE UTAH WASATCH FRONTIER.';
+  const primaryRgb = hexToRgb(getActiveBranding().primary_color);
+  const accentRgb = hexToRgb(getActiveBranding().accent_color);
+  // No caller currently passes `config.sealBase64`/`config.logoBase64`
+  // explicitly — fall back to whatever `loadSealBase64()` has already
+  // cached (callers should `await loadSealBase64()` once before
+  // generating so this is populated by the time this synchronous
+  // function runs; see getCachedSealBase64()'s doc comment).
+  const resolvedSeal = config.sealBase64 ?? config.logoBase64 ?? getCachedSealBase64();
 
   if (isLight) {
     // ── Classic government / police-report letterhead (black on white) ──
@@ -590,9 +601,9 @@ export function drawNibrsHeader(
     // the right (FORM / DATE / SUBJECT-or-CASE), a heavy separating rule,
     // then a gray report-type band. Reads like a real LE records form.
     const sealSize = LAYOUT.SEAL_SIZE;
-    const hasSeal = !!config.sealBase64;
+    const hasSeal = !!resolvedSeal;
     if (hasSeal) {
-      try { doc.addImage(config.sealBase64!, 'PNG', margin, y + 1, sealSize, sealSize); }
+      try { doc.addImage(resolvedSeal!, 'PNG', margin, y + 1, sealSize, sealSize); }
       catch { /* skip if image fails */ }
     }
     const textX = margin + (hasSeal ? sealSize + 4 : 0);
@@ -625,13 +636,19 @@ export function drawNibrsHeader(
       nameSize = Math.max(9, nameSize * (nameMaxW / nameW));
       doc.setFontSize(nameSize);
     }
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.text(nameText, textX, y + 8.6);
+
+    // Gold italic tagline — sits between the agency name and location line.
+    doc.setFont(FONT_FAMILY, 'italic');
+    doc.setFontSize(FONT.SIZE_SUBHEADER);
+    doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+    doc.text(AGENCY_TAGLINE, textX, y + 12.6);
 
     doc.setFont(FONT_FAMILY, 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(AGENCY_LOCATION, textX, y + 12.6);
+    doc.text(AGENCY_LOCATION, textX, y + 16.6);
 
     // Metadata box: bordered grid with gray label column.
     if (rows.length) {
@@ -642,13 +659,20 @@ export function drawNibrsHeader(
       doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
       const maxLabelTextW = Math.max(...rows.map((r) => doc.getTextWidth(r.label)));
       const labelW = Math.min(34, Math.max(20, maxLabelTextW + 3.5));
-      doc.setDrawColor(...COLOR.RULE_STRONG);
+      // Border/rules recolored navy 2026-07-03 (letterhead program) — was
+      // COLOR.RULE_STRONG (near-black), which read as a mismatched dark
+      // line against the navy rules bracketing this same header.
+      doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
       doc.setLineWidth(0.3);
       doc.rect(boxX, y, boxW, boxH);
       rows.forEach((row, i) => {
         const ry = y + i * rowH;
         if (i > 0) doc.line(boxX, ry, boxX + boxW, ry);
-        doc.setFillColor(238, 238, 238);
+        // Reuses COLOR.BG_TABLE_HDR (the light-gray table-header tone from
+        // today's tone-reconfig) instead of a bespoke flat gray literal —
+        // ties this label strip into the same light-structural-band family
+        // as every table header in the report body.
+        doc.setFillColor(...COLOR.BG_TABLE_HDR);
         doc.rect(boxX, ry, labelW, rowH, 'F');
         doc.setFont(FONT_FAMILY, 'bold');
         doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
@@ -669,17 +693,23 @@ export function drawNibrsHeader(
       doc.line(boxX + labelW, y, boxX + labelW, y + boxH);
     }
 
-    const topZoneH = Math.max(hasSeal ? sealSize + 1 : 14, boxH, 14);
+    // +4mm to topZoneH's floor to fit the new tagline line (4 lines now:
+    // state, name, tagline, location — was 3).
+    const topZoneH = Math.max(hasSeal ? sealSize + 1 : 18, boxH, 18);
     y += topZoneH + 1.5;
 
     // Heavy rule under the identity zone.
-    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.setLineWidth(0.6);
     doc.line(margin, y, margin + contentW, y);
 
-    // Report-type band — gray fill, centered bold report type.
+    // Report-type band — light-gray fill, centered bold report type.
+    // Recolored 2026-07-03: was a flat neutral (235,235,235) sandwiched
+    // between two now-navy rules (the identity-zone rule above, the
+    // closing rule below) — reuses COLOR.BG_TABLE_HDR for the same reason
+    // the metadata box's label column does, above.
     const bandH = 6.4;
-    doc.setFillColor(235, 235, 235);
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
     doc.rect(margin, y, contentW, bandH, 'F');
     doc.setFont(FONT_FAMILY, 'bold');
     doc.setFontSize(FONT.SIZE_REPORT_TYPE + 4);
@@ -688,7 +718,7 @@ export function drawNibrsHeader(
     y += bandH;
 
     // Thin closing rule.
-    doc.setDrawColor(...COLOR.RULE_STRONG);
+    doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
     doc.setLineWidth(0.3);
     doc.line(margin, y, margin + contentW, y);
 
@@ -710,13 +740,13 @@ export function drawNibrsHeader(
 
   const sealSize = LAYOUT.SEAL_SIZE;
   const sealX = margin + 3;
-  if (config.sealBase64) {
-    try { doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize); }
+  if (resolvedSeal) {
+    try { doc.addImage(resolvedSeal, 'PNG', sealX, y + 3, sealSize, sealSize); }
     catch { /* skip if image fails */ }
   }
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2;
-  const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
+  const textX = resolvedSeal ? sealX + sealSize + 4 : margin + 4;
 
   if (config.stateIdentifier) {
     doc.setFont(FONT_FAMILY, 'normal');
@@ -728,13 +758,19 @@ export function drawNibrsHeader(
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...headTextColor);
   doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+  // Gold italic tagline — sits between the agency name and the form title.
+  doc.setFont(FONT_FAMILY, 'italic');
+  doc.setFontSize(FONT.SIZE_SUBHEADER);
+  doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.text(AGENCY_TAGLINE, textX, midY + 4.5);
   doc.setFont(FONT_FAMILY, 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
   doc.setTextColor(...headTextColor);
-  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 9);
 
   if (config.caseNumber) {
     const caseBoxH = headerH - 6;
+    const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;
     doc.setDrawColor(...headTextColor);
@@ -1247,7 +1283,7 @@ export function drawDispatchTimelineStrip(
   doc.setLineWidth(BORDER.TIMELINE_OUTER);
   doc.rect(margin, y, w, h);
 
-  // Header strip (dark)
+  // Header strip — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03).
   const headerH = 2.6;
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(margin, y, w, headerH, 'F');
@@ -1274,10 +1310,15 @@ export function drawDispatchTimelineStrip(
       doc.line(cellX, y, cellX, y + h);
     }
 
-    // Stage label in header strip
+    // Stage label in header strip. The strip is now light-gray
+    // (BG_TABLE_HDR reconfigured 2026-07-03) so the label needs dark text
+    // — EXCEPT on the active-stage cell, which still overpaints in the
+    // darker ACTIVE_AMBER gray above and needs the white/inverted text
+    // it always used.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const labelColor = isActive ? COLOR.TEXT_INVERTED : COLOR.TEXT_TABLE_HDR_LIGHT;
+    doc.setTextColor(labelColor[0], labelColor[1], labelColor[2]);
     doc.text(
       sanitizePdfText(ev.label.toUpperCase()),
       cellX + cellW / 2,
@@ -1329,9 +1370,16 @@ export function drawDispatchTimelineStrip(
 
     // Progress LED between stages — green up to the last completed stage,
     // amber on the active stage to mark the live edge of the lifecycle.
+    // Positioned inside the dark header-label strip (not beside the
+    // timestamp value below it) — at headerH+1.5 the 0.5mm dot sat right
+    // next to narrow cells' centered timestamp text (e.g. "13:09:59")
+    // and read as a stray trailing bullet rather than a status marker
+    // (caught 2026-07-03 on CFS26-00100). Centering it vertically in the
+    // header strip keeps it visually grouped with the stage label, not
+    // the value.
     if (i < events.length - 1 && (ev.time || isActive)) {
       const ledX = cellX + cellW - 1.5;
-      const ledY = y + headerH + 1.5;
+      const ledY = y + headerH / 2;
       if (isActive && !ev.time) {
         doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
       } else {
@@ -1402,12 +1450,13 @@ export function drawChainOfCustodyTable(
   let cx = x;
   for (const c of colW) { colX.push(cx); cx += c; }
 
-  // Header row
+  // Header row — light-gray band (BG_TABLE_HDR reconfigured 2026-07-03),
+  // dark text pairing (TEXT_TABLE_HDR_LIGHT, not TEXT_INVERTED).
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, curY, w, headerH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_COC_HEADER);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...COLOR.TEXT_TABLE_HDR_LIGHT);
   const headers = ['DATE / TIME', 'RELEASED BY (SIGNATURE)', 'RECEIVED BY (SIGNATURE)', 'PURPOSE', 'LOCATION'];
   for (let i = 0; i < headers.length; i++) {
     doc.text(headers[i], colX[i] + 1, curY + headerH - 1.4);

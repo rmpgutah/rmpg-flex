@@ -6,6 +6,8 @@
 // COOP planning, and emergency notification cascade.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 81: EOC Activation */
 export interface EOCActivation { activationLevel: 1|2|3; reason: string; activatedBy: string; activatedAt: string; deactivatedAt: string|null; staffingRequired: number; staffingPresent: number; agenciesNotified: string[]; resourcesRequested: string[]; }
 export function determineActivationLevel(incident: { type: string; affectedPopulation: number; areaSize: number; multiAgency: boolean; duration: string }): { level: EOCActivation['activationLevel']; justification: string } {
@@ -29,7 +31,7 @@ export function trackMutualAidStatus(requests: MutualAidRequest[]): { pending: n
   const pending = requests.filter(r => r.status === 'pending');
   const fulfilled = requests.filter(r => r.status === 'fulfilled');
   const criticalUnmet = pending.filter(r => r.priority === 'immediate').length;
-  const responseTimes = fulfilled.filter(r => r.fulfilledAt).map(r => (new Date(r.fulfilledAt!).getTime() - new Date(r.requestedAt).getTime()) / 60000);
+  const responseTimes = fulfilled.filter(r => r.fulfilledAt).map(r => (parseTimestamp(r.fulfilledAt!).getTime() - parseTimestamp(r.requestedAt).getTime()) / 60000);
   const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((s,v)=>s+v,0) / responseTimes.length) : 0;
   return { pending: pending.length, fulfilled: fulfilled.length, criticalUnmet, avgResponseMinutes: avgResponse };
 }
@@ -97,7 +99,7 @@ export function evaluateCOOPReadiness(plan: COOPPlan): { readinessScore: number;
   if (!plan.alternateFacility) gaps.push('No alternate facility designated');
   if (plan.successionOrder.length < 3) gaps.push('Insufficient succession depth (minimum 3)');
   if (!plan.testedDate) gaps.push('COOP plan has not been tested');
-  else if (new Date(plan.testedDate).getTime() < Date.now() - 365*86400000) gaps.push('COOP plan test expired (>1 year)');
+  else if (parseTimestamp(plan.testedDate).getTime() < Date.now() - 365*86400000) gaps.push('COOP plan test expired (>1 year)');
   if (plan.vitalRecords.length === 0) gaps.push('No vital records identified');
   const score = Math.max(0, 100 - gaps.length * 20);
   return { readinessScore: score, criticalGaps: gaps, requiresUpdate: gaps.length > 0 };

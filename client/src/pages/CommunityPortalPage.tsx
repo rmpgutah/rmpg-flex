@@ -16,6 +16,7 @@ import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export default function CommunityPortalPage() {
       if (typeFilter) params.set('type', typeFilter);
       const qs = params.toString();
       const data = await apiFetch<CommunityReport[]>(`/api/community-reports${qs ? `?${qs}` : ''}`);
-      setReports(data);
+      setReports(asArray<CommunityReport>(data));
     } catch {
       addToast('Failed to load community reports', 'error');
     } finally {
@@ -117,7 +118,7 @@ export default function CommunityPortalPage() {
   const fetchOfficers = useCallback(async () => {
     try {
       const data = await apiFetch<Officer[]>('/api/users?role=officer');
-      setOfficers(data);
+      setOfficers(asArray<Officer>(data));
     } catch { /* non-critical */ }
   }, []);
 
@@ -221,7 +222,7 @@ export default function CommunityPortalPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Users} message="No community reports found" />
+        <EmptyState icon={Users} title="No community reports found" />
       ) : (
         <div className="overflow-x-auto border border-[#222] rounded-sm">
           <table className="w-full text-[11px]">

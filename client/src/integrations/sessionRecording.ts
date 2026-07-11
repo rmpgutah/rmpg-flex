@@ -45,7 +45,7 @@ export function startRecording(sessionId: string): void {
   currentEvents = [];
 
   stopFn = rrwebRecord({
-    emit(event) {
+    emit(event: any) {
       if (currentEvents.length < MAX_EVENTS) {
         currentEvents.push(event);
       }

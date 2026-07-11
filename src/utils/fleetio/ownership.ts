@@ -153,6 +153,42 @@ export const INSPECTION_OWNERSHIP: Record<string, OwnershipClass> = {
   escalated_issue_id:   'rmpg',
 };
 
+// ─── Vendor (resource-parity extension) ────────────────────
+
+export const VENDOR_OWNERSHIP: Record<string, OwnershipClass> = {
+  // — RMPG-owned (dispatch/geo context Fleet.io has no use for) —
+  kind:      'rmpg',
+  lat:       'rmpg',
+  lng:       'rmpg',
+  notes:     'rmpg',
+  active:    'rmpg',
+  // — Shared (either side may correct contact info) —
+  name:      'shared',
+  address:   'shared',
+  city:      'shared',
+  state:     'shared',
+  zip:       'shared',
+  phone:     'shared',
+  email:     'shared',
+};
+
+// ─── Part (resource-parity extension) ──────────────────────
+
+export const PART_OWNERSHIP: Record<string, OwnershipClass> = {
+  // — RMPG-owned (local shop inventory concepts Fleet.io doesn't track) —
+  quantity_on_hand:      'rmpg',
+  reorder_point:         'rmpg',
+  location:              'rmpg',
+  compatible_vehicles:   'rmpg',
+  // — Shared —
+  name:                  'shared',
+  part_number:           'shared',
+  category:              'shared',
+  description:           'shared',
+  unit_cost:             'shared',
+  supplier:              'shared',
+};
+
 // ─── Lookup helpers (pure) ─────────────────────────────────
 
 const RESOURCE_TO_MAP: Record<string, Record<string, OwnershipClass>> = {
@@ -160,6 +196,8 @@ const RESOURCE_TO_MAP: Record<string, Record<string, OwnershipClass>> = {
   fuel_entry: FUEL_OWNERSHIP,
   work_order: WORK_ORDER_OWNERSHIP,
   inspection: INSPECTION_OWNERSHIP,
+  vendor:     VENDOR_OWNERSHIP,
+  part:       PART_OWNERSHIP,
 };
 
 /**

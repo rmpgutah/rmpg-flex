@@ -711,4 +711,109 @@ ct.get('/discovery', async (c) => {
   } catch { return c.json([]); }
 });
 
+// ── Court Lookups — editable dropdown values (2026-07-04) ─────
+// Backs AdminCourtLookupsTab.tsx. Every Court Tracker dropdown reads
+// from this table by `category`. Categories are created implicitly —
+// inserting the first row with a new category name creates it.
+
+ct.get('/lookups/categories', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ category: string; count: number }>(
+      db,
+      `SELECT category, COUNT(*) as count FROM court_lookups GROUP BY category ORDER BY category`,
+    );
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+ct.get('/lookups', async (c) => {
+  const db = getDb(c.env);
+  const category = c.req.query('category');
+  const includeInactive = c.req.query('includeInactive') === 'true';
+  if (!category) return c.json({ error: 'category query param is required' }, 400);
+
+  const sql = includeInactive
+    ? `SELECT * FROM court_lookups WHERE category = ? ORDER BY display_order, id`
+    : `SELECT * FROM court_lookups WHERE category = ? AND is_active = 1 ORDER BY display_order, id`;
+  try {
+    const rows = await query(db, sql, category);
+    return c.json(rows);
+  } catch {
+    return c.json([]);
+  }
+});
+
+ct.post('/lookups', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const body = await c.req.json<{
+    category?: string; value?: string; display_label?: string | null;
+    meta?: string | null; display_order?: number; is_active?: number | boolean;
+  }>();
+  if (!body.category || !body.value) {
+    return c.json({ error: 'category and value are required' }, 400);
+  }
+
+  const result = await execute(
+    db,
+    `INSERT INTO court_lookups (category, value, display_label, meta, display_order, is_active)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    body.category,
+    body.value,
+    body.display_label ?? null,
+    body.meta ?? null,
+    body.display_order ?? 100,
+    body.is_active === undefined ? 1 : (body.is_active ? 1 : 0),
+  );
+  return c.json({ id: result.meta.last_row_id, success: true });
+});
+
+const LOOKUP_FIELDS = ['category', 'value', 'display_label', 'meta', 'display_order', 'is_active'] as const;
+
+ct.put('/lookups/:id', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM court_lookups WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Lookup not found' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const field of LOOKUP_FIELDS) {
+    if (field in body) {
+      sets.push(`${field} = ?`);
+      values.push(field === 'is_active' ? (body[field] ? 1 : 0) : body[field]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+
+  sets.push(`updated_at = datetime('now')`);
+  values.push(id);
+  await execute(db, `UPDATE court_lookups SET ${sets.join(', ')} WHERE id = ?`, ...values);
+  return c.json({ success: true });
+});
+
+ct.delete('/lookups/:id', async (c) => {
+  const roleErr = requireRole(c, 'admin');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM court_lookups WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Lookup not found' }, 404);
+
+  await execute(db, 'DELETE FROM court_lookups WHERE id = ?', id);
+  return c.json({ success: true });
+});
+
 export default ct;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { escapeHtml } from '../../../utils/sanitize';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
 const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
@@ -286,7 +287,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
             }
 
             dot.addListener('click', () => {
-              const time = new Date(pt.time).toLocaleString();
+              const time = parseTimestamp(pt.time).toLocaleString();
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
                 : '';

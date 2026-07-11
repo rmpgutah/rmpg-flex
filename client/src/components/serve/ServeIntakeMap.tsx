@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import LocationNoteModal from './LocationNoteModal';
@@ -358,7 +359,7 @@ function buildPopupHtml(item: QueueMapItem): string {
   const priorityLabel = (item.priority || 'routine').toUpperCase();
 
   const daysLeft = item.deadline
-    ? Math.ceil((new Date(item.deadline).getTime() - Date.now()) / 86400000)
+    ? Math.ceil((parseTimestamp(item.deadline).getTime() - Date.now()) / 86400000)
     : null;
   const deadlineStr = item.deadline
     ? `${item.deadline}${daysLeft != null ? ` (${daysLeft > 0 ? daysLeft + 'd left' : daysLeft === 0 ? 'DUE TODAY' : 'PAST DUE'})` : ''}`

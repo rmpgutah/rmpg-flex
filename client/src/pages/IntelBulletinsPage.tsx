@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { parseTimestamp } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Bulletin {
   id: number;
@@ -99,7 +102,7 @@ export default function IntelBulletinsPage() {
       if (searchQuery) params.set('q', searchQuery);
       const query = params.toString();
       const data = await apiFetch<Bulletin[]>(`/intel-bulletins${query ? '?' + query : ''}`);
-      setBulletins(data);
+      setBulletins(asArray<Bulletin>(data));
     } catch (err) {
       console.error('Failed to fetch bulletins', err);
     } finally {
@@ -238,7 +241,7 @@ export default function IntelBulletinsPage() {
                     {typeLabels[b.type] || b.type}
                   </span>
                   {b.status !== 'active' && (
-                    <span className="px-1.5 py-0.5 text-[9px] bg-[#333333] text-gray-400 rounded-sm uppercase">{b.status}</span>
+                    <span className="px-1.5 py-0.5 text-[9px] bg-[#333333] text-gray-400 rounded-sm uppercase">{toDisplayLabel(b.status)}</span>
                   )}
                 </div>
                 <div className="text-sm text-gray-100 font-semibold mt-1 truncate">{b.title}</div>
@@ -250,10 +253,10 @@ export default function IntelBulletinsPage() {
                   {b.location && (
                     <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{b.location}</span>
                   )}
-                  <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{new Date(b.created_at).toLocaleDateString()}</span>
+                  <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" />{parseTimestamp(b.created_at).toLocaleDateString()}</span>
                   {b.expires_at && (
                     <span className="flex items-center gap-0.5">
-                      <AlertTriangle className="w-3 h-3" />Exp: {new Date(b.expires_at).toLocaleDateString()}
+                      <AlertTriangle className="w-3 h-3" />Exp: {parseTimestamp(b.expires_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>
@@ -319,8 +322,8 @@ export default function IntelBulletinsPage() {
                 <div><span className="text-gray-500">Location:</span> <span className="text-gray-200">{selectedBulletin.location}</span></div>
               )}
               <div className="flex gap-4 pt-2 border-t border-[#222222] text-gray-500">
-                <span>Created: {new Date(selectedBulletin.created_at).toLocaleString()}</span>
-                {selectedBulletin.expires_at && <span>Expires: {new Date(selectedBulletin.expires_at).toLocaleString()}</span>}
+                <span>Created: {parseTimestamp(selectedBulletin.created_at).toLocaleString()}</span>
+                {selectedBulletin.expires_at && <span>Expires: {parseTimestamp(selectedBulletin.expires_at).toLocaleString()}</span>}
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-[#222222] text-gray-200 text-xs rounded-sm hover:bg-[#333333]">

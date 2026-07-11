@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const settings = new Hono<Env>();
 
 const ADMIN_ROLES = new Set(['admin', 'manager']);
@@ -89,7 +90,7 @@ settings.put('/user', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('PUT /settings/user failed:', err);
-    return c.json({ error: 'Failed to save', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to save');
   }
 });
 
@@ -116,7 +117,7 @@ settings.put('/org', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('PUT /settings/org failed:', err);
-    return c.json({ error: 'Failed to save', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to save');
   }
 });
 

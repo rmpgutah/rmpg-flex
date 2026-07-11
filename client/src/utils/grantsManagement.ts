@@ -7,10 +7,12 @@
 // and fiscal year planning.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 61: Grant Tracking */
 export interface Grant { id: string; name: string; grantingAgency: string; awardAmount: number; awardDate: string; startDate: string; endDate: string; matchRequired: number; matchProvided: number; fundsExpended: number; fundsRemaining: number; status: 'active'|'closed'|'extended'; programAreas: string[]; }
 export function calculateGrantBurnRate(grant: Grant): { burnRate: number; monthsRemaining: number; monthlySpend: number; onTrack: boolean; riskOfLapsing: boolean } {
-  const start = new Date(grant.startDate); const end = new Date(grant.endDate);
+  const start = parseTimestamp(grant.startDate); const end = parseTimestamp(grant.endDate);
   const totalMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
   const elapsedMonths = (new Date().getFullYear() - start.getFullYear()) * 12 + (new Date().getMonth() - start.getMonth());
   const monthlySpend = elapsedMonths > 0 ? grant.fundsExpended / elapsedMonths : 0;
@@ -97,8 +99,8 @@ export function calculateMatchShortfall(requirements: MatchRequirement[]): { tot
 export interface ComplianceItem { id: string; requirement: string; regulation: string; dueDate: string; completedDate: string|null; responsiblePerson: string; status: 'compliant'|'pending'|'overdue'|'not_applicable'; evidence: string[]; }
 export function checkComplianceStatus(items: ComplianceItem[]): { overallCompliant: boolean; compliantCount: number; overdue: ComplianceItem[]; upcoming30Days: ComplianceItem[] } {
   const now = new Date();
-  const overdue = items.filter(i => i.status === 'overdue' || (i.status === 'pending' && new Date(i.dueDate) < now));
-  const upcoming = items.filter(i => i.status === 'pending' && new Date(i.dueDate) > now && new Date(i.dueDate).getTime() - now.getTime() < 30*86400000);
+  const overdue = items.filter(i => i.status === 'overdue' || (i.status === 'pending' && parseTimestamp(i.dueDate) < now));
+  const upcoming = items.filter(i => i.status === 'pending' && parseTimestamp(i.dueDate) > now && parseTimestamp(i.dueDate).getTime() - now.getTime() < 30*86400000);
   const compliant = items.filter(i => i.status === 'compliant' || i.status === 'not_applicable');
   return { overallCompliant: overdue.length === 0, compliantCount: compliant.length, overdue, upcoming30Days: upcoming };
 }

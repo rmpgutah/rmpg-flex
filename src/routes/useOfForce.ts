@@ -17,6 +17,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { codedLike } from '../utils/searchText';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const uof = new Hono<Env>();
 
 function requireRole(c: any, ...roles: string[]): string | null {
@@ -146,7 +147,7 @@ uof.post('/', async (c) => {
     try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to create report', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to create report');
   }
 });
 
@@ -164,7 +165,7 @@ uof.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Report not found', code: 'NOT_FOUND' }, 404);
     return c.json(row);
   } catch (err) {
-    return c.json({ error: 'Failed to load report', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load report');
   }
 });
 
@@ -239,7 +240,7 @@ uof.put('/:id/review', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, `${REPORT_SELECT} WHERE u.id = ?`, id);
     return c.json({ success: true, report: updated });
   } catch (err) {
-    return c.json({ error: 'Failed to record review', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to record review');
   }
 });
 

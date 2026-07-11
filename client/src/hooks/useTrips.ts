@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
 
 export interface Trip {
   id: number;
@@ -52,7 +53,7 @@ export function useUnitTrips(unitId?: number) {
     // No unit assigned → fall back to the agency-wide recent trip log so the
     // TRIPS view is always viewable (unit_id is optional on the endpoint).
     const q = unitId ? `unit_id=${unitId}&limit=50` : 'limit=50';
-    apiFetch<Trip[]>(`/dispatch/trips?${q}`).then(setTrips).catch(console.error);
+    apiFetch<Trip[]>(`/dispatch/trips?${q}`).then(d => setTrips(asArray(d))).catch(console.error);
   }, [unitId]);
   useEffect(reload, [reload]);
   return { trips, reload };
@@ -71,7 +72,7 @@ export function useTripDetail(id?: number) {
 export function useActiveTrips() {
   const [active, setActive] = useState<Trip[]>([]);
   const reload = useCallback(() => {
-    apiFetch<Trip[]>('/dispatch/trips/active').then(setActive).catch(console.error);
+    apiFetch<Trip[]>('/dispatch/trips/active').then(d => setActive(asArray(d))).catch(console.error);
   }, []);
   useEffect(reload, [reload]);
   return { active, reload };

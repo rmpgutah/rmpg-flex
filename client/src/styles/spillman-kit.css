@@ -38,3 +38,23 @@
 .spm-status-grid-table td { padding: 1px 4px; color: #cfd6e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spm-status-grid-table tr[aria-selected="true"] { outline: 1px solid #4f7fc0; outline-offset: -1px; }
 .spm-status-grid-table tbody tr:hover { background: #15191f; }
+
+/* ── Dispatch detail-panel CAD treatment ──────────────────────── */
+/* Applies the CAD board's monospace read to the call-detail body
+   (INFO/PERSONS/TIMELINE/NOTES/etc. in DispatchPage.tsx) via one scoped,
+   inherited rule instead of hand-editing hundreds of individual Tailwind
+   classes across that ~1500-line region. Font-family + line-height only —
+   colors and font-size stay as each element already sets them (severity/
+   gold/label sizing is intentional and shouldn't get flattened by a
+   blanket rule). Form controls don't inherit font-family by default in
+   the browser UA stylesheet, so they need an explicit rule. */
+.cad-detail-body {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  line-height: 1.35;
+}
+.cad-detail-body input,
+.cad-detail-body select,
+.cad-detail-body textarea,
+.cad-detail-body button {
+  font-family: inherit;
+}

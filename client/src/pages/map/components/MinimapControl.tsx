@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { saveMapPref } from '../../../utils/mapPreferences';
+import { applyRmpgBasemap } from '../../../utils/mapboxBasemap';
 
 interface Props {
   parentMap: mapboxgl.Map;
@@ -21,6 +22,7 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
       attributionControl: false,
       interactive: true,
     });
+    minimap.on('style.load', () => applyRmpgBasemap(minimap, { variant: 'dark' }));
 
     const syncToParent = () => {
       minimap.setCenter(parentMap.getCenter());

@@ -413,7 +413,10 @@ export default function ModuleDirectoryPage() {
       setBadgesLoading(true);
       const results: Record<string, number> = {};
       try {
-        const stats = await apiFetch<{ calls?: { active?: number } }>('/dispatch/aggregates');
+        // dispatchAggregates mounts bare at /api/dispatch (see routesConfig.ts note
+        // near dispatchAggregates) — '/dispatch/aggregates' 404s, the dashboard-stats
+        // route is the bare prefix itself.
+        const stats = await apiFetch<{ calls?: { active?: number } }>('/dispatch');
         if (stats?.calls?.active) results.activeCalls = stats.calls.active;
       } catch { /* silent */ }
       try {

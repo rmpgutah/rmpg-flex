@@ -8,11 +8,13 @@
 // and labor relations compliance.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 41: Grievance Tracking */
 export interface Grievance { id:string; grievantName:string; grievantId:string; filingDate:string; grievanceType:'contract_violation'|'disciplinary'|'harassment'|'discrimination'|'working_conditions'|'pay'|'other'; description:string; step:1|2|3|4; stepDate:string; unionRepresentative:string|null; managementResponse:string|null; resolution:string|null; resolutionDate:string|null; status:'open'|'resolved'|'withdrawn'|'arbitration'; }
 export function trackGrievanceTimeline(grievances:Grievance[]): { total:number; avgTimeToResolve:number; byType:Record<string,number>; arbitrationRate:number } {
   const resolved = grievances.filter(g=>g.resolutionDate);
-  const days = resolved.map(g=>(new Date(g.resolutionDate!).getTime()-new Date(g.filingDate).getTime())/86400000);
+  const days = resolved.map(g=>(parseTimestamp(g.resolutionDate!).getTime()-parseTimestamp(g.filingDate).getTime())/86400000);
   const byType:Record<string,number> = {}; for (const g of grievances) byType[g.grievanceType]=(byType[g.grievanceType]||0)+1;
   const toArbitration = grievances.filter(g=>g.status==='arbitration').length;
   return { total:grievances.length, avgTimeToResolve:days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0, byType, arbitrationRate:grievances.length>0?Math.round(toArbitration/grievances.length*100):0 };
@@ -21,10 +23,10 @@ export function trackGrievanceTimeline(grievances:Grievance[]): { total:number; 
 /* FEATURE 42: Union Contract Management */
 export interface UnionContract { id:string; unionName:string; contractStart:string; contractEnd:string; articles:Array<{number:number;title:string;summary:string;lastAmended:string|null}>; MOUs:Array<{title:string;date:string;description:string}>; sideLetters:Array<{title:string;date:string;description:string}>; status:'active'|'expired'|'negotiating'; }
 export function checkContractStatus(contracts:UnionContract[]): { active:number; expired:number; negotiating:number; daysToExpiration:Record<string,number> } {
-  const now = new Date(); const active = contracts.filter(c=>c.status==='active'&&new Date(c.contractEnd)>now);
-  const expired = contracts.filter(c=>c.status==='expired'||new Date(c.contractEnd)<now);
+  const now = new Date(); const active = contracts.filter(c=>c.status==='active'&&parseTimestamp(c.contractEnd)>now);
+  const expired = contracts.filter(c=>c.status==='expired'||parseTimestamp(c.contractEnd)<now);
   const negotiating = contracts.filter(c=>c.status==='negotiating');
-  const daysToExp:Record<string,number> = {}; for (const c of active) daysToExp[c.unionName]=Math.ceil((new Date(c.contractEnd).getTime()-now.getTime())/86400000);
+  const daysToExp:Record<string,number> = {}; for (const c of active) daysToExp[c.unionName]=Math.ceil((parseTimestamp(c.contractEnd).getTime()-now.getTime())/86400000);
   return { active:active.length, expired:expired.length, negotiating:negotiating.length, daysToExpiration:daysToExp };
 }
 
@@ -59,7 +61,7 @@ export function evaluateDisputeResolution(disputes:LaborDispute[]): { total:numb
   const resolved = disputes.filter(d=>d.status==='resolved');
   const mediated = disputes.filter(d=>d.mediationSessions>0);
   const mediatedResolved = mediated.filter(d=>d.status==='resolved');
-  const days = resolved.map(d=>(new Date(d.resolutionDate!).getTime()-new Date(d.filingDate).getTime())/86400000);
+  const days = resolved.map(d=>(parseTimestamp(d.resolutionDate!).getTime()-parseTimestamp(d.filingDate).getTime())/86400000);
   return { total:disputes.length, resolved:resolved.length, mediationSuccessRate:mediated.length>0?Math.round(mediatedResolved.length/mediated.length*100):0, avgTimeToResolve:days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0 };
 }
 
@@ -69,7 +71,7 @@ export function trackArbitrationOutcomes(cases:ArbitrationCase[]): { total:numbe
   const decided = cases.filter(c=>c.decision!=='pending');
   const sustained = decided.filter(c=>c.decision==='sustained').length;
   const denied = decided.filter(c=>c.decision==='denied').length;
-  const days = decided.map(c=>(new Date(c.decisionDate!).getTime()-new Date(c.arbitrationDate).getTime())/86400000);
+  const days = decided.map(c=>(parseTimestamp(c.decisionDate!).getTime()-parseTimestamp(c.arbitrationDate).getTime())/86400000);
   return { total:cases.length, sustainedRate:decided.length>0?Math.round(sustained/decided.length*100):0, deniedRate:decided.length>0?Math.round(denied/decided.length*100):0, splitRate:decided.length>0?Math.round(decided.filter(c=>c.decision==='split').length/decided.length*100):0, avgDaysToDecision:days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0 };
 }
 
@@ -94,7 +96,7 @@ export function estimateNegotiationCompletion(timeline:NegotiationTimeline): { e
 export interface LaborCompliance { requirement:string; regulation:string; compliant:boolean; lastReviewDate:string; nextReviewDate:string; responsibleParty:string; documentation:string[]; }
 export function auditLaborCompliance(items:LaborCompliance[]): { complianceRate:number; overdue:number; findings:string[] } {
   const now = new Date(); const compliant = items.filter(i=>i.compliant);
-  const overdue = items.filter(i=>new Date(i.nextReviewDate)<now);
+  const overdue = items.filter(i=>parseTimestamp(i.nextReviewDate)<now);
   const findings = items.filter(i=>!i.compliant).map(i=>`${i.requirement}: ${i.regulation}`);
   return { complianceRate:items.length>0?Math.round(compliant.length/items.length*100):0, overdue:overdue.length, findings };
 }

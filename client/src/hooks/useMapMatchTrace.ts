@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxMapMatch } from '../services/mapboxApiService';
+import { getSourceSafe, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -62,8 +63,9 @@ export function useMapMatchTrace(
         })),
       };
 
-      if (map.getSource(TRACE_SOURCE)) {
-        (map.getSource(TRACE_SOURCE) as mapboxgl.GeoJSONSource).setData(geojson);
+      const traceSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, TRACE_SOURCE);
+      if (traceSource) {
+        traceSource.setData(geojson);
       } else {
         map.addSource(TRACE_SOURCE, { type: 'geojson', data: geojson });
         map.addLayer({
@@ -81,8 +83,9 @@ export function useMapMatchTrace(
           properties: {},
           geometry: { type: 'LineString', coordinates: tracePointsRef.current },
         };
-        if (map.getSource(RAW_SOURCE)) {
-          (map.getSource(RAW_SOURCE) as mapboxgl.GeoJSONSource).setData(lineGeojson);
+        const rawSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, RAW_SOURCE);
+        if (rawSource) {
+          rawSource.setData(lineGeojson);
         } else {
           map.addSource(RAW_SOURCE, { type: 'geojson', data: lineGeojson });
           map.addLayer({
@@ -135,8 +138,9 @@ export function useMapMatchTrace(
           geometry: { type: 'LineString', coordinates: matchedCoords },
         };
 
-        if (map.getSource(MATCHED_SOURCE)) {
-          (map.getSource(MATCHED_SOURCE) as mapboxgl.GeoJSONSource).setData(geojson);
+        const matchedSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, MATCHED_SOURCE);
+        if (matchedSource) {
+          matchedSource.setData(geojson);
         } else {
           map.addSource(MATCHED_SOURCE, { type: 'geojson', data: geojson });
           map.addLayer({
@@ -167,10 +171,10 @@ export function useMapMatchTrace(
     setCollecting(false);
 
     [TRACE_LAYER, RAW_LAYER, MATCHED_LAYER].forEach(id => {
-      try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* safe */ }
+      safeRemoveLayer(map, id);
     });
     [TRACE_SOURCE, RAW_SOURCE, MATCHED_SOURCE].forEach(id => {
-      try { if (map.getSource(id)) map.removeSource(id); } catch { /* safe */ }
+      safeRemoveSource(map, id);
     });
   }, [map]);
 
@@ -179,10 +183,10 @@ export function useMapMatchTrace(
     return () => {
       if (!map) return;
       [TRACE_LAYER, RAW_LAYER, MATCHED_LAYER].forEach(id => {
-        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* safe */ }
+        safeRemoveLayer(map, id);
       });
       [TRACE_SOURCE, RAW_SOURCE, MATCHED_SOURCE].forEach(id => {
-        try { if (map.getSource(id)) map.removeSource(id); } catch { /* safe */ }
+        safeRemoveSource(map, id);
       });
     };
   }, [map]);

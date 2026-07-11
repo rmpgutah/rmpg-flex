@@ -43,7 +43,7 @@ New migrations (`0072+`) you author **do** flow through wrangler normally on bot
 
 Wrangler applies files in **lexicographic order** by filename, tracked in the `d1_migrations` table by exact filename. The four-digit prefix is conventional, not enforced — but our convention is to use it strictly.
 
-Current high-water: **`0155_case_management_expansion.sql`** / **`0155_persons_ext_dl_fields.sql`**. Next free integer: `0156`.
+Current high-water: **`0173_sor_enrichment_runs.sql`**. Next free integer: `0174`.
 
 ## Known irregularities (history)
 
@@ -68,7 +68,7 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 | `0104` | Two files at 0104 | Same pattern. |
 | `0107` | Two files at 0107 | Same pattern. |
 | `0108` | Two files at 0108 | Same pattern. |
-| `0110` | Two files at 0110 | Same pattern. |
+| `0110` | `0110_national_warrant_pdf_sources.sql`, `0110_warrant_source_chunking.sql` | Two unrelated changes sharing 0110; both real, both applied; apply in lexicographic filename order (pdf-sources first). `0110_warrant_source_chunking.sql` is the actual source of truth for Baton Rouge (`socrata-brla-citycourt`)'s current `enabled=1` state — two earlier files (`0107_national_warrant_pull.sql`, `0110_national_warrant_pdf_sources.sql`) both describe it as staying disabled; that's stale, this file's UPDATE is what's live. |
 | `0118` | Two files at 0118 | Same pattern. |
 | `0119` | Two files at 0119 | Same pattern. |
 | `0121` | Two files at 0121 | Same pattern. |
@@ -81,10 +81,11 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 | `0152` | Two files at 0152 | Same pattern. |
 | `0153` | Two files at 0153 | Same pattern. |
 | `0155` | `0155_case_management_expansion.sql`, `0155_persons_ext_dl_fields.sql` | Two unrelated changes sharing 0155; applied independently. |
+| `0170` | `0170_court_lookups.sql`, `0170_invoice_line_items_line_type.sql` | Two unrelated changes sharing 0170; applied independently. |
 
 ## Adding a new migration
 
-1. Use the next free integer (currently `0156`).
+1. Use the next free integer (currently `0174`).
 2. Single file per migration, snake_case description: `0039_describe_change.sql`.
 3. Write all DDL idempotently — `CREATE TABLE IF NOT EXISTS`, `INSERT OR IGNORE`. D1 doesn't support `IF NOT EXISTS` on `ADD COLUMN` — either accept the failure on re-apply or check first.
 4. **Watch the column cap.** `calls_for_service` (100 cols) and `persons` (94 cols) are at or near D1's 100-column SELECT cap. Any `ALTER TABLE` against them will be rejected by CI (`.github/workflows/column-cap-check.yml`). New columns go to `<table>_ext` overflow tables — see `calls_for_service_ext` for the established pattern.

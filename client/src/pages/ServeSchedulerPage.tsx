@@ -13,7 +13,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Navigation, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';

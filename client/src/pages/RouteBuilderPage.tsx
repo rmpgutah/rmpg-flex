@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Route, MapPin, Navigation, Clock, ChevronUp, ChevronDown,
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
@@ -27,10 +27,13 @@ import {
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useNavTrip } from '../context/NavTripContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -118,6 +121,7 @@ export default function RouteBuilderPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedRouteId, setSavedRouteId] = useState<number | null>(null);
+  const [startingRoute, setStartingRoute] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [useMapboxDirections, setUseMapboxDirections] = useState(true);
@@ -134,6 +138,8 @@ export default function RouteBuilderPage() {
   const renderRouteRef = useRef<((origin: { lat: number; lng: number }, stops: RouteWaypoint[]) => void) | undefined>(undefined);
 
   const { subscribe } = useWebSocket();
+  const navigate = useNavigate();
+  const navTrip = useNavTrip();
 
   // ─── Load Units ─────────────────────────────────────────
 
@@ -160,12 +166,7 @@ export default function RouteBuilderPage() {
         mapboxTokenRef.current = token;
         injectMapboxStyles();
 
-        const map = createMapboxMap({
-          container: mapContainerRef.current,
-          center: [-111.891, 40.7608],
-          zoom: 12,
-          accessToken: token,
-        });
+        const map = createMapboxMap(mapContainerRef.current!, token);
         mapRef.current = map;
         map.on('load', () => {
           if (!cancelled) setMapReady(true);
@@ -273,8 +274,7 @@ export default function RouteBuilderPage() {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       originMarkerRef.current?.remove();
-      removeMapboxTrail(map, 'route-line');
-      removeMapboxTrail(map, 'directions-route');
+      removeMapboxTrail(map);
 
       // Fit bounds
       const bounds = new mapboxgl.LngLatBounds();
@@ -301,31 +301,24 @@ export default function RouteBuilderPage() {
 
   const renderMapboxDirections = useCallback(
     async (map: mapboxgl.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
-      const token = mapboxTokenRef.current;
-      if (!token) {
-        renderSimpleRoute(map, routeOrigin, stops);
-        return;
-      }
-
-      // Build coordinates string: origin;waypoints;destination
-      const allPoints = [
-        `${routeOrigin.lng},${routeOrigin.lat}`,
-        ...stops.map((s) => `${s.longitude},${s.latitude}`),
+      // Directions go through the Worker proxy (/api/mapbox/directions) —
+      // server-side MAPBOX_ACCESS_TOKEN secret, auth'd, no direct
+      // api.mapbox.com egress from the browser.
+      const allPoints: [number, number][] = [
+        [routeOrigin.lng, routeOrigin.lat],
+        ...stops.map((s) => [s.longitude, s.latitude] as [number, number]),
       ];
-      const coordsStr = allPoints.join(';');
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${token}&geometries=geojson&overview=full`;
 
       try {
-        const resp = await fetch(url);
-        const data = await resp.json();
+        const data = await getDirections(allPoints, 'driving-traffic');
 
         if (data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           const coords = route.geometry.coordinates as [number, number][];
 
           // Draw route polyline
-          removeMapboxTrail(map, 'directions-route');
-          addMapboxTrail(map, 'directions-route', coords, '#d4a017', 4);
+          removeMapboxTrail(map);
+          addMapboxTrail(map, coords, '#d4a017');
 
           // Calculate distance/duration
           const distMiles = (route.distance / 1609.344).toFixed(1);
@@ -352,8 +345,8 @@ export default function RouteBuilderPage() {
         [routeOrigin.lng, routeOrigin.lat],
         ...stops.map((s) => [s.longitude, s.latitude] as [number, number]),
       ];
-      removeMapboxTrail(map, 'route-line');
-      addMapboxTrail(map, 'route-line', coords, '#d4a017', 3);
+      removeMapboxTrail(map);
+      addMapboxTrail(map, coords, '#d4a017');
 
       addStopMarkers(map, stops);
       setDirectionsDistance(null);
@@ -492,6 +485,30 @@ export default function RouteBuilderPage() {
     }
   }, [selectedUnitId, waypoints, origin, totalDistance, estimatedMinutes]);
 
+  // ─── Start Route (live multi-stop nav HUD) ──────────────
+  // Saves first if the current stop list hasn't been persisted yet — the
+  // guidance engine's loadUnitRoute reads the ACTIVE saved row from
+  // /api/dispatch/routing/unit/:unitId, so an unsaved edit here would be
+  // invisible to it.
+
+  const startRoute = useCallback(async () => {
+    if (!selectedUnitId || waypoints.length === 0 || !navTrip) return;
+
+    setStartingRoute(true);
+    setError(null);
+    try {
+      if (!savedRouteId) {
+        await saveRoute();
+      }
+      await navTrip.loadUnitRoute(selectedUnitId);
+      navigate('/navigation');
+    } catch (err: any) {
+      setError(err.message || 'Failed to start route');
+    } finally {
+      setStartingRoute(false);
+    }
+  }, [selectedUnitId, waypoints, navTrip, savedRouteId, saveRoute, navigate]);
+
   // ─── Load Saved Route ───────────────────────────────────
 
   useEffect(() => {
@@ -620,8 +637,7 @@ export default function RouteBuilderPage() {
                 markersRef.current = [];
                 originMarkerRef.current?.remove();
                 if (mapRef.current) {
-                  removeMapboxTrail(mapRef.current, 'route-line');
-                  removeMapboxTrail(mapRef.current, 'directions-route');
+                  removeMapboxTrail(mapRef.current);
                 }
               }}
               aria-label="Clear route"
@@ -630,6 +646,22 @@ export default function RouteBuilderPage() {
               <Trash2 className="w-3.5 h-3.5" />
             </IconButton>
           </div>
+
+          {waypoints.length > 0 && (
+            <button
+              onClick={startRoute}
+              disabled={startingRoute || !navTrip}
+              title={!navTrip ? 'Navigation is unavailable on this page' : undefined}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-brand-500 text-surface-deep text-xs font-semibold rounded-[2px] hover:bg-brand-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {startingRoute ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Navigation className="w-3.5 h-3.5" />
+              )}
+              {startingRoute ? 'Starting…' : 'Start Route'}
+            </button>
+          )}
 
           {savedRouteId && (
             <div className="text-[10px] text-green-500 font-mono flex items-center gap-1">
@@ -731,7 +763,7 @@ export default function RouteBuilderPage() {
                       {wp.priority}
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#e5e5e5] truncate">{wp.incident_type}</div>
+                  <div className="text-[11px] text-[#e5e5e5] truncate">{toDisplayLabel(wp.incident_type)}</div>
                   <div className="text-[10px] text-[#666666] truncate flex items-center gap-1">
                     <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
                     {wp.location_address}

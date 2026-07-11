@@ -7,6 +7,8 @@
 // and parking enforcement statistics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 21: Parking Citation Issuance */
 export interface ParkingCitation { id:string; citationNumber:string; date:string; time:string; location:string; plate:string; vin:string|null; make:string; model:string; color:string; violationCode:string; violationDescription:string; fineAmount:number; lateFee:number; totalDue:number; officerId:string; photos:string[]; paid:boolean; paidDate:string|null; status:'issued'|'paid'|'overdue'|'appealed'|'dismissed'; }
 export function calculateParkingFines(citations:ParkingCitation[]): { totalIssued:number; totalCollected:number; collectionRate:number; avgFine:number } {
@@ -18,14 +20,14 @@ export function calculateParkingFines(citations:ParkingCitation[]): { totalIssue
 /* FEATURE 22: Permit Management */
 export interface ParkingPermit { id:string; permitNumber:string; holderName:string; vehiclePlate:string; permitType:'residential'|'commercial'|'visitor'|'contractor'|'handicap'|'government'; zone:string; issuedDate:string; expirationDate:string; fee:number; paid:boolean; status:'active'|'expired'|'revoked'; }
 export function validateParkingPermit(plate:string, zone:string, permits:ParkingPermit[]): { valid:boolean; permit:ParkingPermit|null; reason:string } {
-  const match = permits.find(p=>p.vehiclePlate===plate&&p.zone===zone&&p.status==='active'&&new Date(p.expirationDate)>new Date());
+  const match = permits.find(p=>p.vehiclePlate===plate&&p.zone===zone&&p.status==='active'&&parseTimestamp(p.expirationDate)>new Date());
   return { valid:!!match, permit:match||null, reason:match?'Valid permit':'No valid permit found for this zone' };
 }
 
 /* FEATURE 23: Boot/Tow Tracking */
 export interface BootTowRecord { id:string; plate:string; vin:string; location:string; bootInstalledAt:string|null; bootRemovedAt:string|null; towedAt:string|null; towCompany:string; storageLot:string; releaseDate:string|null; releaseTo:string|null; totalFees:number; feesPaid:boolean; reason:string; }
 export function calculateBootTowFees(record:BootTowRecord): { bootFee:number; towFee:number; storageFee:number; total:number } {
-  const now = new Date(); const towDate = record.towedAt?new Date(record.towedAt):now;
+  const now = new Date(); const towDate = record.towedAt?parseTimestamp(record.towedAt):now;
   const storageDays = Math.max(0,Math.ceil((now.getTime()-towDate.getTime())/86400000));
   const bootFee = record.bootInstalledAt?75:0; const towFee = record.towedAt?150:0; const storageFee = storageDays*35;
   return { bootFee, towFee, storageFee, total:bootFee+towFee+storageFee };
@@ -68,7 +70,7 @@ export function processAppealOutcome(appeals:ParkingAppeal[]): { totalAppeals:nu
   const decided = appeals.filter(a=>a.hearingResult!=='pending');
   const dismissed = decided.filter(a=>a.hearingResult==='dismissed').length;
   const reduced = decided.filter(a=>a.hearingResult==='reduced').length;
-  const days = decided.map(a=>(new Date(a.decisionDate||a.appealDate).getTime()-new Date(a.appealDate).getTime())/86400000);
+  const days = decided.map(a=>(parseTimestamp(a.decisionDate||a.appealDate).getTime()-parseTimestamp(a.appealDate).getTime())/86400000);
   return { totalAppeals:appeals.length, dismissalRate:decided.length>0?Math.round(dismissed/decided.length*100):0, reductionRate:decided.length>0?Math.round(reduced/decided.length*100):0, avgProcessingDays:days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0 };
 }
 

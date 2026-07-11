@@ -9,6 +9,7 @@ import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ────────────────────────────────────────────────────────
 interface Impound {
@@ -92,7 +93,7 @@ const EMPTY_FORM = {
 
 // ── Helpers ──────────────────────────────────────────────────────
 function daysSince(dateStr: string): number {
-  const d = new Date(dateStr);
+  const d = parseTimestamp(dateStr);
   return Math.max(1, Math.ceil((Date.now() - d.getTime()) / 86400000));
 }
 

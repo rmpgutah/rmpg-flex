@@ -7,6 +7,8 @@
 // chaplain program metrics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 61: Chaplain Roster */
 export interface Chaplain { id:string; name:string; faithTradition:string; ordinationStatus:string; joinDate:string; certifications:string[]; status:'active'|'inactive'|'resigned'; contactPhone:string; availability:string[]; }
 export function findAvailableChaplain(faithPreference:string|null, chaplains:Chaplain[]): Chaplain|null {
@@ -65,7 +67,7 @@ export function trackChaplainTraining(courses:ChaplainTraining[]): { total:numbe
 /* FEATURE 69: On-Call Scheduling */
 export interface ChaplainOnCall { chaplainId:string; startDate:string; endDate:string; isPrimary:boolean; backupChaplainId:string|null; }
 export function manageOnCallSchedule(schedule:ChaplainOnCall[]): { currentOnCall:ChaplainOnCall[]; coverageGaps:boolean } {
-  const now = new Date(); const current = schedule.filter(s=>new Date(s.startDate)<=now&&new Date(s.endDate)>=now);
+  const now = new Date(); const current = schedule.filter(s=>parseTimestamp(s.startDate)<=now&&parseTimestamp(s.endDate)>=now);
   return { currentOnCall:current, coverageGaps:current.length===0 };
 }
 

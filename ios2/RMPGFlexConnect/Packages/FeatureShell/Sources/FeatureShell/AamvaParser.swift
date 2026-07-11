@@ -58,18 +58,29 @@ public struct AamvaResult: Sendable, Equatable {
 }
 
 public enum AamvaParser {
+    /// Element codes that can legitimately open the "DL"/"ID" subfile body —
+    /// used to find where the real element records start, since the subfile
+    /// designator ("DL"/"ID") is fused directly onto the first element's code
+    /// with no separator (e.g. "...DL00410278DLDAQT6423..."), so a plain
+    /// per-line "starts with DL/ID → skip" check discards that whole line,
+    /// silently dropping whichever field happens to come first.
+    private static let knownFieldCodes: Set<String> = [
+        "DAQ", "DCS", "DAC", "DAD", "DCU", "DBA", "DBB", "DBC", "DBD",
+        "DAG", "DAH", "DAI", "DAJ", "DAK", "DAA", "DAU", "DAY", "DAZ",
+        "DAW", "DAX", "DCA", "DCB", "DCD", "DDK", "DDL",
+    ]
+
     /// Parse a raw PDF417 barcode string into an `AamvaResult`.
     public static func parse(_ raw: String) -> AamvaResult? {
         guard raw.contains("ANSI") || raw.contains("AAMVA") || raw.contains("DL\n") else { return nil }
+        guard let subfileStart = findSubfileBoundary(in: raw) else { return nil }
+
         var elements: [String: String] = [:]
-        let lines = raw.components(separatedBy: .newlines)
+        let body = String(raw[subfileStart...])
+        let lines = body.components(separatedBy: .newlines)
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.count >= 4 else { continue }
-            // Skip header lines and subfile delimiters
-            let prefix = String(trimmed.prefix(1))
-            if prefix == "@" || prefix == "\u{1e}" { continue }
-            if trimmed.hasPrefix("ANSI") || trimmed.hasPrefix("DL") || trimmed.hasPrefix("ID") { continue }
             let code = String(trimmed.prefix(3))
             // Validate: element IDs are [A-Z][A-Z0-9]{2}
             let validChars = CharacterSet.uppercaseLetters.union(.decimalDigits)
@@ -79,6 +90,24 @@ public enum AamvaParser {
         }
         guard !elements.isEmpty else { return nil }
         return AamvaResult(raw: raw, elements: elements)
+    }
+
+    /// Finds where the "DL"/"ID" subfile designator's element records actually
+    /// start, by requiring a known field code (e.g. "DAQ") immediately after
+    /// it — this rejects a stray "DL"/"ID" substring earlier in the header/IIN
+    /// bytes, which a plain prefix search would match incorrectly.
+    private static func findSubfileBoundary(in text: String) -> String.Index? {
+        for designator in ["DL", "ID"] {
+            var searchRange = text.startIndex..<text.endIndex
+            while let range = text.range(of: designator, options: [], range: searchRange) {
+                let rest = text[range.upperBound...]
+                if knownFieldCodes.contains(where: { rest.hasPrefix($0) }) {
+                    return range.upperBound
+                }
+                searchRange = range.upperBound..<text.endIndex
+            }
+        }
+        return nil
     }
 
     /// Parse AAMVA date (MMDDYYYY or CCYYMMDD) → ISO "YYYY-MM-DD".

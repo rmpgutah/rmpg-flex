@@ -9,12 +9,14 @@ import {
   Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download, Eye, XCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import IconButton from '../../../components/IconButton';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -156,7 +158,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     setLoading(true);
     try {
       const data = await apiFetch<PayPeriod[]>('/hr/payroll/periods');
-      setPeriods(data);
+      setPeriods(asArray<PayPeriod>(data));
     } catch { addToast('Failed to load pay periods', 'error'); }
     finally { setLoading(false); }
   }, [addToast]);
@@ -165,7 +167,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     setLoading(true);
     try {
       const data = await apiFetch<PayRate[]>('/hr/payroll/rates');
-      setRates(data);
+      setRates(asArray<PayRate>(data));
     } catch { addToast('Failed to load pay rates', 'error'); }
     finally { setLoading(false); }
   }, [addToast]);
@@ -174,7 +176,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     setLoading(true);
     try {
       const data = await apiFetch<PayrollEntry[]>(`/hr/payroll/entries?pay_period_id=${periodId}`);
-      setEntries(data);
+      setEntries(asArray<PayrollEntry>(data));
     } catch { addToast('Failed to load entries', 'error'); }
     finally { setLoading(false); }
   }, [addToast]);
@@ -189,7 +191,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchOtRequests = useCallback(async () => {
     try {
       const data = await apiFetch<OvertimeRequest[]>('/hr/payroll/overtime');
-      setOtRequests(data);
+      setOtRequests(asArray<OvertimeRequest>(data));
     } catch { /* silent */ }
   }, []);
 

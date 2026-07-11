@@ -6,6 +6,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
+import { asArray } from '../../../utils/asArray';
 
 interface Benefit {
   id: number;
@@ -63,11 +64,11 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const load = async () => {
     setLoading(true);
     try {
-      try { const data = await apiFetch<any[]>('/hr/benefits'); setBenefits(data); } catch { addToast('Failed to load benefits', 'error'); }
+      try { const data = await apiFetch<any[]>('/hr/benefits'); setBenefits(asArray(data)); } catch { addToast('Failed to load benefits', 'error'); }
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(d.filter((o: any) => o.status === 'active'))).catch(() => {}); }, []);
+  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(asArray(d).filter((o: any) => o.status === 'active'))).catch(() => {}); }, []);
 
   // Escape to close form
   useEffect(() => {

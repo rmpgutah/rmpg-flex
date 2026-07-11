@@ -18,24 +18,28 @@ import { adaCountyAdapter } from './adapters/adaCounty';
 import { natronaAdapter } from './adapters/natrona';
 import { fbiAdapter } from './adapters/fbi';
 import { utahCountyAdapter } from './adapters/utahCounty';
+import { ohioPvalAdapter } from './adapters/ohioPval';
 import { getConfigAdapters } from './configRegistry';
 import { query } from '../db';
 
 /** All known source adapters (code-resident). */
-export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter, fbiAdapter, utahCountyAdapter];
+export const ADAPTERS: WarrantSourceAdapter[] = [utahApiAdapter, adaCountyAdapter, natronaAdapter, fbiAdapter, utahCountyAdapter, ohioPvalAdapter];
 
 /**
- * Adapters that have a warrant_scraper_config row (i.e. enabled for scanning).
+ * Adapters that have an ENABLED warrant_scraper_config row (enabled = 1).
  *
- * - Query succeeds with rows → return the ADAPTERS whose meta.key is configured.
- * - Query succeeds with zero rows → return [] (nothing configured = nothing enabled).
+ * - Query succeeds with rows → return the ADAPTERS whose meta.key has an
+ *   enabled config row. A row with enabled = 0 (operator disabled it via the
+ *   AdminWarrantScrapersTab bulk-action UI, see migration 0151) is excluded —
+ *   having a config row is NOT the same as being enabled.
+ * - Query succeeds with zero rows → return [] (nothing enabled).
  * - Query THROWS (table missing / cold D1) → fail open to ALL ADAPTERS + warn.
  */
 export async function getEnabledAdapters(db: D1Database): Promise<WarrantSourceAdapter[]> {
   try {
     const rows = await query<{ source_name: string }>(
       db,
-      'SELECT source_name FROM warrant_scraper_config'
+      'SELECT source_name FROM warrant_scraper_config WHERE enabled = 1'
     );
     const configured = new Set(rows.map((r) => r.source_name));
     return ADAPTERS.filter((a) => configured.has(a.meta.key));

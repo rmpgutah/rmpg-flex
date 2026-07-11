@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       # Reports the global hex total (informational) and FAILS only if a file
       # listed in docs/theme-cleaned-files.txt reintroduces disallowed hex.
       - name: Theme hex ratchet

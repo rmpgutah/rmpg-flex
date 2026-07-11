@@ -36,6 +36,15 @@ interface NewCallModalProps {
   defaultMode?: 'quick' | 'full';
 }
 
+// PSO/process-service incident types — matches PROCESS_SERVICE_INCIDENT_TYPES
+// in constants/dispositionCodes.ts. Both usages below must move together:
+// the PSO-specific client dropdown (with PSO autofill) and the generic
+// client selector are mutually exclusive on incident_type, so fixing only
+// one side would either show both selectors at once or neither for a
+// process_service/civil_paper_service call (caught 2026-07-03, same drift
+// as DispatchPage.tsx's Serve tab and CallCard.tsx's PSO badges).
+const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+
 const CALL_SOURCES: { value: CallSource; label: string }[] = [
   { value: 'phone', label: 'Phone' },
   { value: 'radio', label: 'Radio' },
@@ -272,22 +281,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const onCloseRef = useRef(handleClose);
   onCloseRef.current = handleClose;
 
-  // Body scroll lock — prevent background scrolling when modal is open
+  // Body scroll lock — prevent background scrolling when modal is open.
+  // Position/top/width + scroll-position preservation now live inside
+  // lockBodyScroll/unlockBodyScroll (reference-counted, nesting-safe) — see
+  // bodyScrollLock.ts for why that state can't be owned per-component (two
+  // modals open at once, e.g. a ConfirmDialog launched from inside this
+  // modal, used to stomp on each other's document.body styles).
   useEffect(() => {
-    if (isOpen) {
-      const scrollY = window.scrollY;
-      lockBodyScroll();
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-      document.body.style.top = `-${scrollY}px`;
-    }
+    if (!isOpen) return;
+    lockBodyScroll();
     return () => {
-      const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
       unlockBodyScroll();
-      document.body.style.position = '';
-      document.body.style.width = '';
-      document.body.style.top = '';
-      if (scrollY > 0) window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -504,8 +508,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             )}
           </div>
 
-          {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
-          {formData.incident_type === 'pso_client_request' && (
+          {/* PSO Client Request fields — visible in both modes when a PSO/process-service type is selected */}
+          {PSO_TYPES.has(formData.incident_type) && (
             <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: 'var(--surface-raised)' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
 
@@ -660,7 +664,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               — never overwrites what the dispatcher already typed). Hidden for
               PSO Client Requests, which have their own purple client dropdown
               above with PSO-specific autofill. */}
-          {clients.length > 0 && formData.incident_type !== 'pso_client_request' && (
+          {clients.length > 0 && !PSO_TYPES.has(formData.incident_type) && (
             <div>
               <label htmlFor="ff-newcallmodal-client" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
               <select id="ff-newcallmodal-client"

@@ -6,6 +6,8 @@
 // expiration, weapon assignments, and firearms statistics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* 1: Firearm Inventory */ export interface FirearmInventory { serialNumber:string; make:string; model:string; caliber:string; type:'pistol'|'rifle'|'shotgun'|'sniper'|'submachine'; status:'issued'|'armory'|'maintenance'|'retired'|'lost'; assignedTo:string|null; purchaseDate:string; purchasePrice:number; lastInspected:string; }
 export function checkInventoryStatus(inventory:FirearmInventory[]): {total:number;issued:number;armory:number;maintenance:number;readinessPct:number} { const issued=inventory.filter(f=>f.status==='issued'); return{total:inventory.length,issued:issued.length,armory:inventory.filter(f=>f.status==='armory').length,maintenance:inventory.filter(f=>f.status==='maintenance').length,readinessPct:inventory.length>0?Math.round((issued.length+inventory.filter(f=>f.status==='armory').length)/inventory.length*100):0}; }
 /* 2: Qualification Management */ export interface QualRecord { officerId:string; firearmId:string; qualDate:string; courseType:'day'|'low_light'|'tactical'|'shotgun'|'rifle'; score:number; maxScore:number; passed:boolean; instructor:string; nextQualDue:string; }
@@ -20,7 +22,7 @@ export function checkLessLethalReadiness(devices:LessLethalDevice[]): {ready:num
 export function approveTransfer(transfer:WeaponTransfer,approver:string): WeaponTransfer { return{...transfer,approvedBy:approver,transferDate:new Date().toISOString().slice(0,10),status:'approved'}; }
 /* 7: Damage/Loss */ export interface WeaponIncident { weaponId:string; officerId:string; date:string; incidentType:'damaged'|'lost'|'stolen'|'destroyed'; description:string; policeReport:string|null; status:'reported'|'investigating'|'resolved'; }
 export function reportWeaponIncident(weaponId:string,officerId:string,type:string,desc:string): WeaponIncident { return{weaponId,officerId,date:new Date().toISOString().slice(0,10),incidentType:type as any,description:desc,policeReport:null,status:'reported'}; }
-/* 8: Armor Expiration */ export function getArmorWarrantyStatus(purchaseDate:string): {warrantyActive:boolean;manufacturerWarrantyYears:number;replaceByDate:string} { const d=new Date(purchaseDate);d.setFullYear(d.getFullYear()+5); return{warrantyActive:new Date()<=d,manufacturerWarrantyYears:5,replaceByDate:d.toISOString().slice(0,10)}; }
+/* 8: Armor Expiration */ export function getArmorWarrantyStatus(purchaseDate:string): {warrantyActive:boolean;manufacturerWarrantyYears:number;replaceByDate:string} { const d=parseTimestamp(purchaseDate);d.setFullYear(d.getFullYear()+5); return{warrantyActive:new Date()<=d,manufacturerWarrantyYears:5,replaceByDate:d.toISOString().slice(0,10)}; }
 /* 9: Weapon Assignment */ export interface WeaponAssignment { weaponId:string; officerId:string; assignedDate:string; returnDate:string|null; conditionAtIssue:string; }
 export function assignWeapon(weaponId:string,officerId:string): WeaponAssignment { return{weaponId,officerId,assignedDate:new Date().toISOString().slice(0,10),returnDate:null,conditionAtIssue:'good'}; }
 /* 10: Firearms Dashboard */ export interface FirearmsDashboard { totalWeapons:number; issued:number; qualificationsCurrent:number; qualsExpiring:number; ammoInventory:number; armorActive:number; armorExpiring:number; }

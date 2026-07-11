@@ -11,6 +11,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { apiFetch } from '../../hooks/useApi';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 export default function RecordDetailWindow() {
   const { type, id } = useParams<{ type: string; id: string }>();
@@ -175,7 +176,7 @@ export default function RecordDetailWindow() {
                     <td className="py-1.5 text-rmpg-100 font-mono font-bold text-xs">{inc.incident_number}</td>
                     <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
                     <td className="py-1.5 text-rmpg-300">{toDisplayLabel(inc.role || '')}</td>
-                    <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
+                    <td className="py-1.5 text-rmpg-300">{inc.created_at ? parseTimestamp(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
                     <td className="py-1.5">
                       <StatusBadge status={inc.status || 'draft'} type="incident_status" size="sm" />
                     </td>
@@ -291,7 +292,7 @@ export default function RecordDetailWindow() {
                   <td className="py-1.5 text-rmpg-100 font-mono font-bold text-xs">{inc.incident_number}</td>
                   <td className="py-1.5 text-brand-400">{formatIncidentType(inc.incident_type || '')}</td>
                   <td className="py-1.5 text-rmpg-300">{toDisplayLabel(inc.role || '')}</td>
-                  <td className="py-1.5 text-rmpg-300">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
+                  <td className="py-1.5 text-rmpg-300">{inc.created_at ? parseTimestamp(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</td>
                   <td className="py-1.5">
                     <StatusBadge status={inc.status || 'draft'} type="incident_status" size="sm" />
                   </td>

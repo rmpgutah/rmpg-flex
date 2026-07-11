@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Link2, Loader2, Trash2, FileText, Phone, Briefcase, Gavel, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { safeDateStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface VideoLink {
   id: number;
@@ -201,7 +202,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                       <Icon className="w-3 h-3 text-brand-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-[10px] text-rmpg-200">
-                          <span className="capitalize font-semibold">{link.entity_type}</span>
+                          <span className="capitalize font-semibold">{toDisplayLabel(link.entity_type)}</span>
                           <span className="text-rmpg-400"> #{link.entity_id}</span>
                         </div>
                         {link.notes && (

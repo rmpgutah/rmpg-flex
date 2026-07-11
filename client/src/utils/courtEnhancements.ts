@@ -1,4 +1,5 @@
 // 50 court enhancements
+import { parseTimestamp } from './dateUtils';
 export interface CourtDocket { caseNumber:string; courtDate:string; courtroom:string; judge:string; prosecutor:string; defenseAttorney:string; hearingType:string; outcome:string|null; }
 export function scheduleCourtDate(caseNumber:string,date:string,courtroom:string,judge:string,type:string): CourtDocket { return{caseNumber,courtDate:date,courtroom,judge,prosecutor:'',defenseAttorney:'',hearingType:type,outcome:null}; }
 export interface CourtCalendar { date:string; cases:Array<{caseNumber:string;time:string;courtroom:string;officersRequired:string[]}>; }
@@ -23,6 +24,6 @@ export interface CourtSentencing { caseNumber:string; sentencingDate:string; sen
 export function recordSentence(caseNumber:string,sentence:string,incarceration:number,probation:number,fine:number): CourtSentencing { return{caseNumber,sentencingDate:new Date().toISOString().slice(0,10),sentence,incarcerationDays:incarceration,probationMonths:probation,fine,restitution:0}; }
 export interface CourtNotification { caseNumber:string; notificationType:string; sentTo:string; sentDate:string; acknowledged:boolean; }
 export function sendCourtNotification(caseNumber:string,type:string,recipient:string): CourtNotification { return{caseNumber,notificationType:type,sentTo:recipient,sentDate:new Date().toISOString(),acknowledged:false}; }
-export function calculateTimeToTrial(arrestDate:string,trialDate:string|null): {days:number;speedyTrialLimit:number;atRisk:boolean} { const days=trialDate?Math.ceil((new Date(trialDate).getTime()-new Date(arrestDate).getTime())/86400000):0; const limit=180; return{days, speedyTrialLimit:limit, atRisk:days>limit*0.85}; }
+export function calculateTimeToTrial(arrestDate:string,trialDate:string|null): {days:number;speedyTrialLimit:number;atRisk:boolean} { const days=trialDate?Math.ceil((parseTimestamp(trialDate).getTime()-parseTimestamp(arrestDate).getTime())/86400000):0; const limit=180; return{days, speedyTrialLimit:limit, atRisk:days>limit*0.85}; }
 export interface CourtDashboard { casesOnDocket:number; subpoenasOutstanding:number; officersDueInCourt:number; casesAwaitingTrial:number; bondsActive:number; }
 export function compileCourtDashboard(docket:number,subpoenas:number,officers:number,awaitingTrial:number,bonds:number): CourtDashboard { return{casesOnDocket:docket,subpoenasOutstanding:subpoenas,officersDueInCourt:officers,casesAwaitingTrial:awaitingTrial,bondsActive:bonds}; }

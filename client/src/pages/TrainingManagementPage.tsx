@@ -13,6 +13,7 @@ import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, Fi
 export default function TrainingManagementPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // Role gate: admin / manager / human_resources only

@@ -19,6 +19,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const inbox = new Hono<Env>();
 
 function uid(c: any): number | null {
@@ -232,7 +233,7 @@ inbox.post('/admin/broadcast', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id, recipients: 'all' }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to broadcast', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to broadcast');
   }
 });
 

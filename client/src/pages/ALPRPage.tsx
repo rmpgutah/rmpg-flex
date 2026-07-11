@@ -6,6 +6,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──
 interface ALPRRead {
@@ -315,7 +316,7 @@ export default function ALPRPage() {
                       <td className="px-3 py-[2px] text-[#888888]">{entry.reason}</td>
                       <td className="px-3 py-[2px] text-[#888888] capitalize">{entry.alert_type.replace(/_/g, ' ')}</td>
                       <td className="px-3 py-[2px] text-[#888888]">{entry.vehicle_description}</td>
-                      <td className={`px-3 py-[2px] font-semibold capitalize ${PRIORITY_COLORS[entry.priority] || 'text-[#888888]'}`}>{entry.priority}</td>
+                      <td className={`px-3 py-[2px] font-semibold capitalize ${PRIORITY_COLORS[entry.priority] || 'text-[#888888]'}`}>{toDisplayLabel(entry.priority)}</td>
                       <td className="px-3 py-[2px] text-[#888888]">{entry.expires_at || '—'}</td>
                       <td className="px-3 py-[2px]">
                         <IconButton

@@ -17,6 +17,9 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { notConfigured } from '../utils/notConfigured';
+import { routeCrossesExclusionZone, type ExclusionZone, type LngLat } from '../utils/navExclusionZones';
+import { log } from '../utils/logger';
 
 const mapbox = new Hono<Env>();
 
@@ -24,12 +27,17 @@ const MB = 'https://api.mapbox.com';
 const TIMEOUT_MS = 12_000;
 
 function token(c: any): string | null {
-  return (c.env?.MAPBOX_ACCESS_TOKEN as string)
+  const t = (c.env?.MAPBOX_ACCESS_TOKEN as string)
     || (c.env?.VITE_MAPBOX_ACCESS_TOKEN as string)
     || null;
+  if (t && t.startsWith('sk.')) {
+    console.warn('[mapbox] Rejected sk.* secret token in server-side proxy');
+    return null;
+  }
+  return t;
 }
 
-function notConfigured(c: any) {
+function tokenMissing(c: any) {
   return c.json(
     { error: 'Mapbox not configured', code: 'MAPBOX_TOKEN_UNSET', detail: 'Set the MAPBOX_ACCESS_TOKEN Worker secret to enable server-side Mapbox features.' },
     503,
@@ -62,16 +70,19 @@ function fail(c: any, err: any, label: string) {
 }
 
 // ── Geocoding ──────────────────────────────────────────────
-// GET /api/mapbox/geocode?q=&limit=&types=  → { features: [...] }
+// GET /api/mapbox/geocode?q=&limit=&types=&proximity=&country=  → { features: [...] }
 mapbox.get('/geocode', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const q = (c.req.query('q') || '').trim();
   if (!q) return c.json({ error: 'q is required' }, 400);
   const limit = c.req.query('limit') || '5';
   const types = c.req.query('types');
-  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: 'us' });
+  const proximity = c.req.query('proximity');
+  const country = c.req.query('country');
+  const params = new URLSearchParams({ access_token: tk, limit, autocomplete: 'true', country: country || 'us' });
   if (types) params.set('types', types);
+  if (proximity) params.set('proximity', proximity);
   try {
     const data = await mbFetch(`${MB}/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?${params}`);
     return c.json({ features: data?.features ?? [] });
@@ -81,7 +92,7 @@ mapbox.get('/geocode', async (c) => {
 // GET /api/mapbox/reverse-geocode?lng=&lat=  → { features: [...] }
 mapbox.get('/reverse-geocode', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const params = new URLSearchParams({ access_token: tk, limit: '1' });
@@ -92,10 +103,10 @@ mapbox.get('/reverse-geocode', async (c) => {
 });
 
 // ── Directions ─────────────────────────────────────────────
-// GET /api/mapbox/directions?coordinates=&profile=&alternatives=  → { routes: [...] }
+// GET /api/mapbox/directions?coordinates=&profile=&alternatives=&annotations=  → { routes: [...] }
 mapbox.get('/directions', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving-traffic';
@@ -106,17 +117,64 @@ mapbox.get('/directions', async (c) => {
     geometries: c.req.query('geometries') || 'geojson',
     steps: c.req.query('steps') || 'true',
   });
+  // Per-segment congestion (used by the nav guidance engine's traffic-colored
+  // route line) is opt-in on Mapbox's side — only forward it when a caller
+  // actually asks for it, since it inflates the response for callers that
+  // just want the polyline.
+  const annotations = c.req.query('annotations');
+  if (annotations) params.set('annotations', annotations);
   try {
     const data = await mbFetch(`${MB}/directions/v5/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
-    return c.json({ routes: data?.routes ?? [], waypoints: data?.waypoints ?? [], code: data?.code });
+    const routes = data?.routes ?? [];
+    const excludedZoneWarning = await checkExclusionZones(c, routes);
+    return c.json({
+      routes,
+      waypoints: data?.waypoints ?? [],
+      code: data?.code,
+      ...(excludedZoneWarning ? { excludedZoneWarning: true } : {}),
+    });
   } catch (err) { return fail(c, err, 'directions'); }
 });
+
+// Best-effort exclusion-zone check for a Directions response's route
+// geometry. Only meaningful when the geometry is GeoJSON (the /directions
+// handler above defaults geometries=geojson, so route.geometry.coordinates
+// is present unless a caller explicitly asked for polyline/polyline6).
+// Never throws — a geofence lookup failure shouldn't block routing.
+async function checkExclusionZones(c: any, routes: any[]): Promise<boolean> {
+  try {
+    const db = c.env?.DB;
+    if (!db || !Array.isArray(routes) || routes.length === 0) return false;
+    const coords: unknown = routes[0]?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length === 0) return false;
+    const routeCoords: LngLat[] = coords
+      .filter((pt: unknown): pt is number[] => Array.isArray(pt) && pt.length >= 2)
+      .map((pt: number[]) => ({ lng: pt[0], lat: pt[1] }));
+    if (routeCoords.length === 0) return false;
+
+    const { results } = await db
+      .prepare(`SELECT id, geojson_data FROM geofence_zones WHERE is_active = 1 AND zone_type = 'exclusion'`)
+      .all();
+    const zones: ExclusionZone[] = (results ?? []).map((r: any) => ({ id: r.id, geojsonData: r.geojson_data }));
+    if (zones.length === 0) return false;
+
+    return routeCrossesExclusionZone(routeCoords, zones, (zone, shapeType) => {
+      log.warn('Exclusion zone has an unrecognized geometry shape — skipped in routing check', {
+        zoneId: zone.id,
+        shapeType,
+      });
+    });
+  } catch (err) {
+    log.error('Exclusion zone check failed', {}, err instanceof Error ? err : new Error(String(err)));
+    return false;
+  }
+}
 
 // ── Isochrone ──────────────────────────────────────────────
 // GET /api/mapbox/isochrone?lng=&lat=&minutes=&profile=  → { features: [...] }
 mapbox.get('/isochrone', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -132,7 +190,7 @@ mapbox.get('/isochrone', async (c) => {
 // GET /api/mapbox/matrix?coordinates=&profile=&sources=&destinations=
 mapbox.get('/matrix', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -147,10 +205,10 @@ mapbox.get('/matrix', async (c) => {
 });
 
 // ── Optimization ───────────────────────────────────────────
-// GET /api/mapbox/optimization?coordinates=&profile=&source=&destination=&roundtrip=
+// GET /api/mapbox/optimization?coordinates=&profile=&source=&destination=&roundtrip=&steps=&annotations=
 mapbox.get('/optimization', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const coordinates = c.req.query('coordinates');
   if (!coordinates) return c.json({ error: 'coordinates are required' }, 400);
   const profile = c.req.query('profile') || 'driving';
@@ -161,7 +219,13 @@ mapbox.get('/optimization', async (c) => {
     roundtrip: c.req.query('roundtrip') || 'false',
     geometries: 'geojson',
     overview: 'full',
+    steps: c.req.query('steps') || 'false',
   });
+  // Per-leg duration/distance (used to rebuild the drawn line minus the
+  // synthetic return-to-start leg — see useMapRouting.ts's showMultiStopRoute
+  // comment on why this is solved as a roundtrip) is opt-in, same as Directions.
+  const annotations = c.req.query('annotations');
+  if (annotations) params.set('annotations', annotations);
   try {
     const data = await mbFetch(`${MB}/optimized-trips/v1/mapbox/${encodeURIComponent(profile)}/${coordinates}?${params}`);
     return c.json(data);
@@ -172,7 +236,7 @@ mapbox.get('/optimization', async (c) => {
 // POST /api/mapbox/map-matching  { coordinates: [[lng,lat],...], profile }
 mapbox.post('/map-matching', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   let body: any = {};
   try { body = await c.req.json(); } catch { return c.json({ error: 'invalid JSON body' }, 400); }
   const coords = Array.isArray(body?.coordinates) ? body.coordinates : [];
@@ -192,7 +256,7 @@ mapbox.post('/map-matching', async (c) => {
 // MAPBOX_TILEQUERY_TILESET env override is set.
 mapbox.get('/tilequery', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const tileset = (c.env as any).MAPBOX_TILEQUERY_TILESET || 'mapbox.mapbox-streets-v8';
@@ -204,11 +268,50 @@ mapbox.get('/tilequery', async (c) => {
   } catch (err) { return fail(c, err, 'tilequery'); }
 });
 
+// ── Boundaries ─────────────────────────────────────────────
+// GET /api/mapbox/boundaries?lng=&lat=  → { county, municipality, place, source }
+// Resolves administrative jurisdiction for a point via the Mapbox Boundaries
+// API. This is a paid Mapbox add-on — access is not guaranteed on every
+// token. A 403/404 upstream is NOT a token-missing case (that's handled by
+// the shared `token()`/`tokenMissing()` pair above); it means the account
+// lacks the Boundaries entitlement, so we return the 200 skip shape instead
+// of a hard error — the client shows an "unavailable" badge, not a crash.
+mapbox.get('/boundaries', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const params = new URLSearchParams({ access_token: tk });
+  // Tileset ID 'adm2' is a best-guess (Mapbox's admin-2 = county-equivalent
+  // level in the US). Confirm the exact tileset ID this account is
+  // provisioned for once a live token is available — adjust this literal
+  // if the real ID differs (Mapbox docs: Boundaries v4 tilesets).
+  try {
+    const data = await mbFetch(`${MB}/boundaries/v4/adm2/tilequery/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?${params}`);
+    const feature = (data?.features ?? [])[0];
+    if (!feature) {
+      return c.json({ county: null, municipality: null, place: null, source: 'mapbox-boundaries' });
+    }
+    return c.json({
+      county: feature.properties?.name ?? null,
+      municipality: null,
+      place: null,
+      source: 'mapbox-boundaries',
+    });
+  } catch (err: any) {
+    if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+      console.warn('[mapbox/boundaries] upstream returned', err?.status, '— treating as entitlement gap. If this persists, verify the adm2 tileset ID is correct for this account.');
+      return notConfigured(c, 'Mapbox Boundaries API not enabled on this account token');
+    }
+    return fail(c, err, 'boundaries');
+  }
+});
+
 // ── Static map ─────────────────────────────────────────────
 // GET /api/mapbox/static-map?lng=&lat=&zoom=&width=&height=&style=  → { url, attribution }
 mapbox.get('/static-map', async (c) => {
   const tk = token(c);
-  if (!tk) return notConfigured(c);
+  if (!tk) return tokenMissing(c);
   const lng = c.req.query('lng'); const lat = c.req.query('lat');
   if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
   const zoom = c.req.query('zoom') || '14';
@@ -217,6 +320,65 @@ mapbox.get('/static-map', async (c) => {
   const style = c.req.query('style') || 'mapbox/dark-v11';
   const url = `${MB}/styles/v1/${style}/static/${encodeURIComponent(lng)},${encodeURIComponent(lat)},${zoom}/${width}x${height}?access_token=${encodeURIComponent(tk)}`;
   return c.json({ url, attribution: '© Mapbox © OpenStreetMap' });
+});
+
+// ── Static image (binary proxy) ───────────────────────────
+// GET /api/mapbox/static/image?lng=&lat=&zoom=&width=&height=&style=&retina=&markers=
+//   → binary image bytes (image/png), Mapbox token never reaches the browser.
+// Backs client/src/utils/pdfImageHelpers.ts and client/src/services/staticMapPreview.ts —
+// both already called this path; it just never existed server-side, so every
+// request 404'd and rendered as "Image failed to load". (StreetViewLightbox's
+// oblique-angle orbit fallback in client/src/utils/locationImagery.ts hits the
+// Mapbox Static Images API directly with a cached client-side token, not this
+// server proxy.)
+mapbox.get('/static/image', async (c) => {
+  const tk = token(c);
+  if (!tk) return tokenMissing(c);
+  const lng = c.req.query('lng'); const lat = c.req.query('lat');
+  if (lng == null || lat == null) return c.json({ error: 'lng and lat are required' }, 400);
+  const zoom = c.req.query('zoom') || '14';
+  const width = c.req.query('width') || '600';
+  const height = c.req.query('height') || '400';
+  const style = c.req.query('style') || 'mapbox/dark-v11';
+  const retina = c.req.query('retina') === 'true';
+  const markersParam = c.req.query('markers');
+
+  let overlay = '';
+  if (markersParam) {
+    const pins = markersParam.split(';').filter(Boolean).map((entry) => {
+      const [mLng, mLat, mColor, mLabel] = entry.split(',');
+      const color = (mColor || 'd4a017').replace(/^#/, '');
+      const label = mLabel ? `-${encodeURIComponent(mLabel).slice(0, 1)}` : '';
+      return `pin-s${label}+${color}(${encodeURIComponent(mLng)},${encodeURIComponent(mLat)})`;
+    });
+    overlay = `${pins.join(',')}/`;
+  }
+
+  const at = retina ? '@2x' : '';
+  const url = `${MB}/styles/v1/${style}/static/${overlay}${encodeURIComponent(lng)},${encodeURIComponent(lat)},${zoom}/${width}x${height}${at}?access_token=${encodeURIComponent(tk)}`;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(t);
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      const status = resp.status >= 400 && resp.status < 600 ? resp.status : 502;
+      return c.json({ error: 'Mapbox static image failed', code: 'MAPBOX_UPSTREAM_ERROR', detail: detail.slice(0, 300) }, status as any);
+    }
+    const buf = await resp.arrayBuffer();
+    return new Response(buf, {
+      status: 200,
+      headers: {
+        'Content-Type': resp.headers.get('content-type') || 'image/png',
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  } catch (err: any) {
+    clearTimeout(t);
+    return fail(c, err, 'static image');
+  }
 });
 
 // ── Token status ───────────────────────────────────────────

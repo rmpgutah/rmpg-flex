@@ -35,6 +35,7 @@ import { runUtahSorPoll, importSorRows } from '../utils/utahSorPoller';
 import { lookupCourtRecords } from '../utils/courtRecordsLookup';
 import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const dlRecords = new Hono<Env>();
 
 // ── Inline role gate (mirrors arrests.ts) ───────────────────
@@ -182,10 +183,7 @@ dlRecords.post('/', async (c) => {
 
     return c.json({ success: true, recordId, message: 'DL record saved' });
   } catch (err) {
-    return c.json({
-      error: 'Failed to save DL record', code: 'FAILED_TO_SAVE_DL',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to save DL record', 'FAILED_TO_SAVE_DL');
   }
 });
 
@@ -255,10 +253,7 @@ dlRecords.post('/scan-relay', async (c) => {
     );
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
-    return c.json({
-      error: 'Failed to relay scan', code: 'FAILED_TO_RELAY',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to relay scan', 'FAILED_TO_RELAY');
   }
 });
 
@@ -329,9 +324,10 @@ Transcribe exactly what is printed. dl_state is the issuing state's 2-letter cod
       image: Array.from(bytes),
       prompt,
       max_tokens: 800,
-    }) as { response?: string; description?: string };
+    }) as { response?: unknown; description?: unknown };
 
-    const raw = (out?.response || out?.description || '').trim();
+    const rawValue = out?.response ?? out?.description ?? '';
+    const raw = (typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue)).trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return c.json({ success: false, error: 'Vision model returned no structured data', raw_ocr: raw.slice(0, 500) });
@@ -349,10 +345,7 @@ Transcribe exactly what is printed. dl_state is the issuing state's 2-letter cod
     }
     return c.json({ success: true, parsed: { ...parsed, scan_method: 'VISION OCR' }, ocrEngine: 'workers-ai-vision' });
   } catch (err) {
-    return c.json({
-      success: false, error: 'OCR failed',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'OCR failed');
   }
 });
 
@@ -508,7 +501,7 @@ dlRecords.get('/sources-config', async (c) => {
       court_cache: courtCache?.n ?? 0,
     });
   } catch (err) {
-    return c.json({ error: 'Failed to read config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to read config');
   }
 });
 
@@ -534,7 +527,7 @@ dlRecords.put('/sources-config', async (c) => {
       `Updated data-source config: ${written.join(', ') || 'none'}`);
     return c.json({ success: true, updated: written });
   } catch (err) {
-    return c.json({ error: 'Failed to save config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to save config');
   }
 });
 
@@ -576,7 +569,7 @@ dlRecords.post('/sor/import', async (c) => {
       `Imported ${r.imported} Utah SOR record(s)`);
     return c.json({ success: true, imported: r.imported });
   } catch (err) {
-    return c.json({ error: 'Import failed', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Import failed');
   }
 });
 
@@ -1134,10 +1127,7 @@ dlRecords.post('/sync-from-persons', async (c) => {
     );
     return c.json({ success: true, scanned: persons.length, created, updated });
   } catch (err) {
-    return c.json({
-      error: 'Failed to sync DL records from persons', code: 'DL_SYNC_FAILED',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to sync DL records from persons', 'DL_SYNC_FAILED');
   }
 });
 

@@ -5,6 +5,10 @@
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
+import { humanizeType } from '../../../utils/statusLabels';
+import { coded } from '../../../utils/searchText';
+import type { CallForService } from '../../../types';
+import type { WarningTag } from '../../../components/WarningTags';
 
 /** Filter tab type for the dispatch call queue. */
 export type FilterTab = 'queue' | 'pending' | 'active' | 'hold' | 'serve' | 'cleared' | 'archived';
@@ -67,7 +71,7 @@ export function formatActivityDetails(details: string): string {
  * Label a call's age bucket based on time since creation.
  */
 export function formatCallAge(createdAt: string): string {
-  const diff = Date.now() - new Date(createdAt).getTime();
+  const diff = Date.now() - parseTimestamp(createdAt).getTime();
   if (isNaN(diff) || diff < 0) return 'NEW';
   const mins = diff / 60_000;
   if (mins < 5) return 'NEW';
@@ -171,4 +175,64 @@ export function formatQualityScore(compliance: {
   const pct = compliance.total > 0 ? Math.round((compliance.within_target / compliance.total) * 100) : 0;
   const grade = pct >= 95 ? 'A' : pct >= 85 ? 'B' : pct >= 75 ? 'C' : pct >= 60 ? 'D' : 'F';
   return `${compliance.priority}: ${pct}% (${grade}) — ${compliance.within_target}/${compliance.total} within target`;
+}
+
+/**
+ * Case-insensitive substring match for the Dispatch page's "Search calls" box
+ * — call #, location, incident type (raw or humanized/coded), description,
+ * caller name, and geography (dispatch code, sector/zone/beat). Shared by
+ * the classic list's filteredCalls pipeline and the CAD board's own search
+ * filter, so both surfaces match the same way for the same query.
+ */
+export function callMatchesSearch(call: CallForService, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    (call.call_number || '').toLowerCase().includes(q) ||
+    (call.location || '').toLowerCase().includes(q) ||
+    coded(call.incident_type, humanizeType).includes(q) ||
+    (call.description || '').toLowerCase().includes(q) ||
+    (call.caller_name || '').toLowerCase().includes(q) ||
+    (call.dispatch_code || '').toLowerCase().includes(q) ||
+    (call.zone_beat || '').toLowerCase().includes(q) ||
+    (call.sector_name || '').toLowerCase().includes(q) ||
+    (call.zone_id || '').toLowerCase().includes(q) ||
+    (call.zone_name || '').toLowerCase().includes(q) ||
+    (call.beat_id || '').toLowerCase().includes(q) ||
+    (call.beat_name || '').toLowerCase().includes(q)
+  );
+}
+
+// Values that mean "no weapon", not "unknown weapon" — a plain truthy check
+// would flag "none" as ARMED. Compared against a trimmed/lowercased value so
+// data-entry variants ('NONE', 'None ', etc.) are excluded too, not just the
+// exact casings the server's callWarnings handler (src/routes/dispatch/
+// extensions.ts) happens to check — that handler has the same case/whitespace
+// gap; not fixed here since this PR only touches the client.
+const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'nil', 'n/a']);
+
+/**
+ * Derives CallCard's compact warning badges from fields already present on
+ * every list-row call object (weapons_involved/injuries_reported/
+ * domestic_violence — see LIST_VIEW_COLUMNS in calls.ts) — no extra network
+ * round trip. Deliberately a SUBSET of the full safety briefing the server's
+ * GET /dispatch/calls/:id/warnings returns (that one also covers officer-
+ * safety-caution/hazmat/mental-health/felony-in-progress/gang/premise-alert
+ * proximity, all of which live in calls_for_service_ext or need a per-call
+ * geo query — not safe/practical to bulk-fetch for every row in the queue).
+ * This is a "does this call need a second look" glance, not the full detail
+ * — that still lives on the call's own record.
+ */
+export function deriveCallWarnings(call: CallForService): WarningTag[] {
+  const warnings: WarningTag[] = [];
+  if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {
+    warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
+  }
+  if (call.domestic_violence) {
+    warnings.push({ type: 'DV', label: 'DOMESTIC VIOLENCE', severity: 'high', source: 'call' });
+  }
+  if (call.injuries_reported) {
+    warnings.push({ type: 'INJURIES', label: 'INJURIES REPORTED', severity: 'high', source: 'call' });
+  }
+  return warnings;
 }

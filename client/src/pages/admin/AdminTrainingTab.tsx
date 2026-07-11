@@ -13,6 +13,7 @@ import { toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface OfficerCompliance {
   user_id: number;
@@ -42,7 +43,7 @@ interface Props {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -115,7 +116,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         let nextExp: string | undefined;
         for (const r of recs) {
           if (r.expiration_date) {
-            const exp = new Date(r.expiration_date);
+            const exp = parseTimestamp(r.expiration_date);
             if (exp < thirtyDays && exp > now) {
               expiringSoon++;
               if (!nextExp || exp.toISOString() < nextExp) nextExp = r.expiration_date;
@@ -275,7 +276,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
                   </span>
                 </td>
                 <td className="px-3 py-2 text-rmpg-400">
-                  {o.next_expiration ? new Date(o.next_expiration).toLocaleDateString() : '—'}
+                  {o.next_expiration ? parseTimestamp(o.next_expiration).toLocaleDateString() : '—'}
                 </td>
               </tr>
             );

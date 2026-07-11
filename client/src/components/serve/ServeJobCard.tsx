@@ -73,6 +73,7 @@ const TIME_WINDOW_CONFIG: Record<string, { icon: typeof Sun; label: string }> = 
 
 const ATTEMPT_RESULT_LABELS: Record<string, string> = {
   served: 'Served',
+  sub_served: 'Sub. Service',
   no_answer: 'No Answer',
   refused: 'Refused',
   wrong_address: 'Wrong Address',

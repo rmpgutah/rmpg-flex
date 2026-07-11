@@ -7,11 +7,13 @@
 // evidence handling, and task force coordination.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 71: Drug Investigation Tracking */
 export interface DrugInvestigation { id:string; caseNumber:string; targetName:string; drugType:string; investigationStart:string; investigationEnd:string|null; techniquesUsed:string[]; seizures:Array<{drugType:string;quantity:number;unit:string;streetValue:number;date:string}>; arrests:number; status:'active'|'indictment'|'closed'|'dormant'; }
 export function calculateDrugInvestigationImpact(investigation:DrugInvestigation): { totalStreetValue:number; drugsSeized:number; arrestsPerMonth:number; investigationRating:string } {
   const totalValue = investigation.seizures.reduce((s,se)=>s+se.streetValue,0);
-  const startDate = new Date(investigation.investigationStart); const endDate = investigation.investigationEnd?new Date(investigation.investigationEnd):new Date();
+  const startDate = parseTimestamp(investigation.investigationStart); const endDate = investigation.investigationEnd?parseTimestamp(investigation.investigationEnd):new Date();
   const months = Math.max(1,Math.ceil((endDate.getTime()-startDate.getTime())/86400000/30));
   const rating = investigation.arrests>3&&totalValue>50000?'High Impact':investigation.arrests>0?'Moderate Impact':'Active Investigation';
   return { totalStreetValue:totalValue, drugsSeized:investigation.seizures.length, arrestsPerMonth:Math.round(investigation.arrests/months*10)/10, investigationRating:rating };
@@ -25,7 +27,7 @@ export function evaluateCIReliability(ci:CIProfile): { reliabilityScore:number; 
   score+=ci.reliabilityRating*10;
   if (ci.status==='suspended') { score-=30; recs.push('CI is currently suspended'); }
   if (ci.restrictions.length>0) { score-=ci.restrictions.length*5; recs.push(`${ci.restrictions.length} operational restrictions apply`); }
-  if (ci.lastDeployment && new Date(ci.lastDeployment).getTime()<Date.now()-180*86400000) { recs.push('No recent deployments — reassess viability'); }
+  if (ci.lastDeployment && parseTimestamp(ci.lastDeployment).getTime()<Date.now()-180*86400000) { recs.push('No recent deployments — reassess viability'); }
   const risk = score>=70?'low':score>=40?'medium':'high';
   return { reliabilityScore:Math.max(0,score), canDeploy:ci.status==='active'&&score>=40, riskLevel:risk, recommendations:recs };
 }

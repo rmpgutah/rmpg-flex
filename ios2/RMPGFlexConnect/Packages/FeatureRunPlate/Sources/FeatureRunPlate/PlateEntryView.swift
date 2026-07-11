@@ -24,7 +24,9 @@ public struct PlateEntryView: View {
             VStack(alignment: .leading, spacing: 8) {
                 TextField("License Plate", text: $plateText)
                     .textFieldStyle(.roundedBorder)
+                    #if os(iOS)
                     .textInputAutocapitalization(.characters)
+                    #endif
                     .disableAutocorrection(true)
                     .font(.title3)
                 HStack {

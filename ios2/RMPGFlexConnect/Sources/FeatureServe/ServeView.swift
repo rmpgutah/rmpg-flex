@@ -2,48 +2,48 @@ import SwiftUI
 import CoreAPI
 import DesignSystem
 
-public struct ServeJob: Codable, Identifiable, Sendable {
-    public let id: Int
-    public let recipient: String?
-    public let address: String?
-    public let documentType: String?
-    public let priority: String?
-    public let status: String?
-    public let deadline: String?
-    public let attemptCount: Int?
-    public let createdAt: String?
-}
-
 public struct ServeView: View {
-    @StateObject private var vm = ServeViewModel()
+    @StateObject private var vm: ServeViewModel
     @State private var filter = "all"
+    private let api: ServeAPI
 
-    public init() {}
+    public init(apiClient: APIClient = APIClient(baseURL: Endpoint.productionBaseURL)) {
+        api = ServeAPI(client: apiClient)
+        _vm = StateObject(wrappedValue: ServeViewModel(api: ServeAPI(client: apiClient)))
+    }
 
     public var body: some View {
-        ZStack {
-            RMPGTheme.baseBlack.ignoresSafeArea()
-            VStack(spacing: 0) {
-                PanelTitleBar(title: "Process Serve", icon: "envelope.fill")
-                RMPGDivider()
-                HStack(spacing: 4) {
-                    filterChip("All", "all"); filterChip("Pending", "pending")
-                    filterChip("Active", "active"); filterChip("Served", "served")
-                    filterChip("Overdue", "overdue")
-                    Spacer()
-                }
-                .padding(.horizontal, 12).padding(.vertical, 6).background(RMPGTheme.raisedSurface)
-                RMPGDivider()
+        NavigationStack {
+            ZStack {
+                RMPGTheme.baseBlack.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    PanelTitleBar(title: "Process Serve", icon: "envelope.fill")
+                    RMPGDivider()
+                    HStack(spacing: 4) {
+                        filterChip("All", "all"); filterChip("Pending", "pending")
+                        filterChip("In Progress", "in_progress"); filterChip("Served", "served")
+                        filterChip("Failed", "failed")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 6).background(RMPGTheme.raisedSurface)
+                    RMPGDivider()
 
-                if vm.isLoading { Spacer(); ProgressView().tint(RMPGTheme.brandGold); Spacer() }
-                else {
-                    List(vm.filtered(filter: filter)) { job in
-                        ServeRow(job: job)
+                    if let error = vm.errorMessage {
+                        Text(error).font(.system(size: 11)).foregroundColor(RMPGTheme.statusRed).padding(8)
+                    }
+
+                    if vm.isLoading { Spacer(); ProgressView().tint(RMPGTheme.brandGold); Spacer() }
+                    else {
+                        List(vm.filtered(filter: filter)) { job in
+                            NavigationLink(destination: ServeJobDetailView(jobId: job.id, api: api)) {
+                                ServeRow(job: job)
+                            }
                             .listRowBackground(RMPGTheme.baseBlack)
                             .listRowSeparatorTint(RMPGTheme.borderSubtle)
+                        }
+                        .listStyle(.plain).scrollContentBackground(.hidden)
+                        .refreshable { await vm.refresh() }
                     }
-                    .listStyle(.plain).scrollContentBackground(.hidden)
-                    .refreshable { await vm.refresh() }
                 }
             }
         }
@@ -66,14 +66,21 @@ public struct ServeView: View {
 final class ServeViewModel: ObservableObject {
     @Published var jobs: [ServeJob] = []
     @Published var isLoading = false
-    private let client = APIClient(baseURL: Endpoint.productionBaseURL)
+    @Published var errorMessage: String?
+    private let api: ServeAPI
+
+    init(api: ServeAPI) {
+        self.api = api
+    }
 
     func refresh() async {
         isLoading = true
+        errorMessage = nil
         do {
-            let r: ServeList = try await client.request(Endpoint(path: "/api/serve"))
-            jobs = r.results
-        } catch { print(error) }
+            jobs = try await api.listJobs()
+        } catch {
+            errorMessage = "Could not load serve queue: \(error.localizedDescription)"
+        }
         isLoading = false
     }
 
@@ -81,8 +88,6 @@ final class ServeViewModel: ObservableObject {
         guard filter != "all" else { return jobs }
         return jobs.filter { ($0.status ?? "").lowercased() == filter }
     }
-
-    struct ServeList: Codable, Sendable { let results: [ServeJob] }
 }
 
 struct ServeRow: View {
@@ -91,17 +96,17 @@ struct ServeRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 if let p = job.priority { StatusBadge.priority(p) }
-                StatusBadge(text: (job.status ?? "pending").replacingOccurrences(of: "_", with: " "), color: RMPGTheme.textSecondary)
+                StatusBadge(text: (job.status ?? "pending").replacingOccurrences(of: "_", with: " ").capitalized, color: RMPGTheme.textSecondary)
                 Spacer()
                 if let a = job.attemptCount, a > 0 {
                     Text("\(a) attempt\(a == 1 ? "" : "s")").font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted)
                 }
             }
-            Text(job.recipient ?? "Unknown Recipient")
+            Text(job.recipientName ?? "Unknown Recipient")
                 .font(.system(size: 13, weight: .semibold)).foregroundColor(RMPGTheme.textPrimary)
             HStack(spacing: 4) {
                 Image(systemName: "location.fill").font(.system(size: 9)).foregroundColor(RMPGTheme.statusRed)
-                Text(job.address ?? "No address").font(.system(size: 11)).foregroundColor(RMPGTheme.textSecondary)
+                Text(job.fullAddress.isEmpty ? "No address" : job.fullAddress).font(.system(size: 11)).foregroundColor(RMPGTheme.textSecondary)
             }
             HStack {
                 Text(job.documentType ?? "Document").font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted)

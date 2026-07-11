@@ -7,6 +7,8 @@
 // and risk management dashboard.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 51: Threat Matrix */
 export interface ThreatMatrix { threatType:string; likelihood:1|2|3|4|5; impact:1|2|3|4|5; vulnerability:1|2|3|4|5; overallRisk:number; mitigationStrategies:string[]; }
 export function calculateRiskScore(likelihood:number, impact:number, vulnerability:number): number { return Math.round((likelihood*impact*vulnerability)/5*20); }
@@ -29,7 +31,7 @@ export function calculateSecurityCompliance(survey:SecuritySurvey): { compliance
 /* FEATURE 54: Business Continuity */
 export interface BCPlan { department:string; essentialFunctions:string[]; rtoHours:number; alternateSite:string; backupSystems:string[]; lastTested:string|null; testResult:string|null; }
 export function evaluateBCReadiness(plans:BCPlan[]): { totalPlans:number; testedPlans:number; readyRate:number } {
-  const tested = plans.filter(p=>p.lastTested&&new Date(p.lastTested).getTime()>Date.now()-365*86400000);
+  const tested = plans.filter(p=>p.lastTested&&parseTimestamp(p.lastTested).getTime()>Date.now()-365*86400000);
   return { totalPlans:plans.length, testedPlans:tested.length, readyRate:plans.length>0?Math.round(tested.length/plans.length*100):0 };
 }
 
@@ -50,8 +52,8 @@ export function calculateEventResourceGap(assessment:EventRiskAssessment): { def
 export interface WPVIncident { id:string; date:string; location:string; incidentType:'verbal_threat'|'physical_altercation'|'weapon_displayed'|'active_threat'; subjectType:'employee'|'visitor'|'former_employee'|'domestic'|'stranger'; outcome:string; restrainingOrder:boolean; }
 export function analyzeWPVTrends(incidents:WPVIncident[]): { total:number; byType:Record<string,number>; escalatingPattern:boolean } {
   const byType:Record<string,number> = {}; for (const i of incidents) byType[i.incidentType]=(byType[i.incidentType]||0)+1;
-  const recent = incidents.filter(i=>new Date(i.date).getTime()>Date.now()-90*86400000);
-  const older = incidents.filter(i=>new Date(i.date).getTime()<=Date.now()-90*86400000);
+  const recent = incidents.filter(i=>parseTimestamp(i.date).getTime()>Date.now()-90*86400000);
+  const older = incidents.filter(i=>parseTimestamp(i.date).getTime()<=Date.now()-90*86400000);
   return { total:incidents.length, byType, escalatingPattern:recent.length>older.length };
 }
 
@@ -60,7 +62,7 @@ export interface SuspiciousIndicator { id:string; indicatorType:string; descript
 export function correlateIndicators(indicators:SuspiciousIndicator[], timeframeHours:number=24): SuspiciousIndicator[][] {
   const groups:SuspiciousIndicator[][] = []; const used=new Set<number>();
   for (let i=0;i<indicators.length;i++) { if (used.has(i)) continue; const group=[indicators[i]]; used.add(i);
-    for (let j=i+1;j<indicators.length;j++) { if (used.has(j)) continue; const tDiff=Math.abs(new Date(indicators[i].observedDate).getTime()-new Date(indicators[j].observedDate).getTime())/3600000; if (tDiff<timeframeHours){group.push(indicators[j]);used.add(j);} }
+    for (let j=i+1;j<indicators.length;j++) { if (used.has(j)) continue; const tDiff=Math.abs(parseTimestamp(indicators[i].observedDate).getTime()-parseTimestamp(indicators[j].observedDate).getTime())/3600000; if (tDiff<timeframeHours){group.push(indicators[j]);used.add(j);} }
     if (group.length>=2) groups.push(group);
   }
   return groups;
@@ -71,7 +73,7 @@ export interface ASPreparedness { facilityId:string; hasPlan:boolean; lastDrill:
 export function assessASReadiness(prep:ASPreparedness): { readinessScore:number; criticalGaps:string[] } {
   const gaps:string[] = []; let score = 0;
   if (prep.hasPlan) score+=30; else gaps.push('No active shooter plan');
-  if (prep.lastDrill&&new Date(prep.lastDrill).getTime()>Date.now()-365*86400000) score+=20; else gaps.push('No recent drill');
+  if (prep.lastDrill&&parseTimestamp(prep.lastDrill).getTime()>Date.now()-365*86400000) score+=20; else gaps.push('No recent drill');
   if (prep.staffTrained/prep.totalStaff>0.8) score+=25; else gaps.push('Insufficient staff training');
   if (prep.runHideFightBriefed) score+=15; else gaps.push('Run-Hide-Fight not briefed');
   if (prep.reunificationPlan) score+=10; else gaps.push('No reunification plan');
@@ -83,6 +85,6 @@ export interface RiskDashboard { totalThreats:number; highRiskThreats:number; vu
 export function compileRiskDashboard(threats:ThreatMatrix[], vulns:VulnerabilityAssessment[], security:SecuritySurvey[], bc:BCPlan[]): RiskDashboard {
   const highThreats = threats.filter(t=>t.overallRisk>=70).length;
   const openVulns = vulns.reduce((s,v)=>s+v.findings.filter(f=>f.status==='open').length,0);
-  const bcReady = bc.filter(p=>p.lastTested&&new Date(p.lastTested).getTime()>Date.now()-365*86400000).length;
+  const bcReady = bc.filter(p=>p.lastTested&&parseTimestamp(p.lastTested).getTime()>Date.now()-365*86400000).length;
   return { totalThreats:threats.length, highRiskThreats:highThreats, vulnerabilitiesOpen:openVulns, securitySurveyCompliance:0, bcPlansReady:bcReady, specialEventsThisMonth:0, wpvIncidents:0, overallRiskLevel:highThreats>0||openVulns>5?'elevated':'moderate' };
 }

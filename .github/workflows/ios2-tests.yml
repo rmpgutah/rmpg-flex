@@ -43,3 +43,32 @@ jobs:
       - name: Test ${{ matrix.package }}
         working-directory: ios2/RMPGFlexConnect/Packages/${{ matrix.package }}
         run: swift test --enable-test-discovery
+
+  # CoreCarPlay can't go through the swift-tests matrix above: its Package.swift
+  # excludes CarPlaySceneDelegate.swift from the SPM target because the CarPlay
+  # framework isn't available to a plain `swift build`/`swift test` host build —
+  # only to an iOS (or CarPlay Simulator) target built through the Xcode
+  # project. `swift test` on this package would silently skip that file rather
+  # than catch a break in it, so it needs a real xcodebuild instead.
+  swift-build-carplay:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode (pinned to the GitHub macos-14 default)
+        run: |
+          if [ -d "/Applications/Xcode_15.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.4.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          xcodebuild -version
+
+      - name: Build CoreCarPlay scheme for iOS Simulator
+        working-directory: ios2/RMPGFlexConnect
+        run: |
+          xcodebuild build \
+            -project RMPGFlexConnect.xcodeproj \
+            -scheme CoreCarPlay \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO

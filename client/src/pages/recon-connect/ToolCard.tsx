@@ -5,6 +5,7 @@ import { apiFetch } from '../../hooks/useApi';
 
 import RichTextArea from '../../components/RichTextArea';
 import { registerArialFont } from '../../utils/pdf/fonts/registerArial';
+import { toDisplayLabel } from '../../utils/formatters';
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
   id: string;
@@ -531,7 +532,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                   >
                     <span className="text-[#d4a017] text-[10px] font-mono">{c.case_number}</span>
                     {c.title && <span className="text-rmpg-200 text-[11px] min-w-0 truncate flex-1">{c.title}</span>}
-                    {c.status && <span className="text-[#888] text-[9px] uppercase">{c.status}</span>}
+                    {c.status && <span className="text-[#888] text-[9px] uppercase">{toDisplayLabel(c.status)}</span>}
                   </button>
                 ))}
               </div>

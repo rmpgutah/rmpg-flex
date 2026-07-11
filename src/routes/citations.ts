@@ -13,6 +13,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -234,11 +235,51 @@ citations.get('/', async (c) => {
       pagination: { page: pageNum, per_page: perPage, total, totalPages: perPage > 0 ? Math.ceil(total / perPage) : 0 },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list citations', code: 'LIST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list citations', 'LIST_ERROR');
   }
+});
+
+// ── Fine calculation ─────────────────────────────────────────
+citations.get('/calculate-fine', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const statuteId = c.req.query('statute_id');
+    const offenseLevel = c.req.query('offense_level');
+    const type = c.req.query('type') || 'traffic';
+    let baseFine = 0;
+    if (statuteId) {
+      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
+        db, 'SELECT default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
+      ).catch(() => null);
+      if (statute?.default_fine) baseFine = statute.default_fine;
+    }
+    if (!baseFine) {
+      const fineSchedule: Record<string, number> = {
+        felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350,
+        misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100,
+      };
+      baseFine = fineSchedule[offenseLevel as string] || 100;
+    }
+    const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
+    const multiplier = typeMultipliers[type] || 1.0;
+    const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
+    return c.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type } });
+  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic' } }); }
+});
+
+// ── Vehicle plate lookup (for auto-filling vehicle details) ──
+citations.get('/vehicle-lookup', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const plate = c.req.query('plate');
+    if (!plate || plate.length < 2) return c.json({ found: false });
+    const vehicle = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, plate_number, make, model, year, color, vin, registered_owner
+       FROM vehicles_records WHERE UPPER(REPLACE(plate_number,' ','')) = UPPER(REPLACE(?,' ',''))
+       LIMIT 1`, plate);
+    if (vehicle) return c.json({ found: true, ...vehicle });
+    return c.json({ found: false });
+  } catch { return c.json({ found: false }); }
 });
 
 // ── GET /:id ────────────────────────────────────────────────
@@ -349,10 +390,7 @@ citations.post('/', async (c) => {
 
     return c.json({ data: created, citation_number: citationNumber }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create citation', code: 'CREATE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create citation', 'CREATE_ERROR');
   }
 });
 
@@ -574,10 +612,7 @@ citations.post('/:id/copies', async (c) => {
       ...(errors.length ? { errors } : {}),
     }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to upload copies', code: 'COPIES_UPLOAD_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to upload copies', 'COPIES_UPLOAD_ERROR');
   }
 });
 
@@ -945,34 +980,6 @@ citations.get('/statutes/lookup', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
-// ── Fine calculation ─────────────────────────────────────────
-citations.get('/calculate-fine', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const statuteId = c.req.query('statute_id');
-    const offenseLevel = c.req.query('offense_level');
-    const type = c.req.query('type') || 'traffic';
-    let baseFine = 0;
-    if (statuteId) {
-      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
-        db, 'SELECT default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
-      ).catch(() => null);
-      if (statute?.default_fine) baseFine = statute.default_fine;
-    }
-    if (!baseFine) {
-      const fineSchedule: Record<string, number> = {
-        felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350,
-        misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100,
-      };
-      baseFine = fineSchedule[offenseLevel as string] || 100;
-    }
-    const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
-    const multiplier = typeMultipliers[type] || 1.0;
-    const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
-    return c.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type } });
-  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic' } }); }
-});
-
 // ── Batch citation creation (traffic enforcement) ────────────
 citations.post('/batch', async (c) => {
   try {
@@ -998,21 +1005,6 @@ citations.post('/batch', async (c) => {
     }
     return c.json({ success: true, created: created.length, ids: created });
   } catch { return c.json({ error: 'Batch creation failed' }, 500); }
-});
-
-// ── Vehicle plate lookup (for auto-filling vehicle details) ──
-citations.get('/vehicle-lookup', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const plate = c.req.query('plate');
-    if (!plate || plate.length < 2) return c.json({ found: false });
-    const vehicle = await queryFirst<Record<string, unknown>>(db,
-      `SELECT id, plate_number, make, model, year, color, vin, registered_owner
-       FROM vehicles_records WHERE UPPER(REPLACE(plate_number,' ','')) = UPPER(REPLACE(?,' ',''))
-       LIMIT 1`, plate);
-    if (vehicle) return c.json({ found: true, ...vehicle });
-    return c.json({ found: false });
-  } catch { return c.json({ found: false }); }
 });
 
 export default citations;

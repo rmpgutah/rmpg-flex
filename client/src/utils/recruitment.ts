@@ -7,6 +7,8 @@
 // diversity hiring metrics, and onboarding workflow.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 91: Applicant Pipeline */
 export interface RecruitmentPipeline { id:string; position:string; applicants:number; screeningPassed:number; testingPassed:number; oralBoardPassed:number; backgroundInProgress:number; conditionalOffers:number; hired:number; period:string; }
 export function analyzePipeline(pipeline:RecruitmentPipeline): { conversionRate:number; dropoutPoints:Record<string,number>; timeToHire:number } {
@@ -47,8 +49,8 @@ export function schedulePreEmploymentMedical(applicantId:string, examDate:string
 /* FEATURE 96: Academy Class Planning */
 export interface AcademyClass { id:string; classNumber:string; startDate:string; graduationDate:string; maxCapacity:number; enrolled:number; instructorTeam:string[]; curriculum:Array<{block:string;weeks:number;instructor:string}>; status:'forming'|'in_session'|'graduated'|'cancelled'; }
 export function planAcademyClass(startDate:string, weeks:number, maxCapacity:number): AcademyClass {
-  const gradDate = new Date(startDate); gradDate.setDate(gradDate.getDate()+weeks*7);
-  return { id:`acad-${Date.now()}`, classNumber:`${new Date(startDate).getFullYear()}-${Math.ceil(new Date(startDate).getMonth()/4)}`, startDate, graduationDate:gradDate.toISOString().slice(0,10), maxCapacity, enrolled:0, instructorTeam:[], curriculum:[], status:'forming' };
+  const gradDate = parseTimestamp(startDate); gradDate.setDate(gradDate.getDate()+weeks*7);
+  return { id:`acad-${Date.now()}`, classNumber:`${parseTimestamp(startDate).getFullYear()}-${Math.ceil(parseTimestamp(startDate).getMonth()/4)}`, startDate, graduationDate:gradDate.toISOString().slice(0,10), maxCapacity, enrolled:0, instructorTeam:[], curriculum:[], status:'forming' };
 }
 
 /* FEATURE 97: Lateral Transfer Processing */

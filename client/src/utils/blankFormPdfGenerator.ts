@@ -1077,7 +1077,7 @@ function generateBlankExpenseForm(doc: jsPDF) {
 
 // ── Main Export ──────────────────────────────────────────────
 
-const GENERATORS: Record<BlankFormType, (doc: jsPDF) => void> = {
+const GENERATORS: Partial<Record<BlankFormType, (doc: jsPDF) => void>> = {
   incident: generateBlankIncidentForm,
   person: generateBlankPersonForm,
   vehicle: generateBlankVehicleForm,
@@ -1111,7 +1111,7 @@ export async function generateBlankForm(formType: BlankFormType): Promise<jsPDF>
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
 
   // Generate form content
-  GENERATORS[formType](doc);
+  GENERATORS[formType]?.(doc);
 
   // Add page footers to all pages
   const totalPages = doc.getNumberOfPages();

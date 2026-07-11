@@ -78,12 +78,41 @@ function isCloseControl(el: Element): boolean {
   return /^(cancel|close|dismiss|×|✕)$/i.test(text);
 }
 
+// ── Dialog / open tone ──────────────────────────────────────
+// Played when a dialog/overlay appears (MutationObserver below).
+const DIALOG_SELECTOR = '[role="dialog"], [data-modal], .modal-overlay';
+
+export function playUiOpen(): void {
+  try {
+    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
+    const now = Date.now();
+    if (now - lastTick < THROTTLE_MS) return;
+    lastTick = now;
+    playSoundAsset('submit');
+  } catch {
+    // Audio must never interfere with the open itself
+  }
+}
+
+// ── Navigation tone ─────────────────────────────────────────
+export function playUiNavigate(): void {
+  try {
+    if (!clickSoundsEnabled() || getLocalAudioMode() !== 'audible') return;
+    const now = Date.now();
+    if (now - lastTick < THROTTLE_MS) return;
+    lastTick = now;
+    playSoundAsset('click');
+  } catch {
+    // Audio must never interfere with navigation
+  }
+}
+
 /**
  * Install the app-wide listener (idempotent). Capture phase so the
  * tick fires even when a handler stops propagation; pointerdown so
  * feedback is instant, matching hardware-console feel.
  */
-export function initUiClickSounds(): void {
+export const initUiClickSounds = (): void => {
   if (installed || typeof document === 'undefined') return;
   installed = true;
   document.addEventListener(
@@ -99,18 +128,6 @@ export function initUiClickSounds(): void {
       // Close/dismiss affordances de-key; everything else key-ticks.
       if (isCloseControl(control)) playUiClose();
       else playUiClick();
-    },
-    { capture: true, passive: true }
-  );
-
-  // Escape dismisses modals/overlays app-wide — voice it as a de-key, but
-  // only when something dismissable is actually open (a dialog or a
-  // full-screen overlay), so bare Escape presses in a grid stay silent.
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.key !== 'Escape' || e.repeat) return;
-      if (document.querySelector('[role="dialog"], [data-modal], .modal-overlay')) playUiClose();
     },
     { capture: true, passive: true }
   );
@@ -144,4 +161,4 @@ export function initUiClickSounds(): void {
     });
     observer.observe(document.body, { childList: true, subtree: true });
   } catch { /* observer unavailable — opens stay silent */ }
-}
+};

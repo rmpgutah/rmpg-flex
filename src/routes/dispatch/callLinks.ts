@@ -12,6 +12,7 @@
 // sendToUser targets the assigned officer's MDT for voice prompts.
 
 import { Hono } from 'hono';
+import { requireRole } from '../../middleware/auth';
 import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
@@ -71,9 +72,9 @@ links.get('/calls/:id/persons', async (c) => {
 });
 
 // POST /dispatch/calls/:id/persons  body { person_id, role, notes? }
-links.post('/calls/:id/persons', async (c) => {
+links.post('/calls/:id/persons', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ person_id: number; role?: string; notes?: string }>();
   if (!body.person_id) return c.json({ error: 'person_id required' }, 400);
@@ -176,9 +177,9 @@ links.post('/calls/:id/persons', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id/persons/:linkId  (linkId = call_persons.id)
-links.delete('/calls/:id/persons/:linkId', async (c) => {
+links.delete('/calls/:id/persons/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   // Scope by callId so callers can't delete a link from another call
   // by guessing IDs.
@@ -190,9 +191,9 @@ links.delete('/calls/:id/persons/:linkId', async (c) => {
 });
 
 // PATCH /dispatch/calls/:id/persons/:linkId — change role / notes
-links.patch('/calls/:id/persons/:linkId', async (c) => {
+links.patch('/calls/:id/persons/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   const body = await c.req.json<{ role?: string; notes?: string }>();
   const sets: string[] = [];
@@ -232,9 +233,9 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
 //
 // Static segment beats :linkId in Hono's router without explicit ordering
 // because it's registered first. Keep static routes above parameterized ones.
-links.post('/calls/:id/persons/quick-add', async (c) => {
+links.post('/calls/:id/persons/quick-add', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{
     first_name?: string; last_name?: string; dob?: string;
@@ -361,9 +362,9 @@ links.get('/calls/:id/vehicles', async (c) => {
   return c.json(rows);
 });
 
-links.post('/calls/:id/vehicles', async (c) => {
+links.post('/calls/:id/vehicles', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ vehicle_id: number; role?: string; notes?: string }>();
   if (!body.vehicle_id) return c.json({ error: 'vehicle_id required' }, 400);
@@ -408,9 +409,9 @@ links.post('/calls/:id/vehicles', async (c) => {
   return c.json(created, 201);
 });
 
-links.delete('/calls/:id/vehicles/:linkId', async (c) => {
+links.delete('/calls/:id/vehicles/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   await execute(db, 'DELETE FROM call_vehicles WHERE id = ? AND call_id = ?', linkId, callId);
   await emitAlert(c.env, 'dispatch_update', {
@@ -419,9 +420,9 @@ links.delete('/calls/:id/vehicles/:linkId', async (c) => {
   return c.json({ success: true });
 });
 
-links.patch('/calls/:id/vehicles/:linkId', async (c) => {
+links.patch('/calls/:id/vehicles/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   const body = await c.req.json<{ role?: string; notes?: string }>();
   const sets: string[] = [];
@@ -455,9 +456,9 @@ links.patch('/calls/:id/vehicles/:linkId', async (c) => {
 // can be re-issued across years, but the false-positive cost in active
 // dispatch is low vs the fragmentation cost of creating duplicate vehicles
 // for the same physical car).
-links.post('/calls/:id/vehicles/quick-add', async (c) => {
+links.post('/calls/:id/vehicles/quick-add', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{
     plate_number?: string; state?: string; vin?: string;
@@ -568,9 +569,9 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
 // the property's address overwrites the call's location_address so
 // the dispatcher doesn't have to re-type it (Spillman default).
 
-links.put('/calls/:id/property', async (c) => {
+links.put('/calls/:id/property', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const body = await c.req.json<{ property_id: number; inherit_address?: boolean }>();
   if (!body.property_id) return c.json({ error: 'property_id required' }, 400);
 
@@ -642,9 +643,9 @@ links.put('/calls/:id/property', async (c) => {
   return c.json(updated);
 });
 
-links.delete('/calls/:id/property', async (c) => {
+links.delete('/calls/:id/property', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   await execute(
     db,
     `UPDATE calls_for_service SET property_id = NULL, updated_at = datetime('now') WHERE id = ?`,
@@ -694,9 +695,9 @@ links.get('/calls/:id/businesses', async (c) => {
 });
 
 // POST /dispatch/calls/:id/businesses  body { business_id, role?, notes? }
-links.post('/calls/:id/businesses', async (c) => {
+links.post('/calls/:id/businesses', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ business_id: number; role?: string; notes?: string }>();
   if (!body.business_id) return c.json({ error: 'business_id required' }, 400);
@@ -722,9 +723,9 @@ links.post('/calls/:id/businesses', async (c) => {
 });
 
 // POST /dispatch/calls/:id/businesses/quick-add  body { name, address?, city?, state?, zip?, phone?, role? }
-links.post('/calls/:id/businesses/quick-add', async (c) => {
+links.post('/calls/:id/businesses/quick-add', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
   const body = await c.req.json<{ name: string; address?: string; city?: string; state?: string; zip?: string; phone?: string; role?: string }>();
   if (!body.name || !body.name.trim()) return c.json({ error: 'name required' }, 400);
@@ -751,9 +752,9 @@ links.post('/calls/:id/businesses/quick-add', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id/businesses/:linkId
-links.delete('/calls/:id/businesses/:linkId', async (c) => {
+links.delete('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   await execute(db, 'DELETE FROM call_businesses WHERE id = ? AND call_id = ?', linkId, callId);
   await emitAlert(c.env, 'dispatch_update', {
@@ -763,9 +764,9 @@ links.delete('/calls/:id/businesses/:linkId', async (c) => {
 });
 
 // PATCH /dispatch/calls/:id/businesses/:linkId — change role / notes
-links.patch('/calls/:id/businesses/:linkId', async (c) => {
+links.patch('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const callId = c.req.param('id');
+  const callId = c.req.param('id') || '';
   const linkId = c.req.param('linkId');
   const body = await c.req.json<{ role?: string; notes?: string }>();
   const sets: string[] = [];

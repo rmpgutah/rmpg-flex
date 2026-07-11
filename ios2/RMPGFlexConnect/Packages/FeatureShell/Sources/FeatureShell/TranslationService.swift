@@ -1,7 +1,7 @@
 import SwiftUI
 import Translation
 
-@available(iOS 18.0, *)
+@available(iOS 18.0, macOS 14.4, *)
 public struct TranslationBannerModifier: ViewModifier {
     @State private var showTranslation = false
     let sourceText: String
@@ -14,7 +14,7 @@ public struct TranslationBannerModifier: ViewModifier {
 }
 
 @MainActor
-@available(iOS 18.0, *)
+@available(iOS 18.0, macOS 14.4, *)
 public struct TranslationView: View {
     let textToTranslate: String
     @State private var showTranslation = false

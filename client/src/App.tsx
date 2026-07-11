@@ -2,7 +2,6 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
-import { useDispatchVoice } from './hooks/useDispatchVoice';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
@@ -13,6 +12,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
 import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
@@ -118,9 +118,12 @@ const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
 const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
 const ServeSchedulerPage = lazyRetry(() => import('./pages/ServeSchedulerPage'));
+const SchedulerPage = lazyRetry(() => import('./pages/SchedulerPage'));
+const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
+const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));
 const IntelReportDetailPage = lazyRetry(() => import('./pages/intel/IntelReportDetailPage'));
@@ -196,6 +199,13 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
+// CrashReportsPage existed on disk but had no route in App.tsx — sidebar link
+// hit the 404 catch-all. No backend route exists yet either; the page is a
+// self-contained wizard that fetches from (non-existent) /api/crash-reports.
+// Adding the route so the sidebar link renders the page stub instead of 404.
+const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
+// ImpoundPage existed on disk but had no route — sidebar /impound link 404'd.
+const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -305,6 +315,26 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Role-based guard for /dispatch — officer redirects to the terminal built
+ *  for them (/mdt), contract_manager/client_viewer/human_resources redirect
+ *  to the dashboard (no operational need for a live CAD board). Every other
+ *  role reaches the full board unchanged. See
+ *  docs/superpowers/specs/2026-07-02-dispatch-role-routing-p1-design.md */
+function DispatchRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  const access = resolveDispatchAccess(user?.role);
+  if (access.mode === 'redirect') {
+    return <Navigate to={access.to} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
@@ -396,8 +426,16 @@ function RedirectKeepQuery({ to }: { to: string }) {
   return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
+// Roles that actually navigate to Dispatch/Map in normal use. Prefetching
+// for every role (including client_viewer, contract_manager, human_resources
+// — none of which have Dispatch/Map in their nav) was downloading the two
+// heaviest chunks in the app (Dispatch + Map, which pull in the ~2.3MB
+// mapbox-gl/deck.gl bundle) on every authenticated session regardless of
+// need — a self-inflicted "system load" spike ~1.5s after every page load.
+const DISPATCH_MAP_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
 function AppRoutes() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   // Idle-prefetch the heaviest field routes once authenticated, so the first
   // navigation to Dispatch/Map is instant rather than showing the loading
@@ -405,9 +443,13 @@ function AppRoutes() {
   // (requestIdleCallback) so it never competes with the initial paint or the
   // landing Dashboard's data fetches. import() is deduped, so this just warms
   // the module cache — React.lazy then resolves synchronously on navigation.
+  // Skipped for roles that never see these routes, and for Save-Data /
+  // slow-connection sessions where the bandwidth is better spent elsewhere.
   React.useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !user || !DISPATCH_MAP_ROLES.has(user.role)) return;
     const w = window as any;
+    const conn = (navigator as any).connection;
+    if (conn && (conn.saveData || /^(slow-2g|2g)$/.test(conn.effectiveType || ''))) return;
     const schedule: (cb: () => void) => number =
       w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1500));
     // Swallow prefetch failures — a transient cellular blip here is harmless;
@@ -421,7 +463,7 @@ function AppRoutes() {
       if (w.cancelIdleCallback) w.cancelIdleCallback(id);
       else w.clearTimeout(id);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   if (isLoading) {
     return <LoadingSplash message="Initializing" />;
@@ -429,7 +471,6 @@ function AppRoutes() {
 
   return (
     <>
-      {isAuthenticated && <DispatchVoiceMount />}
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
@@ -484,7 +525,7 @@ function AppRoutes() {
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
-            <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
+            <Route path="/dispatch" element={<RouteErrorBoundary><DispatchRoleGuard><DispatchPage /></DispatchRoleGuard></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
             <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
@@ -582,6 +623,8 @@ function AppRoutes() {
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
             <Route path="/serve-intake/scheduler" element={<RouteErrorBoundary><ServeSchedulerPage /></RouteErrorBoundary>} />
+            <Route path="/scheduler" element={<RouteErrorBoundary><SchedulerPage /></RouteErrorBoundary>} />
+            <Route path="/shift-briefings" element={<RouteErrorBoundary><ShiftBriefingsPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
@@ -599,6 +642,8 @@ function AppRoutes() {
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
             <Route path="/court-records" element={<RouteErrorBoundary><CourtRecordsPage /></RouteErrorBoundary>} />
+            <Route path="/crash-reports" element={<RouteErrorBoundary><CrashReportsPage /></RouteErrorBoundary>} />
+            <Route path="/impound" element={<RouteErrorBoundary><ImpoundPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras/:id" element={<RouteErrorBoundary><DashCamDetailPage /></RouteErrorBoundary>} />
             <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
             <Route path="/document-intake" element={<RouteErrorBoundary><DocumentIntakePage /></RouteErrorBoundary>} />

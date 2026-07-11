@@ -94,20 +94,6 @@ export default {
           700: 'rgb(var(--brand-gold-700-rgb) / <alpha-value>)',
         },
 
-        // Keep the "blue" token name for existing utility usage, but render it as neutral gray
-        blue: {
-          50:  'rgb(var(--blue-50-rgb) / <alpha-value>)',
-          100: 'rgb(var(--blue-100-rgb) / <alpha-value>)',
-          200: 'rgb(var(--blue-200-rgb) / <alpha-value>)',
-          300: 'rgb(var(--blue-300-rgb) / <alpha-value>)',
-          400: 'rgb(var(--blue-400-rgb) / <alpha-value>)',
-          500: 'rgb(var(--blue-500-rgb) / <alpha-value>)',
-          600: 'rgb(var(--blue-600-rgb) / <alpha-value>)',
-          700: 'rgb(var(--blue-700-rgb) / <alpha-value>)',
-          800: 'rgb(var(--blue-800-rgb) / <alpha-value>)',
-          900: 'rgb(var(--blue-900-rgb) / <alpha-value>)',
-        },
-
         // Neutral graphite greys — no blue cast
         rmpg: {
           50:  'rgb(var(--rmpg-50-rgb) / <alpha-value>)',

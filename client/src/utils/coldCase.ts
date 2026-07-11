@@ -6,6 +6,8 @@
 // coordination, grant-funded investigation, and cold case metrics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 91: Case Screening */
 export interface ColdCaseScreening { caseNumber:string; caseType:string; dateOfOccurrence:string; solvabilityScore:number; hasDNA:boolean; hasFingerprints:boolean; hasWitnesses:boolean; suspectIdentified:boolean; priorityForReview:1|2|3|4|5; }
 export function screenColdCases(cases:ColdCaseScreening[]): { total:number; highPriority:number; dnaCases:number } {
@@ -52,14 +54,14 @@ export function measureMediaImpact(coverage:ColdCaseMedia[]): { totalCoverage:nu
 /* FEATURE 98: Task Force Coordination */
 export interface ColdCaseTaskForce { id:string; name:string; members:Array<{name:string;agency:string;role:string}>; casesAssigned:string[]; startDate:string; meetings:number; casesSolved:number; }
 export function evaluateTaskForce(tf:ColdCaseTaskForce): { casesPerMember:number; solveRate:number; monthsActive:number } {
-  const months = Math.ceil((Date.now()-new Date(tf.startDate).getTime())/86400000/30);
+  const months = Math.ceil((Date.now()-parseTimestamp(tf.startDate).getTime())/86400000/30);
   return { casesPerMember:tf.members.length>0?Math.round(tf.casesAssigned.length/tf.members.length):0, solveRate:tf.casesAssigned.length>0?Math.round(tf.casesSolved/tf.casesAssigned.length*100):0, monthsActive:months };
 }
 
 /* FEATURE 99: Grant-Funded Investigation */
 export interface ColdCaseGrant { id:string; grantName:string; amount:number; period:{start:string;end:string}; casesFunded:string[]; expenditures:number; outcomes:string[]; }
 export function trackGrantProgress(grant:ColdCaseGrant): { fundsRemaining:number; burnRate:number; outcomesRate:number } {
-  const fundsRemaining = grant.amount-grant.expenditures; const monthsElapsed = Math.max(1,Math.ceil((Date.now()-new Date(grant.period.start).getTime())/86400000/30));
+  const fundsRemaining = grant.amount-grant.expenditures; const monthsElapsed = Math.max(1,Math.ceil((Date.now()-parseTimestamp(grant.period.start).getTime())/86400000/30));
   return { fundsRemaining, burnRate:Math.round(grant.expenditures/monthsElapsed), outcomesRate:grant.casesFunded.length>0?Math.round(grant.outcomes.length/grant.casesFunded.length*100):0 };
 }
 

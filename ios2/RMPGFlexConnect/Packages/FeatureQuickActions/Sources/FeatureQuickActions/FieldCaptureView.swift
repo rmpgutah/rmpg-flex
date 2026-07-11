@@ -79,9 +79,15 @@ struct FieldCaptureView: View {
                     Task {
                         if let data = try? await item.loadTransferable(type: Data.self) {
                             imageData = data
+                            #if os(iOS)
                             if let uiImg = UIImage(data: data) {
                                 previewImage = Image(uiImage: uiImg)
                             }
+                            #else
+                            if let nsImg = NSImage(data: data) {
+                                previewImage = Image(nsImage: nsImg)
+                            }
+                            #endif
                         }
                     }
                 }

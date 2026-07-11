@@ -203,6 +203,26 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     }
   }, [selectedCall, setCalls, setSelectedCall, refreshUnits, addToast]);
 
+  /** Context-free unassign (CAD board `uc` mnemonic) — clears a unit off the
+   *  given call without requiring it to be the selected call. Same defensive
+   *  response handling as handleDragAssignUnit. */
+  const handleDragUnassignUnit = useCallback(async (callId: string, unitId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/unassign-unit`, {
+        method: 'POST',
+        body: JSON.stringify({ unit_id: unitId }),
+      });
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: (c.assigned_units || []).filter((u) => String(u) !== String(unitId)) };
+      setCalls((prev) => prev.map((c) => c.id === callId ? apply(c) : c));
+      setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
+      await refreshUnits();
+    } catch (err: any) {
+      addToast(err?.error || err?.message || 'Failed to unassign unit', 'error');
+    }
+  }, [setCalls, setSelectedCall, refreshUnits, addToast]);
+
   return {
     // Create/edit modal state
     showCreateUnitModal,
@@ -236,5 +256,6 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     handleAssignUnit,
     handleDragAssignUnit,
     handleUnassignUnit,
+    handleDragUnassignUnit,
   };
 }

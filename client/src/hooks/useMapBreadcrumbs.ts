@@ -11,6 +11,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { devLog, devWarn } from '../utils/devLog';
+import { safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -67,20 +68,34 @@ export function useMapBreadcrumbs(
     if (!enabled || unitIds.length === 0) return;
 
     try {
-      const since = new Date(Date.now() - durationMinutes * 60_000).toISOString();
-      const data = await apiFetch<Array<{
-        unit_id: string;
-        call_sign: string;
-        points: BreadcrumbPoint[];
-      }>>(`/dispatch/units/trails?since=${encodeURIComponent(since)}&unit_ids=${unitIds.join(',')}`);
+      // The live endpoint is GET /dispatch/gps/trails?hours=N[&unit_id=] — it
+      // has no `since`/plural `unit_ids` params (that contract never existed
+      // server-side, see src/routes/dispatch/gps.ts), takes an hours window
+      // (1-24) instead of an ISO timestamp, and returns points keyed
+      // lat/lng/time rather than latitude/longitude/timestamp. Fetch once per
+      // unit and remap the shape rather than inventing a new server route.
+      const hours = Math.min(24, Math.max(1, Math.ceil(durationMinutes / 60)));
+      const perUnit = await Promise.all(
+        unitIds.map(uid =>
+          apiFetch<Array<{
+            unit_id: number;
+            call_sign: string;
+            points: Array<{ lat: number; lng: number; time: string; speed: number | null; heading: number | null }>;
+          }>>(`/dispatch/gps/trails?hours=${hours}&unit_id=${encodeURIComponent(uid)}`).catch(() => []),
+        ),
+      );
 
-      if (!data) return;
-
-      const newTrails: UnitTrail[] = data.map(t => ({
-        unitId: t.unit_id,
+      const newTrails: UnitTrail[] = perUnit.flat().filter(Boolean).map(t => ({
+        unitId: String(t.unit_id),
         callSign: t.call_sign,
-        color: unitColors[t.unit_id] || '#d4a017',
-        points: t.points || [],
+        color: unitColors[String(t.unit_id)] || '#d4a017',
+        points: (t.points || []).map(p => ({
+          latitude: p.lat,
+          longitude: p.lng,
+          timestamp: p.time,
+          speed: p.speed,
+          heading: p.heading,
+        })),
       }));
 
       setTrails(newTrails);
@@ -107,9 +122,9 @@ export function useMapBreadcrumbs(
     activeSourcesRef.current.forEach(srcId => {
       const lineId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_LAYER_PREFIX);
       const dotsId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX);
-      if (map.getLayer(lineId)) map.removeLayer(lineId);
-      if (map.getLayer(dotsId)) map.removeLayer(dotsId);
-      if (map.getSource(srcId)) map.removeSource(srcId);
+      safeRemoveLayer(map, lineId);
+      safeRemoveLayer(map, dotsId);
+      safeRemoveSource(map, srcId);
     });
     activeSourcesRef.current.clear();
 
@@ -181,9 +196,9 @@ export function useMapBreadcrumbs(
       activeSourcesRef.current.forEach(srcId => {
         const lineId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_LAYER_PREFIX);
         const dotsId = srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX);
-        if (map.getLayer(lineId)) map.removeLayer(lineId);
-        if (map.getLayer(dotsId)) map.removeLayer(dotsId);
-        if (map.getSource(srcId)) map.removeSource(srcId);
+        safeRemoveLayer(map, lineId);
+        safeRemoveLayer(map, dotsId);
+        safeRemoveSource(map, srcId);
       });
       activeSourcesRef.current.clear();
     };

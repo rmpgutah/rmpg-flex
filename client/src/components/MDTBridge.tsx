@@ -29,7 +29,7 @@ export default function MDTBridge() {
           if (seen.current.has(m.id)) continue;
           seen.current.add(m.id);
           addToast(describeSignal(m), severityForSignal(m.type), 9000);
-          const dest = routeForSignal(m.type);
+          const dest = routeForSignal(m.type, m.payload);
           if (dest) navigate(dest);
         }
       } catch {

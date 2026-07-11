@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { X, ScanSearch } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
+import { parseTimestamp } from '../utils/dateUtils';
 import TrustBadge from './TrustBadge';
 
 interface DossierPackage {
@@ -28,7 +29,7 @@ interface DossierResponse {
 
 function fmtDate(iso: string): string {
   try {
-    return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString([], {
+    return parseTimestamp(iso).toLocaleString([], {
       month: 'numeric', day: 'numeric', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });

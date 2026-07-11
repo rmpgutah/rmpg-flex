@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
-import { safeDateStr, safeTimeStr } from '../../utils/dateUtils';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -90,7 +90,7 @@ interface Props {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -659,7 +659,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               <div key={err.id} className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 px-2 py-1 rounded-sm" onContextMenu={(e) => openMenu(e, buildErrorMenu(err))}>
                 <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-medium text-red-300">{err.action}</span>
+                  <span className="text-[10px] font-medium text-red-300">{toDisplayLabel(err.action)}</span>
                   <span className="text-[10px] text-rmpg-400 ml-2">{err.details}</span>
                 </div>
                 <span className="text-[9px] text-rmpg-500 whitespace-nowrap">{safeTimeStr(err.created_at)}</span>
@@ -769,7 +769,7 @@ function ApiUsageStats() {
           <div className="text-[9px] text-rmpg-500 mb-1">Top Actions</div>
           {(stats.byAction || []).slice(0, 8).map((a: any) => (
             <div key={a.action} className="flex items-center justify-between py-0.5">
-              <span className="text-[10px] text-rmpg-300 truncate">{a.action}</span>
+              <span className="text-[10px] text-rmpg-300 truncate">{toDisplayLabel(a.action)}</span>
               <span className="text-[10px] font-mono text-rmpg-100 ml-2">{a.count}</span>
             </div>
           ))}
@@ -844,7 +844,7 @@ function DatabaseBackupStatus() {
         <div>
           <div className="text-[9px] text-rmpg-500">Last Modified</div>
           <div className="text-sm font-bold text-rmpg-100">
-            {backup.lastModified ? new Date(backup.lastModified).toLocaleString() : 'N/A'}
+            {backup.lastModified ? parseTimestamp(backup.lastModified).toLocaleString() : 'N/A'}
           </div>
         </div>
       </div>

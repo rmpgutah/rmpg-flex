@@ -33,6 +33,9 @@ describe('JailRecordsPage', () => {
     expect(screen.getByText('KNOWN →')).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/John Smith - Theft/), { target: { value: 'Jane Doe - DUI' } });
     fireEvent.click(screen.getByText('INGEST + CROSS-HIT'));
+    await waitFor(() => expect(screen.getByText('Confirm Roster Ingest')).toBeInTheDocument());
+    const confirmBtns = screen.getAllByText('INGEST + CROSS-HIT');
+    fireEvent.click(confirmBtns[confirmBtns.length - 1]);
     await waitFor(() => expect(screen.getByText(/1 FLAGGED HIT/)).toBeInTheDocument());
   });
 });

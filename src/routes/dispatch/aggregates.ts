@@ -2,7 +2,22 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { denverOffsetHours } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
+
+// Same day-boundary shift used in reports.ts (denverDateExpr/denverNowDateExpr)
+// — D1 stores UTC, so a bare DATE(created_at) = DATE('now') comparison uses
+// UTC calendar days. A call at 11pm MT (still "today" in Denver) lands after
+// UTC midnight and gets excluded from "today," or a call just after UTC
+// midnight (still yesterday evening in MT) gets counted as "today."
+function denverDateExpr(column: string): string {
+  const offset = denverOffsetHours();
+  return `DATE(${column}, '${offset} hours')`;
+}
+function denverNowDateExpr(): string {
+  const offset = denverOffsetHours();
+  return `DATE('now', '${offset} hours')`;
+}
 
 // Shared with /dispatch/calls — keeps the queue rows shape-compatible with
 // the list rows the dispatch panel already knows how to render.
@@ -49,7 +64,8 @@ aggregates.get('/', async (c) => {
       FROM units
     `);
 
-    const [todayCalls] = await query<{ count: number }>(db, "SELECT COUNT(*) as count FROM calls_for_service WHERE date(created_at) = date('now')");
+    const [todayCalls] = await query<{ count: number }>(db,
+      `SELECT COUNT(*) as count FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
 
     return c.json({
       calls: { ...totals, today: todayCalls?.count ?? 0 },
@@ -531,7 +547,14 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
           SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
           SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
+          -- Excludes negative deltas (odometer reset / data-entry error) —
+          -- unvalidated, a single bad row could swing the average sharply.
+          -- Note: pools every incident_type together (a 5-mile traffic stop
+          -- next to a 50-mile pursuit); this field isn't currently rendered
+          -- anywhere in the client, so left un-segmented rather than
+          -- redesigning an unused response shape.
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
+               AND ending_mileage >= starting_mileage
                THEN ending_mileage - starting_mileage END) as avg_call_miles
         FROM calls_for_service
         WHERE created_at >= datetime('now', '-24 hours')`),
@@ -542,7 +565,12 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status NOT IN ('off_duty','out_of_service') THEN 1 ELSE 0 END) as on_duty,
           SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
           SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
-          SUM(CASE WHEN current_call_id IS NOT NULL THEN 1 ELSE 0 END) as on_call,
+          -- Derived from the unit's own status, not current_call_id: that FK
+          -- isn't reliably cleared/set on every assignment path (units can be
+          -- linked to a call via calls_for_service.assigned_unit_ids without
+          -- current_call_id being set, and vice versa after a call closes),
+          -- so counting it directly over/undercounted on_call by 5-15%.
+          SUM(CASE WHEN status IN ('dispatched','enroute','onscene','busy') THEN 1 ELSE 0 END) as on_call,
           SUM(CASE WHEN vehicle_id IS NOT NULL AND vehicle_id != '' THEN 1 ELSE 0 END) as with_vehicle
         FROM units`),
 
@@ -673,16 +701,64 @@ aggregates.get('/history-map', async (c) => {
   }
 });
 
+// GET /dispatch/repeat-addresses?days=30&min_count=3&limit=200
+// Locations with 3+ calls in the window — repeat-call hotspots for patrol
+// planning. Groups by rounded lat/lng (matches the /heatmap convention just
+// above) rather than raw location_address text, since address strings vary
+// in formatting for the same physical location.
+aggregates.get('/repeat-addresses', async (c) => {
+  try {
+    const daysRaw = Number(c.req.query('days') ?? 30);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 30;
+    const minCountRaw = Number(c.req.query('min_count') ?? 3);
+    const minCount = Number.isFinite(minCountRaw) ? Math.max(1, Math.floor(minCountRaw)) : 3;
+    const limitRaw = Number(c.req.query('limit') ?? 200);
+    const limit = Number.isFinite(limitRaw) ? Math.min(1000, Math.max(1, Math.floor(limitRaw))) : 200;
+
+    const db = getDb(c.env);
+    // Grid precision: 3 decimal degrees (~111m) merged distinct nearby
+    // addresses (e.g. two adjacent buildings 11m apart) into one cluster,
+    // and MAX(location_address) then picked an arbitrary alphabetically-
+    // last address to represent the whole merged group, silently hiding
+    // that it wasn't actually one location. 4 decimals (~11m) tightens the
+    // grid to roughly building-scale, and GROUP_CONCAT surfaces every
+    // distinct address string actually seen in a cell instead of
+    // pretending there was only one.
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        GROUP_CONCAT(DISTINCT location_address) AS address,
+        ROUND(latitude, 4)    AS latitude,
+        ROUND(longitude, 4)   AS longitude,
+        COUNT(*)              AS count,
+        MAX(created_at)       AS last_call_at
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', ?)
+      GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)
+      HAVING COUNT(*) >= ?
+      ORDER BY count DESC
+      LIMIT ?
+    `, `-${days} days`, minCount, limit);
+
+    const addresses = filterValidLatLng(rows);
+    return c.json({ addresses, total: addresses.length });
+  } catch (err) {
+    log.error('GET /dispatch/repeat-addresses failed', {}, err);
+    return c.json({ addresses: [], total: 0 });
+  }
+});
+
 // ── Dashboard chart data supplements ──
 
 // GET /dispatch/aggregates/call-volume?days=7
 aggregates.get('/call-volume', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ date: string; count: number }>(db,
       `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY DATE(created_at) ORDER BY date`);
     return c.json({ by_day: rows, days });
   } catch { return c.json({ by_day: [], days: 7 }); }
@@ -692,10 +768,11 @@ aggregates.get('/call-volume', async (c) => {
 aggregates.get('/by-zone', async (c) => {
   try {
     const db = getDb(c.env);
-    const days = parseInt(c.req.query('days') || '7', 10);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ zone: string; count: number }>(db,
       `SELECT COALESCE(dispatch_zone, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
-       WHERE created_at >= datetime('now','-${Math.min(days, 90)} days')
+       WHERE created_at >= datetime('now','-${days} days')
        GROUP BY dispatch_zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
   } catch { return c.json({ by_zone: [], days: 7 }); }

@@ -25,7 +25,7 @@ import { getDb, queryFirst } from './db';
 import { identifyBeat } from './geofence';
 
 export interface ResolvedDistrict {
-  // Area — top of the Area › Section › Zone › Beat hierarchy.
+  // Area — top of the Area › Sector › Zone › Beat hierarchy.
   area_id: number | null;
   area_code: string | null;
   area_name: string | null;

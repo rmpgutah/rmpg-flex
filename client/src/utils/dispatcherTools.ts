@@ -8,6 +8,9 @@
 // and natural language query processing.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
+
 /* ── FEATURE 91: Call Prediction Engine ────────────────────
    Spillman Flex predicts future call volume based on
    historical patterns, time of day, weather, and events. */
@@ -414,7 +417,7 @@ export function predictHotspots(
   // Group by location and crime type
   const grid = new Map<string, typeof historicalIncidents>();
   for (const incident of historicalIncidents) {
-    const ts = new Date(incident.occurredAt).getTime();
+    const ts = parseTimestamp(incident.occurredAt).getTime();
     if (now.getTime() - ts > lookbackMs) continue;
 
     const latBin = Math.round(incident.latitude * 100) / 100;
@@ -435,7 +438,7 @@ export function predictHotspots(
     const currentHour = now.getHours();
     const currentDay = now.getDay();
     const recentIncidents = incidents.filter(i => {
-      const d = new Date(i.occurredAt);
+      const d = parseTimestamp(i.occurredAt);
       return d.getDay() === currentDay && Math.abs(d.getHours() - currentHour) <= 2;
     });
 
@@ -521,7 +524,7 @@ export function processNaturalLanguageQuery(query: string): NLQuery {
           intent,
           entities,
           resolvedQuery: `${intent}: ${Object.values(entities).join(', ')}`,
-          systemResponse: `Processing ${intent.replace(/_/g, ' ')} query...`,
+          systemResponse: `Processing ${toDisplayLabel(intent)} query...`,
         };
       }
     }

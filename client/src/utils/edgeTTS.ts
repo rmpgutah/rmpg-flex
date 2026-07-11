@@ -3,6 +3,7 @@
 //
 // Fetches neural TTS audio from the server's /api/tts endpoint and
 // processes it through a P25 Motorola APX-style chain:
+//   - Spillman Flex two-tone descending chime (1060→880Hz triangle) on terminal announcer
 //   - 800Hz triple-chirp talk-permit on key-up
 //   - IMBE/AMBE-style bandpass (300-3400Hz) + 1.8kHz metallic presence
 //   - 12-bit bitcrusher for codec quantization color
@@ -71,7 +72,7 @@ export function getEdgeTTSPayload(
   // voice at slightly faster rate with flat pitch — mimics the Motorola
   // Premier CAD announcer cadence. Conversational uses the user's persona.
   const voice = voiceMode === 'spillman_flat'
-    ? (localStorage.getItem('rmpg-voice-spillman') || 'en-US-GuyNeural')
+    ? (localStorage.getItem('rmpg-voice-spillman') || 'en-US-JennyNeural')
     : (localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural');
   const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
   const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
@@ -83,8 +84,8 @@ export function getEdgeTTSPayload(
     pitchHz += 5;
   }
   if (voiceMode === 'spillman_flat') {
-    ratePct += 5;     // slightly clipped
-    pitchHz = 0;      // flat — no expressive pitch movement
+    ratePct += 8;     // clipped announcer cadence — matches Spillman Flex terminal voice
+    pitchHz = 0;      // flat — no expressive pitch movement, data-only readout
   }
 
   const rate = `${ratePct >= 0 ? '+' : ''}${ratePct}%`;
@@ -192,14 +193,16 @@ function playP25KeyUp(ctx: AudioContext, startTime: number): void {
 const P25_KEYUP_DURATION = 0.035 * 3 + 0.025 * 2; // 0.155s
 
 /**
- * Spillman classic CAD announcer chime — two-tone descending "bing-bong"
- * (1100Hz → 880Hz, ~120ms each, 30ms gap), the signature Motorola/Spillman
- * Premier CAD attention tone played before terminal target-announcer
- * readbacks. Triangle waves give it the slightly metallic plastic-speaker
- * timbre, distinct from the P25 trunked talk-permit chirps.
+ * Spillman classic CAD announcer chime — two-tone descending "ding-bong"
+ * (1060Hz → 880Hz, ~140ms first tone, ~170ms second, 25ms gap), the
+ * signature Motorola/Spillman Premier CAD attention tone played before
+ * terminal target-announcer readbacks. Triangle waves give it the slightly
+ * metallic plastic-speaker timbre, distinct from the P25 trunked talk-permit
+ * chirps. The second tone is held slightly longer for a more pronounced
+ * "bong" that lets the cadence feel deliberate.
  */
 function playSpillmanChime(ctx: AudioContext, startTime: number): void {
-  const tones: Array<[number, number]> = [[1100, 0.12], [880, 0.13]];
+  const tones: Array<[number, number]> = [[1060, 0.14], [880, 0.17]];
   let t = startTime;
   for (const [freq, dur] of tones) {
     const osc = ctx.createOscillator();
@@ -208,20 +211,20 @@ function playSpillmanChime(ctx: AudioContext, startTime: number): void {
     osc.frequency.setValueAtTime(freq, t);
 
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.22, t + 0.008);
-    g.gain.setValueAtTime(0.22, t + dur - 0.012);
+    g.gain.linearRampToValueAtTime(0.25, t + 0.008);
+    g.gain.setValueAtTime(0.25, t + dur - 0.015);
     g.gain.linearRampToValueAtTime(0, t + dur);
 
     osc.connect(g);
     g.connect(ctx.destination);
     osc.start(t);
     osc.stop(t + dur + 0.005);
-    t += dur + 0.03; // 30ms gap between tones
+    t += dur + 0.025; // 25ms gap between tones
   }
 }
 
 /** Total duration of playSpillmanChime — used to align voice start. */
-const SPILLMAN_CHIME_DURATION = 0.12 + 0.13 + 0.03; // 0.28s
+const SPILLMAN_CHIME_DURATION = 0.14 + 0.17 + 0.025; // 0.335s
 
 /**
  * P25 end-of-transmission courtesy beep — a single soft 600Hz sine

@@ -19,7 +19,8 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
+import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
 
@@ -523,9 +524,13 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
     const type = c.req.query('type');
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
-    if (status) { where += ' AND status = ?'; params.push(status); }
-    else { where += " AND status = 'active'"; }
-    if (type) { where += ' AND type = ?'; params.push(type); }
+    // Table-qualified: `users` also has a `status` column, and this query
+    // LEFT JOINs users — an unqualified `status` is ambiguous to SQLite
+    // ("ambiguous column name: status", ERROR 7500) and 500s the whole
+    // endpoint every time, regardless of which branch runs.
+    if (status) { where += ' AND b.status = ?'; params.push(status); }
+    else { where += " AND b.status = 'active'"; }
+    if (type) { where += ' AND b.type = ?'; params.push(type); }
     const rows = await query<Record<string, unknown>>(db, `
       SELECT b.*, u.full_name AS issued_by_name
       FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
@@ -535,6 +540,96 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] bolos list error', err);
     return c.json({ error: 'Failed to list BOLOs', code: 'BOLO_LIST_ERR' }, 500);
+  }
+});
+
+bolos.get('/active', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT b.*, u.full_name AS issued_by_name
+      FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
+      WHERE b.status = 'active' ORDER BY b.priority = 'P1' DESC, b.priority = 'P2' DESC, b.created_at DESC`);
+    return c.json(rows);
+  } catch (err) {
+    log.error('GET /bolos/active failed', {}, err);
+    return c.json({ error: 'Failed to fetch active BOLOs', code: 'BOLO_ACTIVE_ERR' }, 500);
+  }
+});
+
+// GET /check?address=&subject=&vehicle= — active-BOLO keyword match.
+// Must be registered before /:id — otherwise Hono matches "check" as an id
+// param and the request 400s on parseInt (see stubs.ts history for the
+// duplicate this replaces; that copy is now dead code, shadowed by this
+// router being mounted first at /api/comms/bolos).
+bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = c.req.query('address') || '';
+    const subject = c.req.query('subject') || '';
+    const vehicle = c.req.query('vehicle') || '';
+    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+
+    const keywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const kw of keywords(subject)) {
+      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    for (const kw of keywords(vehicle)) {
+      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    if (address && address.length >= 3) {
+      matchClauses.push('UPPER(description) LIKE ?');
+      params.push(`%${address.toUpperCase()}%`);
+    }
+    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, bolo_number, type, title, description,
+             subject_description, vehicle_description, priority,
+             created_at, expires_at
+      FROM bolos
+      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
+      ORDER BY priority ASC, created_at DESC
+      LIMIT 10`, ...params);
+    return c.json({ matches: rows, count: rows.length });
+  } catch (err) {
+    log.error('GET /bolos/check failed', {}, err);
+    return c.json({ matches: [], count: 0 });
+  }
+});
+
+// GET /stats — aggregate counts for the Comms BOLO dashboard tile.
+// Also must precede /:id for the same shadowing reason as /check above.
+bolos.get('/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [{ totalActive }] = await query<{ totalActive: number }>(db,
+      "SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'");
+    const [{ expiringSoon }] = await query<{ expiringSoon: number }>(db,
+      "SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')");
+    const byCategory = await query<Record<string, unknown>>(db,
+      "SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type");
+    const byPriority = await query<Record<string, unknown>>(db,
+      "SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority");
+    const avgLifespan = await queryFirst<{ hours: number | null }>(db,
+      "SELECT ROUND(AVG((julianday(expires_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expires_at IS NOT NULL");
+    return c.json({
+      byCategory: byCategory || [],
+      byPriority: byPriority || [],
+      totalActive: totalActive ?? 0,
+      expiringSoon: expiringSoon ?? 0,
+      avgLifespanHours: avgLifespan?.hours ?? null,
+    });
+  } catch (err) {
+    log.error('GET /bolos/stats failed', {}, err);
+    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
   }
 });
 
@@ -548,6 +643,22 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
     return c.json(row);
   } catch (err) {
     return c.json({ error: 'Failed to fetch BOLO', code: 'BOLO_GET_ERR' }, 500);
+  }
+});
+
+bolos.post('/expire-check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const expired = await query<{ id: number }>(db, `
+      SELECT id FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`);
+    if (expired.length > 0) {
+      await execute(db, `
+        UPDATE bolos SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')`);
+    }
+    return c.json({ expired_count: expired.length, expired_ids: expired.map((b) => b.id) });
+  } catch (err) {
+    log.error('POST /bolos/expire-check failed', {}, err);
+    return c.json({ error: 'Failed to expire BOLOs', code: 'BOLO_EXPIRE_CHECK_ERR' }, 500);
   }
 });
 
@@ -631,6 +742,71 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
   }
 });
 
+// Archive is modeled as a separate `archived_at` column rather than a new
+// `status` value — the `status` column has a CHECK(status IN ('active',
+// 'expired','cancelled')) constraint (migration 0001), so an 'archived'
+// status would violate it. See migration 0177_bolos_archived_at.sql.
+let _bolosArchivedAtEnsured = false;
+async function ensureBolosArchivedAtColumn(db: D1Database): Promise<void> {
+  if (_bolosArchivedAtEnsured) return;
+  if (!(await columnExists(db, 'bolos', 'archived_at'))) {
+    await db.prepare('ALTER TABLE bolos ADD COLUMN archived_at TEXT').run();
+  }
+  _bolosArchivedAtEnsured = true;
+}
+
+bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET archived_at = datetime('now','localtime') WHERE id = ?", id);
+    return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
+  } catch (err) {
+    log.error('POST /bolos/:id/archive failed', {}, err);
+    return c.json({ error: 'Failed to archive BOLO', code: 'BOLO_ARCHIVE_ERR' }, 500);
+  }
+});
+
+bolos.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, 'UPDATE bolos SET archived_at = NULL WHERE id = ?', id);
+    return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
+  } catch (err) {
+    log.error('POST /bolos/:id/unarchive failed', {}, err);
+    return c.json({ error: 'Failed to unarchive BOLO', code: 'BOLO_UNARCHIVE_ERR' }, 500);
+  }
+});
+
+bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureBolosArchivedAtColumn(db);
+    const body = await c.req.json().catch(() => ({} as any));
+    const daysExpired = Number.isFinite(body.days_expired) ? Number(body.days_expired) : 7;
+    const result = await execute(db, `
+      UPDATE bolos SET archived_at = datetime('now','localtime')
+      WHERE archived_at IS NULL
+        AND status IN ('expired', 'cancelled')
+        AND expires_at IS NOT NULL
+        AND expires_at < datetime('now','localtime', ?)`,
+      `-${daysExpired} days`);
+    return c.json({ archived: result.meta.changes ?? 0 });
+  } catch (err) {
+    log.error('POST /bolos/auto-archive failed', {}, err);
+    return c.json({ error: 'Failed to auto-archive BOLOs', code: 'BOLO_AUTO_ARCHIVE_ERR' }, 500);
+  }
+});
+
 // =====================================================================
 // DEV-7: Active welfare watches (supervisor view)
 // GET /api/dispatch/welfare/active
@@ -673,6 +849,58 @@ welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] welfare/active error', err);
     return c.json({ error: 'Failed to list active welfare watches', code: 'WELFARE_ACTIVE_ERR' }, 500);
+  }
+});
+
+// =====================================================================
+// GET /api/dispatch/welfare/status
+// Flat per-officer welfare status for client/src/hooks/useWelfareAlerts.ts.
+// Same candidate set + DO-read pattern as /active, but returns one row per
+// candidate (including idle 'normal' ones) in the flat shape the client
+// expects, with DO stage mapped to a status string and minutes derived
+// from last_activity_at.
+// =====================================================================
+welfareActive.get('/status', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const candidates = await query<{ id: number; full_name: string; badge_number: string | null; call_sign: string }>(db, `
+      SELECT u.id, u.full_name AS full_name, u.badge_number, un.call_sign
+      FROM users u
+      JOIN units un ON un.officer_id = u.id
+      WHERE un.status = 'onscene' AND un.current_call_id IS NOT NULL`);
+
+    const STAGE_STATUS = ['normal', 'prompted', 'overdue', 'emergency'] as const;
+
+    const alerts = await Promise.all(candidates.map(async (cand) => {
+      let stage = 0;
+      let minutesSinceLastCheck: number | undefined;
+      try {
+        const id = (c.env as any).WELFARE_WATCH.idFromName(`u-${cand.id}`);
+        const stub = (c.env as any).WELFARE_WATCH.get(id);
+        const r = await stub.fetch('https://do/state', { method: 'GET' });
+        const state = await r.json();
+        if (state && !state.idle) {
+          stage = state.stage ?? 0;
+          if (typeof state.last_activity_at === 'number') {
+            minutesSinceLastCheck = Math.max(0, Math.round((Date.now() - state.last_activity_at) / 60000));
+          }
+        }
+      } catch { /* DO unreachable / state error — report normal */ }
+
+      return {
+        user_id: cand.id,
+        officer_name: cand.full_name,
+        badge_number: cand.badge_number ?? undefined,
+        call_sign: cand.call_sign,
+        status: STAGE_STATUS[stage] ?? 'normal',
+        minutes_since_last_check: minutesSinceLastCheck,
+      };
+    }));
+
+    return c.json(alerts);
+  } catch (err) {
+    log.error('GET /welfare/status failed', {}, err);
+    return c.json({ error: 'Failed to get welfare status', code: 'WELFARE_STATUS_ERR' }, 500);
   }
 });
 
@@ -776,9 +1004,17 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 
     const call = await queryFirst<{
       id: number; call_number: string | null; latitude: number | null; longitude: number | null;
-      assigned_unit_ids: string | null; dispatched_at: string | null;
-    }>(db, 'SELECT id, call_number, latitude, longitude, assigned_unit_ids, dispatched_at FROM calls_for_service WHERE id = ?', id);
+      assigned_unit_ids: string | null; dispatched_at: string | null; status: string | null;
+    }>(db, 'SELECT id, call_number, latitude, longitude, assigned_unit_ids, dispatched_at, status FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    // Guard against resurrecting a call that's already been closed out — without
+    // this, auto-assign would happily commit a unit to a call that's cleared/
+    // closed/cancelled/archived, corrupting both the unit's status and the call's
+    // audit trail (the call would silently flip back toward 'dispatched').
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged']);
+    if (call.status && TERMINAL_STATUSES.has(call.status)) {
+      return c.json({ error: `Call is already ${call.status} — cannot auto-assign`, code: 'CALL_ALREADY_TERMINAL' }, 409);
+    }
     if (call.latitude == null || call.longitude == null) {
       return c.json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' }, 400);
     }
@@ -1172,7 +1408,14 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
   } catch { return c.json({ total: 0, active: 0, expired: 0, resolved: 0 }); }
 });
 
-// ── Geofence CRUD ────────────────────────────────────────────
+// ── Geofence CRUD (LEGACY — do not use for new work) ─────────
+// This mounts at /api/dispatch/calls/geofences, against its OWN `geofences`
+// table — unrelated to `geofence_zones` (src/routes/geofences.ts, mounted at
+// /api/geofences), which is the table the map's draw tool
+// (DrawGeofenceTool.tsx) and the geofence entry/exit detection pipeline
+// (src/routes/dispatch/gps.ts) actually use. Nothing currently populates
+// this table's rows. Kept for now to avoid an unnecessary removal in an
+// unrelated change; do not build new geofence features against this route.
 callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -1492,6 +1735,18 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
 // without first clearing it. Same dedup + audit behavior.
 callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
   (c) => generateIncidentFromCall(c, false));
+
+// GET /:id/serve-link — read back the serve_queue row created by
+// send-to-serve below (legacy parity; DispatchPage polls this on call
+// selection). Returns null with 200 when no serve job is linked — a 404
+// here is just console noise since most calls have no serve job.
+callActions.get('/:id/serve-link', async (c) => {
+  const id = parseInt(c.req.param('id') || '', 10);
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
+  const row = await queryFirst<Record<string, unknown>>(
+    getDb(c.env), 'SELECT * FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id);
+  return c.json(row ?? null);
+});
 
 // POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
 // (DispatchPage "Send to Serve Queue" button). The create-side mirror of

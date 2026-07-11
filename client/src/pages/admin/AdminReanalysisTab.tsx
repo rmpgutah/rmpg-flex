@@ -4,6 +4,7 @@ import {
   CheckCircle2, Loader2, Camera, Shield, Database,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -31,7 +32,7 @@ const EMPTY_JOB: JobState = {
 
 function fmtDate(s: string | null) {
   if (!s) return '—';
-  try { return new Date(s).toLocaleString(); } catch { return s; }
+  try { return parseTimestamp(s).toLocaleString(); } catch { return s; }
 }
 
 function StatusChip({ status }: { status: JobState['status'] }) {

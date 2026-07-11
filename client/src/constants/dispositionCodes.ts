@@ -180,7 +180,12 @@ export const DISPOSITION_DESCRIPTION_BY_CODE: Record<string, string> =
 export const DISPOSITION_COLOR_BY_CODE: Record<string, string> =
   Object.fromEntries(_ALL_BUILT_IN.map((d) => [d.code, d.color]));
 
-const PROCESS_SERVICE_INCIDENT_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+// Exported as the single source of truth for "is this a PSO/process-service
+// call" — this set drifted into several parallel local copies (DispatchPage.tsx,
+// CallCard.tsx, NewCallModal.tsx) that each independently fell back to checking
+// only 'pso_client_request', silently dropping process_service/civil_paper_service
+// calls from PSO-specific UI. Import this instead of redeclaring it.
+export const PROCESS_SERVICE_INCIDENT_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
 
 /** True when an incident type is a process-service CFS (PS codes apply). */
 export function isProcessServiceIncident(incidentType?: string | null): boolean {

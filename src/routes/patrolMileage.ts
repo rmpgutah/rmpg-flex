@@ -38,6 +38,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   getSuggestedMileage,
   deriveEndMileage,
@@ -103,7 +104,7 @@ pm.get('/mileage/suggest', async (c) => {
     });
   } catch (err) {
     console.error('GET /patrol/mileage/suggest failed:', err);
-    return c.json({ error: 'Failed to suggest mileage', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to suggest mileage');
   }
 });
 
@@ -300,7 +301,7 @@ pm.get('/mileage/chain', async (c) => {
     });
   } catch (err) {
     console.error('GET /patrol/mileage/chain failed:', err);
-    return c.json({ error: 'Failed to load chain', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load chain');
   }
 });
 
@@ -341,7 +342,7 @@ pm.get('/mileage/audit', async (c) => {
     return c.json({ rows });
   } catch (err) {
     console.error('GET /patrol/mileage/audit failed:', err);
-    return c.json({ error: 'Failed to load audit', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load audit');
   }
 });
 
@@ -506,7 +507,7 @@ pm.get('/mileage/fix-suggestions', async (c) => {
     });
   } catch (err) {
     console.error('GET /patrol/mileage/fix-suggestions failed:', err);
-    return c.json({ error: 'Failed to compute suggestions', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to compute suggestions');
   }
 });
 
@@ -817,7 +818,7 @@ pm.post('/mileage/fix', async (c) => {
     });
   } catch (err) {
     console.error('POST /patrol/mileage/fix failed:', err);
-    return c.json({ error: 'Failed to apply fix', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to apply fix');
   }
 });
 
@@ -1176,7 +1177,7 @@ pm.get('/trip-log/generate', async (c) => {
     });
   } catch (err) {
     console.error('GET /patrol/trip-log/generate failed:', err);
-    return c.json({ error: 'Failed to generate trip log', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to generate trip log');
   }
 });
 
@@ -1256,7 +1257,7 @@ pm.get('/trips', async (c) => {
     return c.json({ trips });
   } catch (err) {
     console.error('GET /patrol/trips failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1293,7 +1294,7 @@ pm.post('/trips', async (c) => {
     return c.json({ success: true, trip: created }, 201);
   } catch (err) {
     console.error('POST /patrol/trips failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1348,7 +1349,7 @@ pm.put('/trips/:source/:id', async (c) => {
     return c.json({ success: true, trip: updated });
   } catch (err) {
     console.error('PUT /patrol/trips failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1375,7 +1376,7 @@ pm.delete('/trips/:source/:id', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /patrol/trips failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1599,7 +1600,7 @@ pm.post('/mileage/backfill-patrol-trips', async (c) => {
     });
   } catch (err) {
     console.error('POST /patrol/mileage/backfill-patrol-trips failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1873,7 +1874,7 @@ pm.post('/mileage/auto-fix-gaps', async (c) => {
     });
   } catch (err) {
     console.error('POST /patrol/mileage/auto-fix-gaps failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1941,7 +1942,7 @@ pm.post('/trips/discard-zero-mile', async (c) => {
     return c.json({ success: true, examined: candidates.length, deleted, threshold_mi: 0.5, errors: errors.slice(0, 20) });
   } catch (err) {
     console.error('POST /patrol/trips/discard-zero-mile failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 

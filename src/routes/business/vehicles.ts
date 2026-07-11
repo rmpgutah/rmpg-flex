@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const businessVehicles = new Hono<Env>();
 
 const VALID_REL = ['owner_employee', 'frequent_visitor', 'fleet', 'other'] as const;
@@ -35,11 +36,7 @@ businessVehicles.get('/:businessId', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
-    return c.json({
-      error: 'Failed to load business vehicles',
-      code: 'LOAD_BUSINESS_VEHICLES_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to load business vehicles', 'LOAD_BUSINESS_VEHICLES_ERROR');
   }
 });
 
@@ -90,11 +87,7 @@ businessVehicles.post('/', async (c) => {
 
     return c.json(row, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create business-vehicle link',
-      code: 'CREATE_BUSINESS_VEHICLE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create business-vehicle link', 'CREATE_BUSINESS_VEHICLE_ERROR');
   }
 });
 
@@ -112,11 +105,7 @@ businessVehicles.delete('/:linkId', async (c) => {
     await execute(db, 'DELETE FROM business_vehicles WHERE id = ?', linkId);
     return c.json({ success: true });
   } catch (err) {
-    return c.json({
-      error: 'Failed to delete business-vehicle link',
-      code: 'DELETE_BUSINESS_VEHICLE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete business-vehicle link', 'DELETE_BUSINESS_VEHICLE_ERROR');
   }
 });
 

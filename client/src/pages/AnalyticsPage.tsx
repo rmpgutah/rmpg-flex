@@ -116,6 +116,11 @@ export default function AnalyticsPage() {
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  // True distinct-plate/distinct-hit-plate counts (unbounded by summary's
+  // top-N-by-volume LIMIT) — see buildAlprDistinctCountSql. Falls back to
+  // deriving from `summary` (the old, undercounting behavior) only while
+  // this hasn't loaded yet, so the cards don't flash to 0.
+  const [distinctCounts, setDistinctCounts] = useState<{ distinct_plates: number; distinct_hit_plates: number } | null>(null);
 
   // Plate search
   const plateInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +157,17 @@ export default function AnalyticsPage() {
     }
   }, []);
 
+  const loadDistinctCounts = useCallback(async (d: number) => {
+    try {
+      const res = await apiFetch<{ distinct_plates: number; distinct_hit_plates: number }>(`/analytics/alpr/distinct-count?days=${d}`);
+      setDistinctCounts(res);
+    } catch {
+      // Best-effort — the "Distinct plates"/"Plates with a hit" cards fall
+      // back to deriving from `summary` (top-N-by-volume) when this is null.
+      setDistinctCounts(null);
+    }
+  }, []);
+
   const loadHealth = useCallback(async () => {
     try {
       const h = await apiFetch<HealthResp>('/analytics/health');
@@ -165,7 +181,7 @@ export default function AnalyticsPage() {
   }, []);
 
   useEffect(() => { loadHealth(); }, [loadHealth]);
-  useEffect(() => { loadSummary(days); }, [days, loadSummary]);
+  useEffect(() => { loadSummary(days); loadDistinctCounts(days); }, [days, loadSummary, loadDistinctCounts]);
 
   const searchPlate = useCallback(async (plateArg?: string) => {
     const plate = (plateArg ?? plateInput).toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -290,7 +306,12 @@ export default function AnalyticsPage() {
   void health;
 
   const totalReads = summary.reduce((acc, r) => acc + (Number(r.reads) || 0), 0);
-  const hitPlates = summary.filter((r) => truthy(r.ever_hit)).length;
+  // Prefer the real, unbounded counts from /alpr/distinct-count; fall back to
+  // deriving from `summary` (top-N-by-volume rows) only until that loads —
+  // the fallback undercounts whenever more than summary's LIMIT distinct
+  // plates exist in the window (see buildAlprDistinctCountSql).
+  const distinctPlateCount = distinctCounts?.distinct_plates ?? summary.length;
+  const hitPlates = distinctCounts?.distinct_hit_plates ?? summary.filter((r) => truthy(r.ever_hit)).length;
 
   // Convenience: are we in the initial-load state with no data yet?
   const summaryIdle = summaryLoading && summary.length === 0;
@@ -314,7 +335,7 @@ export default function AnalyticsPage() {
           <button
             onClick={() => {
               loadHealth();
-              if (tab === 'plates') loadSummary(days);
+              if (tab === 'plates') { loadSummary(days); loadDistinctCounts(days); }
               else if (tab === 'activity') loadActivity(days);
               else loadOps(days);
             }}
@@ -382,7 +403,7 @@ export default function AnalyticsPage() {
       {tab === 'plates' && (<>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatsCard icon={ScanSearch} label={`Reads · last ${days}d`} value={totalReads.toLocaleString()} accent="blue" />
-        <StatsCard icon={Car} label="Distinct plates" value={summary.length.toLocaleString()} accent="purple" />
+        <StatsCard icon={Car} label="Distinct plates" value={distinctPlateCount.toLocaleString()} accent="purple" />
         <StatsCard icon={AlertTriangle} label="Plates w/ a hit" value={hitPlates.toLocaleString()} accent={hitPlates ? 'red' : 'green'} />
       </div>
 

@@ -10,7 +10,12 @@ import {
   hasMapboxDirections,
 } from '../../../utils/mapboxRouting';
 import type { ActiveCall } from '../utils/mapConstants';
-import type { ClosestUnitResult } from '../hooks/useClosestUnit';
+
+interface ClosestUnitResult {
+  unit: { id: string; call_sign: string; latitude: number | null; longitude: number | null; status: string };
+  distance: number;
+  duration: number;
+}
 
 interface MapboxDispatchConnectionsProps {
   call?: ActiveCall;
