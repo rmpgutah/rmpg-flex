@@ -470,6 +470,7 @@ export default function AdminPage() {
         certifications: data.certifications,
         notes: data.notes,
         profile_image: data.profile_image,
+        sso_enabled: data.sso_enabled === '1' ? 1 : 0,
       };
 
       if (editingUser) {

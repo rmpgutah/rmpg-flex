@@ -118,6 +118,12 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
 ];
 
+const DIAL_CONNECT_KEYS: ApiKeyConfig[] = [
+  { key: 'dial_connect_client_id', label: 'Client ID', desc: 'OIDC application client ID issued when registering RMPG Flex as a relying party in Dial Connect' },
+  { key: 'dial_connect_client_secret', label: 'Client Secret', desc: 'OIDC client secret paired with the Client ID above — used server-side only, for the authorization code exchange' },
+  { key: 'dial_connect_issuer', label: 'Issuer URL', desc: 'Base OIDC issuer URL for Dial Connect’s identity provider', formatHint: 'e.g. https://dialer.rmpgutah.us/api/oidc — no trailing slash' },
+];
+
 const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
   { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
   { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
@@ -743,6 +749,9 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+
+      {/* ── Dial Connect SSO (OIDC) ── */}
+      <ApiKeyPanel title="Dial Connect SSO (OIDC)" icon={<ShieldCheck className="w-4 h-4 text-brand-400" />} keys={DIAL_CONNECT_KEYS} />
 
       {/* ── GPS Background Tracking ── */}
       <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
