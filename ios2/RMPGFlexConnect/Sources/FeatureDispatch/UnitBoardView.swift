@@ -36,7 +36,7 @@ public struct UnitBoardView: View {
                 Spacer()
                 Circle().fill(statusColor(u.status)).frame(width: 8, height: 8)
             }
-            Text((u.status ?? "unknown").replacingOccurrences(of: "_", with: " ")).font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted)
+            Text((u.status ?? "unknown").replacingOccurrences(of: "_", with: " ").capitalized).font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted)
             if let lat = u.lat, let lng = u.lng {
                 Text(String(format: "%.4f, %.4f", lat, lng)).font(.system(size: 8)).foregroundColor(RMPGTheme.textMuted)
             }
@@ -44,12 +44,17 @@ public struct UnitBoardView: View {
         .padding(10).background(RMPGTheme.raisedSurface).cornerRadius(2)
     }
 
+    // Real `units.status` CHECK values (migrations/0001_initial_schema.sql):
+    // available, dispatched, enroute, onscene, busy, off_duty, out_of_service.
+    // The prior "en_route"/"on_scene" cases (with underscores) never matched
+    // real data, so every enroute/onscene unit silently fell through to gray.
     func statusColor(_ s: String?) -> Color {
         switch s {
         case "available": return RMPGTheme.statusGreen
-        case "busy", "en_route": return RMPGTheme.statusOrange
-        case "on_scene": return RMPGTheme.statusBlue
+        case "dispatched", "busy", "enroute": return RMPGTheme.statusOrange
+        case "onscene": return RMPGTheme.statusBlue
         case "out_of_service": return RMPGTheme.statusRed
+        case "off_duty": return RMPGTheme.textMuted
         default: return RMPGTheme.textMuted
         }
     }

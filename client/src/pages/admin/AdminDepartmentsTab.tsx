@@ -140,7 +140,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     m.action('Delete department', () => setDeleteTarget(d), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
-  const filtered = departments.filter((d) =>
+  const filtered = (Array.isArray(departments) ? departments : []).filter((d) =>
     !search || d.name.toLowerCase().includes(search.toLowerCase()) || (d.code || '').toLowerCase().includes(search.toLowerCase())
   );
 
@@ -278,7 +278,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                   <label htmlFor="ff-admindepartmentstab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Parent Dept</label>
                   <select id="ff-admindepartmentstab-3" value={form.parent_id} onChange={(e) => setForm((f) => ({ ...f, parent_id: e.target.value }))} className="select-dark w-full text-xs">
                     <option value="">None (Top-level)</option>
-                    {departments.filter((d) => d.id !== editing?.id).map((d) => (
+                    {(Array.isArray(departments) ? departments : []).filter((d) => d.id !== editing?.id).map((d) => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>

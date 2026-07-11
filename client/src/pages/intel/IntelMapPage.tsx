@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../../utils/mapboxApiKey';
 import { MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../../utils/mapboxBasemap';
 import { safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 import { useIntelContext } from './IntelContext';
 import { useIntelGeo } from './useIntelGeo';
@@ -38,6 +39,7 @@ export default function IntelMapPage() {
       });
       mapRef.current = map;
       registerMapInstance(map);
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px' });
       map.on('load', () => { if (!cancelled) setReady(true); });
     })();

@@ -16,6 +16,14 @@ import { callPosture } from '../utils/callThreat';
 import { zsbComposite } from './ZsbBadge';
 import { BADGE_TONES } from './records/recordVisuals';
 
+// PSO/process-service incident types — matches PROCESS_SERVICE_INCIDENT_TYPES
+// in constants/dispositionCodes.ts. Every gate below used to check only
+// 'pso_client_request', so a process_service/civil_paper_service call's
+// attempt-number badge, service-type label, and re-dispatch countdowns
+// silently never rendered (caught 2026-07-03, part of the same drift as
+// DispatchPage.tsx's Serve tab and IncidentFormModal.tsx's PSO form tab).
+const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
   phone: Phone,
@@ -79,8 +87,11 @@ interface CallCardProps {
   stackCount?: number;
   /** Feature 6: Quick note add handler */
   onQuickNote?: (callId: string, note: string) => void;
-  /** Warrant indicator: true if any linked person has an active warrant */
-  hasActiveWarrant?: boolean;
+  /** Critical intel-screening hit (GET /dispatch/calls/hits) — stolen/
+   *  watchlisted vehicle, a linked person with an active warrant/watchlist
+   *  entry, or an NSOPW registry match. Renamed from hasActiveWarrant (which
+   *  it replaces) once the underlying signal broadened past warrants alone. */
+  hasIntelHit?: boolean;
   /** Toggle pinned-to-top flag */
   onTogglePin?: (callId: string, currentlyPinned: boolean) => void;
   /** Resolved signal-code info for priority-colored badge */
@@ -89,7 +100,7 @@ interface CallCardProps {
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin, signalInfo }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasIntelHit, onTogglePin, signalInfo }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   // Officer-safety threat posture from the call's own intrinsic flags (linked
   // records aren't loaded per-queue-card). Drives a triage strip across the
@@ -306,18 +317,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
           {/* 39: Call number with letter-spacing for CAD readability */}
           <span className="text-sm font-bold text-green-400 font-mono tabular-nums" style={{ letterSpacing: '0.04em' }}>{call.call_number}</span>
-          {hasActiveWarrant && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-600 px-1 py-0 rounded-sm animate-pulse" title="Person on this call has active warrant(s)">
-              <ShieldAlert style={{ width: 9, height: 9 }} /> WRN
+          {hasIntelHit && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-600 px-1 py-0 rounded-sm animate-pulse" title="Intel screening hit — stolen/watchlisted vehicle, active warrant/watchlist entry, or NSOPW match linked to this call">
+              <ShieldAlert style={{ width: 9, height: 9 }} /> HIT
             </span>
           )}
-          {call.incident_type === 'pso_client_request' && call.pso_attempt_number && (
+          {PSO_TYPES.has(call.incident_type) && call.pso_attempt_number && (
             <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               VISIT #{call.pso_attempt_number}
             </span>
           )}
           {/* 72-hour PSO re-dispatch countdown */}
-          {call.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(call.status) && (() => {
+          {PSO_TYPES.has(call.incident_type) && ['cleared', 'closed'].includes(call.status) && (() => {
             const terminalTime = call.closed_at || call.cleared_at;
             if (!terminalTime) return null;
             const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -339,7 +350,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             return null;
           })()}
           {/* 72-hour deadline for active PSO calls (from creation time) */}
-          {call.incident_type === 'pso_client_request' && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
+          {PSO_TYPES.has(call.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
             const deadline = new Date(parseTimestamp(call.created_at).getTime() + 72 * 3600000);
             const remaining = deadline.getTime() - Date.now();
             if (remaining <= 0) return (
@@ -355,7 +366,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             );
             return null;
           })()}
-          {!(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (() => {
+          {!(PSO_TYPES.has(call.incident_type) && call.pso_attempt_number) && (() => {
             // Full Z/S/B composite ("SL1/SSL/A1") derived from geography fields,
             // falling back to the stored dispatch_code — same presentation as
             // the dispatch detail panel's gold badge.
@@ -425,7 +436,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         <span className="text-sm font-medium text-brand-400">
           {formatIncidentType(call.incident_type)}
         </span>
-        {call.incident_type === 'pso_client_request' && call.pso_service_type && (
+        {PSO_TYPES.has(call.incident_type) && call.pso_service_type && (
           <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{toDisplayLabel(call.pso_service_type)}</span>
         )}
         {call.case_number && (

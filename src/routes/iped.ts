@@ -26,6 +26,7 @@ import type { Env } from '../types';
 import type { D1Database } from '@cloudflare/workers-types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 // IPED_API_KEY is optional and only consulted by /status to report
 // "configured". Declared here (not in src/types.ts) because no other
 // route in the rewrite touches it — keeps the shared Bindings type lean.
@@ -112,11 +113,7 @@ iped.get('/status', async (c) => {
       hashSetCount: hashAgg?.sets ?? 0,
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get IPED status',
-      code: 'STATUS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get IPED status', 'STATUS_ERROR');
   }
 });
 
@@ -137,7 +134,7 @@ iped.put('/config', async (c) => {
     await saveIpedConfig(db, next);
     return c.json({ success: true, config: next });
   } catch (err) {
-    return c.json({ error: 'Failed to save IPED config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to save IPED config');
   }
 });
 
@@ -150,7 +147,7 @@ iped.delete('/config', async (c) => {
     await execute(db, `DELETE FROM system_config WHERE config_key = ?`, IPED_CONFIG_KEY);
     return c.json({ success: true });
   } catch (err) {
-    return c.json({ error: 'Failed to clear IPED config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to clear IPED config');
   }
 });
 
@@ -216,7 +213,7 @@ iped.delete('/hash-sets/:name', async (c) => {
     await execute(db, `DELETE FROM forensic_hash_sets WHERE name = ?`, name);
     return c.json({ success: true });
   } catch (err) {
-    return c.json({ error: 'Failed to remove hash set', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to remove hash set');
   }
 });
 
@@ -241,11 +238,7 @@ iped.get('/hash-sets', async (c) => {
       sets: rows.map((r) => ({ ...r, category: r.set_type, count: r.hash_count })),
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list hash sets',
-      code: 'HASH_SETS_LIST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list hash sets', 'HASH_SETS_LIST_ERROR');
   }
 });
 
@@ -276,11 +269,7 @@ iped.get('/hash-sets/:id', async (c) => {
       data: { ...set, entries, entries_truncated: (set.hash_count as number) > entries.length },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get hash set',
-      code: 'HASH_SET_GET_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get hash set', 'HASH_SET_GET_ERROR');
   }
 });
 
@@ -326,11 +315,7 @@ iped.get('/downloads', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list IPED imports',
-      code: 'DOWNLOADS_LIST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list IPED imports', 'DOWNLOADS_LIST_ERROR');
   }
 });
 

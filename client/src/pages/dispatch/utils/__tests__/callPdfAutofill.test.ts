@@ -217,4 +217,33 @@ describe('applyCallPdfAutofill', () => {
       expect(out.process_service_result).toBeUndefined();
     });
   });
+
+  describe('process_service / civil_paper_service incident types', () => {
+    // Regression: the PSO-requestor fallback block used to check only
+    // incident_type === 'pso_client_request', so a call created via the
+    // "Process Service (General)" dropdown (incident_type='process_service')
+    // or with incident_type='civil_paper_service' never got the
+    // pso_requestor_name → caller_name fallback, even when the form let the
+    // dispatcher fill in the PSO-requestor fields for those types (caught
+    // 2026-07-03).
+    it('applies the same pso_requestor fallback for process_service', () => {
+      const out = applyCallPdfAutofill({
+        ...baseCall,
+        incident_type: 'process_service' as any,
+        client_name: 'ICU INVESTIGATIONS, LLC',
+      });
+      expect(out.pso_requestor_name).toBe('ICU INVESTIGATIONS, LLC');
+      expect(out.caller_name).toBe('ICU INVESTIGATIONS, LLC');
+    });
+
+    it('applies the same pso_requestor fallback for civil_paper_service', () => {
+      const out = applyCallPdfAutofill({
+        ...baseCall,
+        incident_type: 'civil_paper_service' as any,
+        client_name: 'ICU INVESTIGATIONS, LLC',
+      });
+      expect(out.pso_requestor_name).toBe('ICU INVESTIGATIONS, LLC');
+      expect(out.caller_name).toBe('ICU INVESTIGATIONS, LLC');
+    });
+  });
 });

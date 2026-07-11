@@ -40,6 +40,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const pt = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -179,7 +180,7 @@ pt.delete('/checkpoints/:id', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('[patrol] delete checkpoint failed:', err);
-    return c.json({ error: 'Failed to delete checkpoint', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete checkpoint');
   }
 });
 
@@ -746,7 +747,7 @@ pt.get('/optimize-route', async (c) => {
     });
   } catch (err) {
     console.error('GET /patrol/optimize-route failed:', err);
-    return c.json({ error: 'optimization failed', detail: (err as Error)?.message, checkpoints: [], optimized_order: [], suggested_order: [], total_distance_km: 0 }, 500);
+    return dbErrorResponse(c, err, 'optimization failed');
   }
 });
 

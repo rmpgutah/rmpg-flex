@@ -11,6 +11,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import {
   FileWarning,
   Plus,
@@ -357,7 +358,7 @@ const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -1842,7 +1843,7 @@ export default function CitationsPage() {
                 <select id="ff-citationspage-21" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                  {sectionOptions.map((s: any) => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                 </select>
               </div>
               <div>
@@ -1850,7 +1851,7 @@ export default function CitationsPage() {
                 <select id="ff-citationspage-22" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                  {zonesForSection(form.section_id).map((z: any) => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                 </select>
               </div>
               <div>
@@ -1858,7 +1859,7 @@ export default function CitationsPage() {
                 <select id="ff-citationspage-23" className="w-full bg-surface-raised border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
-                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
+                  {beatsForZone(form.zone_id).map((b: any) => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
                 </select>
               </div>
             </div>

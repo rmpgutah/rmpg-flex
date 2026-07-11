@@ -26,7 +26,7 @@ import {
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
-  Route as RouteIcon, Grid3X3, type LucideIcon,
+  Route as RouteIcon, Grid3X3, Printer, type LucideIcon,
 } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
@@ -37,32 +37,44 @@ import TripsDrawer from './navigation/TripsDrawer';
 import {
   HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
   HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
-  HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
+  HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
+  HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
-import { useSpeedLimit } from './navigation/hud/useSpeedLimit';
+import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
+import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
+import { nextAnnouncement } from './navigation/hud/voiceGuidance';
+import { announceManeuver } from '../utils/voiceAlerts';
 import {
   type SpeedUnit, loadSpeedUnit, saveSpeedUnit, formatSpeed, formatHeading,
   formatDistanceLong, formatDistanceMi, formatDuration as hudFormatDuration,
   etaToMinutes, arrivalClockFrom, formatCountdown, truncateLabel,
 } from './navigation/hud/hudUnits';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
+import { generateNavBriefing } from '../utils/navBriefingPdf';
 import { useGpsTracking } from '../hooks/useGpsTracking';
-import { snapToRoute } from '../hooks/useMapRouting';
+import { snapToRoute, type RouteStep } from '../hooks/useMapRouting';
 import { buildCongestionGradient, CONGESTION_COLOR } from '../hooks/useNavGuidanceEngine';
 import { useNavTrip } from '../context/NavTripContext';
 import { whenStyleReady } from './map/utils/safeAddSource';
+import { getTaggedBeats } from './map/utils/districtGeoData';
+import { useCachedBasemap } from '../hooks/useCachedBasemap';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { useWebSocket } from '../context/WebSocketContext';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
+import { useBattery } from '../components/BatteryIndicator';
+import type { MapUnit } from './map/utils/mapConstants';
+import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './map/utils/mapMarkers';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -104,7 +116,7 @@ function maneuverIcon(type: string, modifier?: string): LucideIcon {
 }
 
 /** Pick the maneuver the unit is currently approaching from route progress. */
-function pickCurrentStep(steps: { instruction: string; distanceMeters: number; distanceText: string; maneuverType: string; modifier?: string }[] | undefined, fraction: number, totalMeters: number) {
+function pickCurrentStep(steps: RouteStep[] | undefined, fraction: number, totalMeters: number) {
   if (!steps || steps.length === 0) return null;
   const doneMeters = Math.max(0, Math.min(1, fraction)) * totalMeters;
   let acc = 0;
@@ -473,6 +485,8 @@ export default function NavigationPage() {
   const canExport = user?.role === 'admin' || user?.role === 'manager';
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
+  const battery = useBattery();
+  const { subscribe } = useWebSocket();
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
   // ── Clear-route confirm dialog ──
   const [clearRouteConfirmOpen, setClearRouteConfirmOpen] = useState(false);
@@ -511,12 +525,16 @@ export default function NavigationPage() {
   // starts nor resets it. This page only renders the engine's state and
   // paints the route line on its own map (the effects just below).
   const navCtx = useNavTrip();
+  const isTripPaused = navCtx?.isTripPaused ?? false;
+  const zoneAlert = navCtx?.zoneAlert ?? null;
+  const weatherHazard = navCtx?.weatherHazard ?? null;
   const guidance = navCtx?.guidance ?? null;
   const activeRoute = guidance?.activeRoute ?? null;
   const routeProgress = guidance?.routeProgress ?? null;
   const routeGeom = guidance?.routeGeom ?? null;
   const routeRender = guidance?.routeRender ?? null;
   const offRoute = guidance?.offRoute ?? false;
+  const excludedZoneWarning = guidance?.excludedZoneWarning ?? false;
 
   // Draw / clear the engine's route on the drive map. Re-runs when the engine
   // produces a new route (including reroutes while this page was unmounted)
@@ -583,6 +601,283 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeProgress?.fraction, mapReady, routeRender]);
 
+  // #12 — customizable HUD layout: show/hide prefs for optional tiles
+  // (drivingScore/deviceHealth/districtOverlay/weather/backupUnits). Same
+  // live-reactive load/event pattern as overSpeedThresholdMph below — this
+  // page stays mounted for a whole shift, so a setting change made elsewhere
+  // (NavPage.tsx's settings panel) must be picked up without a remount.
+  // Declared up here (ahead of showDistricts/showBackupUnits) because the
+  // district-overlay effects immediately below reference it.
+  const [hudTiles, setHudTiles] = useState(() => loadNavPrefs().hudTiles);
+
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      setHudTiles(detail ? detail.hudTiles : loadNavPrefs().hudTiles);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') setHudTiles(loadNavPrefs().hudTiles);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  // #103 — brightness + brightnessMode: same live-reactive load/event pattern
+  // as hudTiles above (settings panel lives in NavPage.tsx, this page just
+  // reacts). 'auto' derives from the same local-hour signal nightTheme reads
+  // below via brightnessForHour(), rather than a separate ambient-light source.
+  const [brightnessPrefs, setBrightnessPrefs] = useState(() => {
+    const p = loadNavPrefs();
+    return { brightness: p.brightness, brightnessMode: p.brightnessMode };
+  });
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      const p = detail ?? loadNavPrefs();
+      setBrightnessPrefs({ brightness: p.brightness, brightnessMode: p.brightnessMode });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') {
+        const p = loadNavPrefs();
+        setBrightnessPrefs({ brightness: p.brightness, brightnessMode: p.brightnessMode });
+      }
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  const [showDistricts, setShowDistricts] = useState(false);     // #8 district/beat overlay toggle
+  // #12 higher-level kill switch: settings-level hudTiles.districtOverlay gates
+  // whether the per-session showDistricts toggle can take effect at all — it
+  // does NOT get overwritten by the session toggle, and turning the settings
+  // pref off does not clear the session toggle's own state (it just stops it
+  // from rendering), so re-enabling the pref restores whatever showDistricts
+  // was already set to.
+  const districtsEnabled = hudTiles.districtOverlay && showDistricts;
+
+  // ── #2 — offline/cached basemap fallback. Not a true offline basemap
+  // (Mapbox vector tiles aren't cacheable to disk under the current
+  // license) — when live tiles have been failing to load for 5+ seconds we
+  // force-show the #8 district/beat schematic backdrop (below) at full
+  // opacity so the HUD isn't a blank screen, reusing that layer/source
+  // rather than building a second independent rendering path.
+  const { degraded: mapDegraded } = useCachedBasemap(mapReady ? mapInstanceRef.current : null);
+
+  // ── #8 — district/beat boundary overlay (fill + outline, default hidden) ──
+  // Reuses getTaggedBeats() — the same loader/dataset useDistrictHierarchyLayers
+  // (client/src/hooks/useDistrictHierarchyLayers.ts) was written against — so
+  // this avoids a redundant fetch/tag pass over the 719 beat polygons. NOTE:
+  // that hook is dead code (not wired into any live page), and the main map's
+  // ACTUAL live beat overlay is MapboxMapPage.tsx's loadBeatOverlay, which
+  // fetches /beats.geojson directly (a different source), paints solid gold
+  // (#d4a017, fill-opacity 0.04/line-opacity 0.35), and defaults ON — none of
+  // that is a fit here (different defaults, different data source, would mean
+  // a second redundant fetch on this page). So the styling below (per-zone
+  // ['get', '_zoneColor'], fill-opacity 0.12 + a line outline, default OFF) is
+  // an independent choice for this HUD, not a mirror of any live reference.
+  // Source/layers are added once per map instance (guarded by hasSource/
+  // hasLayer) with `visibility: 'none'`; the toggle effect below flips
+  // visibility without re-adding.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    let cancelled = false;
+    getTaggedBeats().then((fc) => {
+      if (cancelled) return;
+      whenStyleReady(map, () => {
+        try {
+          if (!hasSource(map, 'rmpg-districts-source')) {
+            map.addSource('rmpg-districts-source', { type: 'geojson', data: fc });
+          }
+          if (!hasLayer(map, 'rmpg-districts-fill')) {
+            map.addLayer({
+              id: 'rmpg-districts-fill',
+              type: 'fill',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'fill-color': ['get', '_zoneColor'] as any, 'fill-opacity': 0.12 },
+            });
+          }
+          if (!hasLayer(map, 'rmpg-districts-outline')) {
+            map.addLayer({
+              id: 'rmpg-districts-outline',
+              type: 'line',
+              source: 'rmpg-districts-source',
+              layout: { visibility: 'none' },
+              paint: { 'line-color': ['get', '_zoneColor'] as any, 'line-width': 1, 'line-opacity': 0.6 },
+            });
+          }
+          // Re-apply current toggle state (e.g. after a style switch rebuilds sources/layers).
+          // Also force-visible when the live basemap is degraded (#2 fallback backdrop).
+          const vis = (districtsEnabled || mapDegraded) ? 'visible' : 'none';
+          if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+          if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+        } catch { /* style race — toggle effect below re-applies once ready */ }
+      });
+    }).catch(() => { /* overlay is optional */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
+
+  // Flip district/beat overlay visibility on toggle OR on degraded-basemap
+  // fallback (#2 — layers may not exist yet if this fires before the
+  // add-effect above resolves — guarded by hasLayer).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const vis = (districtsEnabled || mapDegraded) ? 'visible' : 'none';
+    try {
+      if (hasLayer(map, 'rmpg-districts-fill')) map.setLayoutProperty('rmpg-districts-fill', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-districts-outline')) map.setLayoutProperty('rmpg-districts-outline', 'visibility', vis);
+    } catch { /* style not ready */ }
+  }, [districtsEnabled, mapDegraded, mapReady]);
+
+  // ── Nearby backup-unit overlay (default off) ──────────────────────────────
+  // Mirrors MapboxMapPage.tsx's unit-marker approach exactly (buildUnitMarkerEl/
+  // applyUnitMarkerState/buildUnitPopupHtml from map/utils/mapMarkers.ts, real
+  // mapboxgl.Marker objects kept in a ref map keyed by unit id) — filtered to
+  // units on the SAME call as this officer (not the whole fleet, which would be
+  // clutter on a drive HUD). "Same call" = MapUnit.current_call_id matching the
+  // officer's own current_call_id, both sourced from /dispatch/units (the same
+  // roster endpoint MapboxMapPage polls) — /dispatch/gps/my-unit (used by the
+  // auto-route effect above) identifies which row in that roster is "me".
+  const [showBackupUnits, setShowBackupUnits] = useState(false);
+  // #12 higher-level kill switch, same pattern as districtsEnabled above —
+  // settings-level hudTiles.backupUnits gates the per-session showBackupUnits
+  // toggle without clobbering its state.
+  const backupUnitsEnabled = hudTiles.backupUnits && showBackupUnits;
+  const [myUnitId, setMyUnitId] = useState<string | null>(null);
+  const [myCallId, setMyCallId] = useState<string | null>(null);
+  const [backupUnits, setBackupUnits] = useState<MapUnit[]>([]);
+  const backupMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+
+  // Poll cadence matches MapboxMapPage.tsx's REFRESH_INTERVAL_MS (30s) — live
+  // position is already covered by the unit_position WS push below, so the
+  // roster/call-assignment poll only needs to be as fresh as the dispatch
+  // map's own tolerance, not tighter.
+  const BACKUP_UNITS_POLL_MS = 30000;
+
+  // Identify "me" — polled independently of the auto-route effect above (which
+  // bails out once a route is active) so the backup filter keeps working for
+  // the whole shift.
+  useEffect(() => {
+    if (!backupUnitsEnabled) { setMyUnitId(null); setMyCallId(null); return; }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const resp = await apiFetch<any>('/dispatch/gps/my-unit').catch(() => null);
+        const unit = resp && typeof resp === 'object' ? ('unit' in resp ? resp.unit : resp) : null;
+        if (cancelled || !unit || unit.id == null) return;
+        setMyUnitId(String(unit.id));
+        setMyCallId(unit.current_call_id != null ? String(unit.current_call_id) : null);
+      } catch { /* best-effort */ }
+    };
+    poll();
+    const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [backupUnitsEnabled]);
+
+  // Roster poll — filtered to units sharing myCallId, excluding my own unit.
+  // KNOWN GAP: call-assignment membership only refreshes every
+  // BACKUP_UNITS_POLL_MS, while position (below) updates instantly via WS —
+  // so a unit that gets cleared from the call keeps gliding live on this
+  // overlay for up to that interval after it's no longer actually backup,
+  // a false "another unit is right behind me" signal. Acceptable for v1;
+  // revisit if this proves to be a real safety complaint in the field.
+  useEffect(() => {
+    if (!backupUnitsEnabled || !myCallId) { setBackupUnits([]); return; }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const units = await apiFetch<MapUnit[]>('/dispatch/units').catch(() => null);
+        if (cancelled || !units) return;
+        setBackupUnits(units.filter((u) =>
+          String(u.current_call_id) === myCallId &&
+          String(u.id) !== myUnitId &&
+          u.latitude != null && u.longitude != null));
+      } catch { /* best-effort */ }
+    };
+    poll();
+    const timer = setInterval(poll, BACKUP_UNITS_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [backupUnitsEnabled, myCallId, myUnitId]);
+
+  // Live position nudges between roster polls (same 'unit_position' frame
+  // MapboxMapPage.tsx handles — see its comment for the payload shape).
+  useEffect(() => {
+    if (!backupUnitsEnabled) return;
+    const unsub = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setBackupUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+    return () => { unsub(); };
+  }, [backupUnitsEnabled, subscribe]);
+
+  // Render/update/remove backup-unit markers — mirrors MapboxMapPage.tsx's
+  // unit-marker effect verbatim.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    if (!backupUnitsEnabled) {
+      backupMarkersRef.current.forEach((marker) => marker.remove());
+      backupMarkersRef.current.clear();
+      return;
+    }
+
+    const currentIds = new Set<string>();
+    for (const unit of backupUnits) {
+      if (unit.latitude == null || unit.longitude == null) continue;
+      currentIds.add(unit.id);
+      const existing = backupMarkersRef.current.get(unit.id);
+      if (existing) {
+        existing.setLngLat([unit.longitude, unit.latitude]);
+        const popup = existing.getPopup();
+        if (popup) popup.setHTML(buildUnitPopupHtml(unit));
+        applyUnitMarkerState(existing.getElement(), unit);
+      } else {
+        const el = buildUnitMarkerEl(unit);
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([unit.longitude, unit.latitude])
+          .setPopup(
+            new mapboxgl.Popup({ offset: 18, closeButton: false, className: 'mapbox-popup-dark' })
+              .setHTML(buildUnitPopupHtml(unit))
+          )
+          .addTo(map);
+        backupMarkersRef.current.set(unit.id, marker);
+      }
+    }
+    backupMarkersRef.current.forEach((marker, id) => {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        backupMarkersRef.current.delete(id);
+      }
+    });
+  }, [backupUnits, backupUnitsEnabled, mapReady]);
+
+  // Full cleanup on unmount — belt-and-suspenders alongside the toggle-off
+  // branch above (which fires on every render while the toggle is off, but
+  // won't fire on an unmount that happens while it's still on).
+  useEffect(() => () => {
+    backupMarkersRef.current.forEach((marker) => marker.remove());
+    backupMarkersRef.current.clear();
+  }, []);
+
   // ── 3D corner inset ("chase-cam" perspective map) ──
   const insetContainerRef = useRef<HTMLDivElement | null>(null);
   const insetMapRef = useRef<any>(null);
@@ -632,7 +927,11 @@ export default function NavigationPage() {
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const deepLinkConsumedRef = useRef(false);
+  // Tracks the last "lat|lng|destination" key already routed, so re-entering
+  // the SAME deep-link (e.g. a stale browser back/forward entry) doesn't
+  // re-route, but clicking a DIFFERENT favorite/pin while already on this
+  // page (new lat/lng in the URL) does. See dep array below.
+  const deepLinkConsumedKeyRef = useRef<string | null>(null);
   const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
@@ -687,6 +986,32 @@ export default function NavigationPage() {
   // #64 — arrived banner transient state.
   const [arrivedLabel, setArrivedLabel] = useState<string | null>(null);
   const arrivedFiredRef = useRef<string | null>(null);
+  // #3 — configurable over-speed alert: threshold from shared nav prefs
+  // (persisted via NavSettingsPanel's loadNavPrefs/saveNavPrefs, localStorage
+  // key rmpg_nav_prefs), transient fire timestamp + auto-hiding banner state.
+  // NavigationPage stays mounted for a whole shift, so the threshold must stay
+  // live-reactive to a setting change made elsewhere — not just read at mount.
+  const [overSpeedThresholdMph, setOverSpeedThresholdMph] = useState(() => loadNavPrefs().overSpeedThresholdMph);
+  const [lastOverSpeedAt, setLastOverSpeedAt] = useState<number | null>(null);
+  const [showOverSpeedBanner, setShowOverSpeedBanner] = useState(false);
+  const overSpeedHideTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      setOverSpeedThresholdMph(detail ? detail.overSpeedThresholdMph : loadNavPrefs().overSpeedThresholdMph);
+    };
+    // Same-tab saves (custom event) and other-tab saves (native storage event).
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') setOverSpeedThresholdMph(loadNavPrefs().overSpeedThresholdMph);
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
@@ -698,6 +1023,23 @@ export default function NavigationPage() {
   const { limitMph, buffer: limitBuffer } = useSpeedLimit(gps.latitude, gps.longitude);
   // #46 — effective tone gate: prefs.alertsOn AND not transiently muted.
   const tonesOn = alertsOn && !hudMuted;
+
+  // #3 — configurable over-speed alert: fire on cooldown, show banner a few
+  // seconds so it doesn't flicker off the instant speed dips below threshold.
+  useEffect(() => {
+    if (overSpeedThresholdMph <= 0 || displayMph == null) return;
+    const now = Date.now();
+    if (!shouldFireOverSpeedAlert(displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, now)) return;
+    setLastOverSpeedAt(now);
+    setShowOverSpeedBanner(true);
+    playNavTone(tonesOn, 4000, 990);
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+    overSpeedHideTimerRef.current = window.setTimeout(() => setShowOverSpeedBanner(false), 4000);
+  }, [displayMph, limitMph, overSpeedThresholdMph, lastOverSpeedAt, tonesOn]);
+
+  useEffect(() => () => {
+    if (overSpeedHideTimerRef.current != null) window.clearTimeout(overSpeedHideTimerRef.current);
+  }, []);
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
   useEffect(() => {
@@ -723,6 +1065,14 @@ export default function NavigationPage() {
           attributionControl: false,
           interactive: true,
         });
+        // Re-skin to the app's active theme (Blue & Silver navy/silver by
+        // default) instead of a hardcoded pure-black base — re-applies on
+        // every style.load, including the WebGL-recovery rebuild below.
+        // 2026-07 UPDATE: this map used to force a fixed black palette
+        // regardless of theme (the ".tactical-dark stays dark always" rule);
+        // that exception was intentionally lifted for the whole app's map
+        // surfaces, this one included, in favor of one theme-reactive re-skin.
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) { map.remove(); return; }
           mapInstanceRef.current = map;
@@ -739,19 +1089,6 @@ export default function NavigationPage() {
               setNavRecoverNonce((n) => n + 1);
             },
           });
-          // Push dark-v11 toward a pure-black tactical base — black land/background
-          // and near-black water — so streets + the crime overlay pop. Defensive:
-          // layer ids vary by style version, so guard every set.
-          try {
-            for (const ly of (map.getStyle()?.layers || [])) {
-              if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
-              else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
-              // Mapbox paint properties don't resolve CSS variables — use the
-              // night-theme literal for --surface-overlay (#060b10). The map
-              // stays dark always per the .tactical-dark rule.
-              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#060b10');
-            }
-          } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
             .addTo(map);
@@ -790,6 +1127,7 @@ export default function NavigationPage() {
           zoom: 17.4, pitch: 70, bearing: dir ?? 0,
           attributionControl: false, interactive: false,
         });
+        m.on('style.load', () => applyRmpgBasemap(m, { variant: 'dark' }));
         m.on('load', () => {
           if (cancelled) { m.remove(); return; }
           insetMapRef.current = m;
@@ -999,29 +1337,34 @@ export default function NavigationPage() {
   }, []);
 
   // ── Deep-link: ?destination=<label>&lat=<val>&lng=<val> or ?lat=<val>&lng=<val> ──
-  // Runs once after map is ready. Strips params after consuming so refresh
-  // doesn't re-trigger the route. useRef guard prevents double-fire.
+  // Fires whenever the lat/lng/destination params change — not just on mount —
+  // so clicking "Go" on a second favorite (or a new pin) while already on this
+  // page re-routes instead of being a no-op. Strips params after consuming so
+  // a refresh doesn't re-trigger the route; the "last consumed key" ref (not a
+  // one-shot boolean) still guards against a duplicate fire for the SAME params
+  // (e.g. React StrictMode's double-invoke in dev, or a stale history entry).
+  const latParam = searchParams.get('lat');
+  const lngParam = searchParams.get('lng');
+  const destParam = searchParams.get('destination');
   useEffect(() => {
-    if (!mapReady || deepLinkConsumedRef.current) return;
-    const latParam = searchParams.get('lat');
-    const lngParam = searchParams.get('lng');
-    const destParam = searchParams.get('destination');
-    if (latParam && lngParam) {
-      const lat = Number(latParam);
-      const lng = Number(lngParam);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        deepLinkConsumedRef.current = true;
-        const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        const next = new URLSearchParams(searchParams);
-        next.delete('lat'); next.delete('lng'); next.delete('destination');
-        setSearchParams(next, { replace: true });
-        if (gps.latitude != null && gps.longitude != null) {
-          routeToDestination(lat, lng, label).catch(() => {});
-        }
+    if (!mapReady) return;
+    if (!latParam || !lngParam) return;
+    const key = `${latParam}|${lngParam}|${destParam ?? ''}`;
+    if (deepLinkConsumedKeyRef.current === key) return;
+    const lat = Number(latParam);
+    const lng = Number(lngParam);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      deepLinkConsumedKeyRef.current = key;
+      const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      const next = new URLSearchParams(searchParams);
+      next.delete('lat'); next.delete('lng'); next.delete('destination');
+      setSearchParams(next, { replace: true });
+      if (gps.latitude != null && gps.longitude != null) {
+        routeToDestination(lat, lng, label).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady]);
+  }, [mapReady, latParam, lngParam, destParam]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   useEffect(() => {
@@ -1105,6 +1448,29 @@ export default function NavigationPage() {
       [[Infinity, Infinity], [-Infinity, -Infinity]] as [[number, number], [number, number]],
     );
     mapInstanceRef.current.fitBounds(bounds, { padding: 60, maxZoom: 16 });
+  };
+
+  // #9 — printable pre-trip route briefing sheet. Reads the app-wide guidance
+  // engine's CURRENT route state (turn-by-turn steps, destination, ETA,
+  // multi-stop waypoints) — best invoked once a route is actively planned/
+  // navigated, since that's the only place this state is populated end-to-end.
+  const handlePrintBriefing = () => {
+    if (!activeRoute) return;
+    const officerName =
+      (user as any)?.full_name ||
+      `${(user as any)?.first_name || ''} ${(user as any)?.last_name || ''}`.trim() ||
+      (user as any)?.username || undefined;
+    generateNavBriefing({
+      route: activeRoute,
+      destinationLabel: destLabel || activeRoute.callNumber,
+      destLat: guidance?.destination?.lat ?? null,
+      destLng: guidance?.destination?.lng ?? null,
+      originLat: gps.latitude ?? null,
+      originLng: gps.longitude ?? null,
+      waypoints: guidance?.waypoints,
+      officerName,
+      unitCallSign: gps.unitCallSign,
+    }).catch((err) => console.error('[navBriefing] Failed to generate briefing PDF:', err));
   };
 
   // Tick once a second so session-duration + the clock re-render even when parked.
@@ -1556,6 +1922,18 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tripOpen, gps.capturedCount],
   );
+  // Trip-replay scrub points for the same drawer — same retrigger key as
+  // movementReport (capturedCount), so this doesn't recompute on every
+  // render/GPS tick while the drawer sits paused.
+  const replayPoints = useMemo(
+    () => (tripOpen ? gps.getCapturedTrack().map((p) => ({
+      lat: p.lat, lng: p.lng, time: p.timestamp,
+      speed: p.speed != null ? p.speed * 2.236936 : null, // m/s → mph
+      heading: p.heading,
+    })) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tripOpen, gps.capturedCount],
+  );
   const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
@@ -1901,6 +2279,43 @@ export default function NavigationPage() {
     }
     return null;
   }, [activeRoute, routeProgress]);
+  // Task 14 — distance-threshold turn-by-turn voice announcements. Tracks
+  // which cadence thresholds (1mi/0.5mi/0.25mi/now) have already been
+  // spoken for the CURRENT maneuver, resetting when the maneuver changes.
+  // Identity is (activeRoute object reference, index of `step` within
+  // activeRoute.steps) — NOT instruction text alone. Instruction text
+  // repeats often ("Continue straight" appears on many steps), and a
+  // reroute can hand back a brand-new steps array whose current step
+  // happens to share text with the old one at a very different distance;
+  // either case would silently suppress announcements if keyed on text.
+  // A fresh route fetch always produces a new RouteInfo object (see
+  // useMapRouting's fetchRoute), so comparing the object reference catches
+  // reroutes even when the step index coincidentally lines up.
+  // Speaking itself goes through announceManeuver (voiceAlerts.ts), which
+  // already owns voice selection + the global voice-alerts toggle — we
+  // additionally gate on the HUD's own transient mute (hudMuted) since
+  // that's a nav-local control the dispatch pipeline doesn't know about.
+  const announcedThresholdsRef = useRef<Set<number>>(new Set());
+  const announcedKeyRef = useRef<{ route: typeof activeRoute; stepIndex: number } | null>(null);
+  useEffect(() => {
+    if (!step || distanceToTurnMeters == null || !activeRoute) return;
+    const stepIndex = activeRoute.steps.indexOf(step);
+    const prevKey = announcedKeyRef.current;
+    if (!prevKey || prevKey.route !== activeRoute || prevKey.stepIndex !== stepIndex) {
+      announcedKeyRef.current = { route: activeRoute, stepIndex };
+      announcedThresholdsRef.current = new Set();
+    }
+    const announcement = nextAnnouncement(
+      { instruction: step.instruction, distanceMetersRemaining: distanceToTurnMeters },
+      announcedThresholdsRef.current,
+    );
+    if (announcement) {
+      announcedThresholdsRef.current.add(announcement.thresholdM);
+      if (!hudMuted) {
+        void announceManeuver(announcement.text, announcement.thresholdM === 30);
+      }
+    }
+  }, [step, distanceToTurnMeters, activeRoute, hudMuted]);
   // #70 — parked: speed ~0 for >5s (dims non-essential tiles, shows badge).
   const parkedSinceRef = useRef<number | null>(null);
   const liveMph = hasFix ? displayMph : null;
@@ -1915,6 +2330,12 @@ export default function NavigationPage() {
   // via the alert/brightness model; here we derive night from the local hour as a
   // self-contained fallback so the footer dims without depending on other lanes).
   const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
+  // #103 — effective brightness resolved via the SHARED getEffectiveBrightness
+  // helper (also used by NavPage.tsx's overlay) so both pages that read the
+  // same rmpg_nav_prefs blob can never silently diverge on Auto-mode behavior.
+  // Recomputed each render (cheap Date().getHours() read) so a shift that
+  // straddles the dawn/dusk ramp windows dims smoothly without a remount.
+  const effectiveBrightness = getEffectiveBrightness(brightnessPrefs);
 
   // Measure the live turn-banner height so the corner panels can flow below it.
   // ResizeObserver catches every content change (added steps, off-route row,
@@ -1983,6 +2404,16 @@ export default function NavigationPage() {
     </div>
   ) : (
     <div ref={rootRef} className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden">
+      {/* #103 — brightness/dim overlay (manual slider or auto time-of-day curve),
+          same visual treatment as NavPage.tsx's #76 overlay. z-index above the
+          map/HUD but pointer-events-none so it never blocks touch. */}
+      {effectiveBrightness < 1 && (
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6, zIndex: 45 }}
+        />
+      )}
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
       {mapError && (
@@ -1994,6 +2425,19 @@ export default function NavigationPage() {
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-600 text-xs pointer-events-none">
           <Crosshair className="w-4 h-4 mr-2 animate-pulse text-brand-500" />
           Initializing map…
+        </div>
+      )}
+      {/* #2 — offline/cached basemap fallback indicator. The schematic
+          district/beat backdrop itself is a map layer (rmpg-districts-fill/
+          -outline, forced visible above) so it renders within the map canvas
+          under the HUD's DOM instruments — this badge is just the "why" label,
+          pointer-events-none so it never blocks touch/click on the HUD. */}
+      {mapDegraded && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-2 py-1 rounded-none bg-surface-raised/90 text-[10px] font-bold uppercase tracking-widest"
+          style={{ marginTop: 'env(safe-area-inset-top, 0px)', color: 'var(--sev-warn)', border: '1px solid var(--sev-warn)' }}
+        >
+          Live tiles unavailable — schematic backdrop
         </div>
       )}
 
@@ -2172,11 +2616,24 @@ export default function NavigationPage() {
             <div className="flex-1 min-w-0">
               <div className="text-rmpg-100 text-[15px] font-semibold leading-tight truncate" title={step.instruction}>{step.instruction}</div>
               <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
+              {guidance && guidance.waypoints.length > 0 && (
+                <div className="text-[9px] font-mono uppercase tracking-wide text-rmpg-400">
+                  Stop {(() => {
+                    const activeIdx = guidance.waypoints.findIndex(w => !w.completed);
+                    const displayIdx = activeIdx === -1 ? guidance.waypoints.length : activeIdx;
+                    return displayIdx + 1;
+                  })()} of {guidance.waypoints.length}
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handlePrintBriefing} title="Print pre-trip briefing" aria-label="Print pre-trip briefing"
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
+                <Printer className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => setClearRouteConfirmOpen(true)} title="Clear route" aria-label="Clear route"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-red-400 hover:border-red-500" style={{ borderRadius: 2 }}>
@@ -2201,6 +2658,11 @@ export default function NavigationPage() {
           {offRoute && (
             <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase text-red-400 animate-pulse border-t border-rmpg-800">
               <AlertTriangle className="w-3 h-3" /> Off route — recalculating
+            </div>
+          )}
+          {!offRoute && excludedZoneWarning && (
+            <div className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase border-t border-rmpg-800" style={{ color: 'var(--sev-warn)' }}>
+              <AlertTriangle className="w-3 h-3" /> Route avoids a restricted zone
             </div>
           )}
           {/* Upcoming maneuvers (the next few turns) */}
@@ -2403,6 +2865,7 @@ export default function NavigationPage() {
           sessionMs={sessionMs}
           climbFt={climbFt}
           elevFt={elevFt}
+          points={replayPoints}
           onClose={() => setTripOpen(false)}
         />
       )}
@@ -2426,6 +2889,20 @@ export default function NavigationPage() {
       {arrivedLabel && (
         <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
           <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+        </div>
+      )}
+
+      {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
+      {showOverSpeedBanner && limitMph != null && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 268 }}>
+          <HudOverSpeedBanner limitMph={limitMph} />
+        </div>
+      )}
+
+      {/* ── Generic geofence zone-entry alert (lower HUD overlay) ── */}
+      {zoneAlert?.show && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 326 }}>
+          <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
         </div>
       )}
 
@@ -2460,12 +2937,23 @@ export default function NavigationPage() {
               followActive={followActive} onRecenter={recenterMap}
               onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
               pitched={pitched} onTogglePitch={togglePitch}
+              showDistricts={showDistricts} onToggleDistricts={hudTiles.districtOverlay ? () => setShowDistricts((v) => !v) : undefined}
+              showBackupUnits={showBackupUnits} onToggleBackupUnits={hudTiles.backupUnits ? () => setShowBackupUnits((v) => !v) : undefined}
             />
             <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
             <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
             <HudQualityPill accuracy={gps.accuracy ?? null} />
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
+            {isTripPaused && <HudPausedBadge />}
+            {hudTiles.deviceHealth && (
+              <HudDeviceHealthBadge
+                batteryLevel={battery.supported ? battery.level : null}
+                batteryCharging={battery.charging}
+                gpsAccuracy={gps.accuracy ?? null}
+              />
+            )}
+            {hudTiles.weather && <HudWeatherBadge hazard={weatherHazard} />}
             <span className="flex-1" />
             {canExport && (
               <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
@@ -2497,7 +2985,6 @@ export default function NavigationPage() {
                 buffer={limitBuffer}
                 heading={dir}
                 night={nightTheme}
-                onOverLimitTone={() => playNavTone(tonesOn, 4000, 990)}
               />
               <button
                 type="button"
@@ -2567,12 +3054,14 @@ export default function NavigationPage() {
               </div>
               {/* #32 — driving-score chip + #41/#42 — next-maneuver mini + micro-bar */}
               <div className="flex items-stretch gap-1.5">
-                <HudDrivingScore
-                  peakLong={Math.max(peakGRef.current.accel, peakGRef.current.brake)}
-                  peakLat={peakGRef.current.lat}
-                  hardBrakes={hardBrakesRef.current}
-                  hardAccels={hardAccelsRef.current}
-                />
+                {hudTiles.drivingScore && (
+                  <HudDrivingScore
+                    peakLong={Math.max(peakGRef.current.accel, peakGRef.current.brake)}
+                    peakLat={peakGRef.current.lat}
+                    hardBrakes={hardBrakesRef.current}
+                    hardAccels={hardAccelsRef.current}
+                  />
+                )}
                 {step && (
                   <HudNextManeuver
                     maneuverType={step.maneuverType}
@@ -2580,6 +3069,7 @@ export default function NavigationPage() {
                     instruction={step.instruction}
                     distanceToTurnMeters={distanceToTurnMeters}
                     stepDistanceMeters={step.distanceMeters}
+                    lanes={step.lanes}
                   />
                 )}
               </div>

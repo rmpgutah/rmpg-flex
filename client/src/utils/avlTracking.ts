@@ -6,10 +6,12 @@
 // panic button integration, and fleet analytics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 11: Real-Time Vehicle Location */
 export interface VehiclePosition { vehicleId:string; latitude:number; longitude:number; speed:number; heading:number; timestamp:string; ignition:boolean; }
 export function calculateFleetCoverage(positions:VehiclePosition[], totalVehicles:number): { activeTracking:number; coveragePct:number; staleVehicles:string[] } {
-  const now = Date.now(); const recent = positions.filter(p=>now-new Date(p.timestamp).getTime()<300000);
+  const now = Date.now(); const recent = positions.filter(p=>now-parseTimestamp(p.timestamp).getTime()<300000);
   const activeIds = new Set(recent.map(p=>p.vehicleId));
   const stale:string[] = []; for (const p of positions) { if (!activeIds.has(p.vehicleId)) stale.push(p.vehicleId); }
   return { activeTracking:activeIds.size, coveragePct:totalVehicles>0?Math.round(activeIds.size/totalVehicles*100):0, staleVehicles:[...new Set(stale)] };
@@ -31,7 +33,7 @@ export function checkFenceViolation(position:{lat:number;lng:number}, fences:Geo
 export interface RouteSegment { vehicleId:string; startTime:string; endTime:string; startLat:number; startLng:number; endLat:number; endLng:number; distance:number; avgSpeed:number; maxSpeed:number; }
 export function analyzeRoute(segments:RouteSegment[]): { totalDistance:number; totalTime:number; avgSpeed:number; maxSpeed:number } {
   const totalDist = Math.round(segments.reduce((s,seg)=>s+seg.distance,0)*100)/100;
-  const totalTime = Math.round(segments.reduce((s,seg)=>(new Date(seg.endTime).getTime()-new Date(seg.startTime).getTime())/60000,0));
+  const totalTime = Math.round(segments.reduce((s,seg)=>(parseTimestamp(seg.endTime).getTime()-parseTimestamp(seg.startTime).getTime())/60000,0));
   return { totalDistance:totalDist, totalTime, avgSpeed:segments.length>0?Math.round(segments.reduce((s,seg)=>s+seg.avgSpeed,0)/segments.length):0, maxSpeed:Math.max(0,...segments.map(s=>s.maxSpeed)) };
 }
 

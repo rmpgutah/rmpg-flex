@@ -72,8 +72,16 @@ export function computeServeCharges(
     push('rush', 1, priceOf('rush'));
   }
 
-  // Extra attempts beyond the included count.
-  const included = byCode.get('extra_attempt')?.attempts_included ?? 0;
+  // Extra attempts beyond the included count. `attempts_included` on the
+  // pricing item is a GLOBAL default (same for every contract); a contract
+  // that negotiated a different free-attempt count had no way to express
+  // that, so every client was billed against the same threshold regardless
+  // of their contract terms. `rate_overrides.extra_attempt_included` lets a
+  // specific contract override it via the same JSON blob already used for
+  // per-contract rate overrides (ps_contract_terms.rate_overrides_json).
+  const included = terms.rate_overrides?.extra_attempt_included
+    ?? byCode.get('extra_attempt')?.attempts_included
+    ?? 0;
   const extra = Math.max(0, (job.attempt_count ?? 0) - included);
   if (extra > 0 && priceOf('extra_attempt') > 0) {
     push('extra_attempt', extra, priceOf('extra_attempt'));

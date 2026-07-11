@@ -112,4 +112,15 @@ describe('runFullListLeg — chunked cycle gate', () => {
     expect(runs.some(s => /last_full_cycle_at/i.test(s))).toBe(false);                            // NOT completed
     expect(runs.some(s => /INSERT INTO national_warrant_source_progress/i.test(s) && !/last_full_cycle_at/i.test(s))).toBe(true);  // cursor persisted unchanged
   });
+
+  it('propagates degraded:true from a chunked fetch that degraded instead of throwing', async () => {
+    const { DB } = fakeDb(null);
+    const adapter: WarrantSourceAdapter = {
+      meta: { key: 's', display_name: 'S', state: 'US', county: null, source_url: '', kind: 'arcgis', priority: 2 },
+      mode: 'full-list',
+      async fetchChunk() { return { hits: [], nextCursor: null, done: false, degraded: true, degradedReason: 'http_500' }; },
+    };
+    const summary = await runFullListLeg(DB, [adapter], { now: NOW });
+    expect(summary[0].degraded).toBe(true);
+  });
 });

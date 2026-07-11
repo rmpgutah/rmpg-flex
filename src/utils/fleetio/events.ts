@@ -42,7 +42,13 @@ export type FleetioEmitKind =
   | 'work_order.update'
   | 'work_order.close'
   | 'inspection.create'
-  | 'inspection.submit';
+  | 'inspection.submit'
+  | 'vendor.create'
+  | 'vendor.update'
+  | 'vendor.delete'
+  | 'part.create'
+  | 'part.update'
+  | 'part.delete';
 
 export interface EmitOpts {
   /** The RMPG table the source row lives in. Required for the event_id hash. */
@@ -81,6 +87,12 @@ const EMIT_KIND_TO_RESOURCE: Record<FleetioEmitKind, { resource: string; action:
   'work_order.close':     { resource: 'work_order', action: 'update' },
   'inspection.create':    { resource: 'inspection', action: 'create' },
   'inspection.submit':    { resource: 'inspection', action: 'update' },
+  'vendor.create':        { resource: 'vendor',     action: 'create' },
+  'vendor.update':        { resource: 'vendor',     action: 'update' },
+  'vendor.delete':        { resource: 'vendor',     action: 'delete' },
+  'part.create':          { resource: 'part',       action: 'create' },
+  'part.update':          { resource: 'part',       action: 'update' },
+  'part.delete':          { resource: 'part',       action: 'delete' },
 };
 
 export function resolveEmitKind(kind: FleetioEmitKind): { resource: string; action: 'create' | 'update' | 'delete' } {

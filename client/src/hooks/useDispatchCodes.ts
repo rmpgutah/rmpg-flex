@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
 
 export interface DispatchCode {
   id: number;
@@ -39,7 +40,7 @@ export function useDispatchCodes(): UseDispatchCodesReturn {
     setLoading(true);
     try {
       const result = await apiFetch<DispatchCode[]>('/dispatch/geography/codes');
-      if (result) setCodes(result);
+      setCodes(asArray<DispatchCode>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);

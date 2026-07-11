@@ -187,4 +187,8 @@ export interface RenderContext<T = any> {
   readonly primitives: import('./primitives').Primitives;
   /** Direct access to the underlying LayoutEngine. */
   readonly layout: import('./layout').LayoutEngine;
+  /** Direct access to the underlying jsPDF doc — used by callback sections
+   *  that call standalone primitive functions (drawBadge, drawSeverityMeter,
+   *  drawCrossRefChip, drawPhotoGrid) which take (doc, layout, opts). */
+  readonly doc: import('jspdf').default;
 }

@@ -123,6 +123,7 @@ import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
+import { playUiNavigate } from '../utils/uiClickSounds';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -147,6 +148,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/ncic': 'NCIC Terminal',
   '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
+  '/scheduler': 'Scheduler',
+  '/shift-briefings': 'Shift Briefings',
   '/statute-analytics': 'Statute Analytics',
   '/reports/custom': 'Report Builder',
   '/criminal-history': 'Criminal History',
@@ -209,7 +212,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
   '/microbilt': 'MicroBilt',
-  '/navigation': 'Module Navigation',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -237,6 +239,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dispatch', icon: Radio, label: 'Dispatch Board' },
     { path: '/mdt', icon: Monitor, label: 'MDT Terminal' },
     { path: '/geography', icon: MapPin, label: 'Geography / Zones' },
+    { path: '/scheduler', icon: Calendar, label: 'Scheduler' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
@@ -312,6 +315,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/scheduler', icon: Calendar, label: 'Scheduler' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
     { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
@@ -369,7 +373,7 @@ const TOOLBAR_NAV: NavItem[] = [
 // Paths that client_viewer role is NOT allowed to see
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
-  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/radio', '/patrol', '/shift-plans', '/scheduler', '/shift-briefings', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
 ]);
 
@@ -1302,10 +1306,10 @@ export default function Layout() {
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
-                      <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
-                      <span className="menu-item-label">System Settings</span>
-                    </button>
+<button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin?tab=settings'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
+                        <Settings style={{ width: 11, height: 11 }} />
+                        <span className="menu-item-label">System Settings</span>
+                      </button>
                   )}
 
                   <div className="menu-separator" />
@@ -1497,7 +1501,7 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        // Inherit the button's currentColor so active (gold) + hover
+                        // Inherit the button's currentColor so active (steel-blue) + hover
                         // states drive the glyph automatically — see .toolbar-nav-btn CSS.
                         color: 'currentColor',
                         marginBottom: 1,
@@ -1532,7 +1536,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1546,7 +1550,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}

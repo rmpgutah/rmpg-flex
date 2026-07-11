@@ -255,6 +255,11 @@ export function mapDbCall(row: any): CallForService {
       pso_72hr_notified: row.pso_72hr_notified || undefined,
       dispatcher_name: row.dispatcher_name || undefined,
       case_id: row.case_id ?? undefined,
+      // Redispatch chain linkage (calls_for_service_ext.parent_call_id) — the
+      // "Undo Return Visit" button gates on this via `(selectedCall as any)
+      // .parent_call_id`; without mapping it here it's always undefined and
+      // the button never shows even once the server persists the value.
+      parent_call_id: row.parent_call_id ?? undefined,
     } as any),
   };
 }
@@ -297,6 +302,8 @@ export function mapDbUnit(row: any): Unit {
     emergency_active: row.emergency_active ? 1 : 0,
     emergency_call_id: row.emergency_call_id ?? null,
     emergency_since: row.emergency_since ?? null,
+    camera_device_id: row.camera_device_id ?? null,
+    camera_ignition_state: row.camera_ignition_state ?? null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
   };

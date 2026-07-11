@@ -4,6 +4,7 @@ import DocumentEditor from '../../docs/DocumentEditor';
 import { docsApi } from '../../docs/useDocuments';
 import type { DocListItem } from '../../../types';
 import { useToast } from '../../../components/ToastProvider';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   callId: number;
@@ -76,7 +77,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
           <div key={d.id} className="group flex items-center gap-2 text-xs px-2 py-1.5 rounded-sm hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
             <FileText className="w-3 h-3 text-[#888] shrink-0" />
             <button type="button" className="flex-1 min-w-0 truncate text-left text-rmpg-200 hover:text-rmpg-100" onClick={() => setOpenId(d.id)}>{d.title}</button>
-            <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>{d.status}</span>
+            <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>{toDisplayLabel(d.status)}</span>
             <button type="button" aria-label="Detach document" title="Detach" className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-1 text-[#888] hover:text-[#ef4444]" onClick={() => detach(d.id)}><Unlink className="w-3 h-3" /></button>
           </div>
         ))}
@@ -100,7 +101,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
                 <button key={d.id} type="button" className="w-full flex items-center gap-2 text-xs px-2 py-1 rounded-sm hover:bg-[#18181820] text-left" onClick={() => attach(d.id)}>
                   <FileText className="w-3 h-3 text-[#888]" />
                   <span className="flex-1 min-w-0 truncate text-rmpg-200">{d.title}</span>
-                  <span className="text-[8px] text-rmpg-500">{d.status}</span>
+                  <span className="text-[8px] text-rmpg-500">{toDisplayLabel(d.status)}</span>
                 </button>
               ))}
               {results.length === 0 && <p className="text-[10px] text-rmpg-500 text-center py-4">Search to find a document.</p>}

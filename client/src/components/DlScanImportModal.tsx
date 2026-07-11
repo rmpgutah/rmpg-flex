@@ -4,6 +4,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from './ToastProvider';
 import type { Person } from '../types';
 import type { AamvaResult, ScanAlert, ReadoutRow } from '../utils/aamvaParser';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Lazy-loaded to keep the Records page initial bundle lean.
 type AamvaParserModule = typeof import('../utils/aamvaParser');
@@ -322,8 +323,8 @@ export default function DlScanImportModal({ isOpen, onClose, onImported }: DlSca
                 <div className="mt-2 pt-2 border-t border-border-default flex flex-wrap gap-x-4 gap-y-0.5">
                   {parsed.height && <span className="text-[10px] text-rmpg-400">Ht: <span className="text-rmpg-200">{parsed.height}</span></span>}
                   {parsed.weight && <span className="text-[10px] text-rmpg-400">Wt: <span className="text-rmpg-200">{parsed.weight}</span></span>}
-                  {parsed.eye_color && <span className="text-[10px] text-rmpg-400">Eyes: <span className="text-rmpg-200">{parsed.eye_color}</span></span>}
-                  {parsed.hair_color && <span className="text-[10px] text-rmpg-400">Hair: <span className="text-rmpg-200">{parsed.hair_color}</span></span>}
+                  {parsed.eye_color && <span className="text-[10px] text-rmpg-400">Eyes: <span className="text-rmpg-200">{toDisplayLabel(parsed.eye_color)}</span></span>}
+                  {parsed.hair_color && <span className="text-[10px] text-rmpg-400">Hair: <span className="text-rmpg-200">{toDisplayLabel(parsed.hair_color)}</span></span>}
                   {parsed.is_real_id && <span className="text-[10px] font-bold text-green-400">REAL ID ✓</span>}
                   {parsed.is_veteran && <span className="text-[10px] font-bold text-blue-400">VETERAN ✓</span>}
                 </div>

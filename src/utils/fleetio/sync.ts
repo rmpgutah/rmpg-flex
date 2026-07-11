@@ -80,6 +80,12 @@ export interface FleetioAdapter {
   updateFuelEntry(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<FleetioFuelEntry>;
   createWorkOrder(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
   updateWorkOrder(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  createVendor(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  updateVendor(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  archiveVendor(args: { fleetioId: number }): Promise<unknown>;
+  createPart(args: { payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  updatePart(args: { fleetioId: number; payload: Record<string, unknown> }): Promise<{ id: number; [k: string]: unknown }>;
+  deletePart(args: { fleetioId: number }): Promise<unknown>;
 }
 
 /** Pure typed deps for applyOutbound — eliminates I/O coupling for tests. */
@@ -290,6 +296,42 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     if (translated == null) return null;
     return deps.adapter.updateWorkOrder({ fleetioId, payload: translated });
   }
+  if (row.resource === 'vendor' && row.action === 'create') {
+    const existing = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
+    if (existing) return null;
+    const created = await deps.adapter.createVendor({ payload: filteredPayload });
+    await recordLink(deps.db, 'ref_vendors', row.resource_id, 'vendor', created.id, now(deps));
+    return created;
+  }
+  if (row.resource === 'vendor' && row.action === 'update') {
+    const fleetioId = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
+    if (!fleetioId) return null; // never pushed — first push happens on next create-shaped emit
+    return deps.adapter.updateVendor({ fleetioId, payload: filteredPayload });
+  }
+  if (row.resource === 'vendor' && row.action === 'delete') {
+    const fleetioId = await lookupFleetioId(deps.db, 'ref_vendors', row.resource_id);
+    if (!fleetioId) return null;
+    return deps.adapter.archiveVendor({ fleetioId });
+  }
+  if (row.resource === 'part' && row.action === 'create') {
+    const existing = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
+    if (existing) return null;
+    const created = await deps.adapter.createPart({ payload: filteredPayload });
+    await recordLink(deps.db, 'fleet_parts', row.resource_id, 'part', created.id, now(deps));
+    return created;
+  }
+  if (row.resource === 'part' && row.action === 'update') {
+    const fleetioId = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
+    if (!fleetioId) return null;
+    return deps.adapter.updatePart({ fleetioId, payload: filteredPayload });
+  }
+  if (row.resource === 'part' && row.action === 'delete') {
+    // Fleet.io parts support a hard DELETE (unlike vehicles/vendors). Only
+    // meaningful if the row was ever linked; otherwise it was local-only.
+    const fleetioId = await lookupFleetioId(deps.db, 'fleet_parts', row.resource_id);
+    if (!fleetioId) return null;
+    return deps.adapter.deletePart({ fleetioId });
+  }
   if (row.resource === 'inspection') {
     // Inspections are intentionally RMPG-only — see INSPECTION_OWNERSHIP in
     // ownership.ts (every column is 'rmpg' because Fleet.io's
@@ -386,13 +428,17 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
   if (conflict.length > 0) {
     for (const field of conflict) {
       try {
+        const localValue = row.resource_id != null
+          ? await readLocalFieldValue(deps.db, row.resource, row.resource_id, field)
+          : null;
         await deps.db.prepare(
           `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at)
-           VALUES (?, ?, ?, NULL, ?, 'local_wins', datetime('now'))`,
+           VALUES (?, ?, ?, ?, ?, 'local_wins', datetime('now'))`,
         ).bind(
           resourceToRmpgTable(row.resource),
           row.resource_id,
           field,
+          localValue,
           JSON.stringify(payload[field] ?? null),
         ).run();
       } catch (err) {
@@ -424,13 +470,15 @@ export async function applyInbound(deps: ApplyInboundDeps, eventId: string): Pro
           // Apply remote as default + flag the field for the badge.
           unresolved.push(f);
           try {
+            const localValue = await readLocalFieldValue(deps.db, row.resource, row.resource_id, f);
             await deps.db.prepare(
               `INSERT INTO fleetio_conflicts (rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at)
-               VALUES (?, ?, ?, NULL, ?, 'unresolved', datetime('now'))`,
+               VALUES (?, ?, ?, ?, ?, 'unresolved', datetime('now'))`,
             ).bind(
               resourceToRmpgTable(row.resource),
               row.resource_id,
               f,
+              localValue,
               JSON.stringify(payload[f] ?? null),
             ).run();
           } catch (err) {
@@ -491,10 +539,43 @@ function parsePayload(raw: string): Record<string, unknown> {
 
 function resourceToRmpgTable(resource: string): string {
   // Inbound resource name → local table. Trust map; bad resource is caller bug.
+  // The old `default: return resource` fallback was a latent bug: an inbound
+  // work_order/vendor/part update would try `UPDATE work_order SET ...`
+  // against a table literally named "work_order", which doesn't exist —
+  // every resource that can reach the UPDATE path below MUST have an
+  // explicit case.
   switch (resource) {
     case 'vehicle':    return 'fleet_vehicles';
     case 'fuel_entry': return 'fleet_fuel_log';
-    default:           return resource; // defensive
+    case 'work_order': return 'work_orders';
+    case 'vendor':      return 'ref_vendors';
+    case 'part':        return 'fleet_parts';
+    default:           return resource; // defensive — inspection has no inbound path
+  }
+}
+
+/** Snapshot the current local value of a single field before an inbound
+ *  update potentially overwrites it, so `fleetio_conflicts.local_value`
+ *  actually shows what RMPG had — previously always written as NULL,
+ *  which meant the conflict-resolver UI never showed the local side of
+ *  a disagreement. `field` is only ever a key that survived
+ *  `getOwnership()` (i.e. present in a hard-coded ownership map), never
+ *  raw webhook input, so interpolating it into the column list is safe. */
+async function readLocalFieldValue(
+  db: D1Database,
+  resource: string,
+  id: number | null,
+  field: string,
+): Promise<string | null> {
+  if (id == null || getOwnership(resource, field) === null) return null;
+  try {
+    const row = await db.prepare(
+      `SELECT ${field} AS v FROM ${resourceToRmpgTable(resource)} WHERE id = ?`,
+    ).bind(id).first<{ v: unknown }>();
+    if (!row) return null;
+    return JSON.stringify(row.v ?? null);
+  } catch {
+    return null;
   }
 }
 
@@ -518,10 +599,26 @@ function remoteUpdatedAtMs(payload: Record<string, unknown>): number | null {
   return Number.isFinite(ts) ? ts : null;
 }
 
+/** Inverse of `resourceToRmpgTable` — used by the conflict-resolve route to
+ *  turn a `fleetio_conflicts.rmpg_table` value back into a resource name +
+ *  the emit kind for re-asserting the local value outbound. Returns null
+ *  for tables with no outbound resource (shouldn't happen; conflicts are
+ *  only ever logged against synced resources). */
+export function rmpgTableToResource(table: string): { resource: string; updateKind: string } | null {
+  switch (table) {
+    case 'fleet_vehicles': return { resource: 'vehicle', updateKind: 'vehicle.update' };
+    case 'fleet_fuel_log': return { resource: 'fuel_entry', updateKind: 'fuel.update' };
+    case 'work_orders':    return { resource: 'work_order', updateKind: 'work_order.update' };
+    case 'ref_vendors':    return { resource: 'vendor', updateKind: 'vendor.update' };
+    case 'fleet_parts':    return { resource: 'part', updateKind: 'part.update' };
+    default: return null;
+  }
+}
+
 // Exported for tests so they don't have to re-derive these helpers.
 export const _internals = {
   parsePayload, resourceToRmpgTable, readLocalUpdatedAtMs, remoteUpdatedAtMs,
-  dispatchOutbound, lookupFleetioId,
+  dispatchOutbound, lookupFleetioId, readLocalFieldValue,
 };
 // Also re-export the error types the dispatch layer surfaces so tests can
 // instanceof-discriminate without re-importing from ./errors.

@@ -7,6 +7,8 @@
 // and background investigation metrics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 71: Applicant Tracking */
 export interface Applicant { id: string; name: string; position: string; appliedDate: string; status: 'screening'|'testing'|'interview'|'background'|'polygraph'|'psych'|'medical'|'offer'|'hired'|'withdrawn'|'rejected'; phaseStartDate: string; daysInPhase: number; assignedInvestigator: string|null; }
 export function trackApplicantProgress(applicants: Applicant[]): { byPhase: Record<string,number>; avgDaysToHire: number; bottleneck: string } {
@@ -88,7 +90,7 @@ export function assessCreditRisk(analysis: CreditAnalysis): { acceptable: boolea
 /* FEATURE 78: Adjudication Workflow */
 export interface Adjudication { applicantId: string; investigatorRecommendation: string; supervisorRecommendation: string; commanderDecision: string|null; decisionDate: string|null; rationale: string; appealFiled: boolean; appealOutcome: string|null; finalDetermination: 'hire'|'no_hire'|'pending'|'appealed'; }
 export function trackAdjudicationTimeline(adj: Adjudication, startDate: string): { daysInAdjudication: number; stalled: boolean; actionNeeded: string } {
-  const days = Math.ceil((Date.now() - new Date(startDate).getTime()) / 86400000);
+  const days = Math.ceil((Date.now() - parseTimestamp(startDate).getTime()) / 86400000);
   let stalled = false; let action = '';
   if (!adj.commanderDecision && days > 14) { stalled = true; action = 'Escalate to commander for decision'; }
   else if (adj.commanderDecision && !adj.finalDetermination) { action = 'Processing final determination'; }

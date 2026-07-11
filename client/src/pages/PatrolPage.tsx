@@ -40,6 +40,7 @@ import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
@@ -134,6 +135,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
       // Rebuild in place if the GPU drops the context. The marker/route effect
       // (keyed on mapReady) re-runs and re-fits bounds to the checkpoints.

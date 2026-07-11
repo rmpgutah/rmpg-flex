@@ -126,9 +126,17 @@ struct ScanHubView: View {
         case .driverLicense:
             ScanTabView(apiClient: apiClient)
         case .passport:
+            #if os(iOS)
             MrzScannerView(onScan: { result in }, onError: { _ in })
+            #else
+            EmptyView()
+            #endif
         case .plate:
+            #if os(iOS)
             ALPRCameraView(onCapture: { text in }, onError: { _ in })
+            #else
+            EmptyView()
+            #endif
         case .appleID:
             AppleIDVerifierView()
         }

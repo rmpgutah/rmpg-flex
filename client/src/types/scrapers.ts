@@ -27,7 +27,7 @@ export interface SourceMetrics {
   last_error_at: string | null;
   last_success_at: string | null;
   status_distribution: Record<string, number>;
-  health_grade: ScraperHealthGrade;
+  health_grade: ScraperHealthGrade | null;
 }
 
 export interface ScraperSource {

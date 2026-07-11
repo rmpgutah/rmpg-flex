@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import turfLength from '@turf/length';
 import type mapboxgl from 'mapbox-gl';
+import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface Props { map: mapboxgl.Map; onClose: () => void; }
 
@@ -21,8 +22,8 @@ export default function RulerTool({ map, onClose }: Props) {
   const pointsRef = useRef<[number, number][]>([]);
 
   const updateSources = (pts: [number, number][]) => {
-    const ptSource = map.getSource(SOURCE_POINTS) as any;
-    const lineSource = map.getSource(SOURCE_LINE) as any;
+    const ptSource = getSourceSafe<any>(map, SOURCE_POINTS);
+    const lineSource = getSourceSafe<any>(map, SOURCE_LINE);
     if (ptSource) ptSource.setData?.({
       type: 'FeatureCollection',
       features: pts.map(p => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: {} })),
@@ -37,12 +38,12 @@ export default function RulerTool({ map, onClose }: Props) {
   };
 
   useEffect(() => {
-    if (!map.getSource(SOURCE_POINTS)) {
+    if (!hasSource(map, SOURCE_POINTS)) {
       map.addSource(SOURCE_POINTS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: LAYER_POINTS, type: 'circle', source: SOURCE_POINTS,
         paint: { 'circle-radius': 5, 'circle-color': '#d4a017', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } });
     }
-    if (!map.getSource(SOURCE_LINE)) {
+    if (!hasSource(map, SOURCE_LINE)) {
       map.addSource(SOURCE_LINE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: LAYER_LINE, type: 'line', source: SOURCE_LINE,
         paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-dasharray': [2, 2] } });
@@ -59,8 +60,8 @@ export default function RulerTool({ map, onClose }: Props) {
     return () => {
       if (map.getCanvas) map.getCanvas().style.cursor = '';
       map.off('click', handleClick);
-      [LAYER_POINTS, LAYER_LINE].forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
-      [SOURCE_POINTS, SOURCE_LINE].forEach(s => { if (map.getSource(s)) map.removeSource(s); });
+      [LAYER_POINTS, LAYER_LINE].forEach(l => { safeRemoveLayer(map, l); });
+      [SOURCE_POINTS, SOURCE_LINE].forEach(s => { safeRemoveSource(map, s); });
     };
   }, [map]);
 

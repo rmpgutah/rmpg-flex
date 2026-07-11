@@ -17,6 +17,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openCourtAppearancePdf } from '../utils/courtAppearancePdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ============================================================
 // Types

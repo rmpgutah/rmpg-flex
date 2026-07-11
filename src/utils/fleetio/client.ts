@@ -20,6 +20,8 @@ import type {
   FleetioVehicle,
   FleetioVehicleCreatePayload,
   FleetioListResponse,
+  FleetioVendor,
+  FleetioPart,
 } from './types';
 
 export const FLEETIO_API_BASE_DEFAULT = 'https://secure.fleetio.com/api/v1';
@@ -394,6 +396,86 @@ export async function updateWorkOrder(input: UpdateWorkOrderInput): Promise<Flee
     config: input.config,
     body: input.payload,
     fetchImpl: input.fetchImpl,
+  });
+}
+
+// ── Resource-parity extension: vendors + parts ──────────────────────
+// Same shape as the vehicle/work-order methods above. Fleet.io's REST
+// resources for these are `/vendors` and `/parts`; neither exposes a hard
+// DELETE for vendors (archive via PATCH archived_at, like vehicles), but
+// parts DO support DELETE (no soft-delete concept on Fleet.io's side).
+
+export interface CreateVendorInput {
+  config: FleetioConfig;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function createVendor(input: CreateVendorInput): Promise<FleetioVendor> {
+  return fleetioFetch<FleetioVendor>({
+    method: 'POST', path: '/vendors', config: input.config, body: input.payload, fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface UpdateVendorInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updateVendor(input: UpdateVendorInput): Promise<FleetioVendor> {
+  return fleetioFetch<FleetioVendor>({
+    method: 'PATCH', path: `/vendors/${input.fleetioId}`, config: input.config, body: input.payload, fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface ArchiveVendorInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  fetchImpl?: typeof fetch;
+}
+
+export async function archiveVendor(input: ArchiveVendorInput): Promise<FleetioVendor> {
+  return fleetioFetch<FleetioVendor>({
+    method: 'DELETE', path: `/vendors/${input.fleetioId}`, config: input.config, fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface CreatePartInput {
+  config: FleetioConfig;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function createPart(input: CreatePartInput): Promise<FleetioPart> {
+  return fleetioFetch<FleetioPart>({
+    method: 'POST', path: '/parts', config: input.config, body: input.payload, fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface UpdatePartInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  payload: Record<string, unknown>;
+  fetchImpl?: typeof fetch;
+}
+
+export async function updatePart(input: UpdatePartInput): Promise<FleetioPart> {
+  return fleetioFetch<FleetioPart>({
+    method: 'PATCH', path: `/parts/${input.fleetioId}`, config: input.config, body: input.payload, fetchImpl: input.fetchImpl,
+  });
+}
+
+export interface DeletePartInput {
+  config: FleetioConfig;
+  fleetioId: number;
+  fetchImpl?: typeof fetch;
+}
+
+export async function deletePart(input: DeletePartInput): Promise<void> {
+  await fleetioFetch<undefined>({
+    method: 'DELETE', path: `/parts/${input.fleetioId}`, config: input.config, fetchImpl: input.fetchImpl,
   });
 }
 

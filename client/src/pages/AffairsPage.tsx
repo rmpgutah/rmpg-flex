@@ -53,6 +53,7 @@ import {
   Lock, AlertTriangle, Search, X, Filter,
 } from 'lucide-react';
 
+import { toDisplayLabel } from '../utils/formatters';
 import DeleteRecordModal from '../components/DeleteRecordModal';
 import { openAffairsComplaintPdf } from '../utils/affairsComplaintPdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
@@ -373,9 +374,9 @@ export default function AffairsPage() {
   const columns = [
     { key: 'complaint_number', label: 'Case #' },
     { key: 'complainant_name', label: 'Complainant', render: (r: Complaint) => r.complainant_name || <span className="text-rmpg-500 italic">Anonymous</span> },
-    { key: 'complaint_type', label: 'Type', render: (r: Complaint) => r.complaint_type?.replace(/_/g, ' ') },
+    { key: 'complaint_type', label: 'Type', render: (r: Complaint) => toDisplayLabel(r.complaint_type) },
     { key: 'subject_officer_name', label: 'Subject Officer', render: (r: Complaint) => r.subject_officer_name || <span className="text-rmpg-500">—</span> },
-    { key: 'status', label: 'Status', render: (r: Complaint) => r.status?.replace(/_/g, ' ') },
+    { key: 'status', label: 'Status', render: (r: Complaint) => toDisplayLabel(r.status) },
     { key: 'created_at', label: 'Filed' },
     { key: 'actions', label: '', width: '100px', render: (row: Complaint) => (
       <div className="flex gap-2">
@@ -481,7 +482,7 @@ export default function AffairsPage() {
         >
           <option value="">All statuses</option>
           {['received','assigned','under_investigation','sustained','not_sustained','exonerated','unfounded','closed'].map((s) => (
-            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+            <option key={s} value={s}>{toDisplayLabel(s)}</option>
           ))}
         </select>
         <select
@@ -493,7 +494,7 @@ export default function AffairsPage() {
         >
           <option value="">All types</option>
           {['excessive_force','discourtesy','dishonesty','policy_violation','criminal','other'].map((t) => (
-            <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+            <option key={t} value={t}>{toDisplayLabel(t)}</option>
           ))}
         </select>
         {hasFiltersActive && (
@@ -603,7 +604,7 @@ function ComplaintDetail({
         <ShieldAlert size={18} className="text-amber-500 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <div id="ia-detail-title" className="text-sm font-semibold text-rmpg-100 truncate">
-            {complaint.complaint_number} — {complaint.complaint_type?.replace(/_/g, ' ')}
+            {complaint.complaint_number} — {toDisplayLabel(complaint.complaint_type)}
           </div>
           <div className="text-[11px] text-rmpg-400 mt-0.5">
             {complaint.complainant_name || 'Anonymous complainant'}
@@ -615,7 +616,7 @@ function ComplaintDetail({
             )}
             {' · status: '}
             <span className={isClosed ? 'text-rmpg-200' : 'text-amber-400'}>
-              {complaint.status?.replace(/_/g, ' ')}
+              {toDisplayLabel(complaint.status)}
             </span>
           </div>
         </div>
@@ -744,8 +745,8 @@ function ComplaintDetail({
                     {' · '}
                     <span className="text-rmpg-200">{inv.investigator_name || 'Unassigned'}</span>
                   </div>
-                  <span className="text-rmpg-400 uppercase text-[10px]">
-                    {inv.status?.replace(/_/g, ' ')}
+                  <span className="text-rmpg-400 text-[10px]">
+                    {toDisplayLabel(inv.status)}
                   </span>
                 </div>
                 <div className="text-[10px] text-rmpg-500 mt-1">

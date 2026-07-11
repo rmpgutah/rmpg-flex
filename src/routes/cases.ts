@@ -24,12 +24,14 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { tryRepairAndRetry } from '../utils/repairFts';
 import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils/caseTasks';
 import { evaluateCompleteness } from '../utils/caseCompleteness';
 import { pickTemplate } from '../utils/caseTaskTemplates';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const cases = new Hono<Env>();
 
 // ── 2-letter case_type codes (mirrors legacy caseNumbers.ts) ──
@@ -284,6 +286,7 @@ cases.post('/', async (c) => {
       return c.json({ error: 'Title is required', code: 'MISSING_TITLE' }, 400);
     }
     if (b.title.length > 500) return c.json({ error: 'Title must be ≤ 500 chars', code: 'TITLE_TOO_LONG' }, 400);
+    const title = b.title.trim();
 
     const caseType = b.case_type ?? 'general';
     const priority = b.priority ?? autoPriority(caseType);
@@ -294,21 +297,24 @@ cases.post('/', async (c) => {
     const incidentsArr = Array.isArray(b.linked_incidents) ? b.linked_incidents.map(Number).filter(Number.isFinite) : [];
     const evidenceArr = Array.isArray(b.linked_evidence) ? b.linked_evidence.map(Number).filter(Number.isFinite) : [];
 
-    const result = await execute(
+    // Wrapped in tryRepairAndRetry: the cases_ai trigger writes into
+    // cases_fts's shadow tables on every insert — self-heal a corrupted FTS
+    // index and retry once instead of failing the whole case creation.
+    const result = await tryRepairAndRetry(db, () => execute(
       db,
       `INSERT INTO cases (
          case_number, title, case_type, status, priority, lead_investigator_id,
          summary, linked_calls, linked_persons, linked_incidents, linked_evidence,
          created_by, opened_date
        ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, date('now'))`,
-      caseNumber, b.title.trim(), caseType, priority, b.lead_investigator_id ?? null,
+      caseNumber, title, caseType, priority, b.lead_investigator_id ?? null,
       b.summary?.trim() ?? null,
       b.linked_call_id ? JSON.stringify([b.linked_call_id]) : '[]',
       JSON.stringify(personsArr),
       JSON.stringify(incidentsArr),
       JSON.stringify(evidenceArr),
       userId,
-    );
+    ), 'cases_fts');
     const newId = Number(result.meta.last_row_id);
 
     // Backfill the calls_for_service row's case_id if a call was attached
@@ -334,10 +340,7 @@ cases.post('/', async (c) => {
     await logCaseActivity(c, newId, 'case.created', { case_number: caseNumber, title: b.title.trim() });
     return c.json({ data: { id: newId, case_number: caseNumber } }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create case', code: 'CREATE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create case', 'CREATE_ERROR');
   }
 });
 
@@ -381,7 +384,7 @@ cases.post('/bulk', async (c) => {
     }
     return c.json({ success: true, updated });
   } catch (err) {
-    return c.json({ error: 'Bulk action failed', code: 'BULK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Bulk action failed', 'BULK_ERROR');
   }
 });
 
@@ -455,7 +458,10 @@ cases.put('/:id', async (c) => {
     sets.push(`updated_at = datetime('now')`);
     vals.push(id);
 
-    await execute(db, `UPDATE cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    // Wrapped in tryRepairAndRetry: the cases_au trigger writes into
+    // cases_fts's shadow tables on every update — self-heal a corrupted FTS
+    // index and retry once instead of failing the update outright.
+    await tryRepairAndRetry(db, () => execute(db, `UPDATE cases SET ${sets.join(', ')} WHERE id = ?`, ...vals), 'cases_fts');
 
     // Mirror-write persons junction when linked_persons array provided
     if (Array.isArray(b.linked_persons)) {
@@ -1125,7 +1131,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
       if (res.meta.changes > 0) await logCaseActivity(c, caseId, 'link.added', { entity: type, entity_id: entityId });
       return c.json({ success: true, linked: res.meta.changes > 0 }, res.meta.changes > 0 ? 201 : 200);
     } catch (err) {
-      return c.json({ error: 'Failed to link record', code: 'LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+      return dbErrorResponse(c, err, 'Failed to link record', 'LINK_ERROR');
     }
   });
 
@@ -1147,7 +1153,7 @@ for (const [type, cfg] of Object.entries(CASE_JUNCTIONS)) {
       await logCaseActivity(c, caseId, 'link.removed', { entity: type, entity_id: entityId });
       return c.json({ success: true });
     } catch (err) {
-      return c.json({ error: 'Failed to unlink record', code: 'UNLINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+      return dbErrorResponse(c, err, 'Failed to unlink record', 'UNLINK_ERROR');
     }
   });
 }
@@ -1241,7 +1247,7 @@ cases.post('/:id/tasks', async (c) => {
     const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
     return c.json({ data: task }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to create task', code: 'TASK_CREATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to create task', 'TASK_CREATE_ERROR');
   }
 });
 
@@ -1274,7 +1280,7 @@ cases.post('/:id/tasks/apply-template', async (c) => {
     if (added > 0) await logCaseActivity(c, id, 'task.created', { template: true, added });
     return c.json({ success: true, added });
   } catch (err) {
-    return c.json({ error: 'Failed to apply task template', code: 'TASK_TEMPLATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to apply task template', 'TASK_TEMPLATE_ERROR');
   }
 });
 
@@ -1323,7 +1329,7 @@ cases.put('/:id/tasks/:taskId', async (c) => {
     const task = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_tasks WHERE id = ?', taskId);
     return c.json({ data: task });
   } catch (err) {
-    return c.json({ error: 'Failed to update task', code: 'TASK_UPDATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to update task', 'TASK_UPDATE_ERROR');
   }
 });
 
@@ -1413,7 +1419,7 @@ cases.post('/:id/related', async (c) => {
     await logCaseActivity(c, id, 'case.linked', { related_case_id: relId, related_case_number: rel.case_number, link_type: type });
     return c.json({ data: { id: Number(res.meta.last_row_id) }, linked: true }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to link case', code: 'CASE_LINK_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to link case', 'CASE_LINK_ERROR');
   }
 });
 
@@ -1656,10 +1662,7 @@ cases.get('/:id/full', async (c) => {
       },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get full case', code: 'FULL_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get full case', 'FULL_ERROR');
   }
 });
 

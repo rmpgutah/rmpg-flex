@@ -58,11 +58,15 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import animalControl from './routes/animalControl';
+import impounds from './routes/impounds';
+import pawn from './routes/pawn';
+import tips from './routes/tips';
+import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
-import automation from './routes/automation';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
@@ -75,6 +79,7 @@ import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
 import intel from './routes/intel';
 import intelAi from './routes/intelAi';
+import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
 import offline from './routes/offline';
@@ -85,12 +90,14 @@ import training from './routes/training';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
 import mdt from './routes/mdt';
+import push from './routes/push';
 import records from './routes/records';
 import subjects from './routes/records/subjects';
 import properties from './routes/properties';
 import geocode from './routes/geocode';
 import crime from './routes/crime';
 import warrants from './routes/warrants';
+import scrapers from './routes/scrapers';
 import workOrders from './routes/workOrders';
 import inspectionTemplates from './routes/inspectionTemplates';
 import fleetViz from './routes/fleetViz';
@@ -136,6 +143,8 @@ import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
 import scheduling from './routes/scheduling';
+import scheduler from './routes/scheduler';
+import shiftBriefings from './routes/shiftBriefings';
 import serve from './routes/serve';
 import serveDashboard from './routes/serveDashboard';
 import serveQueueEnhanced from './routes/serveQueueEnhanced';
@@ -182,6 +191,7 @@ import dispatchDuty from './routes/dispatch/duty';
 import inspections from './routes/inspections';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
+import dispatchRouting from './routes/dispatch/routing';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
@@ -209,13 +219,17 @@ import downloads from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
+import navFavorites from './routes/navFavorites';
 import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
 import wallet from './routes/wallet';
 import jailRoster from './routes/jailRoster';
 // Full-trip dashcam footage (FlexCamPage). Handler existed but the mount was
-// dropped in a squash merge, 404ing the entire page.
+// dropped in a squash merge, 404ing the entire page. NOTE: this comment
+// previously claimed the mount was restored, but the ROUTE_REGISTRY entry
+// was never actually added — see the /api/flexcam entry below (fixed
+// 2026-07-02, the fix this comment describes never landed the first time).
 import flexcam from './routes/flexcam';
 // Colorado DOC offender search (cache-backed; live source is CAPTCHA-gated).
 import coloradoDoc from './routes/coloradoDoc';
@@ -225,6 +239,12 @@ import mapbox from './routes/mapbox';
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
 import mapboxTelemetry from './routes/mapboxTelemetry';
+// Driving events — powers the Dashcam AI Console. Was never mounted, causing
+// every /api/driving-events/* call to 404 (ForensicDashcamPlayer, etc.).
+import drivingEvents from './routes/drivingEvents';
+// Admin database repair — rebuild corrupt FTS tables (persons_fts, cases_fts)
+// that trigger SQLITE_CORRUPT_VTAB on every person/case write.
+import adminRepair from './routes/admin/repair';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -312,12 +332,28 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
   { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
+  { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
+    note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
+  // NOTE: dispatchAggregates' internal routes are bare ('/call-volume',
+  // '/by-zone', '/integration-dashboard', no '/aggregates' segment) — the
+  // client was fixed to match this mount (2026-07-02, PR #2530) rather than
+  // the mount being moved to match the client. Do NOT change this prefix to
+  // '/api/dispatch/aggregates' without also reverting that client fix.
   { prefix: '/api/dispatch', router: dispatchAggregates, auth: 'required' },
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
   { prefix: '/api/dispatch/welfare', router: welfare, auth: 'required' },
 
+  // ── Driving events (dashcam AI console) ────────────────────
+  // Mounted but never registered — ForensicDashcamPlayer and DashcamAiPage
+  // had been 404ing on every /api/driving-events/* call since the VPS teardown.
+  // See src/routes/drivingEvents.ts for the full handler implementation.
+  { prefix: '/api/driving-events', router: drivingEvents, auth: 'required',
+    note: 'Dashcam AI console: events list, fleet-health, plate-history, audit-log, detail + media + stream. Ported from legacy; unblocks the live dashcam page.' },
+
   // ── Admin / personnel / presence ───────────────────────────
+  { prefix: '/api/admin/database', router: adminRepair, auth: 'required',
+    note: 'Database repair: POST /repair-fts rebuilds corrupt persons_fts/cases_fts tables. Admin/manager only.' },
   { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
     note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
   { prefix: '/api/admin/dev', router: adminDev, auth: 'required',
@@ -338,6 +374,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
   { prefix: '/api/mdt', router: mdt, auth: 'required' },
+  { prefix: '/api/push', router: push, auth: 'required' },
   // /api/offline mounts further down in the alphabetical RMS section
   // (PR #638). Hono dispatches in registration order so a second mount
   // here would be dead. Cleanup of an earlier dup-mount that the
@@ -369,9 +406,13 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // all conflicted on this exact slot — that's how this rule got
   // codified. None of the prefixes here have ordering invariants
   // with each other (no shared trie roots), so alphabetical is safe.
+  { prefix: '/api/animal-control', router: animalControl, auth: 'required',
+    note: 'AnimalControlPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
+  { prefix: '/api/crash-reports', router: crashReports, auth: 'required',
+    note: 'CrashReportsPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/clients', router: clients, auth: 'required',
     note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
@@ -388,6 +429,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
     note: 'Admin Cloudflare platform integration — account telemetry (D1/R2/KV/Workers) + cache purge via an ADMIN-CONFIGURED least-privilege token in system_config (cf_api_token, never hardcoded).' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
+  { prefix: '/api/flexcam', router: flexcam, auth: 'required',
+    note: 'Full-trip dashcam footage backing FlexCamPage/FlexCamFootagePage — the mount was described as fixed in a comment above the import but never actually landed in this array until now (2026-07-02).' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
@@ -402,6 +445,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
     note: 'Full HR module: dashboard, leave/PTO, disciplinary, reviews, payroll (periods/rates/entries/overtime), grievances, documents/acknowledgments, attendance, PIPs. /benefits returns [] (table deferred).' },
+  { prefix: '/api/impounds', router: impounds, auth: 'required',
+    note: 'ImpoundPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
   { prefix: '/api/map/annotations', router: mapAnnotations, auth: 'required',
@@ -410,8 +455,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
     note: 'Nav trip logging: auto-detect vehicle movement, breadcrumb trails, take-home vehicle support' },
+  { prefix: '/api/nav/favorites', router: navFavorites, auth: 'required',
+    note: 'Saved/favorite navigation destinations (nav_favorites table, mig 0181). CRUD scoped to owning user.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
+  { prefix: '/api/pawn', router: pawn, auth: 'required',
+    note: 'PawnTrackingPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
@@ -422,12 +471,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
     { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
+  { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
+    note: 'Imported but never mounted (dead code since import) — dashcam video redaction upload/list/download.' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/ref-data', router: refData, auth: 'required',
     note: 'Fleet.io PR 2: cross-reference lookups (vehicle makes/models/types, fuel, VMRS, colors, vendors, ...) + NHTSA vPIC /decode-vin/:vin with D1 cache. Read-only — admin CRUD lands with the admin UI in PR 2b.' },
   { prefix: '/api/scheduling', router: scheduling, auth: 'required',
     note: 'Scheduling engine: coverage gaps, shift swaps, overtime, auto-schedule, handoff briefings' },
+  { prefix: '/api/scheduler', router: scheduler, auth: 'required',
+    note: 'Unified scheduler: cross-source agenda (serve attempts + shift plans + court events + custom events), event CRUD with cron reminders. Migration 0165.' },
+  { prefix: '/api/shift-briefings', router: shiftBriefings, auth: 'required',
+    note: 'Shift briefings: persisted briefings + live /generate + officer-safety alerts (backend for ShiftBriefingsPage; endpoints 404d before 2026-07-02). Migration 0165.' },
   { prefix: '/api/screening', router: screening, auth: 'required' },
   { prefix: '/api/sor-sources', router: sorSources, auth: 'required' },
   { prefix: '/api/nsopw', router: nsopw, auth: 'required',
@@ -458,6 +513,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
+  { prefix: '/api/tips', router: tips, auth: 'required',
+    note: 'Detective-facing investigative tip queue (distinct from the anonymous /api/community tips table). TipsPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/victim-services', router: victimServices, auth: 'required',
     note: 'Victim services: notification, advocates, restitution, protective orders, safety planning' },
@@ -471,12 +528,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
+  { prefix: '/api/analytics', router: analytics, auth: 'required',
+    note: 'Imported but never mounted (dead code since import) — AnalyticsPage 404d on every /analytics/{health,query,events,alpr/*} call.' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',
     note: 'Salt Lake County Assessor lookup + apply: /parcels?address, /parcel/:no, POST /apply. KV-cached 30d; 503 when FIRECRAWL_API_KEY is unset.' },
-  { prefix: '/api/automation', router: automation, auth: 'required',
-    note: 'Case management automation rules: CRUD, toggle, execution log. Cron-driven SLA escalation and unassigned-alert rules.' },
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
@@ -494,6 +551,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/intel/ai', router: intelAi, auth: 'required',
     note: 'Intel AI engine (Claude): POST /ask (NL search w/ citations), /extract (entities+links from narrative), /summarize (dossier). Gated on anthropic_api_key → 503 when unset. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
+  { prefix: '/api/intel/reports', router: intelReports, auth: 'required',
+    note: 'Intel Reports workflow (draft/evaluate/analyze/disseminate/recall/reject) - src/routes/intel/development.ts. Was fully built but never mounted; IntelReportsPage/NewIntelReportPage/IntelReportDetailPage 404d until this. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
+  { prefix: '/api/intel/sources', router: intelSources, auth: 'required',
+    note: 'Intel Sources + reliability scoring - src/routes/intel/development.ts. Same as intelReports above: built, never mounted. Mounted BEFORE /api/intel so the more-specific prefix wins.' },
   { prefix: '/api/intel', router: intel, auth: 'required',
     note: 'Intel Search: federated FTS5 search across record types (/search, /health, /reindex) + person entity-resolution suggestions. Migration 0098; index synced by the 4-hourly cron.' },
   { prefix: '/api/interagency', router: interagency, auth: 'required',
@@ -590,6 +651,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Serves /api/downloads/info + /api/downloads/check for the public download page. Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
+  { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
+    note: 'Warrant scraper ops: list/health (both warrant_scraper_config + national_warrant_sources frameworks), on-demand trigger, circuit reset, bulk enable/disable/reset/set_priority. Backs ScrapersTab.tsx + AdminWarrantScrapersTab.tsx, both previously unbacked (2026-07-04).' },
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
   // ── Work orders — Fleet.io PR 5 subsystem ─────────────────
   { prefix: '/api/work-orders', router: workOrders, auth: 'required',
@@ -615,10 +678,15 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // still falls through to legacy via the proxy — separate concern.
   { prefix: '/api/reports', router: reports, auth: 'required' },
   // BOLOs: the client calls /api/comms/bolos (list/create/update/delete +
-  // active/check/stats/archive/expire-check). Mount the full bolos router here
-  // BEFORE the broad /api/comms stubs mount so it owns the whole /bolos subtree
-  // (Hono runs the first-registered matching handler). bolosRouter is a superset
-  // of the stubs' /bolos/{active,check,stats}, so nothing is shadowed.
+  // active/check/stats, plus :id/archive, :id/unarchive, auto-archive, and
+  // expire-check). Mount the full bolos router here BEFORE the broad
+  // /api/comms stubs mount so it owns the whole /bolos subtree (Hono runs the
+  // first-registered matching handler). bolosRouter defines /active, /check,
+  // and /stats (see dispatch/extensions.ts) — the stubs.ts copies of those
+  // were dead code and have been removed. ⚠️ :id/archive, :id/unarchive,
+  // auto-archive, and expire-check are NOT implemented anywhere and 404 —
+  // see task_ea67239c for expire-check; archive/unarchive/auto-archive are
+  // still an open gap (CommunicationsPage.tsx ~L738-1572).
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },

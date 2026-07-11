@@ -103,6 +103,10 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   // page can scroll/highlight the row inside the complaint detail.
   ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
   ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
+  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
+  web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
 };
 
 /**

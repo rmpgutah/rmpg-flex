@@ -294,9 +294,9 @@ export function generateFleetComplianceReport(data: {
   let page = 1; let rowIdx = 0;
 
   // Count compliance issues
-  const expiredIns = data.vehicles.filter(v => v.insurance_expiry && new Date(v.insurance_expiry) < new Date()).length;
-  const expiredReg = data.vehicles.filter(v => v.registration_expiry && new Date(v.registration_expiry) < new Date()).length;
-  const needingService = data.vehicles.filter(v => v.next_service_due && new Date(v.next_service_due) < new Date()).length;
+  const expiredIns = data.vehicles.filter(v => v.insurance_expiry && parseTimestamp(v.insurance_expiry) < new Date()).length;
+  const expiredReg = data.vehicles.filter(v => v.registration_expiry && parseTimestamp(v.registration_expiry) < new Date()).length;
+  const needingService = data.vehicles.filter(v => v.next_service_due && parseTimestamp(v.next_service_due) < new Date()).length;
 
   const boxes: [string, string, boolean?][] = [
     ['Total Vehicles', String(data.vehicles.length)],
@@ -322,7 +322,7 @@ export function generateFleetComplianceReport(data: {
     const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), v.plate_number ?? '', v.status ?? '', v.insurance_expiry?.slice(0, 10) ?? '', v.registration_expiry?.slice(0, 10) ?? '', v.last_service_date?.slice(0, 10) ?? '', v.next_service_due?.slice(0, 10) ?? ''];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => {
-      const expiredDate = (i === 4 || i === 5 || i === 7) && val ? new Date(val) : null;
+      const expiredDate = (i === 4 || i === 5 || i === 7) && val ? parseTimestamp(val) : null;
       const expired = !!expiredDate && !isNaN(expiredDate.getTime()) && expiredDate < new Date();
       if (expired) doc.setTextColor('#ef4444');
       doc.text(val, cx + 3, y + 12);

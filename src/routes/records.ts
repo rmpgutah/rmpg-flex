@@ -6,7 +6,10 @@ import { normalizeDob } from '../utils/normalizeDob';
 import { codedLike } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
+import { log } from '../utils/logger';
+import { tryRepairAndRetry } from '../utils/repairFts';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const records = new Hono<Env>();
 
 // Inline role gate — same pattern as admin.ts. Destructive / chain-of-custody
@@ -113,7 +116,7 @@ records.post('/properties', async (c) => {
     const result = await execute(db, `INSERT INTO properties (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /records/properties/:id
@@ -136,7 +139,7 @@ records.put('/properties/:id', async (c) => {
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/properties/export — CSV download. Must be registered before
@@ -321,8 +324,10 @@ records.post('/persons', async (c) => {
       }
     }
 
-    const result = await execute(db,
-      `INSERT INTO persons (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
+    const result = await tryRepairAndRetry(db,
+      () => execute(db, `INSERT INTO persons (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params),
+      'persons_fts',
+    );
     const newId = Number(result.meta.last_row_id);
     await writePersonExt(db, newId, body);
     const person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', newId));
@@ -336,7 +341,7 @@ records.post('/persons', async (c) => {
     return c.json(person, 201);
   } catch (err) {
     console.error('POST /records/persons failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -471,7 +476,7 @@ records.post('/from-dl-scan', async (c) => {
     }, 201);
   } catch (err) {
     console.error('POST /records/from-dl-scan failed:', err);
-    return c.json({ error: 'Failed to create linked records', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to create linked records');
   }
 });
 
@@ -568,7 +573,7 @@ records.post('/persons/merge', async (c) => {
     try { await execute(db, 'UPDATE serve_queue SET recipient_person_id = ? WHERE recipient_person_id = ?', keep_id, merge_id); } catch { /* serve_queue optional */ }
     await execute(db, 'DELETE FROM persons WHERE id = ?', merge_id);
     return c.json({ success: true, keep_id });
-  } catch (err) { return c.json({ error: 'Merge failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Merge failed'); }
 });
 
 // GET /records/persons/alias-search — search by potential alias (name match).
@@ -598,7 +603,7 @@ records.get('/persons/:id', async (c) => {
     return c.json(person);
   } catch (err) {
     console.error('GET /records/persons/:id failed:', err);
-    return c.json({ error: 'Failed to get person', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to get person');
   }
 });
 
@@ -640,21 +645,30 @@ records.put('/persons/:id', async (c) => {
     if (cols.length === 0 && !touchesExt) return c.json({ message: 'No changes' });
 
     // Base columns (skip the UPDATE entirely if this edit only touched ext fields).
+    // Wrapped in tryRepairAndRetry: the persons_au trigger writes into
+    // persons_fts's shadow tables on every update, so a corrupted FTS index
+    // (SQLITE_CORRUPT_VTAB) fails this UPDATE outright — self-heal and retry
+    // once instead of surfacing the raw driver error to the client.
     if (cols.length > 0) {
-      await execute(db, `UPDATE persons SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+      await tryRepairAndRetry(db,
+        () => execute(db, `UPDATE persons SET ${cols.join(', ')} WHERE id = ?`, ...params, id),
+        'persons_fts',
+      );
     }
     await writePersonExt(db, id, body);
     const updated = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id));
     return c.json(updated);
   } catch (err) {
     console.error('PUT /records/persons/:id failed:', err);
-    return c.json({ error: 'Failed to update person', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to update person');
   }
 });
 
 // DELETE /records/persons/:id — hard-delete a person.
 // The client also supports archiving (POST /.../archive) as a softer
 // alternative; this path is the explicit "delete" button in the UI.
+// If persons_fts is corrupt (SQLITE_CORRUPT_VTAB), the persons_ad trigger
+// fails — we detect that and rebuild the FTS table before retrying.
 records.delete('/persons/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -682,11 +696,14 @@ records.delete('/persons/:id', async (c) => {
     try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE warrants SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
-    await execute(db, 'DELETE FROM persons WHERE id = ?', id);
+    await tryRepairAndRetry(db,
+      () => execute(db, 'DELETE FROM persons WHERE id = ?', id),
+      'persons_fts',
+    );
     return c.json({ success: true });
   } catch (err) {
-    console.error('DELETE /records/persons/:id failed:', err);
-    return c.json({ error: 'Failed to delete person', detail: (err as Error)?.message }, 500);
+    log.error('DELETE /records/persons/:id failed', {}, err);
+    return dbErrorResponse(c, err, 'Failed to delete person');
   }
 });
 
@@ -715,7 +732,7 @@ records.post('/persons/:id/archive', async (c) => {
     return c.json({ success: true, archived: true });
   } catch (err) {
     console.error('POST /records/persons/:id/archive failed:', err);
-    return c.json({ error: 'Failed to archive person', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to archive person');
   }
 });
 
@@ -737,7 +754,7 @@ records.post('/persons/:id/unarchive', async (c) => {
     return c.json({ success: true, archived: false });
   } catch (err) {
     console.error('POST /records/persons/:id/unarchive failed:', err);
-    return c.json({ error: 'Failed to unarchive person', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to unarchive person');
   }
 });
 
@@ -806,7 +823,7 @@ records.post('/persons/:id/criminal-history', async (c) => {
       body.notes || null, user?.id ?? null);
     const created = await queryFirst(db, 'SELECT * FROM criminal_history WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 const CRIMINAL_HISTORY_WRITABLE = new Set([
@@ -831,7 +848,7 @@ records.put('/criminal-history/:id', async (c) => {
     await execute(db, `UPDATE criminal_history SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst(db, 'SELECT * FROM criminal_history WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /records/criminal-history/:id
@@ -952,7 +969,7 @@ records.post('/vehicles', async (c) => {
     return c.json(vehicle, 201);
   } catch (err) {
     console.error('POST /records/vehicles failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -985,7 +1002,7 @@ records.get('/vehicles/:id{[0-9]+}', async (c) => {
     const vehicle = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name, p.first_name AS owner_first_name, p.last_name AS owner_last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
     if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
     return c.json(vehicle);
-  } catch (err) { return c.json({ error: 'Failed to get vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to get vehicle'); }
 });
 
 // PUT /records/vehicles/:id — update a vehicle.
@@ -1015,7 +1032,7 @@ records.put('/vehicles/:id', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /records/vehicles/:id failed:', err);
-    return c.json({ error: 'Failed to update vehicle', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to update vehicle');
   }
 });
 
@@ -1035,7 +1052,7 @@ records.delete('/vehicles/:id', async (c) => {
     await execute(db, "DELETE FROM record_links WHERE (source_type='vehicle' AND source_id=?) OR (target_type='vehicle' AND target_id=?)", id, id);
     await execute(db, 'DELETE FROM vehicles_records WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { console.error('DELETE /records/vehicles/:id failed:', err); return c.json({ error: 'Failed to delete vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('DELETE /records/vehicles/:id failed:', err); return dbErrorResponse(c, err, 'Failed to delete vehicle'); }
 });
 
 // POST /records/vehicles/:id/archive — mark vehicle as archived in flags JSON.
@@ -1050,7 +1067,7 @@ records.post('/vehicles/:id/archive', async (c) => {
     flags.push({ type: 'archived', at: new Date().toISOString() });
     await execute(db, 'UPDATE vehicles_records SET flags = ? WHERE id = ?', JSON.stringify(flags), id);
     return c.json({ success: true, archived: true });
-  } catch (err) { return c.json({ error: 'Failed to archive vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to archive vehicle'); }
 });
 
 // POST /records/vehicles/:id/unarchive
@@ -1065,7 +1082,7 @@ records.post('/vehicles/:id/unarchive', async (c) => {
     if (filtered.length === flags.length) return c.json({ message: 'Not archived' });
     await execute(db, 'UPDATE vehicles_records SET flags = ? WHERE id = ?', JSON.stringify(filtered), id);
     return c.json({ success: true, archived: false });
-  } catch (err) { return c.json({ error: 'Failed to unarchive vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to unarchive vehicle'); }
 });
 
 // GET /records/vehicles/:id/incidents — incidents involving this vehicle.
@@ -1075,7 +1092,7 @@ records.get('/vehicles/:id/incidents', async (c) => {
     const id = c.req.param('id');
     const rows = await query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at FROM incidents i JOIN incident_vehicles iv ON i.id = iv.incident_id WHERE iv.vehicle_id = ? ORDER BY i.created_at DESC LIMIT 100', id);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/vehicles/:id/history — calls/field interviews this vehicle was involved in.
@@ -1090,7 +1107,7 @@ records.get('/vehicles/:id/history', async (c) => {
       ORDER BY created_at DESC LIMIT 100`,
       id, id);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/vehicles/export
@@ -1262,7 +1279,7 @@ records.post('/businesses', async (c) => {
     const result = await execute(db, `INSERT INTO businesses (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
     const created = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /records/businesses/:id — update a business.
@@ -1282,7 +1299,7 @@ records.put('/businesses/:id', async (c) => {
     await execute(db, `UPDATE businesses SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/businesses/:id/archive — soft-delete (client expects this route).
@@ -1291,7 +1308,7 @@ records.post('/businesses/:id/archive', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE businesses SET archived_at = datetime('now') WHERE id = ?", c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/businesses/:id/unarchive — restore.
@@ -1300,7 +1317,7 @@ records.post('/businesses/:id/unarchive', async (c) => {
     const db = getDb(c.env);
     await execute(db, 'UPDATE businesses SET archived_at = NULL WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /records/businesses/:id — hard-delete + clean its junction rows.
@@ -1314,7 +1331,7 @@ records.delete('/businesses/:id', async (c) => {
     await execute(db, 'DELETE FROM call_businesses WHERE business_id = ?', id);
     await execute(db, 'DELETE FROM businesses WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ── Evidence ─────────────────────────────────────────────────
@@ -1382,7 +1399,7 @@ records.get('/evidence/:id', async (c) => {
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     if (!row) return c.json({ error: 'Evidence not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // All writable columns on the evidence table, sourced from legacy addCol()
@@ -1509,7 +1526,7 @@ records.post('/evidence', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /records/evidence failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1542,7 +1559,7 @@ records.put('/evidence/:id', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /records/evidence/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1557,7 +1574,7 @@ records.delete('/evidence/:id', async (c) => {
     if (!existing) return c.json({ error: 'Evidence not found' }, 404);
     await execute(db, 'DELETE FROM evidence WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ── Evidence sub-resource endpoints ──────────────────────────────────────────
@@ -1607,7 +1624,7 @@ records.post('/evidence/:id/chain-action', async (c) => {
     await execute(db, `UPDATE evidence SET ${updates.join(', ')} WHERE id = ?`, ...values);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/evidence/:id/checkout
@@ -1633,7 +1650,7 @@ records.post('/evidence/:id/checkout', async (c) => {
     );
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/evidence/:id/checkin
@@ -1656,7 +1673,7 @@ records.post('/evidence/:id/checkin', async (c) => {
     );
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /records/evidence/:id/disposition
@@ -1684,7 +1701,7 @@ records.put('/evidence/:id/disposition', async (c) => {
     );
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/evidence/:id/request-release
@@ -1711,7 +1728,7 @@ records.post('/evidence/:id/request-release', async (c) => {
     );
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /records/evidence/:id/approve-release (admin/supervisor only)
@@ -1744,7 +1761,7 @@ records.put('/evidence/:id/approve-release', async (c) => {
     }
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json({ success: true, data: updated });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/evidence/:id/custody-validation
@@ -1790,7 +1807,7 @@ records.get('/evidence/:id/custody-validation', async (c) => {
         warnings,
       },
     });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/evidence/:id/linked-records
@@ -1832,7 +1849,7 @@ records.get('/evidence/:id/linked-records', async (c) => {
       } catch { return []; }
     })();
     return c.json({ data: { incident, cases, forensic_cases: forensicCases } });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/evidence/:id/archive — not applicable (evidence uses status transitions).
@@ -1844,7 +1861,7 @@ records.post('/evidence/:id/archive', async (c) => {
     if (!existing) return c.json({ error: 'Evidence not found or already finalized' }, 404);
     await execute(db, "UPDATE evidence SET status = 'disposed' WHERE id = ?", id);
     return c.json({ success: true, archived: true, status: 'disposed' });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /records/evidence/:id/unarchive
@@ -1856,7 +1873,7 @@ records.post('/evidence/:id/unarchive', async (c) => {
     if (!existing) return c.json({ error: 'Evidence not found or not archived' }, 404);
     await execute(db, "UPDATE evidence SET status = 'in_storage' WHERE id = ?", id);
     return c.json({ success: true, archived: false, status: 'in_storage' });
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // GET /records/ncic-query?type=person|vehicle|warrant|phone|address&query=...
@@ -2117,13 +2134,16 @@ records.get('/search', async (c) => {
     return c.json([]);
   } catch (err) {
     console.error('GET /records/search failed:', err);
-    return c.json({ error: 'Search failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Search failed');
   }
 });
 
 // ── Records Retention ──────────────────────────────────────────
 
-const RETENTION_SCHEDULE: Record<string, number> = {
+// Exported so src/utils/retentionReminderSweep.ts can read the same
+// schedule enforcement actually acts on, instead of a hand-copied mirror
+// that could silently drift.
+export const RETENTION_SCHEDULE: Record<string, number> = {
   evidence: 365 * 99,
   incidents: 365 * 10,
   persons: 0,
@@ -2172,7 +2192,7 @@ records.post('/retention/enforce', async (c) => {
     await recordAudit(c, { action: 'records_retention_enforced', entityType: 'records', entityId: 0, details: JSON.stringify(results), actorId: (user as any).id ?? 0 });
     return c.json({ enforced: true, results });
   } catch (err) {
-    return c.json({ error: 'Failed to enforce retention', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to enforce retention');
   }
 });
 
@@ -2454,7 +2474,7 @@ records.get('/links', async (c) => {
     return c.json(enriched);
   } catch (err) {
     console.error('GET /records/links failed:', err);
-    return c.json({ error: 'Failed to get record links', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to get record links');
   }
 });
 
@@ -2546,7 +2566,7 @@ records.post('/links', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /records/links failed:', err);
-    return c.json({ error: 'Failed to create record link', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to create record link');
   }
 });
 
@@ -2579,7 +2599,7 @@ records.delete('/links/:id', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /records/links failed:', err);
-    return c.json({ error: 'Failed to delete record link', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to delete record link');
   }
 });
 

@@ -8,6 +8,8 @@
 // aging analysis.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* ── FEATURE 51: Case Relationship Mapping ─────────────────
    Spillman Flex identifies and visualizes relationships
    between cases through shared persons, vehicles, locations,
@@ -105,8 +107,8 @@ export function analyzeCaseRelationships(
       }
 
       // Time proximity (within 7 days)
-      const aTime = new Date(a.occurredAt).getTime();
-      const bTime = new Date(b.occurredAt).getTime();
+      const aTime = parseTimestamp(a.occurredAt).getTime();
+      const bTime = parseTimestamp(b.occurredAt).getTime();
       const daysApart = Math.abs(aTime - bTime) / 86400000;
       if (daysApart < 7) {
         relationships.push({
@@ -509,7 +511,7 @@ export function trackStatuteOfLimitations(
 ): SolTracker[] {
   return cases.map(c => {
     const solYears = STATUTE_LIMITATIONS[c.offenseType] || 5;
-    const incidentDate = new Date(c.incidentDate);
+    const incidentDate = parseTimestamp(c.incidentDate);
     const expirationDate = new Date(incidentDate);
     if (!c.tolled) {
       expirationDate.setFullYear(expirationDate.getFullYear() + solYears);
@@ -552,8 +554,8 @@ export function analyzeCaseAging(
   return cases
     .filter(c => !c.hasArrest)
     .map(c => {
-      const daysOpen = Math.ceil((now - new Date(c.openedAt).getTime()) / 86400000);
-      const daysSinceLastActivity = c.lastActivityAt ? Math.ceil((now - new Date(c.lastActivityAt).getTime()) / 86400000) : daysOpen;
+      const daysOpen = Math.ceil((now - parseTimestamp(c.openedAt).getTime()) / 86400000);
+      const daysSinceLastActivity = c.lastActivityAt ? Math.ceil((now - parseTimestamp(c.lastActivityAt).getTime()) / 86400000) : daysOpen;
 
       let agingStage: CaseAging['agingStage'] = 'fresh';
       let recommendedAction = '';

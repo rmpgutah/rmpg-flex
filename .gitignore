@@ -21,6 +21,8 @@ client/RMPG-Dispatch-Guide-*.pdf
 *.env
 server/.env
 client/.env
+.dev.vars
+.dev.vars.*
 
 # Retired VPS server build output (legacy, moved to legacy/server-vps/)
 server/dist/

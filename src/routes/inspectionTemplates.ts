@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   parseTemplateSchema,
   InvalidTemplateError,
@@ -58,7 +59,7 @@ tmpl.get('/', async (c) => {
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
     console.error('[inspectionTemplates] GET / failed', err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -82,7 +83,7 @@ tmpl.get('/:id{[0-9]+}', async (c) => {
     return c.json({ data: { ...row, schema } });
   } catch (err) {
     console.error('[inspectionTemplates] GET /:id failed', err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -120,7 +121,7 @@ tmpl.post('/', requireRole(...ADMIN_ROLES), async (c) => {
     return c.json({ data: created }, 201);
   } catch (err) {
     console.error('[inspectionTemplates] POST / failed', err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 
@@ -193,7 +194,7 @@ tmpl.put('/:id{[0-9]+}', requireRole(...ADMIN_ROLES), async (c) => {
     return c.json({ data: updated, action: 'updated_in_place' });
   } catch (err) {
     console.error('[inspectionTemplates] PUT /:id failed', err);
-    return c.json({ error: 'Failed', code: 'DB_ERROR', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed', 'DB_ERROR');
   }
 });
 

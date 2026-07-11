@@ -60,8 +60,20 @@ export const FOOTER_TEXT = {
 } as const;
 
 export const TONES = {
-  // Pure black ink only. The two non-pure-black tones below are the
-  // ONLY exceptions and they render correctly on B&W laser printers.
-  zebraRow:  '#F8F8F8',  // 3% gray for alternating table rows (reduced from #F5F5F5 — ink savings)
-  watermark: '#ECECEC',  // 8% black for blank-form / draft overlays (reduced from #E6E6E6)
+  // Pure black ink only, PLUS two restrained brand accents (2026-07 upgrade —
+  // approved to replace the prior zero-color rule for section headers, table
+  // header bands, and the new badge/severity-meter/cross-ref-chip primitives).
+  // Body text, field values, table borders, and classification banners
+  // (LES/CUI/FOUO/etc.) stay pure black/gray — this is an accent, not a
+  // repaint.
+  zebraRow:    '#F8F8F8',  // 3% gray for alternating table rows (reduced from #F5F5F5 — ink savings)
+  watermark:   '#ECECEC',  // 8% black for blank-form / draft overlays (reduced from #E6E6E6)
+  accentSteel: '#2c4256',  // app's --rmpg-700 night token — header rules, section rules, table header bands
+  accentGold:  '#d4a017',  // brand gold — flagged/priority emphasis only (mirrors live-app usage)
+} as const;
+
+/** RGB triples for the two accents, for callers using doc.setFillColor/setDrawColor/setTextColor(r,g,b) directly. */
+export const TONES_RGB = {
+  accentSteel: [44, 66, 86] as const,
+  accentGold:  [212, 160, 23] as const,
 } as const;

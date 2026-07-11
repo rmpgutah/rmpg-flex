@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const alarms = new Hono<Env>();
 
 // Writes to alarm_accounts (permit records) must be role-gated — previously any
@@ -18,7 +19,7 @@ alarms.get('/accounts', async (c) => {
     const db = getDb(c.env);
     const rows = await query(db, 'SELECT * FROM alarm_accounts ORDER BY created_at DESC LIMIT 200');
     return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed to fetch alarm accounts', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to fetch alarm accounts'); }
 });
 
 alarms.post('/accounts', async (c) => {
@@ -31,7 +32,7 @@ alarms.post('/accounts', async (c) => {
       body.account_number, body.account_name, body.address, body.contact_name || null, body.contact_phone || null, body.permit_number || null, body.permit_status || 'active', body.permit_expiry || null, body.alarm_type || null, body.false_alarm_count || 0, body.status || 'active', body.notes || null
     );
     return c.json({ success: true, id: result.meta.last_row_id });
-  } catch (err) { return c.json({ error: 'Failed to create alarm account', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to create alarm account'); }
 });
 
 alarms.put('/accounts/:id', async (c) => {
@@ -45,7 +46,7 @@ alarms.put('/accounts/:id', async (c) => {
       body.account_number, body.account_name, body.address, body.contact_name || null, body.contact_phone || null, body.permit_number || null, body.permit_status || 'active', body.permit_expiry || null, body.alarm_type || null, body.false_alarm_count || 0, body.status || 'active', body.notes || null, id
     );
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to update alarm account', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to update alarm account'); }
 });
 
 alarms.delete('/accounts/:id', async (c) => {
@@ -55,7 +56,7 @@ alarms.delete('/accounts/:id', async (c) => {
     const id = c.req.param('id');
     await execute(db, 'DELETE FROM alarm_accounts WHERE id=?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to delete alarm account', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to delete alarm account'); }
 });
 
 alarms.get('/stats', async (c) => {
@@ -72,7 +73,7 @@ alarms.get('/stats', async (c) => {
       permitsExpired: expired?.cnt || 0,
       revenueCollected: 0,
     });
-  } catch (err) { return c.json({ error: 'Failed to fetch alarm stats', detail: (err as Error)?.message }, 500); }
+  } catch (err) { return dbErrorResponse(c, err, 'Failed to fetch alarm stats'); }
 });
 
 export default alarms;

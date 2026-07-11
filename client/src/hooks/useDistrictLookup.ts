@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { formatBeatLabel } from '../utils/geographyLabels';
 
 export interface DistrictInfo {
   sector_id: string;
@@ -165,7 +166,7 @@ export function useDistrictOptions() {
   const beatLabels = useMemo(() => {
     const m = new Map<string, string>();
     for (const d of districts) {
-      m.set(`${d.zone_id}:${d.beat_id}`, `${d.beat_name}${d.beat_descriptor ? ' — ' + d.beat_descriptor : ''}`);
+      m.set(`${d.zone_id}:${d.beat_id}`, formatBeatLabel(d.beat_name, d.beat_descriptor));
     }
     return m;
   }, [districts]);

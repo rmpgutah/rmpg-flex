@@ -27,6 +27,7 @@ import {
 } from '../utils/inspectionTemplates';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const inspections = new Hono<Env>();
 
 interface TimeEntryRow {
@@ -77,7 +78,7 @@ inspections.get('/by-token/:token', async (c) => {
     return c.json(await shiftContext(db, entry));
   } catch (err) {
     console.error('GET /inspections/by-token failed:', err);
-    return c.json({ error: 'Failed to load inspection', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to load inspection');
   }
 });
 
@@ -218,7 +219,7 @@ inspections.post('/by-token/:token', async (c) => {
     return c.json(await shiftContext(db, entry));
   } catch (err) {
     console.error('POST /inspections/by-token failed:', err);
-    return c.json({ error: 'Failed to save inspection', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to save inspection');
   }
 });
 
@@ -249,7 +250,7 @@ inspections.post('/by-token/:token/photos', async (c) => {
     return c.json({ key, slot, phase, size: body.byteLength });
   } catch (err) {
     console.error('POST /inspections/by-token/photos failed:', err);
-    return c.json({ error: 'Photo upload failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Photo upload failed');
   }
 });
 
@@ -273,7 +274,7 @@ inspections.get('/by-token/:token/photo', async (c) => {
     });
   } catch (err) {
     console.error('GET /inspections/by-token/photo failed:', err);
-    return c.json({ error: 'Photo fetch failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Photo fetch failed');
   }
 });
 

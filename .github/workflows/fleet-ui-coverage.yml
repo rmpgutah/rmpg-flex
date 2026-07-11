@@ -38,7 +38,8 @@ jobs:
           # work, etc.) legitimately edit src/routes/fleet.ts AND migrations/**
           # and must not be blocked by this guard.
           touches_fleet_ui=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
-            'client/src/pages/fleet/**' | head -1 | tr -d '[:space:]')
+            'client/src/pages/fleet/**' ':!client/src/pages/fleet/**/__tests__/**' \
+            | head -1 | tr -d '[:space:]')
           if [ -z "$touches_fleet_ui" ]; then
             echo "OK: PR does not touch fleet-UI files (client/src/pages/fleet/**); DDL guard does not apply."
             exit 0

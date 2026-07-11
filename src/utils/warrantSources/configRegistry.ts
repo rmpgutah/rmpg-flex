@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory, ChunkResult } from './types';
+import type { WarrantSourceAdapter, RawWarrantHit, SourceKind, WarrantCategory, ChunkResult, FullListResult } from './types';
 import { query } from '../db';
 import { parseSocrata, type FieldMap } from './parse/socrata';
 import { parseArcgis } from './parse/arcgis';
@@ -61,7 +61,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
           // error → retry same page, no sweep. Log so a persistently-failing
           // source isn't a silent stall (cursor stuck with errors:0 in the summary).
           console.warn(`[warrantSources.config] ${row.source_key} socrata fetch HTTP ${res.status} at offset ${offset}; retrying next tick`);
-          return { hits: [], nextCursor: cursor, done: false };
+          return { hits: [], nextCursor: cursor, done: false, degraded: true, degradedReason: `http_${res.status}` };
         }
         const rows = (await res.json()) as Record<string, unknown>[];
         return {
@@ -71,7 +71,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
         };
       } catch (err) {
         console.warn(`[warrantSources.config] ${row.source_key} socrata fetch threw at offset ${offset}:`, err instanceof Error ? err.message : String(err));
-        return { hits: [], nextCursor: cursor, done: false };
+        return { hits: [], nextCursor: cursor, done: false, degraded: true, degradedReason: 'fetch_threw' };
       }
     } };
   }
@@ -91,7 +91,7 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
             // keep what we have, retry from lastOid next tick. Log so a
             // persistently-failing source isn't a silent stall.
             console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch HTTP ${res.status} after OBJECTID ${lastOid}; retrying next tick`);
-            return { hits, nextCursor: String(lastOid), done: false };
+            return { hits, nextCursor: String(lastOid), done: false, degraded: true, degradedReason: `http_${res.status}` };
           }
           const body = (await res.json()) as { features?: { attributes?: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
           const features = body.features ?? [];
@@ -109,34 +109,56 @@ function makeAdapter(row: SourceRow): WarrantSourceAdapter | null {
         return { hits, nextCursor: String(lastOid), done: false };
       } catch (err) {
         console.warn(`[warrantSources.config] ${row.source_key} arcgis fetch threw after OBJECTID ${lastOid}:`, err instanceof Error ? err.message : String(err));
-        return { hits, nextCursor: String(lastOid), done: false };
+        return { hits, nextCursor: String(lastOid), done: false, degraded: true, degradedReason: 'fetch_threw' };
       }
     } };
   }
   const pdf = PDF_FAMILIES[row.family];
   if (pdf) {
-    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<FullListResult> {
       const text = await fetchPdfText(row.base_url ?? '', { lines: pdf.lines });
-      if (!text) return [];  // URL 404'd / no text layer — degrade gracefully, don't throw
-      try { return pdf.parse(text, row.source_key, row.state ?? 'US'); } catch { return []; }
+      if (!text) {
+        // URL 404'd / no text layer — degrade gracefully, don't throw
+        console.warn(`[warrantSources.config] ${row.source_key} pdf fetch produced no text layer`);
+        return { hits: [], degraded: true, degradedReason: 'no_text_layer' };
+      }
+      try {
+        return { hits: pdf.parse(text, row.source_key, row.state ?? 'US') };
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} pdf parse threw:`, err instanceof Error ? err.message : String(err));
+        return { hits: [], degraded: true, degradedReason: 'pdf_parse_threw' };
+      }
     } };
   }
   const textParser = TEXT_FAMILIES[row.family];
   if (textParser) {
-    return { meta, mode: 'full-list', async fetchAll(): Promise<RawWarrantHit[]> {
+    return { meta, mode: 'full-list', async fetchAll(): Promise<FullListResult> {
       try {
         const res = await fetch(row.base_url ?? '', { headers: { 'User-Agent': BROWSER_UA, Accept: '*/*' } });
-        if (!res.ok) return [];  // 404/403 — degrade gracefully
-        return textParser(await res.text(), row.source_key, row.state ?? 'US');
-      } catch { return []; }
+        if (!res.ok) {
+          // 404/403 — degrade gracefully
+          console.warn(`[warrantSources.config] ${row.source_key} text fetch HTTP ${res.status}`);
+          return { hits: [], degraded: true, degradedReason: `http_${res.status}` };
+        }
+        return { hits: textParser(await res.text(), row.source_key, row.state ?? 'US') };
+      } catch (err) {
+        console.warn(`[warrantSources.config] ${row.source_key} text fetch threw:`, err instanceof Error ? err.message : String(err));
+        return { hits: [], degraded: true, degradedReason: 'fetch_threw' };
+      }
     } };
   }
+  console.warn(`[warrantSources.config] ${row.source_key} has unmatched family "${row.family}" — no adapter built, source is silently excluded from scans`);
   return null;
 }
 
 /** Adapters built from enabled national_warrant_sources rows (config-driven families). */
 export async function getConfigAdapters(db: D1Database): Promise<WarrantSourceAdapter[]> {
   let rows: SourceRow[] = [];
-  try { rows = await query<SourceRow>(db, 'SELECT * FROM national_warrant_sources WHERE enabled = 1'); } catch { return []; }
+  try {
+    rows = await query<SourceRow>(db, 'SELECT * FROM national_warrant_sources WHERE enabled = 1');
+  } catch (err) {
+    console.warn('[warrantSources.config] national_warrant_sources query failed, failing closed to no config-driven adapters:', err instanceof Error ? err.message : String(err));
+    return [];
+  }
   return rows.map(makeAdapter).filter((a): a is WarrantSourceAdapter => a !== null);
 }

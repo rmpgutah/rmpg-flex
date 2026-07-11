@@ -10,6 +10,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -60,14 +61,14 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
     if (!enabled) {
       // Remove cluster layers
       [CLUSTER_UNCLUSTERED, CLUSTER_COUNT, CLUSTER_CIRCLE].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(CLUSTER_SOURCE)) map.removeSource(CLUSTER_SOURCE);
+      safeRemoveSource(map, CLUSTER_SOURCE);
       return;
     }
 
     // Add cluster source + layers
-    if (!map.getSource(CLUSTER_SOURCE)) {
+    if (!hasSource(map, CLUSTER_SOURCE)) {
       map.addSource(CLUSTER_SOURCE, {
         type: 'geojson',
         data: pointsToGeoJSON(points),
@@ -139,7 +140,8 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
       if (!features.length) return;
       const clusterId = features[0].properties?.cluster_id;
       if (clusterId == null) return;
-      (map.getSource(CLUSTER_SOURCE) as mapboxgl.GeoJSONSource).getClusterExpansionZoom(clusterId, (err, zoom) => {
+      const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, CLUSTER_SOURCE);
+      source?.getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err || zoom == null) return;
         const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number];
         map.easeTo({ center: coords, zoom: zoom + 1 });
@@ -164,7 +166,7 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
   // Update data when points change
   useEffect(() => {
     if (!map || !mapLoaded || !enabled) return;
-    const src = map.getSource(CLUSTER_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+    const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, CLUSTER_SOURCE);
     if (src) src.setData(pointsToGeoJSON(points));
   }, [map, mapLoaded, enabled, points]);
 

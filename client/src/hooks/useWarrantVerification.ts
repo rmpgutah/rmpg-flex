@@ -10,6 +10,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 71: Warrant Verification Workflow ─────────────
    Spillman Flex provides a step-by-step warrant verification
@@ -232,7 +234,7 @@ export function trackWarrantExpirations(
 ): WarrantExpiration[] {
   const now = new Date();
   return warrants.map(w => {
-    const expirationDate = w.expirationDate ? new Date(w.expirationDate) : new Date(w.issuedDate);
+    const expirationDate = w.expirationDate ? parseTimestamp(w.expirationDate) : parseTimestamp(w.issuedDate);
     if (!w.expirationDate) expirationDate.setFullYear(expirationDate.getFullYear() + 5);
 
     const daysRemaining = Math.ceil((expirationDate.getTime() - now.getTime()) / 86400000);
@@ -242,7 +244,7 @@ export function trackWarrantExpirations(
 
     return {
       warrantId: w.id,
-      issuedDate: new Date(w.issuedDate),
+      issuedDate: parseTimestamp(w.issuedDate),
       expirationDate,
       daysRemaining,
       status,
@@ -275,7 +277,7 @@ export function useMultiJurisdictionWarrantCheck() {
         method: 'POST',
         body: JSON.stringify({ firstName, lastName, dob, jurisdictions }),
       });
-      if (result) setResults(result);
+      setResults(asArray<MultiJurisdictionResult>(result));
       return result;
     } catch { return null; }
     finally { setLoading(false); }

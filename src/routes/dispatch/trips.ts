@@ -60,6 +60,37 @@ trips.get('/active', async (c) => {
   }
 });
 
+// GET /dispatch/trips/score-trend?unit_id=&officer_id=&limit=20 — recent trips'
+// harsh-event counts for a driving-score trend chart. Read-only, no new scoring
+// persisted (the client derives the 0-100 score from these counts via
+// tripDrivingScore() in client/src/pages/navigation/drivingScore.ts).
+//
+// Registered BEFORE the /:id param route below — Hono matches routes in
+// registration order, and if /:id came first a request to /score-trend would
+// match id="score-trend" instead (see test-workers/tripsScoreTrend.test.ts,
+// which proves both the correct response shape AND that this route wins).
+trips.get('/score-trend', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = c.req.query('unit_id');
+    const officerId = c.req.query('officer_id');
+    const limit = Math.min(Number(c.req.query('limit')) || 20, 100);
+    if (!unitId && !officerId) return c.json({ error: 'unit_id or officer_id is required' }, 400);
+    const where: string[] = ["status = 'closed'"];
+    const params: (string | number)[] = [];
+    if (unitId) { where.push('unit_id = ?'); params.push(Number(unitId)); }
+    if (officerId) { where.push('officer_id = ?'); params.push(Number(officerId)); }
+    const rows = await query<{ id: number; start_time: string; harsh_accel_count: number; harsh_brake_count: number; harsh_corner_count: number }>(
+      db,
+      `SELECT id, start_time, harsh_accel_count, harsh_brake_count, harsh_corner_count
+       FROM unit_trips WHERE ${where.join(' AND ')} ORDER BY start_time DESC LIMIT ?`,
+      ...params, limit);
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: 'Failed to load score trend' }, 500);
+  }
+});
+
 // GET /dispatch/trips/:id — trip + its breadcrumbs (for replay)
 trips.get('/:id', async (c) => {
   try {

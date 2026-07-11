@@ -13,8 +13,19 @@ import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapbo
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
+import { fetchMapboxMatchedPath } from '../utils/mapboxRouting';
 
 const GOLD = '#d4a017';
+
+// Mapbox Map Matching caps a request at 100 coordinates — downsample evenly
+// rather than truncate so a long clip's matched line still spans its full
+// duration (truncating would silently drop the back half of the drive).
+const MAP_MATCH_MAX_POINTS = 100;
+export function downsample<T>(points: T[], max: number): T[] {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]);
+}
 
 export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }: {
   gps: GpsPoint[];
@@ -83,6 +94,29 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
           }
           readyRef.current = true;
           setLoaded(true);
+
+          // Best-effort road-snap: raw GPS trails are noisy (device drift,
+          // urban-canyon multipath), so the line drawn above can cut across
+          // buildings/parking lots instead of following the street the
+          // vehicle was actually on. Map Matching snaps it to the real road
+          // network. Never blocks the initial render — the raw-coords line
+          // is already on screen — and silently keeps the raw line if the
+          // match fails (dashcam clips can start/end off-road, in which case
+          // Mapbox legitimately has nothing to match).
+          if (line.length >= 2) {
+            const sample = downsample(coords, MAP_MATCH_MAX_POINTS)
+              .map((p) => ({ lat: p.latitude, lng: p.longitude }));
+            fetchMapboxMatchedPath(sample).then((matched) => {
+              if (cancelled || matched.length < 2) return;
+              const routeSrc = map.getSource('route') as mapboxgl.GeoJSONSource | undefined;
+              if (!routeSrc) return;
+              routeSrc.setData({
+                type: 'Feature',
+                properties: {},
+                geometry: { type: 'LineString', coordinates: matched.map((p) => [p.lng, p.lat]) },
+              });
+            }).catch(() => { /* keep the raw-coords line */ });
+          }
         });
       } catch (err) {
         if (!cancelled) setError((err as Error)?.message || getMapboxTokenErrorMessage());

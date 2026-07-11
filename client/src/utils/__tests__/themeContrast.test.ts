@@ -11,9 +11,10 @@ function ratio(a: number[], b: number[]) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// Primary text on base surface must clear AA (4.5:1) in BOTH themes.
+// Primary text on base surface must clear AA (4.5:1) in every theme.
 const NIGHT = { textPrimary: [230, 237, 245], surfaceBase: [13, 23, 34] };
 const DAY = { textPrimary: [26, 26, 26], surfaceBase: [236, 233, 221] };
+const BLUE_SILVER = { textPrimary: [238, 242, 247], surfaceBase: [12, 26, 43], brandGold: [183, 194, 207] };
 
 describe('theme contrast (AA)', () => {
   it('night primary text on base >= 4.5:1', () => {
@@ -21,5 +22,11 @@ describe('theme contrast (AA)', () => {
   });
   it('day primary text on base >= 4.5:1', () => {
     expect(ratio(DAY.textPrimary, DAY.surfaceBase)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('blue-silver primary text on base >= 4.5:1', () => {
+    expect(ratio(BLUE_SILVER.textPrimary, BLUE_SILVER.surfaceBase)).toBeGreaterThanOrEqual(4.5);
+  });
+  it('blue-silver metallic accent (--brand-gold, silver here) on base >= 4.5:1', () => {
+    expect(ratio(BLUE_SILVER.brandGold, BLUE_SILVER.surfaceBase)).toBeGreaterThanOrEqual(4.5);
   });
 });

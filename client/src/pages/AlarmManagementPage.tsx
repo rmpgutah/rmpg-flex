@@ -12,6 +12,7 @@ import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Bell, AlertTriangle, ShieldCheck, DollarSign, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 import { formatEnumValue } from '../utils/formatters';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 
 interface AlarmAccount {
   id: number;
@@ -225,7 +226,16 @@ export default function AlarmManagementPage() {
   const columns = [
     { key: 'account_number', label: 'Account #' },
     { key: 'account_name', label: 'Name' },
-    { key: 'address', label: 'Address' },
+    {
+      key: 'address',
+      label: 'Address',
+      render: (r: AlarmAccount) => (
+        <span className="flex items-center gap-1.5">
+          {r.address}
+          <ViewOnMapLink address={r.address} label={r.account_name} />
+        </span>
+      ),
+    },
     {
       key: 'permit_status',
       label: 'Permit',

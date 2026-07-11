@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 
 // ── Types ──
@@ -229,7 +230,12 @@ export default function FireRMSPage() {
                     <td className="px-3 py-[2px] text-[#d4a017] font-mono">{inc.incident_number}</td>
                     <td className="px-3 py-[2px] text-[#888888]">{inc.incident_date}</td>
                     <td className="px-3 py-[2px] text-[#888888] capitalize">{inc.incident_type.replace(/_/g, ' ')}</td>
-                    <td className="px-3 py-[2px] text-[#888888]">{inc.location}</td>
+                    <td className="px-3 py-[2px] text-[#888888]">
+                      <span className="flex items-center gap-1.5">
+                        {inc.location}
+                        <ViewOnMapLink address={inc.location} label={inc.incident_number} />
+                      </span>
+                    </td>
                     <td className="px-3 py-[2px] text-[#888888]">{inc.cause}</td>
                     <td className="px-3 py-[2px] text-[#888888] capitalize">{inc.severity}</td>
                     <td className={`px-3 py-[2px] font-semibold capitalize ${STATUS_COLORS[inc.status] || 'text-[#888888]'}`}>
@@ -263,7 +269,12 @@ export default function FireRMSPage() {
                 ) : preplans.map(pp => (
                   <tr key={pp.id} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
                     <td className="px-3 py-[2px] text-white font-semibold">{pp.building_name}</td>
-                    <td className="px-3 py-[2px] text-[#888888]">{pp.address}</td>
+                    <td className="px-3 py-[2px] text-[#888888]">
+                      <span className="flex items-center gap-1.5">
+                        {pp.address}
+                        <ViewOnMapLink address={pp.address} label={pp.building_name} />
+                      </span>
+                    </td>
                     <td className="px-3 py-[2px] text-[#888888]">{pp.building_type}</td>
                     <td className="px-3 py-[2px] text-[#888888]">{pp.hazards}</td>
                     <td className="px-3 py-[2px]">
@@ -298,7 +309,12 @@ export default function FireRMSPage() {
                 ) : hydrants.map(h => (
                   <tr key={h.id} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
                     <td className="px-3 py-[2px] text-[#d4a017] font-mono">{h.hydrant_number}</td>
-                    <td className="px-3 py-[2px] text-[#888888]">{h.location}</td>
+                    <td className="px-3 py-[2px] text-[#888888]">
+                      <span className="flex items-center gap-1.5">
+                        {h.location}
+                        <ViewOnMapLink latitude={h.lat} longitude={h.lng} address={h.lat == null ? h.location : undefined} label={h.hydrant_number} />
+                      </span>
+                    </td>
                     <td className="px-3 py-[2px] text-[#888888] capitalize">{h.hydrant_type.replace(/_/g, ' ')}</td>
                     <td className="px-3 py-[2px] text-[#888888] font-mono">{h.flow_rate_gpm}</td>
                     <td className={`px-3 py-[2px] capitalize ${h.status === 'in_service' ? 'text-green-400' : 'text-red-400'}`}>

@@ -12,6 +12,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -113,13 +114,14 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
   // Sync completed shapes to the map source
   const syncShapes = useCallback((s: DrawnShape[]) => {
-    if (!map || !map.getSource(DRAW_SOURCE)) return;
-    (map.getSource(DRAW_SOURCE) as mapboxgl.GeoJSONSource).setData(shapesToGeoJSON(s));
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, DRAW_SOURCE);
+    if (!source) return;
+    source.setData(shapesToGeoJSON(s));
   }, [map]);
 
   // Sync the in-progress shape
   const syncActive = useCallback((pts: [number, number][], drawMode: DrawingMode) => {
-    if (!map || !map.getSource(DRAW_ACTIVE_SOURCE)) return;
+    if (!map || !hasSource(map, DRAW_ACTIVE_SOURCE)) return;
     const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
     if (pts.length >= 2) {
       if (drawMode === 'polyline' || drawMode === 'polygon') {
@@ -137,7 +139,8 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
         geometry: { type: 'MultiPoint', coordinates: pts },
       });
     }
-    (map.getSource(DRAW_ACTIVE_SOURCE) as mapboxgl.GeoJSONSource).setData(fc);
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, DRAW_ACTIVE_SOURCE);
+    source?.setData(fc);
   }, [map]);
 
   // Initialize drawing layers
@@ -146,7 +149,7 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
     const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
-    if (!map.getSource(DRAW_SOURCE)) {
+    if (!hasSource(map, DRAW_SOURCE)) {
       map.addSource(DRAW_SOURCE, { type: 'geojson', data: empty });
       map.addLayer({
         id: DRAW_FILL, type: 'fill', source: DRAW_SOURCE,
@@ -164,7 +167,7 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
       });
     }
 
-    if (!map.getSource(DRAW_ACTIVE_SOURCE)) {
+    if (!hasSource(map, DRAW_ACTIVE_SOURCE)) {
       map.addSource(DRAW_ACTIVE_SOURCE, { type: 'geojson', data: empty });
       map.addLayer({
         id: DRAW_ACTIVE_LINE, type: 'line', source: DRAW_ACTIVE_SOURCE,
@@ -179,10 +182,10 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
     return () => {
       [DRAW_ACTIVE_POINTS, DRAW_ACTIVE_LINE, DRAW_POINTS, DRAW_LINE, DRAW_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
       [DRAW_ACTIVE_SOURCE, DRAW_SOURCE].forEach(id => {
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveSource(map, id);
       });
     };
   }, [map, mapLoaded]);
@@ -278,9 +281,8 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
   const setMode = useCallback((m: DrawingMode) => {
     activePointsRef.current = [];
     circleCenterRef.current = null;
-    if (map && map.getSource(DRAW_ACTIVE_SOURCE)) {
-      (map.getSource(DRAW_ACTIVE_SOURCE) as mapboxgl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
-    }
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, DRAW_ACTIVE_SOURCE);
+    source?.setData({ type: 'FeatureCollection', features: [] });
     setModeState(m);
   }, [map]);
 
@@ -289,14 +291,10 @@ export function useMapDrawing(map: mapboxgl.Map | null, mapLoaded: boolean): Use
     setActiveShape(null);
     activePointsRef.current = [];
     circleCenterRef.current = null;
-    if (map) {
-      if (map.getSource(DRAW_SOURCE)) {
-        (map.getSource(DRAW_SOURCE) as mapboxgl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
-      }
-      if (map.getSource(DRAW_ACTIVE_SOURCE)) {
-        (map.getSource(DRAW_ACTIVE_SOURCE) as mapboxgl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
-      }
-    }
+    const drawSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, DRAW_SOURCE);
+    drawSource?.setData({ type: 'FeatureCollection', features: [] });
+    const activeSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, DRAW_ACTIVE_SOURCE);
+    activeSource?.setData({ type: 'FeatureCollection', features: [] });
   }, [map]);
 
   const removeShape = useCallback((id: string) => {

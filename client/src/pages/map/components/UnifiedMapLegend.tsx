@@ -13,11 +13,11 @@ import type { ChoroLegend } from '../../../hooks/useActivityChoropleth';
 import { roadLegendRows, propertyLegendRows } from '../utils/landTypes';
 
 export interface UnifiedLegendProps {
-  hierarchy: { area: boolean; section: boolean; zone: boolean; beat: boolean };
+  hierarchy: { area: boolean; sector: boolean; zone: boolean; beat: boolean };
   boundaries: { county: boolean; municipality: boolean };
   statewide: { roads: boolean; addresses: boolean };
   choro: ChoroLegend | null;
-  /** Categorical color list for the active Area/Section level (compact). */
+  /** Categorical color list for the active Area/Sector level (compact). */
   categorical: { label: string; color: string }[];
   isLight: boolean;
   /** Distance from the map bottom (px) — raised when the nav banner is shown. */
@@ -26,7 +26,7 @@ export interface UnifiedLegendProps {
   leftCss?: string;
 }
 
-const HSWATCH: Record<string, string> = { area: '#d4a017', section: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
+const HSWATCH: Record<string, string> = { area: '#d4a017', sector: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
 
 const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boolean }) => (
   <span
@@ -46,7 +46,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   const [open, setOpen] = useState(true);
 
   const geoLevels = ([
-    ['area', 'Area'], ['section', 'Section'], ['zone', 'Zone'], ['beat', 'Beat'],
+    ['area', 'Area'], ['sector', 'Sector'], ['zone', 'Zone'], ['beat', 'Beat'],
   ] as const).filter(([k]) => hierarchy[k]);
 
   const anyActive = geoLevels.length > 0 || boundaries.county || boundaries.municipality
@@ -85,7 +85,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
                   <span style={{ fontSize: 8, color: sub }}>colored by {label.toLowerCase()}</span>
                 </div>
               ))}
-              {/* Compact categorical key for Area/Section (few values). */}
+              {/* Compact categorical key for Area/Sector (few values). */}
               {categorical.length > 0 && categorical.length <= 16 && (
                 <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5">
                   {categorical.map((c) => (

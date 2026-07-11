@@ -63,7 +63,7 @@ const V2_BLANK_FORMS: { id: string; name: string; formNumber: string; descriptio
 async function downloadV2BlankForm(form: typeof V2_BLANK_FORMS[number]) {
   try {
     const pdf = await renderPdfV2(form.schema, {} as any);
-    const blob = pdf instanceof Blob ? pdf : new Blob([await pdf.arrayBuffer()], { type: 'application/pdf' });
+    const blob = pdf instanceof Blob ? pdf : new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -114,6 +114,7 @@ export default function TrainingDocsPage() {
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const validCategory: CompanyDocCategory | 'all' = (searchParams.get('category') as CompanyDocCategory | 'all') || 'all';
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

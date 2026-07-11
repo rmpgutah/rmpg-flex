@@ -3,7 +3,9 @@ import type { LayoutEngine } from './layout';
 import type {
   LabeledField, CheckboxField, NarrativeField, TableField, SignatureField, Width,
 } from './types';
-import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
+import {
+  TYPOGRAPHY, RULE_WEIGHTS, SPACING, TONES, TONES_RGB,
+} from './style';
 
 // Font sizes are always in points regardless of doc unit.
 const LABEL_FONT_SIZE = 7;
@@ -20,6 +22,13 @@ const TABLE_ROW_H = 5;
 const TABLE_HDR_H = 5;
 const SIG_BLOCK_H = 22;
 const SIG_WIDTH = 70;
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const ZEBRA_RGB = hexToRgb(TONES.zebraRow);
 
 function formatValue(raw: unknown): string {
   if (raw === null || raw === undefined || raw === '') return '—';
@@ -174,11 +183,13 @@ export class Primitives {
     const rowH = TABLE_ROW_H;
     const left = this.layout.leftX;
 
-    // Draw the black header band + white UPPERCASE column labels at `top`.
+    // Draw the steel-blue header band + white UPPERCASE column labels at `top`.
     // Repeated at the top of every page a long table spills onto so the
     // columns stay identifiable on continuation pages.
     const drawHeaderBand = (top: number): void => {
-      this.doc.setFillColor(0, 0, 0);
+      // Steel-blue fill (2026-07 accent upgrade, was pure black) with
+      // inverted white text — unchanged contrast/readability.
+      this.doc.setFillColor(...TONES_RGB.accentSteel);
       this.doc.rect(left, top, tableWidth, headerH, 'F');
       this.doc.setFont('helvetica', TYPOGRAPHY.tableHeader.weight);
       this.doc.setFontSize(TYPOGRAPHY.tableHeader.size);
@@ -209,7 +220,8 @@ export class Primitives {
     this.layout.pageBreakIfNeeded(headerH + rowH);
 
     // ── First fragment: header band on the current page ──
-    let fragTop = this.layout.cursorY;
+    const tableTop = this.layout.cursorY;
+    let fragTop = tableTop;
     drawHeaderBand(fragTop);
     this.layout.advance(headerH);
     applyBodyStyle();
@@ -232,7 +244,7 @@ export class Primitives {
       this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
       this.doc.setDrawColor(0, 0, 0);
       this.doc.rect(left, top, tableWidth, h);
-      if (withHeaderSep) this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      if (withHeaderSep) this.doc.line(left, top + headerH, left + tableWidth, top + headerH);
       for (let i = 1; i < spec.columns.length; i++) {
         this.doc.line(colStarts[i], top, colStarts[i], top + h);
       }
@@ -253,16 +265,17 @@ export class Primitives {
         if (this.layout.cursorY < yBefore) {
           // Page break: close the fragment on the page just left (from fragTop
           // down to the last row's bottom), then start fresh on the new page
-          // top (continuation fragments carry no below-header separator).
+          // top with a repeated header band so columns stay identifiable.
           drawFragmentBorders(fragTop, yBefore, fragHasHeader);
           fragTop = this.layout.cursorY;
-          fragHasHeader = false;
+          drawHeaderBand(fragTop);
+          this.layout.advance(headerH);
+          applyBodyStyle();
         }
         const row = rows[r];
         const yRow = this.layout.cursorY;
         if (r % 2 === 1) {
-          // 5% gray zebra (TONES.zebraRow #F5F5F5)
-          this.doc.setFillColor(245, 245, 245);
+          this.doc.setFillColor(...ZEBRA_RGB);
           this.doc.rect(left, yRow, tableWidth, rowH, 'F');
         }
         spec.columns.forEach((c, i) => {

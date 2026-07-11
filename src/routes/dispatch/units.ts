@@ -4,6 +4,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
+import { denverOffsetHours } from '../../utils/denverTime';
 
 const units = new Hono<Env>();
 
@@ -22,6 +23,16 @@ const UPDATABLE_UNIT_COLUMNS = new Set([
 units.get('/', async (c) => {
   try {
     const db = getDb(c.env);
+    // next_service_date is a plain DATE (no time-of-day) representing a
+    // calendar day in the shop's local (Mountain Time) sense, but
+    // date('now') resolves in UTC — for roughly 6-7 hours a day (evening MT,
+    // already past midnight UTC) a vehicle due "today" read as not-yet-due
+    // or a vehicle due "tomorrow" read as already overdue. Shift 'now' by
+    // the current MT offset before taking its date, same pattern as
+    // reports.ts's denverDateExpr/denverNowDateExpr.
+    const offset = denverOffsetHours();
+    const denverNow = `date('now', '${offset} hours')`;
+    const denverNowPlus7 = `date('now', '${offset} hours', '+7 days')`;
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number as current_call_number, c.incident_type as current_call_type,
@@ -33,25 +44,28 @@ units.get('/', async (c) => {
         fv.fuel_level, fv.pursuit_rated,
         CASE
           WHEN fv.id IS NULL THEN NULL
-          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) < date('now') THEN 'overdue'
+          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) < ${denverNow} THEN 'overdue'
           WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
                AND fv.current_mileage >= fv.next_service_mileage THEN 'overdue'
-          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) <= date('now', '+7 days') THEN 'due_soon'
+          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) <= ${denverNowPlus7} THEN 'due_soon'
           WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
                AND (fv.next_service_mileage - fv.current_mileage) < 500 THEN 'due_soon'
           ELSE 'ok'
         END as maintenance_status,
         te.id as active_shift_id, te.clock_in,
-        CAST((julianday('now') - julianday(te.clock_in)) * 24 AS REAL) as shift_hours_elapsed
+        CAST((julianday('now') - julianday(te.clock_in)) * 24 AS REAL) as shift_hours_elapsed,
+        (SELECT cpg.cpg_device_id FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_device_id,
+        (SELECT cpg.ignition_state FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_ignition_state
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
-      LEFT JOIN time_entries te ON te.user_id = u.officer_id AND te.clock_out IS NULL
+      LEFT JOIN time_entries te ON te.officer_id = u.officer_id AND te.clock_out IS NULL
       ORDER BY u.call_sign
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /dispatch/units failed', {}, err as Error);
     return c.json({ error: 'Failed to get units' }, 500);
   }
 });

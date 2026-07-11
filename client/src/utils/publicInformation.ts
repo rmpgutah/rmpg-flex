@@ -7,10 +7,12 @@
 // information dashboard, and transparency reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 31: Media Contact Management */
 export interface MediaContact { id:string; outletName:string; contactName:string; contactType:'reporter'|'editor'|'producer'|'photographer'; email:string; phone:string; beat:string[]; lastContact:string|null; notes:string; }
 export function findMediaContacts(topic:string, contacts:MediaContact[]): MediaContact[] {
-  return contacts.filter(c=>c.beat.some(b=>b.toLowerCase().includes(topic.toLowerCase()))).sort((a,b)=>(a.lastContact?new Date(a.lastContact).getTime():0)-(b.lastContact?new Date(b.lastContact).getTime():0));
+  return contacts.filter(c=>c.beat.some(b=>b.toLowerCase().includes(topic.toLowerCase()))).sort((a,b)=>(a.lastContact?parseTimestamp(a.lastContact).getTime():0)-(b.lastContact?parseTimestamp(b.lastContact).getTime():0));
 }
 
 /* FEATURE 32: Press Release Workflow */
@@ -23,9 +25,9 @@ export function approvePressRelease(release:PressRelease, approverId:string): Pr
 export interface RecordsRequest { id:string; requesterName:string; requesterContact:string; requestDate:string; description:string; recordsType:string; statutoryDeadline:string; responseDate:string|null; responseType:'fulfilled'|'partial'|'denied'|'pending'; denialReason:string|null; fees:number; feesPaid:boolean; estimatedHours:number; }
 export function trackRecordsRequests(requests:RecordsRequest[]): { total:number; pending:number; overdue:number; avgResponseDays:number; fulfillmentRate:number } {
   const now = new Date(); const pending = requests.filter(r=>!r.responseDate);
-  const overdue = pending.filter(r=>new Date(r.statutoryDeadline)<now);
+  const overdue = pending.filter(r=>parseTimestamp(r.statutoryDeadline)<now);
   const fulfilled = requests.filter(r=>r.responseType==='fulfilled'||r.responseType==='partial');
-  const days = fulfilled.map(r=>(new Date(r.responseDate!).getTime()-new Date(r.requestDate).getTime())/86400000);
+  const days = fulfilled.map(r=>(parseTimestamp(r.responseDate!).getTime()-parseTimestamp(r.requestDate).getTime())/86400000);
   return { total:requests.length, pending:pending.length, overdue:overdue.length, avgResponseDays:days.length>0?Math.round(days.reduce((s,v)=>s+v,0)/days.length):0, fulfillmentRate:requests.length>0?Math.round(fulfilled.length/requests.length*100):0 };
 }
 
@@ -64,7 +66,7 @@ export function prepareMediaBriefing(topic:string, date:string, location:string,
 export interface FOIARequest { id:string; trackingNumber:string; requesterName:string; receivedDate:string; description:string; exemptionClaims:string[]; estimatedCost:number; costCollected:boolean; responseDate:string|null; documentsReleased:number; documentsWithheld:number; appealFiled:boolean; }
 export function calculateFOIAStats(requests:FOIARequest[]): { totalRequests:number; avgResponseDays:number; withholdingRate:number; appealRate:number } {
   const completed = requests.filter(r=>r.responseDate);
-  const days = completed.map(r=>(new Date(r.responseDate!).getTime()-new Date(r.receivedDate).getTime())/86400000);
+  const days = completed.map(r=>(parseTimestamp(r.responseDate!).getTime()-parseTimestamp(r.receivedDate).getTime())/86400000);
   const totalDocs = requests.reduce((s,r)=>s+r.documentsReleased+r.documentsWithheld,0);
   const withheld = requests.reduce((s,r)=>s+r.documentsWithheld,0);
   const appeals = requests.filter(r=>r.appealFiled).length;
@@ -74,7 +76,7 @@ export function calculateFOIAStats(requests:FOIARequest[]): { totalRequests:numb
 /* FEATURE 39: Public Information Dashboard */
 export interface PIODashboard { activePressReleases:number; pendingRecordsRequests:number; upcomingBriefings:number; socialMediaFollowers:number; communityAlertsActive:number; mediaInquiriesThisWeek:number; }
 export function calculatePIOEffectiveness(data:{pressReleases:PressRelease[];recordsRequests:RecordsRequest[];socialPosts:SocialMediaPost[];alerts:CommunityAlert[]}): { contentOutput:number; responseTimeliness:number; communityEngagement:number } {
-  return { contentOutput:data.pressReleases.length, responseTimeliness:data.recordsRequests.filter(r=>r.responseDate&&new Date(r.responseDate)<=new Date(r.statutoryDeadline)).length, communityEngagement:data.socialPosts.reduce((s,p)=>s+p.engagement.reach,0) };
+  return { contentOutput:data.pressReleases.length, responseTimeliness:data.recordsRequests.filter(r=>r.responseDate&&parseTimestamp(r.responseDate)<=parseTimestamp(r.statutoryDeadline)).length, communityEngagement:data.socialPosts.reduce((s,p)=>s+p.engagement.reach,0) };
 }
 
 /* FEATURE 40: Transparency Reporting */

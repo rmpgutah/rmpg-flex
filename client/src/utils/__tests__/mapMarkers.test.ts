@@ -41,7 +41,11 @@ describe('buildUnitMarker', () => {
   });
   it('does not use innerHTML injection for the label (text is escaped)', () => {
     const el = buildUnitMarker({ label: '<img src=x>', status: 'busy' });
-    expect(el.querySelector('img')).toBeNull();
+    // The marker legitimately renders one real <img> (the vehicle photo
+    // icon) — an XSS-unsafe label would render a SECOND <img> from the
+    // injected string, so assert exactly one image (the real photo) exists,
+    // not "no image anywhere".
+    expect(el.querySelectorAll('img')).toHaveLength(1);
     expect(el.textContent).toContain('<img src=x>');
   });
 });

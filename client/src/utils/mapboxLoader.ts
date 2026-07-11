@@ -15,6 +15,14 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 mapboxgl.accessToken =
   (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
 
+// Prevent accidental use of a secret (sk.*) Mapbox token — only public
+// (pk.*) tokens work with Mapbox GL JS. If the build env var holds an
+// sk.* token, clear it so the client falls back to the server endpoint.
+if (mapboxgl.accessToken.startsWith('sk.')) {
+  console.warn('[mapbox] Build-time VITE_MAPBOX_ACCESS_TOKEN is an sk.* secret token. Clearing — client will fetch pk.* token from server.');
+  mapboxgl.accessToken = '';
+}
+
 // Redirect Mapbox SDK telemetry POSTs (turnstile/map.load/style.load/etc.) away
 // from events.mapbox.com to a same-origin sink that returns 204. Some operator
 // networks block events.mapbox.com (DNS sinkhole / ad blocker / corporate
@@ -260,66 +268,177 @@ export function printWithLightMaps(): void {
 
 // ============================================================
 // Server-managed Mapbox config
-// Fetches Mapbox access token from the server API.
+// Moved to mapboxToken.ts (2026-07-02) so REST-only callers (address
+// autocomplete, etc.) can resolve a token without loading mapbox-gl.
+// Re-exported here for existing map-surface callers of this module.
 // ============================================================
-
-let _serverConfigPromise: Promise<{ accessToken?: string }> | null = null;
-let _fetchFailCount = 0;
-const MAX_FETCH_RETRIES = 3;
-
-export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
-  if (_serverConfigPromise) return _serverConfigPromise;
-  if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
-
-  _serverConfigPromise = (async () => {
-    try {
-      const token = localStorage.getItem('rmpg_token');
-      if (!token) {
-        _serverConfigPromise = null;
-        return {};
-      }
-      const base = import.meta.env.VITE_API_BASE_URL || '';
-      const res = await fetch(`${base}/api/integrations/mapbox/client-token`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        _fetchFailCount++;
-        _serverConfigPromise = null;
-        return {};
-      }
-      _fetchFailCount = 0;
-      return await res.json();
-    } catch {
-      _fetchFailCount++;
-      _serverConfigPromise = null;
-      return {};
-    }
-  })();
-
-  return _serverConfigPromise;
-}
-
-export async function resolveMapboxAccessToken(): Promise<string> {
-  const buildTimeToken = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
-  if (buildTimeToken) return buildTimeToken;
-  const cfg = await fetchMapboxConfig();
-  return cfg.accessToken || '';
-}
-
-export function clearMapboxConfigCache(): void {
-  _serverConfigPromise = null;
-  _fetchFailCount = 0;
-}
+export { fetchMapboxConfig, resolveMapboxAccessToken, clearMapboxConfigCache } from './mapboxToken';
 
 // Re-export for pages that import map utilities from this module
 export { injectMapStyles as injectMapboxStyles, createMapboxMap } from './mapboxMap';
 
-// Stub re-exports for missing symbols referenced by existing pages.
-// These are no-op implementations to unblock the build.
-export function destroyMapboxMap(_map: any): void { /* stub */ }
-export function addMapboxTrail(_map: any, _coords: any, _color?: string): void { /* stub */ }
-export function removeMapboxTrail(_map: any): void { /* stub */ }
-export function addMapbox3DBuildings(_map: any): void { /* stub */ }
-export function setMapboxStyle(_map: any, _style: string): void { /* stub */ }
-export function addMapboxTerrain(_map: any): void { /* stub */ }
-export function removeMapboxTerrain(_map: any): void { /* stub */ }
+// ============================================================
+// Map lifecycle / style / trail / 3D-buildings / terrain helpers
+// ============================================================
+// These were previously hard no-op stubs ("unblock the build" placeholders)
+// despite every caller (MapCore.ts, useMapboxInit.ts, MapboxMapPage.tsx,
+// RouteBuilderPage.tsx) treating them as real — so map cleanup leaked WebGL
+// contexts, the map-style selector never changed the live map, 3D
+// terrain/buildings toggles did nothing, and RouteBuilderPage's planned-route
+// polyline never rendered. Implemented for real below, using the safe-layer
+// wrappers from mapboxSafeLayer.ts so a torn-down/mid-setStyle map never
+// throws out of these calls.
+import { resolveMapStyleUrl } from './mapboxClient';
+import {
+  hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource,
+} from './mapboxSafeLayer';
+
+/** Tear down a live Mapbox map instance (releases the WebGL context, DOM, listeners). */
+export function destroyMapboxMap(map?: mapboxgl.Map | null): void {
+  if (!map) return;
+  try { map.remove(); } catch { /* already removed / torn down */ }
+}
+
+const TRAIL_SOURCE = 'rmpg-mapbox-trail';
+const TRAIL_LAYER = 'rmpg-mapbox-trail-line';
+
+/** Draw (or replace) a route trail polyline on the map. */
+export function addMapboxTrail(
+  map: mapboxgl.Map,
+  coords: [number, number][],
+  color: string = '#d4a017',
+): void {
+  if (!map || !map.style || !coords?.length) return;
+  const data: GeoJSON.Feature<GeoJSON.LineString> = {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'LineString', coordinates: coords },
+  };
+  try {
+    upsertGeoJsonSource(map, TRAIL_SOURCE, data);
+    if (!hasLayer(map, TRAIL_LAYER)) {
+      map.addLayer({
+        id: TRAIL_LAYER,
+        type: 'line',
+        source: TRAIL_SOURCE,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': color, 'line-width': 4, 'line-opacity': 0.85 },
+      });
+    } else {
+      map.setPaintProperty(TRAIL_LAYER, 'line-color', color);
+    }
+  } catch { /* style mid-swap — caller re-renders on the next route change */ }
+}
+
+/** Remove the route trail polyline, if present. */
+export function removeMapboxTrail(map: mapboxgl.Map): void {
+  if (!map) return;
+  safeRemoveLayer(map, TRAIL_LAYER);
+  safeRemoveSource(map, TRAIL_SOURCE);
+}
+
+/** Switch the live map to a new style (short id like 'dark', or a full mapbox://.../https:// URL). */
+export function setMapboxStyle(map: mapboxgl.Map, style: string): void {
+  if (!map || !style) return;
+  const resolved = style.startsWith('mapbox://') || style.startsWith('http')
+    ? style
+    : resolveMapStyleUrl(style);
+  try { map.setStyle(resolved); } catch { /* ignore — caller listens for style.load to re-apply overlays */ }
+}
+
+const BUILDINGS_3D_LAYER = 'rmpg-3d-buildings-loader';
+
+/** Add extruded 3D building footprints from the style's vector `composite` source, if present. */
+export function addMapbox3DBuildings(map: mapboxgl.Map): void {
+  if (!map || !map.style) return;
+  try {
+    if (hasLayer(map, BUILDINGS_3D_LAYER) || !hasSource(map, 'composite')) return;
+    map.addLayer({
+      id: BUILDINGS_3D_LAYER,
+      source: 'composite',
+      'source-layer': 'building',
+      filter: ['==', ['get', 'extrude'], 'true'],
+      type: 'fill-extrusion',
+      minzoom: 13,
+      paint: {
+        'fill-extrusion-color': '#343434',
+        'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 15.05, ['get', 'height']],
+        'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 15.05, ['get', 'min_height']],
+        'fill-extrusion-opacity': 0.8,
+      },
+    });
+  } catch { /* raster-only style lacks `composite` — nothing to extrude */ }
+}
+
+/** Remove the 3D building extrusion layer, if present. */
+export function removeMapbox3DBuildings(map: mapboxgl.Map): void {
+  if (!map) return;
+  safeRemoveLayer(map, BUILDINGS_3D_LAYER);
+}
+
+const TERRAIN_DEM_SOURCE = 'rmpg-mapbox-terrain-dem';
+
+/** Enable 3D terrain (raster-DEM elevation) on the current style. */
+export function addMapboxTerrain(map: mapboxgl.Map): void {
+  if (!map || !map.style) return;
+  try {
+    if (!hasSource(map, TERRAIN_DEM_SOURCE)) {
+      map.addSource(TERRAIN_DEM_SOURCE, {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14,
+      });
+    }
+    map.setTerrain({ source: TERRAIN_DEM_SOURCE, exaggeration: 1.15 });
+  } catch { /* style mid-swap — style.load re-apply covers it */ }
+}
+
+/** Disable 3D terrain, restoring a flat basemap. */
+export function removeMapboxTerrain(map: mapboxgl.Map): void {
+  if (!map) return;
+  try { map.setTerrain(null); } catch { /* ignore */ }
+  safeRemoveSource(map, TERRAIN_DEM_SOURCE);
+}
+
+/**
+ * Classify a Mapbox GL JS runtime `error` event (fired for a bad/expired
+ * token, a network failure, a missing style, etc.) so a caller can decide
+ * whether to surface it to the user. Mapbox's own async style/tile-load
+ * failures do NOT throw a catchable exception — they only fire this event —
+ * so a component that doesn't listen for it renders a blank/black map with
+ * zero indication of what's wrong (confirmed live: a bad token produces a
+ * silent 401 against api.mapbox.com, no CSP block, no thrown error).
+ * Mirrors the classification MapCore.ts already does for the main map page.
+ */
+export interface MapboxErrorClassification {
+  message: string;
+  isAuthErr: boolean;
+  isNetworkErr: boolean;
+  isStyleErr: boolean;
+}
+
+export function classifyMapboxError(e: { error?: { message?: string; status?: number } }): MapboxErrorClassification {
+  const message = e.error?.message || 'Mapbox map error';
+  const status = e.error?.status;
+  const msgLower = message.toLowerCase();
+
+  const isNetworkErr =
+    msgLower.includes('failed to fetch') ||
+    msgLower.includes('networkerror') ||
+    msgLower.includes('network request failed');
+
+  const isAuthErr =
+    status === 401 || status === 403 ||
+    msgLower.includes('access token') ||
+    msgLower.includes('not authorized') ||
+    msgLower.includes('unauthorized') ||
+    msgLower.includes('forbidden') ||
+    msgLower.includes('invalid token') ||
+    msgLower.includes('token is not authorized') ||
+    msgLower.includes('not configured');
+
+  const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
+
+  return { message, isAuthErr, isNetworkErr, isStyleErr };
+}

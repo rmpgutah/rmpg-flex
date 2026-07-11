@@ -1,4 +1,5 @@
 // 50 evidence enhancements
+import { parseTimestamp } from './dateUtils';
 export interface EvidenceTransfer { evidenceId:string; fromCustodian:string; toCustodian:string; transferDate:string; reason:string; chainOfCustodyUpdated:boolean; }
 export function transferEvidence(evidenceId:string,to:string,reason:string): EvidenceTransfer { return{evidenceId,fromCustodian:'',toCustodian:to,transferDate:new Date().toISOString(),reason,chainOfCustodyUpdated:true}; }
 export interface EvidenceCheckout { evidenceId:string; checkedOutBy:string; checkoutDate:string; expectedReturn:string; returnedDate:string|null; purpose:string; }
@@ -22,7 +23,7 @@ export function trackSearchWarrantEvidence(evidenceId:string,warrantId:string): 
 export interface EvidenceCourtPresentation { evidenceId:string; caseNumber:string; courtDate:string; presented:boolean; returnedAfterCourt:boolean; }
 export function prepareCourtEvidence(evidenceId:string,caseNumber:string,courtDate:string): EvidenceCourtPresentation { return{evidenceId,caseNumber,courtDate,presented:false,returnedAfterCourt:false}; }
 export interface EvidenceChainValidation { evidenceId:string; validatedAt:string; validatedBy:string; chainComplete:boolean; gaps:Array<{from:string;to:string;durationHours:number}>; }
-export function validateChainOfCustody(transfers:Array<{from:string;to:string;date:string}>): EvidenceChainValidation { const gaps:Array<{from:string;to:string;durationHours:number}>=[];for(let i=1;i<transfers.length;i++){const gap=(new Date(transfers[i].date).getTime()-new Date(transfers[i-1].date).getTime())/3600000;if(gap>48)gaps.push({from:transfers[i-1].to,to:transfers[i].from,durationHours:Math.round(gap)});} return{evidenceId:'',validatedAt:new Date().toISOString(),validatedBy:'',chainComplete:gaps.length===0,gaps}; }
+export function validateChainOfCustody(transfers:Array<{from:string;to:string;date:string}>): EvidenceChainValidation { const gaps:Array<{from:string;to:string;durationHours:number}>=[];for(let i=1;i<transfers.length;i++){const gap=(parseTimestamp(transfers[i].date).getTime()-parseTimestamp(transfers[i-1].date).getTime())/3600000;if(gap>48)gaps.push({from:transfers[i-1].to,to:transfers[i].from,durationHours:Math.round(gap)});} return{evidenceId:'',validatedAt:new Date().toISOString(),validatedBy:'',chainComplete:gaps.length===0,gaps}; }
 export interface EvidenceSubpoena { evidenceId:string; subpoenaId:string; responseDue:string; complied:boolean; complianceDate:string|null; }
 export function complyWithSubpoena(evidenceId:string,subpoenaId:string): EvidenceSubpoena { return{evidenceId,subpoenaId,responseDue:'',complied:true,complianceDate:new Date().toISOString().slice(0,10)}; }
 export interface EvidenceStats { totalItems:number; itemsInCustody:number; itemsCheckedOut:number; itemsDisposed:number; chainCompletePct:number; }

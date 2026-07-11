@@ -42,7 +42,7 @@ jobs:
       # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
       # emergency hotfixes where schema drift is intentional.
       - name: Schema drift check (remote D1)
-        if: ${{ env.SKIP_DRIFT_CHECK != '1' }}
+        if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
         continue-on-error: true
         run: DB_MODE=remote scripts/check-migration-drift.sh
 
@@ -140,7 +140,7 @@ jobs:
       # This catches deploy failures that return a non-2xx Wrangler exit code
       # but still "succeed" because the old Worker version keeps running.
       - name: Verify Worker health
-        if: always() && env.SKIP_VERIFY != '1'
+        if: always() && vars.SKIP_VERIFY != '1'
         run: |
           set -euo pipefail
           echo "Verifying Worker health..."

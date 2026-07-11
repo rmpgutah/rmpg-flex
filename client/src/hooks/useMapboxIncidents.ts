@@ -133,12 +133,12 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
     });
   }, [clearFromMap]);
 
-  const fetchIncidents = useCallback(async (days = 30, limit = 2000) => {
+  const fetchIncidents = useCallback(async (limit = 2000) => {
     if (!map) return;
     setLoading(true);
     try {
-      const data = await apiFetch<Incident[]>(`/incidents?days=${days}&limit=${limit}`);
-      const incs = Array.isArray(data) ? data : [];
+      const data = await apiFetch<{ data: Incident[]; pagination: unknown }>(`/incidents?limit=${limit}`);
+      const incs = Array.isArray(data?.data) ? data.data : [];
       setIncidents(incs);
       whenStyleReady(map, () => { renderOnMap(incs, map); });
     } catch (err) {

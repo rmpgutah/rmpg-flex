@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { getMapboxToken } from '../../utils/mapboxApiKey';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -37,7 +38,7 @@ interface RequestLogEntry {
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
-  const then = new Date(dateStr).getTime();
+  const then = parseTimestamp(dateStr).getTime();
   const diff = now - then;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
@@ -46,7 +47,17 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString();
+}
+
+interface ApiKeyConfig {
+  key: string;
+  label: string;
+  desc: string;
+  pattern?: RegExp;
+  formatHint?: string;
+  secret?: boolean;
+  testable?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {

@@ -102,7 +102,7 @@ function formatSize(bytes: number): string {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -121,6 +121,7 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
+  const isAdminOrManager = isAdmin || user?.role === 'manager';
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();

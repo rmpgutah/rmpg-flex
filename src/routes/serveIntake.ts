@@ -54,6 +54,7 @@ import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import { lookupPsoCode, codeToLegacyResult } from '../utils/processServiceCodes';
 import {
   findLocationNote, listLocationNotes, createLocationNote,
   updateLocationNote, deactivateLocationNote,
@@ -68,7 +69,10 @@ import {
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
+import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
+import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -192,6 +196,14 @@ const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer']
 function isPdf(mime: string): boolean { return mime === 'application/pdf'; }
 function isImage(mime: string): boolean { return mime.startsWith('image/'); }
 
+function emptyExtraction(model: string, error?: string): ExtractionResult {
+  return {
+    success: false, documentType: 'other', confidence: 0,
+    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
+    model, ms: 0, error,
+  };
+}
+
 // Minimum browser-extracted text length to trust a PDF as "born-digital"
 // and skip the OCR container. A court summons cover page alone is ~800
 // chars; 200 comfortably clears sparse single-page exhibits while still
@@ -299,20 +311,38 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
+      let text: string;
+      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        text = clientText;
+        ocrEngine = 'pdfjs-client';
+      } else {
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch (e) {
+          log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
+            traceId: c.get('traceId'),
+            error: e instanceof Error ? e.message : String(e),
+          });
+          text = clientText;
+          ocrEngine = 'container-unavailable';
+        }
+      }
+      extraction = text.trim().length >= 20
+        ? await ocrText(c.env, text)
+        : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
   } catch (err) {
-    return c.json({
-      error: 'Extraction failed',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Extraction failed');
   }
 
   return c.json({
@@ -386,7 +416,6 @@ si.post('/upload', async (c) => {
 
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
-  const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
   // ── Phase 1+2: per-file text acquisition + field extraction, IN PARALLEL ──
@@ -417,12 +446,6 @@ si.post('/upload', async (c) => {
     error?: string;          // file-level (read/store) error
   }
 
-  const emptyExtraction = (model: string, error?: string): ExtractionResult => ({
-    success: false, documentType: 'other', confidence: 0,
-    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
-    model, ms: 0, error,
-  });
-
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
     const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
     try {
@@ -447,6 +470,7 @@ si.post('/upload', async (c) => {
         if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
           try {
             const txt = await withTimeout(
               extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
@@ -1642,6 +1666,8 @@ si.post('/schedule/rebalance', async (c) => {
 
 // ── DELETE /schedule/:slotId — dismiss a slot ────────────────
 si.delete('/schedule/:slotId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const slotId = parseInt(c.req.param('slotId'), 10);
   if (isNaN(slotId)) return c.json({ error: 'Invalid slot id' }, 400);
   const db = getDb(c.env);
@@ -1775,7 +1801,7 @@ si.put('/:id', async (c) => {
 
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
-    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_city',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
@@ -1827,10 +1853,26 @@ si.delete('/:id', async (c) => {
   );
   if (!queue) return c.json({ error: 'Not found' }, 404);
 
-  // serve_attempts + serve_skip_traces cascade via FK (migration 0030), but
-  // serve_attempt_schedules has no REFERENCES clause (migration 0130) — clean
-  // up explicitly before the parent DELETE.
+  // Explicit cleanup for all related tables. D1 does not enforce PRAGMA
+  // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
+  // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
+  // guaranteed orphans without these DELETEs.
+  // ── serve_nudges: no FK constraint (migration 0105) — would orphan
+  await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
+  // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)
+  await execute(db, 'DELETE FROM case_serve_jobs WHERE serve_queue_id = ?', id);
+  // ── serve_queue_persons: FK CASCADE but PRAGMA not enforced (migration 0002)
+  await execute(db, 'DELETE FROM serve_queue_persons WHERE serve_queue_id = ?', id);
+  // ── serve_charges + serve_charge_lines: FK CASCADE but PRAGMA not enforced
+  await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id IN (SELECT id FROM serve_charges WHERE serve_queue_id = ?)', id);
+  await execute(db, 'DELETE FROM serve_charges WHERE serve_queue_id = ?', id);
+  // ── serve_intake_documents: FK SET NULL but PRAGMA not enforced (migration 0034)
+  await execute(db, 'UPDATE serve_intake_documents SET serve_queue_id = NULL WHERE serve_queue_id = ?', id);
+  // ── serve_attempt_schedules: no FK constraint (migration 0130)
   await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', id);
+  // ── serve_attempts + serve_skip_traces: FK CASCADE but PRAGMA not enforced
+  await execute(db, 'DELETE FROM serve_skip_traces WHERE serve_queue_id = ?', id);
+  await execute(db, 'DELETE FROM serve_attempts WHERE serve_queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_queue WHERE id = ?', id);
 
   await recordAudit(c, {
@@ -1891,30 +1933,50 @@ si.post('/:id/attempts', async (c) => {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
-  const result = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+  // Resolve result + disposition_code. When a structured PS code is supplied
+  // (PS/00..PS/45.XX), derive the legacy `result` from it. Fall back to the
+  // body's result field otherwise. Mirrors serve.ts logAttempt.
+  let dispositionCode: string | null = null;
+  let finalResult: string;
+  if (body.disposition_code && typeof body.disposition_code === 'string' && body.disposition_code.trim()) {
+    const code = body.disposition_code.trim().toUpperCase();
+    if (lookupPsoCode(code)) {
+      dispositionCode = code;
+      finalResult = codeToLegacyResult(code);
+    } else {
+      finalResult = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+    }
+  } else {
+    finalResult = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
+  }
   const nextNum = (queue.attempt_count || 0) + 1;
 
-  // NB: live serve_attempts does NOT have the `status` column that
-  // migration 0030 defines (schema drift — the column was never applied
-  // to the 785de7ae DB). Inserting it crashes with "no such column".
-  // It's redundant anyway: per-attempt status is derivable from `result`
-  // (served → served, else → attempted), and the workflow state lives on
-  // serve_queue.status which we update below. So we omit it entirely.
-  // See [[feedback-verify-live-schema-before-insert]].
-  const ins = await execute(
-    db,
-    `INSERT INTO serve_attempts (
-      serve_queue_id, attempt_number, officer_id, result,
-      latitude, longitude, notes, attempt_type, photo_ids, signature_data
-    ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null, result,
+  // Check if disposition_code column exists (migration 0143 may not be applied)
+  const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+
+  const cols = ['serve_queue_id', 'attempt_number', 'officer_id', 'result',
+    'latitude', 'longitude', 'notes', 'attempt_type', 'photo_ids', 'signature_data'];
+  const vals = ['?', '?', '?', '?', '?', '?', '?', '?', '?', '?'];
+  const args: unknown[] = [
+    id, nextNum, body.officer_id ?? user?.id ?? null, finalResult,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type ?? null,
     JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+  ];
+  if (hasDispositionCol && dispositionCode) {
+    cols.push('disposition_code');
+    vals.push('?');
+    args.push(dispositionCode);
+  }
+
+  const ins = await execute(
+    db,
+    `INSERT INTO serve_attempts (${cols.join(', ')}) VALUES (${vals.join(', ')})`,
+    ...args,
   );
 
   let newStatus = queue.status;
-  if (result === 'served') newStatus = 'served';
+  if (finalResult === 'served') newStatus = 'served';
   else if (nextNum >= (queue.max_attempts || 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 
@@ -1929,10 +1991,19 @@ si.post('/:id/attempts', async (c) => {
 
   // Completion → auto-compute the serve charge (pending_review) so it shows up in
   // billing without a manual step. Mirrors serve.ts; best-effort — generateServeCharges
-  // swallows its own errors and never breaks the attempt write.
+  // never throws (it logs its own failures internally) and never breaks the
+  // attempt write.
   if (newStatus === 'served') {
     const { generateServeCharges } = await import('../utils/serveChargeStore');
-    await generateServeCharges(db, id).catch(() => null);
+    await generateServeCharges(db, id);
+  }
+
+  // Fire-and-forget: notify the client the job reached a terminal outcome.
+  // serveCompletionNotify.ts documents itself as callable from serve.ts's
+  // logAttempt(), but this intake path is the OTHER attempt-logging route and
+  // never called it either — jobs completed here never notified anyone.
+  if (newStatus === 'served' || newStatus === 'failed') {
+    notifyServeCompletion(db, id, newStatus).catch(() => {});
   }
 
   // Auto-replan on failure (PR 1) — spawn next slot, recompute tier

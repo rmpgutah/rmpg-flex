@@ -2,7 +2,7 @@
 // RMPG Flex — "What's Here" unified spatial query
 // ============================================================
 // When active, clicking anywhere on the map resolves the full geography
-// stack at that point in one popup: Area › Section › Zone › Beat (point-
+// stack at that point in one popup: Area › Sector › Zone › Beat (point-
 // in-polygon against beat geometry), County, Municipality, plus the
 // nearest statewide address point if that overlay is on. Turns every
 // overlay into a single point-and-identify dispatch tool.
@@ -110,6 +110,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
   // Monotonic click id — guards against an older nearest-address response
   // resolving after a newer click and overwriting the newer popup.
   const seqRef = useRef(0);
+  const streetAbortRef = useRef<AbortController | null>(null);
 
   // Warm the polygon datasets + imagery token the first time the tool is on.
   useEffect(() => {
@@ -169,7 +170,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       const baseRows: { label: string; value: string; color?: string }[] = [];
       if (beat) {
         baseRows.push({ label: 'Area', value: bp._areaName || '—', color: bp._areaColor });
-        baseRows.push({ label: 'Section', value: bp._sectionName || '—', color: bp._sectionColor });
+        baseRows.push({ label: 'Sector', value: bp._sectorName || '—', color: bp._sectorColor });
         baseRows.push({ label: 'Zone', value: bp._zoneName || '—', color: bp._zoneColor });
         baseRows.push({ label: 'Beat', value: bp.beat_code || bp.beat_id || '—' });
       }
@@ -318,14 +319,14 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       };
 
       const myId = ++seqRef.current;
-      render(null, null, true);
+      render(null, null, null, true);
       apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
         .then((d) => {
           if (myId !== seqRef.current) return; // a newer click superseded this
           const r = d?.results?.[0];
-          render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
+          render(r, null, null, false);
         })
-        .catch(() => { if (myId === seqRef.current) render(null, null, false); });
+        .catch(() => { if (myId === seqRef.current) render(null, null, null, false); });
     };
     map.on('click', handler);
     return () => { map.off('click', handler); streetAbortRef.current?.abort(); };

@@ -19,6 +19,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { geocodeAddress } from './geocode';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const fi = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -119,10 +120,7 @@ fi.get('/', async (c) => {
       },
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to list field interviews', code: 'LIST_FI_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to list field interviews', 'LIST_FI_ERROR');
   }
 });
 
@@ -172,10 +170,7 @@ fi.get('/stats', async (c) => {
       lastThirtyDays: lastThirtyDays?.count ?? 0,
     });
   } catch (err) {
-    return c.json({
-      error: 'Failed to get FI stats', code: 'FI_STATS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to get FI stats', 'FI_STATS_ERROR');
   }
 });
 
@@ -435,10 +430,7 @@ fi.post('/', async (c) => {
     );
     return c.json({ data: created }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create field interview', code: 'CREATE_FI_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create field interview', 'CREATE_FI_ERROR');
   }
 });
 

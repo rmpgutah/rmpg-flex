@@ -133,7 +133,7 @@ public struct DLParser {
 
     private static func extractDocumentNumber(from text: String, into id: inout ScannedID) {
         let patterns = [
-            "4d\\s+DLN?\\s*#?\\s*([A-Z0-9]+)",
+            "4D\\s+DLN?\\s*#?\\s*([A-Z0-9]+)",
             "DL[:\\.]?\\s*#?\\s*([A-Z0-9]+)",
             "LIC[:\\.]?\\s*#?\\s*([A-Z0-9]+)",
             "ID[:\\.]?\\s*#?\\s*([A-Z0-9]+)",

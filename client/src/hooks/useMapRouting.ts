@@ -13,11 +13,20 @@
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { mapboxgl } from '../utils/mapboxLoader';
-import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+// Type-only — erased at compile time. This hook is reachable from the
+// always-mounted NavTripContext (app-wide trip detection), so a runtime
+// `import { mapboxgl } from '../utils/mapboxLoader'` here was forcing the
+// full mapbox-gl + deck.gl SDK (~2.3MB) onto every authenticated session,
+// including roles that never touch a map. The two call sites that need the
+// real runtime value (new mapboxgl.Marker/.LngLatBounds) already receive an
+// already-instantiated `mapboxgl.Map`, so mapboxLoader is guaranteed to be
+// loaded by then — they import it dynamically at point of use instead
+// (2026-07-02 perf fix).
+import type mapboxgl from 'mapbox-gl';
+import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -33,6 +42,21 @@ export interface RouteStep {
   maneuverType: string;
   /** Mapbox maneuver modifier: left | right | straight | … (optional). */
   modifier?: string;
+  /**
+   * Lane guidance for this step's upcoming maneuver, if Mapbox provided it
+   * (only present at multi-lane decision points — absent on most steps).
+   */
+  lanes?: RouteStepLane[];
+}
+
+/** One lane's guidance state at a maneuver. */
+export interface RouteStepLane {
+  /** Whether this lane can be used to complete the upcoming maneuver. */
+  valid: boolean;
+  /** Mapbox's recommended lane, when provided. */
+  active: boolean;
+  /** Directions this lane permits, e.g. ["straight", "left"]. */
+  indications: string[];
 }
 
 export interface RouteInfo {
@@ -364,20 +388,17 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       setRouteLoading(true);
 
       try {
-        const token = await getMapboxAccessToken();
-        if (!token) return null;
-
         const coordStr = `${originLatLng.lng},${originLatLng.lat};${destinationLatLng.lng},${destinationLatLng.lat}`;
         // Feature 1: live traffic-aware routing. driving-traffic factors in
         // real-time speeds; annotations=congestion drives the colored line.
-        const url =
-          `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}` +
-          `?access_token=${token}&geometries=geojson&overview=full&steps=true&annotations=congestion`;
-
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-
-        const data = await res.json();
+        // Routed through the Worker's /api/mapbox/directions proxy (src/
+        // routes/mapbox.ts) instead of a direct api.mapbox.com call with an
+        // embedded public token — see useNavGuidanceEngine.ts for the
+        // sibling engine that made this same change first.
+        const data = await apiFetch<{ routes?: any[] }>(
+          `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
+          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
+        );
         const route = data.routes?.[0];
         if (!route) throw new Error('No route found');
 
@@ -457,12 +478,34 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           };
         });
 
+        const leg = route.legs?.[0] || {};
         const durationSec = leg.duration || 0;
         const distanceMeters = leg.distance || 0;
 
+        const ensureRouteLayer = () => {
+          if (!map) return;
+          if (!hasSource(map, SOURCE_ID)) {
+            try {
+              map.addSource(SOURCE_ID, {
+                type: 'geojson',
+                data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
+              });
+            } catch { /* ignore */ }
+          }
+          if (!hasLayer(map, LAYER_ID)) {
+            try {
+              map.addLayer({
+                id: LAYER_ID,
+                type: 'line',
+                source: SOURCE_ID,
+                paint: { 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.7 },
+              });
+            } catch { /* ignore */ }
+          }
+        };
         ensureRouteLayer();
 
-        const geojsonSource = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+        const geojsonSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
         if (geojsonSource) {
           geojsonSource.setData({
             type: 'Feature',
@@ -670,20 +713,15 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       const valid = units.filter((u) => Number.isFinite(u.lat) && Number.isFinite(u.lng)).slice(0, 9);
       if (!valid.length) return [];
       try {
-        const token = await getMapboxAccessToken();
-        if (!token) return [];
-
         const pts = [...valid.map((u) => ({ lng: u.lng, lat: u.lat })), { lng: dest.lng, lat: dest.lat }];
         const coordStr = pts.map((p) => `${p.lng},${p.lat}`).join(';');
         const destIdx = pts.length - 1;
         const sources = valid.map((_, i) => i).join(';');
-        const url =
-          `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coordStr}` +
-          `?access_token=${token}&sources=${sources}&destinations=${destIdx}&annotations=duration,distance`;
-
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Matrix HTTP ${res.status}`);
-        const data = await res.json();
+        // Routed through /api/mapbox/matrix — see queryRoute above.
+        const data = await apiFetch<{ durations?: (number | null)[][]; distances?: (number | null)[][] }>(
+          `/mapbox/matrix?coordinates=${encodeURIComponent(coordStr)}` +
+          `&profile=driving-traffic&sources=${sources}&destinations=${destIdx}&annotations=duration,distance`,
+        );
 
         const ranked: UnitDriveTime[] = valid.map((u, i) => {
           const etaSec = data.durations?.[i]?.[0];
@@ -760,8 +798,10 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
       setMultiStopLoading(true);
       try {
-        const token = await getMapboxAccessToken();
-        if (!token) return null;
+        // Loaded dynamically, not statically imported at module scope (see
+        // the header comment) — `map` above is already a live mapboxgl.Map
+        // instance, so this resolves from the already-warm module cache.
+        const { mapboxgl } = await import('../utils/mapboxLoader');
 
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];
@@ -777,14 +817,12 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // return-to-unit leg from the drawn line + ETA below — dispatch doesn't
         // need the officer to loop back to where they started. steps=true gives
         // per-leg geometry so the line can be rebuilt without that return leg.
-        const url =
-          `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordStr}` +
-          `?access_token=${token}&source=first&roundtrip=true` +
-          `&geometries=geojson&overview=full&steps=true&annotations=duration,distance`;
-
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Optimization HTTP ${res.status}`);
-        const data = await res.json();
+        // Routed through /api/mapbox/optimization — see queryRoute above.
+        const data = await apiFetch<{ code?: string; trips?: any[]; waypoints?: any[] }>(
+          `/mapbox/optimization?coordinates=${encodeURIComponent(coordStr)}` +
+          `&profile=driving&source=first&roundtrip=true` +
+          `&steps=true&annotations=duration,distance`,
+        );
         if (data.code !== 'Ok' || !data.trips?.[0]) throw new Error(data.code || 'No trip');
 
         const trip = data.trips[0];

@@ -68,6 +68,7 @@ export default function JailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const [searchParams, setSearchParams] = useSearchParams();
   const [inmates, setInmates] = useState<Inmate[]>([]);
   const [loading, setLoading] = useState(true);

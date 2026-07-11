@@ -16,6 +16,13 @@ public final class AuthManager: ObservableObject {
         keychain.migrateIfNeeded()
     }
 
+    /// True when a prior login left a session in the Keychain — i.e. this
+    /// launch would silently restore a signed-in state via `restoreSession()`.
+    /// Callers use this to decide whether to gate the restore behind biometrics.
+    public var hasPersistedSession: Bool {
+        keychain.storedToken() != nil && keychain.storedRefreshToken() != nil
+    }
+
     public func restoreSession() async {
         guard let token = keychain.storedToken(),
               let refreshToken = keychain.storedRefreshToken() else {
@@ -24,11 +31,11 @@ public final class AuthManager: ObservableObject {
         await apiClient.setAuthToken(token)
 
         do {
-            let user: UserProfile = try await apiClient.request(Endpoint(
+            let response: MeResponse = try await apiClient.request(Endpoint(
                 path: "/api/auth/me",
                 method: .get
             ))
-            currentUser = user
+            currentUser = response.user
             isAuthenticated = true
         } catch {
             await attemptTokenRefresh(refreshToken: refreshToken)
@@ -49,16 +56,7 @@ public final class AuthManager: ObservableObject {
         keychain.storeRefreshToken(response.refreshToken)
         keychain.storeSessionId(response.sessionId)
 
-        currentUser = UserProfile(
-            id: response.userId,
-            username: response.username,
-            role: response.role,
-            fullName: response.fullName,
-            badgeNumber: response.badgeNumber,
-            email: response.email,
-            phone: response.phone,
-            status: "active"
-        )
+        currentUser = response.user
         isAuthenticated = true
         authError = nil
     }
@@ -74,14 +72,22 @@ public final class AuthManager: ObservableObject {
         isAuthenticated = false
     }
 
+    /// POST /api/auth/change-password — verified against src/routes/auth.ts.
+    /// This used to call `PUT /api/auth/password` with plain camelCase JSON
+    /// keys (`currentPassword`/`newPassword`), but that route destructures
+    /// `current_password`/`new_password` (snake_case) with no fallback —
+    /// every call would have failed with a 400 "required" error regardless
+    /// of what was actually typed. `/change-password` is a dedicated alias
+    /// the server documents as existing specifically to accept camelCase
+    /// bodies from a client like this one.
     public func changePassword(current: String, new: String) async throws {
         let body = try JSONEncoder().encode(ChangePasswordRequest(
             currentPassword: current,
             newPassword: new
         ))
         try await apiClient.requestVoid(Endpoint(
-            path: "/api/auth/password",
-            method: .put,
+            path: "/api/auth/change-password",
+            method: .post,
             body: body
         ))
     }
@@ -100,11 +106,11 @@ public final class AuthManager: ObservableObject {
             keychain.storeToken(response.token)
             keychain.storeRefreshToken(response.refreshToken)
 
-            let user: UserProfile = try await apiClient.request(Endpoint(
+            let meResponse: MeResponse = try await apiClient.request(Endpoint(
                 path: "/api/auth/me",
                 method: .get
             ))
-            currentUser = user
+            currentUser = meResponse.user
             isAuthenticated = true
         } catch {
             await apiClient.setAuthToken(nil)
@@ -138,17 +144,15 @@ struct LoginRequest: Codable {
     let password: String
 }
 
+public struct MeResponse: Codable, Sendable {
+    public let user: UserProfile
+}
+
 public struct LoginResponse: Codable, Sendable {
     public let token: String
     public let refreshToken: String
     public let sessionId: String
-    public let userId: Int
-    public let username: String
-    public let role: String
-    public let fullName: String
-    public let badgeNumber: String?
-    public let email: String?
-    public let phone: String?
+    public let user: UserProfile
 }
 
 struct RefreshRequest: Codable {

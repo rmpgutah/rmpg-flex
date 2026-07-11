@@ -9,6 +9,8 @@ import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdome
 import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
 import { log } from '../../utils/logger';
+import { parseZoneFeatures, pointInAnyPolygon, diffZoneMembership } from '../../utils/geofenceZones';
+import { broadcastAll } from '../ws';
 
 const gps = new Hono<Env>();
 
@@ -290,6 +292,85 @@ gps.post('/', async (c) => {
       }
     }
 
+    // ── Geofence entry/exit detection ─────────────────────────
+    // Best-effort: test the unit's latest fix against every active
+    // geofence_zones polygon, diff against its last known zone
+    // (unit_geofence_state), and log + broadcast any enter/exit/transfer.
+    // Never blocks the breadcrumb write — errors are swallowed and logged.
+    if (unitId && lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+      try {
+        const zones = await query<{ id: number; zone_name: string; zone_type: string; geojson_data: string }>(
+          db, 'SELECT id, zone_name, zone_type, geojson_data FROM geofence_zones WHERE is_active = 1');
+
+        const zoneNameById = new Map<number, string>();
+        const zoneTypeById = new Map<number, string>();
+        for (const zone of zones) {
+          zoneNameById.set(zone.id, zone.zone_name);
+          zoneTypeById.set(zone.id, zone.zone_type);
+        }
+
+        let currentZoneId: number | null = null;
+        for (const zone of zones) {
+          const parsedZones = parseZoneFeatures(zone.geojson_data);
+          const inside = parsedZones.some((pz) => pointInAnyPolygon(lastPt.longitude, lastPt.latitude, pz.polygons));
+          if (inside) {
+            currentZoneId = zone.id;
+            break; // first match wins — a unit is only ever "in" one zone
+          }
+        }
+
+        const priorState = await queryFirst<{ zone_id: number }>(
+          db, 'SELECT zone_id FROM unit_geofence_state WHERE unit_id = ?', unitId);
+        const priorZoneId = priorState?.zone_id ?? null;
+
+        const transition = diffZoneMembership(priorZoneId, currentZoneId);
+        if (transition) {
+          const transitionEvents: { zoneId: number; eventType: 'enter' | 'exit' }[] =
+            transition.type === 'transfer'
+              ? [
+                  { zoneId: transition.exitedZoneId, eventType: 'exit' },
+                  { zoneId: transition.enteredZoneId, eventType: 'enter' },
+                ]
+              : [{ zoneId: transition.zoneId, eventType: transition.type }];
+
+          for (const ev of transitionEvents) {
+            await execute(db,
+              `INSERT INTO geofence_events (unit_id, zone_id, event_type, latitude, longitude)
+               VALUES (?, ?, ?, ?, ?)`,
+              unitId, ev.zoneId, ev.eventType, lastPt.latitude, lastPt.longitude);
+
+            broadcastAll('geofence_alert', {
+              unit_id: unitId,
+              call_sign: callSign,
+              zone_id: ev.zoneId,
+              zone_name: zoneNameById.get(ev.zoneId) ?? null,
+              zone_type: zoneTypeById.get(ev.zoneId) ?? null,
+              event_type: ev.eventType,
+              latitude: lastPt.latitude,
+              longitude: lastPt.longitude,
+            });
+          }
+
+          log.info(`[gps] unit ${callSign ?? unitId} geofence ${transition.type}`, { unitId, transition });
+        }
+
+        if (currentZoneId != null) {
+          await execute(db,
+            `INSERT INTO unit_geofence_state (unit_id, zone_id, entered_at)
+             VALUES (?, ?, datetime('now'))
+             ON CONFLICT(unit_id) DO UPDATE SET
+               zone_id = excluded.zone_id,
+               entered_at = CASE WHEN unit_geofence_state.zone_id != excluded.zone_id
+                                  THEN excluded.entered_at ELSE unit_geofence_state.entered_at END`,
+            unitId, currentZoneId);
+        } else if (priorZoneId != null) {
+          await execute(db, 'DELETE FROM unit_geofence_state WHERE unit_id = ?', unitId);
+        }
+      } catch (err) {
+        log.error('[gps] geofence detection failed (non-fatal)', {}, err);
+      }
+    }
+
     // Trip engine: feed every fix through applyTripEvent so the pure engine
     // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
     // live GPS writes are what OPEN and append them.
@@ -523,7 +604,7 @@ gps.get('/dwell-times', async (c) => {
          AND (julianday('now') - julianday(COALESCE(u.gps_updated_at, u.updated_at))) * 1440 > 5
        ORDER BY dwell_minutes DESC LIMIT 50`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /dwell-times failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-zones — recent high-speed events by zone.
@@ -537,7 +618,7 @@ gps.get('/speed-zones', async (c) => {
        WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-4 hours')
        ORDER BY g.speed DESC LIMIT 100`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-zones failed', {}, err); return c.json([]); }
 });
 
 // ── Breadcrumb trail aggregation (Map "Breadcrumbs" layer + replay panel) ──
@@ -679,7 +760,7 @@ gps.get('/units-with-trails', async (c) => {
         GROUP BY g.unit_id
         ORDER BY call_sign`);
     return c.json(rows);
-  } catch (err) { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /units-with-trails failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-violations — recent speed violations for the map overlay.
@@ -700,7 +781,7 @@ gps.get('/speed-violations', async (c) => {
        WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-' || ? || ' hours')
        ORDER BY g.speed DESC LIMIT 200`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-violations failed', {}, err); return c.json([]); }
 });
 
 // POST /dispatch/gps/speed-violations/:id/acknowledge
@@ -733,7 +814,7 @@ gps.get('/pursuit-segments', async (c) => {
        GROUP BY cfs.id
        ORDER BY cfs.received_at DESC LIMIT 50`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /pursuit-segments failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/speed-heatmap — grid-aggregated speed data for map overlay.
@@ -752,7 +833,7 @@ gps.get('/speed-heatmap', async (c) => {
        HAVING point_count >= 2
        ORDER BY avg_speed DESC LIMIT 500`, hours);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { log.error('[gps] GET /speed-heatmap failed', {}, err); return c.json([]); }
 });
 
 // GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units

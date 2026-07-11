@@ -288,12 +288,9 @@ export function attemptTrapRecovery(): string[] {
 export function recoverIfTrapped(): string[] {
   const actions: string[] = [];
   try {
-    // Always release overflow locks — an async error may have stranded
-    // overflow:hidden on body even when no blocking overlay is visible
-    // (e.g. the modal that set the lock was already removed by a later
-    // render, but the inline overflow style was never restored).
-    actions.push(...releaseOverflowLocks());
     const blockers = findBlockingOverlays();
+    if (blockers.length === 0) return actions;
+    actions.push(...releaseOverflowLocks());
     for (const he of blockers) actions.push(neutralizeOverlay(he));
   } catch { /* best effort */ }
   return actions;

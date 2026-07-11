@@ -2,7 +2,7 @@
 // RMPG Flex — Activity Choropleth (calls × geography)
 // ============================================================
 // Colors the beat polygons by live call volume, aggregated at a selectable
-// level (Beat / Zone / Section / Area). Each active call is binned into its
+// level (Beat / Zone / Sector / Area). Each active call is binned into its
 // containing beat via point-in-polygon (once), then beat counts are rolled
 // up to the chosen level — so switching level is instant and only the calls
 // changing triggers a re-bin.
@@ -14,8 +14,8 @@ import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats, findBeatAt } from '../pages/map/utils/districtGeoData';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
-export type ChoroLevel = 'beat' | 'zone' | 'section' | 'area';
-const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone', section: '_section', area: '_area' };
+export type ChoroLevel = 'beat' | 'zone' | 'sector' | 'area';
+const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone', sector: '_sector', area: '_area' };
 
 const SRC = 'choro-beats';
 const FILL = 'choro-fill';

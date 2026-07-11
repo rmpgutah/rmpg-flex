@@ -34,6 +34,7 @@ import {
 import { getDb, queryFirst, execute } from '../../utils/db';
 import { verifySignedResource } from '../../utils/signedAccess';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
 const UPLOAD_SESSION_PREFIX = 'bodycam-upload:';
 const UPLOAD_SESSION_TTL = 86400; // 24 h
@@ -127,7 +128,7 @@ bodycamVideosRouter.post('/', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /personnel/bodycam-videos failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -181,7 +182,7 @@ bodycamVideosRouter.post('/upload-init', async (c) => {
     return c.json({ uploadId: mp.uploadId, totalChunks });
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/upload-init failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -246,7 +247,7 @@ bodycamVideosRouter.post('/upload-chunk', async (c) => {
     });
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/upload-chunk failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -331,7 +332,7 @@ bodycamVideosRouter.post('/upload-complete', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/upload-complete failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -360,7 +361,7 @@ bodycamVideosRouter.delete('/upload-abort/:uploadId', async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     console.error('DELETE /personnel/bodycam-videos/upload-abort failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -454,6 +455,6 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
     return new Response(obj.body, { status: 200, headers });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id/stream failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });

@@ -21,9 +21,12 @@ import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DocumentViewer from '../components/DocumentViewer';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
+import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
 // The Email page used to write every preference and the compose-draft cache
@@ -311,7 +314,7 @@ function ContactAutocompleteInput({
                 {contact.name && <div className="text-[11px] truncate">{contact.name}</div>}
                 <div className="text-[10px] text-rmpg-500 truncate">{contact.email}</div>
               </div>
-              <span className="text-[8px] text-rmpg-600 uppercase">{contact.source}</span>
+              <span className="text-[8px] text-rmpg-600 uppercase">{toDisplayLabel(contact.source)}</span>
             </button>
           ))}
         </div>
@@ -1042,6 +1045,12 @@ interface ComposeModalProps {
 }
 
 function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeModalProps) {
+  const prefill = replyMessage ? {
+    subject: mode === 'forward'
+      ? `Fwd: ${(replyMessage.subject || '').replace(/^Fwd:\s*/i, '')}`
+      : `Re: ${(replyMessage.subject || '').replace(/^Re:\s*/i, '')}`,
+    body: (replyMessage as any).body || '',
+  } : null;
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
@@ -1198,6 +1207,35 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      clearDraft(userId);
+      onSent();
+      onClose();
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    finally { setSending(false); }
+  };
+
+  const handleRedactionConfirm = async (redactedBody: string) => {
+    setRedactionPreview(null);
+    if (!to.trim()) { setError('Recipient is required'); return; }
+    if (!subject.trim()) { setError('Subject is required'); return; }
+    setSending(true);
+    setError('');
+    try {
+      let endpoint = '/email/send';
+      let payload: any = {
+        to: to.split(',').map(s => s.trim()),
+        subject,
+        body: redactedBody,
+        attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
+        importance: importance !== 'normal' ? importance : undefined,
+        requestReadReceipt: readReceipt || undefined,
+      };
+      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body: redactedBody }; }
+      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body: redactedBody }; }
+      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body: redactedBody }; }
+      if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
+      if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
       await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       clearDraft(userId);
       onSent();
@@ -1930,7 +1968,7 @@ interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -2225,7 +2263,7 @@ export default function EmailPage() {
   const debouncedFolderRefresh = useCallback(() => {
     if (folderRefreshTimerRef.current) clearTimeout(folderRefreshTimerRef.current);
     folderRefreshTimerRef.current = setTimeout(() => {
-      apiFetch<EmailFolder[]>('/email/folders').then(setFolders).catch((err) => { console.warn('[EmailPage] refresh folders failed:', err); });
+      apiFetch<EmailFolder[]>('/email/folders').then(d => setFolders(asArray(d))).catch((err) => { console.warn('[EmailPage] refresh folders failed:', err); });
     }, 500);
   }, []);
 
@@ -2884,12 +2922,12 @@ export default function EmailPage() {
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
         if (searchFilters.unreadOnly && msg.isRead) return false;
         if (searchFilters.dateFrom) {
-          const msgTime = new Date(msg.receivedAt).getTime();
+          const msgTime = parseTimestamp(msg.receivedAt).getTime();
           const fromTime = new Date(searchFilters.dateFrom).getTime();
           if (!Number.isNaN(msgTime) && !Number.isNaN(fromTime) && msgTime < fromTime) return false;
         }
         if (searchFilters.dateTo) {
-          const msgTime = new Date(msg.receivedAt).getTime();
+          const msgTime = parseTimestamp(msg.receivedAt).getTime();
           const endOfDay = new Date(searchFilters.dateTo);
           endOfDay.setHours(23, 59, 59, 999);
           const toTime = endOfDay.getTime();

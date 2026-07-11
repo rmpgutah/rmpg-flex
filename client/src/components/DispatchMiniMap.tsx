@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw, Car, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance, classifyMapboxError } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
@@ -138,8 +138,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
   const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // Classify error: auth/config vs connectivity
-  const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
+  // `error` is only ever set for auth/config failures — the token-fetch
+  // catch block below, and classifyMapboxError's isAuthErr gate on the
+  // runtime error listener — so no further substring classification is
+  // needed here (a raw "Unauthorized" 401 message wouldn't have matched
+  // the old token/configured substring check, silently showing nothing).
+  const isAuthError = error != null;
 
   // Routing (auto-route when a single assigned unit has GPS)
   const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
@@ -190,8 +194,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // GPS poll never re-centers the map ("reload while the unit moves") or
   // disturbs the static call pin.
   useEffect(() => {
-    if (!loaded || !mapRef.current) return;
-    const map = mapRef.current;
+    // Deliberately does NOT bail on `!mapRef.current` — the block below at
+    // `if (!mapRef.current) { ... }` is what CREATES the map on first run,
+    // when the ref is still null. Bailing here as well made the map creation
+    // branch unreachable: the mini-map never initialized on first mount, or
+    // after a WebGL-loss rebuild (which also nulls mapRef.current).
+    if (!loaded) return;
 
     // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
     // so a call with bad coordinates never anchors the map / drops a teardrop.
@@ -209,13 +217,22 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (!mapRef.current) {
       recoverCamRef.current = null;
       const map = new mapboxgl.Map({
-        container: mapContainerRef.current,
+        container: mapContainerRef.current!,
         style: MAPBOX_STYLE_DARK,
         center,
         zoom,
         attributionControl: false,
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+      // Mapbox's async style/tile-load failures (bad/expired token, etc.) only
+      // fire this event — they never throw a catchable exception — so without
+      // this handler the map silently renders blank/black with zero indication
+      // of what's wrong. Only surface auth errors (bad token); network blips
+      // are retried internally by Mapbox GL and shouldn't interrupt the view.
+      map.on('error', (e) => {
+        const { message, isAuthErr } = classifyMapboxError(e);
+        if (isAuthErr) setError(message);
+      });
       mapRef.current = map;
       registerMapInstance(map);
       setMapReady(true); // re-render so useMapRouting picks up the real map instance
@@ -265,7 +282,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         const label = callMarkerRef.current.getElement()?.querySelector('span');
         if (label) label.textContent = call!.call_number || 'CALL';
       } else {
-        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
+        const el = buildCallMarker(call!.call_number || 'CALL', call!.priority);
         callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([call!.longitude!, call!.latitude!])
           .addTo(mapRef.current);

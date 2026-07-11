@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ExternalLink, Navigation, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
+import { describeServeScheduleError } from '../../utils/serveScheduleErrors';
 import WeekTimeline from './WeekTimeline';
 import MonthGrid from './MonthGrid';
 import type { ScheduleSlot } from '../../utils/schedulerView';
@@ -74,7 +75,7 @@ export default function ServeSchedulerPanel() {
       refetch();
       // Best-effort toast — `alert` is the project's existing fallback.
       // eslint-disable-next-line no-alert
-      alert(`Could not move attempt: ${e instanceof Error ? e.message : 'unknown error'}`);
+      alert(`Could not move attempt: ${describeServeScheduleError(e).message}`);
     }
   }, [refetch]);
 

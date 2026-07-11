@@ -9,6 +9,7 @@ import type { TrespassOrder, TrespassOrderType } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +27,7 @@ import { formatAddressDisplay } from '../utils/statusLabels';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -793,7 +795,7 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-rmpg-100 font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-rmpg-100">{selectedOrder.property_name || '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100">{formatAddressDisplay(selectedOrder.location)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100 flex items-center gap-1.5">{formatAddressDisplay(selectedOrder.location)}<ViewOnMapLink address={selectedOrder.location} label={selectedOrder.property_name} /></div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
@@ -987,7 +989,7 @@ export default function TrespassOrdersPage() {
           <>
             <div><span className="text-rmpg-500">Order</span> <span className="font-mono text-rmpg-100">{orderToDelete.order_number}</span></div>
             <div><span className="text-rmpg-500">Subject</span> <span className="text-rmpg-100">{orderToDelete.subject_last_name}, {orderToDelete.subject_first_name}</span></div>
-            <div><span className="text-rmpg-500">Status</span> <span className="text-rmpg-100 capitalize">{orderToDelete.status}</span></div>
+            <div><span className="text-rmpg-500">Status</span> <span className="text-rmpg-100 capitalize">{toDisplayLabel(orderToDelete.status)}</span></div>
             {orderToDelete.property_name && (
               <div><span className="text-rmpg-500">Property</span> <span className="text-rmpg-100">{orderToDelete.property_name}</span></div>
             )}

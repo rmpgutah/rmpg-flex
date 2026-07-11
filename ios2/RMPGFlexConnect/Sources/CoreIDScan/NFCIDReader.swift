@@ -41,28 +41,33 @@ public final class NFCIDReader: NSObject, ObservableObject, @preconcurrency NFCT
                 return
             }
 
-            var id = ScannedID(documentType: .unknown, confidence: 0.5)
-
+            // NOTE: this only confirms a chip is present and reports its raw
+            // UID/protocol — it does NOT read the chip's actual data. Reading
+            // an eMRTD (ePassport/enhanced ID) chip requires a full Basic
+            // Access Control handshake (ICAO 9303 Part 11: derive keys from
+            // the MRZ, GET CHALLENGE / EXTERNAL AUTHENTICATE, then secure-
+            // messaging APDUs to read EF.DG1/DG2) which is not implemented
+            // here. Never fabricate name/DOB/etc. from tag presence alone —
+            // that data would be fictional and must not reach a person record.
+            let uid: String
+            let protocolName: String
             switch tag {
             case .iso7816(let t):
-                id = ScannedID(documentType: .passport, firstName: "NFC", lastName: "ePassport",
-                               documentNumber: t.identifier.map { String(format: "%02X", $0) }.joined(),
-                               nationality: "NFC", confidence: 0.6)
+                uid = t.identifier.map { String(format: "%02X", $0) }.joined()
+                protocolName = "ISO 7816 (possible ePassport/eID chip)"
             case .iso15693(let t):
-                id = ScannedID(documentType: .driversLicense, firstName: "NFC", lastName: "mDL",
-                               documentNumber: t.identifier.map { String(format: "%02X", $0) }.joined(),
-                               issuingState: "NFC", confidence: 0.6)
+                uid = t.identifier.map { String(format: "%02X", $0) }.joined()
+                protocolName = "ISO 15693"
             case .miFare(let t):
-                id = ScannedID(documentType: .unknown, firstName: "NFC", lastName: "MiFare",
-                               documentNumber: t.identifier.map { String(format: "%02X", $0) }.joined(),
-                               confidence: 0.4)
+                uid = t.identifier.map { String(format: "%02X", $0) }.joined()
+                protocolName = "MiFare"
             default:
-                id = ScannedID(documentType: .unknown, firstName: "NFC", lastName: "Tag", confidence: 0.3)
+                uid = "unknown"
+                protocolName = "unrecognized tag"
             }
 
-            self.scannedID = id
-            self.onScan?(id)
-            session.alertMessage = "ID read: \(id.lastName ?? "Unknown")"
+            self.scanError = "Chip detected (\(protocolName), UID \(uid)) — automatic chip data extraction isn't implemented. Use the camera to scan the printed ID/barcode."
+            session.alertMessage = "Chip detected — use camera scan for data"
             session.invalidate()
             self.isScanning = false
         }

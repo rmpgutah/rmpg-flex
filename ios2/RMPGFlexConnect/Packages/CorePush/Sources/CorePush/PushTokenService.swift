@@ -1,5 +1,7 @@
 import Foundation
+#if os(iOS)
 import UIKit
+#endif
 
 public actor PushTokenService {
     private let apiClient: PushAPIClient
@@ -9,9 +11,11 @@ public actor PushTokenService {
     }
 
     public func registerForRemoteNotifications() {
+        #if os(iOS)
         DispatchQueue.main.async {
             UIApplication.shared.registerForRemoteNotifications()
         }
+        #endif
     }
 
     public func didRegisterForRemoteNotifications(deviceToken: Data) {

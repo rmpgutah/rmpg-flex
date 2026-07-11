@@ -10,6 +10,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 101: Subpoena Tracking Workflow ───────────────
    Spillman Flex tracks subpoenas from issuance through
@@ -46,7 +48,7 @@ export function useSubpoenaTracking() {
       if (params?.caseNumber) query.set('caseNumber', params.caseNumber);
       if (params?.status) query.set('status', params.status);
       const result = await apiFetch<Subpoena[]>(`/court/subpoenas?${query}`);
-      if (result) setSubpoenas(result);
+      setSubpoenas(asArray<Subpoena>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -64,8 +66,8 @@ export function useSubpoenaTracking() {
   }, []);
 
   const pending = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'pending'), [subpoenas]);
-  const overdue = useMemo(() => subpoenas.filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && new Date(s.serviceDeadline) < new Date()), [subpoenas]);
-  const upcoming = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'served' && !s.appearanceConfirmed && new Date(s.courtDate) > new Date()), [subpoenas]);
+  const overdue = useMemo(() => subpoenas.filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && parseTimestamp(s.serviceDeadline) < new Date()), [subpoenas]);
+  const upcoming = useMemo(() => subpoenas.filter(s => s.serviceStatus === 'served' && !s.appearanceConfirmed && parseTimestamp(s.courtDate) > new Date()), [subpoenas]);
 
   return { subpoenas, loading, load, create, update, pending, overdue, upcoming };
 }
@@ -91,8 +93,8 @@ export function trackServiceDeadlines(subpoenas: Subpoena[]): ServiceDeadline[] 
   return subpoenas
     .filter(s => s.serviceStatus !== 'served' && s.serviceStatus !== 'cancelled' && s.serviceStatus !== 'quashed')
     .map(s => {
-      const deadline = new Date(s.serviceDeadline);
-      const courtDate = new Date(s.courtDate);
+      const deadline = parseTimestamp(s.serviceDeadline);
+      const courtDate = parseTimestamp(s.courtDate);
       const daysUntilDeadline = Math.ceil((deadline.getTime() - now.getTime()) / 86400000);
       const daysUntilCourt = Math.ceil((courtDate.getTime() - now.getTime()) / 86400000);
 
@@ -211,7 +213,7 @@ export function useCourtAppearances() {
       if (params?.date) query.set('date', params.date);
       if (params?.officerId) query.set('officerId', params.officerId);
       const result = await apiFetch<CourtAppearance[]>(`/court/appearances?${query}`);
-      if (result) setAppearances(result);
+      setAppearances(asArray<CourtAppearance>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -253,7 +255,7 @@ export function checkSubpoenaCompliance(subpoenas: Subpoena[]): SubpoenaComplian
   const now = new Date();
 
   return subpoenas
-    .filter(s => new Date(s.courtDate) < now)
+    .filter(s => parseTimestamp(s.courtDate) < now)
     .map(s => {
       const served = s.serviceStatus === 'served';
       const appeared = s.appearanceConfirmed;
@@ -312,12 +314,12 @@ export function useDiscoveryManagement() {
     try {
       const query = caseNumber ? `?caseNumber=${caseNumber}` : '';
       const result = await apiFetch<DiscoveryObligation[]>(`/court/discovery${query}`);
-      if (result) setObligations(result);
+      setObligations(asArray<DiscoveryObligation>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
 
-  const overdue = useMemo(() => obligations.filter(d => d.status === 'overdue' || (d.status === 'pending' && new Date(d.dueDate) < new Date())), [obligations]);
+  const overdue = useMemo(() => obligations.filter(d => d.status === 'overdue' || (d.status === 'pending' && parseTimestamp(d.dueDate) < new Date())), [obligations]);
   const pending = useMemo(() => obligations.filter(d => d.status === 'pending' || d.status === 'in_progress'), [obligations]);
 
   return { obligations, loading, load, overdue, pending };
@@ -349,7 +351,7 @@ export function useEvidenceSubpoena() {
     setLoading(true);
     try {
       const result = await apiFetch<EvidenceSubpoena[]>('/court/evidence-subpoenas');
-      if (result) setSubpoenas(result);
+      setSubpoenas(asArray<EvidenceSubpoena>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -382,7 +384,7 @@ export function useWitnessAvailability() {
     try {
       const query = caseNumber ? `?caseNumber=${caseNumber}` : '';
       const result = await apiFetch<WitnessAvailability[]>(`/court/witness-availability${query}`);
-      if (result) setWitnesses(result);
+      setWitnesses(asArray<WitnessAvailability>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -417,7 +419,7 @@ export function generateSubpoenaBatch(
   generatedBy: string
 ): SubpoenaBatch {
   // Service deadline: typically 14 days before court for witnesses, 7 for officers
-  const deadlineDate = new Date(courtDate);
+  const deadlineDate = parseTimestamp(courtDate);
   deadlineDate.setDate(deadlineDate.getDate() - 14);
 
   return {

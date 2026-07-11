@@ -6,11 +6,13 @@
 // equipment inventory, and veterinary schedule.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 41: K-9 Health Tracking */
 export interface K9HealthRecord { k9Id: string; k9Name: string; breed: string; dob: string; weight: number; lastVetVisit: string; nextVetVisit: string; vaccinations: Array<{ name: string; date: string; nextDue: string }>; medicalConditions: string[]; medications: Array<{ name: string; dosage: string; frequency: string }>; diet: string; notes: string; }
 export function generateHealthReport(k9: K9HealthRecord): { status: 'healthy'|'needs_attention'|'urgent'; upcomingAppointments: number; overdueVaccinations: string[]; weightTrend: string } {
-  const now = new Date(); const overdue = k9.vaccinations.filter(v => new Date(v.nextDue) < now).map(v => v.name);
-  const upcoming = k9.vaccinations.filter(v => { const d = new Date(v.nextDue); return d > now && d.getTime() - now.getTime() < 30*86400000; }).length;
+  const now = new Date(); const overdue = k9.vaccinations.filter(v => parseTimestamp(v.nextDue) < now).map(v => v.name);
+  const upcoming = k9.vaccinations.filter(v => { const d = parseTimestamp(v.nextDue); return d > now && d.getTime() - now.getTime() < 30*86400000; }).length;
   let status: 'healthy'|'needs_attention'|'urgent' = 'healthy';
   if (overdue.length > 2) status = 'urgent'; else if (overdue.length > 0) status = 'needs_attention';
   return { status, upcomingAppointments: upcoming, overdueVaccinations: overdue, weightTrend: 'stable' };
@@ -48,7 +50,7 @@ export interface K9Certification { id: string; k9Id: string; certType: string; c
 export function useK9Certifications() {
   const certs = reactive<{items:K9Certification[];expiring:K9Certification[];complianceRate:number}>({ items: [], expiring: [], complianceRate: 0 });
   const checkCerts = (list: K9Certification[]) => {
-    const now = new Date(); const expiring = list.filter(c => { const d = new Date(c.expirationDate); return (d.getTime() - now.getTime()) / 86400000 < 90 && c.status !== 'expired'; });
+    const now = new Date(); const expiring = list.filter(c => { const d = parseTimestamp(c.expirationDate); return (d.getTime() - now.getTime()) / 86400000 < 90 && c.status !== 'expired'; });
     const active = list.filter(c => c.status === 'active').length;
     return { items: list, expiring, complianceRate: list.length > 0 ? Math.round(active / list.length * 100) : 100 };
   };

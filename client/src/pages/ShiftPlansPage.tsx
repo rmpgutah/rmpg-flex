@@ -44,7 +44,7 @@
 //     on the Map page's shift planning overlay).
 // ============================================================
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
@@ -108,7 +108,7 @@ function PlanStatusBadge({ status }: { status: string }) {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -128,6 +128,7 @@ export default function ShiftPlansPage() {
   const sp = useShiftPlanning();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const pendingDeepLinkPlanRef = useRef<string | null>(null);
 
   // Role gate — admin / manager / supervisor can create, edit, delete
   const canManage = MANAGE_ROLES.has(user?.role ?? '');

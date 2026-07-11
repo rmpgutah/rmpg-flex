@@ -13,6 +13,8 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
+import { asArray } from '../utils/asArray';
+import { safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -29,7 +31,7 @@ export interface PremiseAlertInfo {
 export interface GeofenceZone {
   id: string;
   name: string;
-  type: 'perimeter' | 'exclusion' | 'watch';
+  type: 'exclusion' | 'inclusion' | 'alert' | 'patrol_required';
   coordinates: [number, number][];
   color: string;
   active: boolean;
@@ -58,9 +60,10 @@ const ALERT_LEVEL_COLORS: Record<string, string> = {
 };
 
 const ZONE_TYPE_COLORS: Record<string, string> = {
-  perimeter: '#ef4444',
-  exclusion: '#f59e0b',
-  watch: '#3b82f6',
+  exclusion: '#ef4444',
+  alert: '#f59e0b',
+  inclusion: '#22c55e',
+  patrol_required: '#3b82f6',
 };
 
 function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): string {
@@ -103,8 +106,31 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
   // Fetch geofence zones
   const refreshGeofences = useCallback(async () => {
     try {
-      const data = await apiFetch<GeofenceZone[]>('/dispatch/geography/geofences');
-      if (data) setGeofences(data);
+      // geofence_zones is the table DrawGeofenceTool.tsx actually writes to
+      // (POST /geofences). This hook previously read '/dispatch/calls/geofences'
+      // — a DIFFERENT table nothing else populates — so a zone drawn on the
+      // map never showed up here; it looked like drawing silently failed.
+      type GeofenceRow = {
+        id: number; zone_name: string; zone_type: string;
+        geojson_data: string; color: string; is_active: number;
+      };
+      const rows = await apiFetch<GeofenceRow[]>('/geofences');
+      const parsed: GeofenceZone[] = asArray<GeofenceRow>(rows).flatMap((row) => {
+        let fc: any;
+        try { fc = JSON.parse(row.geojson_data); } catch { return []; }
+        const features = Array.isArray(fc?.features) ? fc.features : [];
+        return features
+          .filter((f: any) => f?.geometry?.type === 'Polygon' && Array.isArray(f.geometry.coordinates?.[0]))
+          .map((f: any) => ({
+            id: String(row.id),
+            name: row.zone_name,
+            type: (row.zone_type as GeofenceZone['type']) || 'alert',
+            coordinates: f.geometry.coordinates[0].slice(0, -1) as [number, number][], // drop closing point (GeoJSON ring repeats it; the renderer re-closes it itself)
+            color: row.color,
+            active: row.is_active === 1,
+          }));
+      });
+      setGeofences(parsed);
     } catch (err) {
       devWarn('[GeofenceAlerts] Failed to fetch geofences', err);
     }
@@ -121,9 +147,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
 
     if (!enabled || geofences.length === 0) {
       [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(GEOFENCE_SOURCE)) map.removeSource(GEOFENCE_SOURCE);
+      safeRemoveSource(map, GEOFENCE_SOURCE);
       return;
     }
 
@@ -146,8 +172,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
         })),
     };
 
-    if (map.getSource(GEOFENCE_SOURCE)) {
-      (map.getSource(GEOFENCE_SOURCE) as mapboxgl.GeoJSONSource).setData(fc);
+    const existingSource = getSourceSafe<mapboxgl.GeoJSONSource>(map, GEOFENCE_SOURCE);
+    if (existingSource) {
+      existingSource.setData(fc);
     } else {
       map.addSource(GEOFENCE_SOURCE, { type: 'geojson', data: fc });
 
@@ -195,9 +222,9 @@ export function useMapGeofenceAlerts(map: mapboxgl.Map | null, mapLoaded: boolea
 
     return () => {
       [GEOFENCE_LABEL, GEOFENCE_LINE, GEOFENCE_FILL].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(GEOFENCE_SOURCE)) map.removeSource(GEOFENCE_SOURCE);
+      safeRemoveSource(map, GEOFENCE_SOURCE);
     };
   }, [map, mapLoaded, enabled, geofences]);
 

@@ -1,4 +1,5 @@
 // 10 media evidence features
+import { parseTimestamp } from './dateUtils';
 export interface VideoEvidence { id:string; caseNumber:string; source:string; duration:number; format:string; resolution:string; hasAudio:boolean; transcribed:boolean; transcriptionUrl:string|null; }
 export function analyzeVideoEvidence(video:VideoEvidence): {hasTranscription:boolean;evidentiaryValue:string} { return{hasTranscription:video.transcribed,evidentiaryValue:video.hasAudio&&video.duration>60?'high':video.duration>10?'medium':'low'}; }
 export interface AudioEvidence { id:string; caseNumber:string; source:string; duration:number; format:string; enhanced:boolean; transcribed:boolean; speakers:number; }
@@ -6,7 +7,7 @@ export function processAudioEvidence(audio:AudioEvidence): {needsEnhancement:boo
 export interface PhotoEvidence { id:string; caseNumber:string; photoType:string; resolution:string; hasMetadata:boolean; gpsLat:number|null; gpsLng:number|null; dateTaken:string|null; }
 export function validatePhotoEvidence(photos:PhotoEvidence[]): {total:number;withGPS:number;withDate:number;evidentiaryQuality:number} { return{total:photos.length,withGPS:photos.filter(p=>!!p.gpsLat).length,withDate:photos.filter(p=>!!p.dateTaken).length,evidentiaryQuality:photos.length>0?Math.round(photos.filter(p=>p.hasMetadata&&p.gpsLat).length/photos.length*100):0}; }
 export interface SurveillanceFootage { id:string; location:string; startTime:string; endTime:string; cameras:number; reviewed:boolean; personsIdentified:number; vehiclesIdentified:number; }
-export function analyzeSurveillance(footage:SurveillanceFootage[]): {totalHours:number;identificationRate:number;needsReview:number} { const hours=footage.reduce((s,f)=>(new Date(f.endTime).getTime()-new Date(f.startTime).getTime())/3600000,0); return{totalHours:Math.round(hours),identificationRate:0,needsReview:footage.filter(f=>!f.reviewed).length}; }
+export function analyzeSurveillance(footage:SurveillanceFootage[]): {totalHours:number;identificationRate:number;needsReview:number} { const hours=footage.reduce((s,f)=>(parseTimestamp(f.endTime).getTime()-parseTimestamp(f.startTime).getTime())/3600000,0); return{totalHours:Math.round(hours),identificationRate:0,needsReview:footage.filter(f=>!f.reviewed).length}; }
 export interface SocialMediaEvidence { id:string; caseNumber:string; platform:string; postUrl:string; capturedDate:string; screenshotTaken:boolean; preserved:boolean; }
 export function preserveSocialMedia(post:SocialMediaEvidence): {preservationSteps:string[];legalRequirements:string[]} { return{preservationSteps:['Screenshot','Screen recording','Archive.org capture','Metadata export'],legalRequirements:['Document chain of custody','Record date/time of capture','Note any editing']}; }
 export interface DroneFootage { id:string; caseNumber:string; operatorId:string; flightDate:string; duration:number; areaCovered:number; resolution:string; thermalImaging:boolean; }

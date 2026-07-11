@@ -5,7 +5,7 @@ import {
   Loader2, Navigation, Trash2,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, apiPostForm } from '../../hooks/useApi';
 import type { ServeJob, ServeAttemptData } from '../../types';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
@@ -272,10 +272,7 @@ export default function ServeAttemptModal({
       for (const file of toUpload) {
         const formData = new FormData();
         formData.append('file', file);
-        const result = await apiFetch<{ id: string; url: string }>('/uploads', {
-          method: 'POST',
-          body: formData,
-        });
+        const result = await apiPostForm<{ id: string; url: string }>('/uploads', formData);
         setPhotos(prev => [...prev, { id: result.id, url: result.url }]);
       }
     } catch {
