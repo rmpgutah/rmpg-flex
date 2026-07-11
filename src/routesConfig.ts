@@ -52,6 +52,7 @@
 import type { Hono } from 'hono';
 
 import auth from './routes/auth';
+import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import tiles from './routes/tiles';
@@ -258,6 +259,8 @@ export interface RouteMount {
 export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Public ─────────────────────────────────────────────────
   { prefix: '/api/health', router: health, auth: 'public' },
+  { prefix: '/api/auth/sso', router: ssoAuth, auth: 'public',
+    note: 'Dial Connect SSO (OIDC relying party) — BEFORE /api/auth so the longer prefix wins.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
