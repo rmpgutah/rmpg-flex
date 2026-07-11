@@ -330,6 +330,14 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [loginStep]);
 
+  // Focus the password field the moment it mounts (after the identifier-first
+  // SSO check falls through). loginStep stays 'username' for this whole
+  // screen, so the auto-focus effect above never fires again here -- without
+  // this, focus would stay stranded on the now-satisfied username field.
+  useEffect(() => {
+    if (showPasswordField) passwordRef.current?.focus();
+  }, [showPasswordField]);
+
   // Auto-submit TOTP when 6 digits entered (with ref guard to prevent double-submit)
   const totpSubmittingRef = useRef(false);
   useEffect(() => {
