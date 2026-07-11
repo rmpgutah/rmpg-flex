@@ -38,6 +38,7 @@ import type { Env } from '../types';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { getDb, queryFirst, execute, ensureDialerOidcColumns } from '../utils/db';
 import { mintLoginTokens, USER_SELECT } from './auth';
+import { log } from '../utils/logger';
 
 const oidc = new Hono<Env>();
 
@@ -99,9 +100,13 @@ oidc.get('/dialer/login', async (c) => {
 
   // Random CSRF state, single-use, KV-backed (mirrors the 2fa_pending TTL
   // pattern in auth.ts, just KV instead of a signed JWT since there's no
-  // user identity to bind yet at this point in the flow).
+  // user identity to bind yet at this point in the flow). The nonce is
+  // bound to this same state entry so the id_token returned in the
+  // callback can be proven to belong to this exact browser-initiated
+  // request (prevents id_token replay).
   const state = crypto.randomUUID();
-  await env.KV.put(`oidc:dialer:state:${state}`, '1', { expirationTtl: STATE_TTL_SECONDS });
+  const nonce = crypto.randomUUID();
+  await env.KV.put(`oidc:dialer:state:${state}`, JSON.stringify({ nonce }), { expirationTtl: STATE_TTL_SECONDS });
 
   const authUrl = new URL(discovery.authorization_endpoint);
   authUrl.searchParams.set('client_id', clientId);
@@ -109,6 +114,7 @@ oidc.get('/dialer/login', async (c) => {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'openid profile email');
   authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('nonce', nonce);
   return c.redirect(authUrl.toString(), 302);
 });
 
@@ -124,6 +130,11 @@ oidc.get('/dialer/callback', async (c) => {
   const stateValid = await env.KV.get(stateKey);
   if (!stateValid) return backToLogin('error', 'Sign-in session expired — please try again');
   await env.KV.delete(stateKey); // single-use
+  let expectedNonce: string | undefined;
+  try {
+    expectedNonce = (JSON.parse(stateValid) as { nonce?: string }).nonce;
+  } catch { /* legacy state entries without a nonce fail closed below */ }
+  if (!expectedNonce) return backToLogin('error', 'Sign-in session expired — please try again');
 
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
   const clientSecret = env.DIALER_OIDC_CLIENT_SECRET as string | undefined;
@@ -154,7 +165,7 @@ oidc.get('/dialer/callback', async (c) => {
       }),
     });
     if (!tokenRes.ok) {
-      console.error('[oidc] token exchange failed:', tokenRes.status, await tokenRes.text());
+      log.error('[oidc] token exchange failed', { traceId: c.get('traceId'), status: tokenRes.status });
       return backToLogin('error', 'Token exchange failed');
     }
     const tok = await tokenRes.json<{ id_token?: string }>();
@@ -173,6 +184,7 @@ oidc.get('/dialer/callback', async (c) => {
       issuer: discovery.issuer,
       audience: clientId,
     });
+    if (payload.nonce !== expectedNonce) return backToLogin('error', 'Could not verify dialer identity');
     if (!payload.sub) return backToLogin('error', 'id_token missing sub claim');
     sub = payload.sub;
     email = typeof payload.email === 'string' ? payload.email : undefined;
