@@ -334,7 +334,7 @@ export default function DownloadsPage() {
                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}
               >
-                <Smartphone className="w-5 h-5" style={{ color: '#d4a017' }} />
+                <Smartphone className="w-5 h-5" style={{ color: 'var(--brand-gold)' }} />
               </div>
             ) : (
               <img
@@ -359,12 +359,12 @@ export default function DownloadsPage() {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
             style={{
               background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
-              border: '1px solid #d4a017',
-              color: '#d4a017',
+              border: '1px solid var(--brand-gold)',
+              color: 'var(--brand-gold)',
               borderRadius: 2,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-raised) 100%)'; e.currentTarget.style.borderColor = '#e8b52a'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)'; e.currentTarget.style.borderColor = '#d4a017'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-raised) 100%)'; e.currentTarget.style.borderColor = 'rgb(var(--brand-gold-400-rgb))'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)'; e.currentTarget.style.borderColor = 'var(--brand-gold)'; }}
           >
             Open Dial Connect
             <ChevronRight className="w-3.5 h-3.5" />
