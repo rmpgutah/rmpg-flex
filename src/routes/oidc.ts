@@ -87,7 +87,7 @@ oidc.get('/dialer/login', async (c) => {
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
   const redirectUri = env.DIALER_OIDC_REDIRECT_URI as string | undefined;
   if (!clientId || !redirectUri || !env.DIALER_OIDC_ISSUER) {
-    return c.json({ error: 'Dialer SSO is not configured', code: 'NOT_CONFIGURED' }, 503);
+    return backToLogin('error', 'Dialer SSO is not configured');
   }
 
   let discovery: DiscoveryDoc;
@@ -95,7 +95,7 @@ oidc.get('/dialer/login', async (c) => {
     discovery = await getDiscoveryDoc(env);
   } catch (err) {
     console.error('[oidc] discovery fetch failed:', err);
-    return c.json({ error: 'Dialer SSO is temporarily unavailable', code: 'DISCOVERY_FAILED' }, 502);
+    return backToLogin('error', 'Dialer SSO is temporarily unavailable');
   }
 
   // Random CSRF state, single-use, KV-backed (mirrors the 2fa_pending TTL

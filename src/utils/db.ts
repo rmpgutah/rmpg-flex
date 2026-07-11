@@ -277,6 +277,10 @@ export async function ensureDialerOidcColumns(db: D1Database): Promise<void> {
     if (!(await columnExists(db, 'users', 'dialer_oidc_sub'))) {
       await db.prepare(`ALTER TABLE users ADD COLUMN dialer_oidc_sub TEXT`).run();
     }
+    await db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dialer_oidc_sub
+         ON users(dialer_oidc_sub) WHERE dialer_oidc_sub IS NOT NULL`
+    ).run();
   } catch {
     // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
   }
