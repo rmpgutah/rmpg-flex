@@ -287,6 +287,24 @@ export function buildPlateHistorySql(opts: { plate: string; sinceIso: string; li
   ].join(' ');
 }
 
+/**
+ * True distinct-plate and distinct-hit-plate counts since <sinceIso> —
+ * unbounded by LIMIT, unlike buildAlprSummarySql's top-N-by-volume rows.
+ * The AnalyticsPage "Distinct plates" / "Plates with a hit" cards used to
+ * read `summary.length` / a filter over the top-100-by-volume rows, so a
+ * less-frequent plate ranked 101st+ (including one that hit) was silently
+ * excluded from what the UI presented as a total count.
+ */
+export function buildAlprDistinctCountSql(opts: { sinceIso: string }): string {
+  const since = escapeSqlLiteral(opts.sinceIso);
+  return [
+    'SELECT COUNT(DISTINCT plate) AS distinct_plates,',
+    'COUNT(DISTINCT CASE WHEN critical_hit THEN plate END) AS distinct_hit_plates',
+    `FROM ${ANALYTICS_NAMESPACE}.${ALPR_TABLE}`,
+    `WHERE occurred_at >= '${since}'`,
+  ].join(' ');
+}
+
 /** Top plates by read volume since <sinceIso>, flagging any that ever hit. */
 export function buildAlprSummarySql(opts: { sinceIso: string; limit?: number }): string {
   const since = escapeSqlLiteral(opts.sinceIso);
@@ -341,7 +359,11 @@ export function buildCfsTrendsSql(opts: { sinceIso: string; limit?: number }): s
   const since = escapeSqlLiteral(opts.sinceIso);
   const limit = clampInt(opts.limit, 1, 200, 50);
   return [
-    'SELECT label AS call_type, priority, COUNT(*) AS calls',
+    // COUNT(DISTINCT entity_id), not COUNT(*): flex_events is an append-only
+    // warehouse with no dedup on write, so a retried/replayed cfs_created
+    // emission (network retry, webhook redelivery) would otherwise inflate
+    // this chart's call-volume numbers past the real count of distinct calls.
+    'SELECT label AS call_type, priority, COUNT(DISTINCT entity_id) AS calls',
     `FROM ${ANALYTICS_NAMESPACE}.${EVENTS_TABLE}`,
     `WHERE event_type = 'cfs_created' AND occurred_at >= '${since}'`,
     'GROUP BY label, priority ORDER BY calls DESC',

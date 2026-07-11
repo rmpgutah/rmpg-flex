@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -19,6 +19,7 @@ import { useToast } from '../components/ToastProvider';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
 import PerformanceTab from './serve/PerformanceTab';
+import AnalyticsTab from './serve/AnalyticsTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -46,10 +47,11 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -335,7 +337,7 @@ export default function ServePage() {
           number: a.attempt_number ?? i + 1,
           date: valid ? `${pad(at!.getMonth() + 1)}/${pad(at!.getDate())}/${at!.getFullYear()}` : '',
           time: valid ? at!.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
-          type: (a.attempt_type || '').replace(/_/g, ' '),
+          type: toDisplayLabel(a.attempt_type),
           result: (a as any).disposition_code || a.result || 'other',
           officerName: a.officer_name || '',
           notes: a.notes || '',
@@ -517,7 +519,7 @@ export default function ServePage() {
         documentType: job.document_type || 'Legal Documents',
         attempts,
         skipTraces: skipTraces.length > 0 ? skipTraces : undefined,
-        signature: user?.signature_data || undefined,
+        signature: (user as any)?.signature_data || undefined,
       });
 
       const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -693,7 +695,7 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/servemanager/sync', { method: 'POST', body: JSON.stringify({ type: 'incremental' }) });
       refreshJobs();
     } catch {
       addToast('Sync from ServeManager failed', 'error');
@@ -757,6 +759,7 @@ export default function ServePage() {
 
   const confirmDeleteJob = useCallback(async () => {
     if (!deleteJob) return;
+    const removed = deleteJob;
     setDeleting(true);
     try {
       await apiFetch(`/serve-intake/${deleteJob.id}`, { method: 'DELETE' });
@@ -764,26 +767,27 @@ export default function ServePage() {
       setExpandedJobId((prev) => (prev === deleteJob.id ? null : prev));
       addToast('Process-service job deleted', 'success');
       setDeleteJob(null);
+      setTimeout(refreshJobs, 600);
     } catch (e) {
+      setJobs((prev) => (prev.some((j) => j.id === removed.id) ? prev : [...prev, removed]));
       addToast(`Could not delete job: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
     } finally {
       setDeleting(false);
     }
-  }, [deleteJob, addToast]);
+  }, [deleteJob, addToast, refreshJobs]);
 
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
     const result = await apiFetch<{
-      dueDiligenceComplete?: boolean;
-      attemptNumber?: number;
-      jobStatus?: string;
+      queue_status: string;
+      attempt_number: number;
     }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
 
     // Optimistic update — move job to its new folder immediately without waiting for poll
-    const newStatus = (result.jobStatus as ServeJob['status']) || attemptJob.status;
+    const newStatus = (result.queue_status as ServeJob['status']) || attemptJob.status;
     const newClosedAt = (newStatus === 'served' || newStatus === 'failed')
       ? new Date().toISOString()
       : undefined;
@@ -802,7 +806,11 @@ export default function ServePage() {
 
     // Still refresh after short delay to sync any server-side changes
     setTimeout(refreshJobs, 600);
-    return result;
+    return {
+      attemptNumber: result.attempt_number,
+      jobStatus: result.queue_status,
+      dueDiligenceComplete: (result as any).due_diligence_complete,
+    };
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
   const handleDeleteAttempt = useCallback(async (queueId: number, attempt: ServeAttempt) => {
@@ -942,8 +950,35 @@ export default function ServePage() {
   const handleLoadCostEstimate = async (jobId: number) => {
     setCostJobId(jobId);
     try {
-      const data = await apiFetch<any>(`/process-server/${jobId}/cost-estimate`);
-      setCostEstimate(data);
+      const job = jobs.find(j => j.id === jobId);
+      const params = new URLSearchParams({
+        priority: job?.priority ?? 'normal',
+        attempts: String(job?.attempt_count ?? 1),
+      });
+      // GET /billing/cost-estimate returns a generic {subtotal, lines: [{pricing_code, ...}]}
+      // pricing engine response — reshape into the {costs: {...}} named-field shape this
+      // page renders (this route/path used to 404 entirely; /process-server/:id/cost-estimate
+      // never existed as a route).
+      const data = await apiFetch<{ subtotal: number; lines: Array<{ pricing_code: string; quantity: number; line_total: number }> }>(
+        `/billing/cost-estimate?${params}`);
+      const lineFor = (code: string) => data.lines.find(l => l.pricing_code === code);
+      const rush = lineFor('rush');
+      const extra = lineFor('extra_attempt');
+      const skip = lineFor('skip_trace');
+      const mileage = lineFor('mileage');
+      setCostEstimate({
+        costs: {
+          base_fee: lineFor('flat_serve')?.line_total ?? 0,
+          extra_attempts: extra?.quantity ?? 0,
+          extra_attempt_fee: extra?.line_total ?? 0,
+          rush_surcharge: rush?.line_total ?? 0,
+          skip_trace_count: skip?.quantity ?? 0,
+          skip_trace_fee: skip?.line_total ?? 0,
+          mileage: mileage?.quantity ?? 0,
+          mileage_fee: mileage?.line_total ?? 0,
+          total: data.subtotal,
+        },
+      });
     } catch { setCostEstimate(null); }
   };
 
@@ -1016,6 +1051,7 @@ export default function ServePage() {
       });
 
       map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
 
       mapRef.current = map;
       popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
@@ -1080,7 +1116,7 @@ export default function ServePage() {
     if (!map) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.remove());
+    markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
     markersRef.current = [];
 
     // Clear old route source layer
@@ -1157,7 +1193,7 @@ export default function ServePage() {
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
         .map(j => [j.recipient_lng!, j.recipient_lat!]);
 
-      if (coords.length > 1) {
+      if (coords.length > 1 && mapRef.current) {
         const sourceId = 'serve-route-line';
         routeSourceRef.current = sourceId;
         mapRef.current.addSource(sourceId, {
@@ -1177,7 +1213,7 @@ export default function ServePage() {
       }
     }
 
-    if (hasMarkers) {
+    if (hasMarkers && mapRef.current) {
       mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
@@ -1287,6 +1323,14 @@ export default function ServePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Build a Move-to-Folder submenu for a job ──
+  const buildMoveSubmenu = (job: ServeJob): ContextMenuItem[] => {
+    const currentFolder = deriveServeFolder(job);
+    return (['in_progress', 'pending', 'served', 'failed', 'archived'] as ServeFolder[])
+      .filter(f => f !== currentFolder)
+      .map(f => m.action(`Move to ${SERVE_FOLDER_CONFIG[f].label}`, () => handleMoveToFolder(job, f), { icon: <FolderOpen size={11} /> }));
+  };
+
   // ── Build a serve-job row context menu ──
   const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -1322,9 +1366,10 @@ export default function ServePage() {
         ].filter(Boolean),
       } as ContextMenuItem] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
-      moveSubmenu.length > 0
-        ? { label: 'Move to…', icon: <FolderOpen size={12} />, submenu: moveSubmenu }
-        : null,
+      // Build a Move-to-Folder submenu for this job.
+      ...(buildMoveSubmenu(job).length > 0
+        ? [{ label: 'Move to…', icon: <FolderOpen size={12} />, submenu: buildMoveSubmenu(job) } as ContextMenuItem]
+        : []),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),
       m.copyId(job.id),
@@ -1430,6 +1475,7 @@ export default function ServePage() {
           const role = user?.role ?? '';
           if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
           if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+          if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
           // Queue, Route, Map, Stats, My Run — visible to all
           return true;
         }).map(tab => {
@@ -1440,6 +1486,7 @@ export default function ServePage() {
             tab === 'Stats' ? BarChart3 :
             tab === 'Assign' ? Users :
             tab === 'Performance' ? BarChart3 :
+            tab === 'Analytics' ? LineChart :
             Route; // My Run
           return (
             <button type="button"
@@ -1583,7 +1630,7 @@ export default function ServePage() {
                       {jobs.length > 0 ? (
                         <>
                           <p className="text-sm text-rmpg-400 font-medium">
-                            {searchQuery ? `No jobs match "${searchQuery}"` : `No ${statusFilter.replace(/_/g, ' ')} jobs.`}
+                            {searchQuery ? `No jobs match "${searchQuery}"` : `No ${toDisplayLabel(statusFilter)} jobs.`}
                           </p>
                           <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
                             className="mt-2 text-[11px] text-brand-400 hover:text-brand-300 underline underline-offset-2">
@@ -1998,6 +2045,7 @@ export default function ServePage() {
           />
         )}
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
+        {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}

@@ -8,6 +8,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
 
 const SOURCE_ID = 'coord-grid';
 const LINE_LAYER = 'coord-grid-lines';
@@ -86,7 +87,7 @@ export function useMapCoordinateGrid(
     const zoom = map.getZoom();
     const geojson = buildGridGeoJson(bounds, zoom);
 
-    const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    const source = getSourceSafe(map, SOURCE_ID);
     if (source) {
       source.setData(geojson);
     }
@@ -98,9 +99,9 @@ export function useMapCoordinateGrid(
     if (enabled) {
       // Remove
       activeRef.current = false;
-      if (map.getLayer(LABEL_LAYER)) map.removeLayer(LABEL_LAYER);
-      if (map.getLayer(LINE_LAYER)) map.removeLayer(LINE_LAYER);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, LABEL_LAYER);
+      safeRemoveLayer(map, LINE_LAYER);
+      safeRemoveSource(map, SOURCE_ID);
       map.off('moveend', updateGrid);
       setEnabled(false);
       return;
@@ -113,11 +114,11 @@ export function useMapCoordinateGrid(
     const zoom = map.getZoom();
     const geojson = buildGridGeoJson(bounds, zoom);
 
-    if (!map.getSource(SOURCE_ID)) {
+    if (!hasSource(map, SOURCE_ID)) {
       map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
     }
 
-    if (!map.getLayer(LINE_LAYER)) {
+    if (!hasLayer(map, LINE_LAYER)) {
       map.addLayer({
         id: LINE_LAYER,
         type: 'line',
@@ -132,7 +133,7 @@ export function useMapCoordinateGrid(
       });
     }
 
-    if (!map.getLayer(LABEL_LAYER)) {
+    if (!hasLayer(map, LABEL_LAYER)) {
       map.addLayer({
         id: LABEL_LAYER,
         type: 'symbol',
@@ -163,11 +164,9 @@ export function useMapCoordinateGrid(
       if (!map) return;
       activeRef.current = false;
       map.off('moveend', updateGrid);
-      try {
-        if (map.getLayer(LABEL_LAYER)) map.removeLayer(LABEL_LAYER);
-        if (map.getLayer(LINE_LAYER)) map.removeLayer(LINE_LAYER);
-        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
-      } catch { /* map may be destroyed */ }
+      safeRemoveLayer(map, LABEL_LAYER);
+      safeRemoveLayer(map, LINE_LAYER);
+      safeRemoveSource(map, SOURCE_ID);
     };
   }, [map, updateGrid]);
 

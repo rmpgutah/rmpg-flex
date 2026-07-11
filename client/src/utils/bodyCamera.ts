@@ -6,6 +6,8 @@
 // workflow, courtroom presentation, and BWC analytics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 21: Camera Assignment */
 export interface BWCAssignment { officerId:string; cameraSerial:string; assignedDate:string; returnedDate:string|null; firmwareVersion:string; status:'assigned'|'active'|'returned'|'maintenance'; }
 export function trackCameraAssignments(assignments:BWCAssignment[]): { totalCameras:number; activeAssignments:number; unassigned:number } {
@@ -31,7 +33,7 @@ export function categorizeBWCFootage(recordings:BWCEvidence[]): { total:number; 
 /* FEATURE 24: Retention Compliance */
 export interface BWCRetention { recordingId:string; retentionPeriod:number; expirationDate:string; deleted:boolean; deletionDate:string|null; holdReason:string|null; }
 export function checkRetentionCompliance(records:BWCRetention[]): { total:number; expired:number; pastDue:number; onHold:number } {
-  const now = new Date(); return { total:records.length, expired:records.filter(r=>new Date(r.expirationDate)<now&&!r.deleted&&!r.holdReason).length, pastDue:records.filter(r=>new Date(r.expirationDate)<now&&!r.deleted).length, onHold:records.filter(r=>!!r.holdReason).length };
+  const now = new Date(); return { total:records.length, expired:records.filter(r=>parseTimestamp(r.expirationDate)<now&&!r.deleted&&!r.holdReason).length, pastDue:records.filter(r=>parseTimestamp(r.expirationDate)<now&&!r.deleted).length, onHold:records.filter(r=>!!r.holdReason).length };
 }
 
 /* FEATURE 25: Audit Review */
@@ -62,7 +64,7 @@ export function trackUploadProgress(uploads:BWCUpload[]): { pending:number; comp
 export interface BWVRedaction { recordingId:string; requestedBy:string; requestDate:string; redactionType:'face'|'license_plate'|'screen'|'audio'|'minor'|'confidential'; completedDate:string|null; reviewedBy:string|null; status:'pending'|'in_progress'|'completed'|'reviewed'; }
 export function trackRedactionWorkflow(redactions:BWVRedaction[]): { total:number; pending:number; avgCompletionDays:number } {
   const pending = redactions.filter(r=>r.status==='pending'||r.status==='in_progress');
-  const completed = redactions.filter(r=>r.completedDate).map(r=>(new Date(r.completedDate!).getTime()-new Date(r.requestDate).getTime())/86400000);
+  const completed = redactions.filter(r=>r.completedDate).map(r=>(parseTimestamp(r.completedDate!).getTime()-parseTimestamp(r.requestDate).getTime())/86400000);
   return { total:redactions.length, pending:pending.length, avgCompletionDays:completed.length>0?Math.round(completed.reduce((s,v)=>s+v,0)/completed.length):0 };
 }
 

@@ -24,7 +24,14 @@ function Stat({ icon: Icon, label, value, accent = 'text-rmpg-100', sub }: { ico
 
 export default function IntegrationDashboardPanel() {
   const [data, setData] = useState<IntegrationData | null>(null);
-  const [health, setHealth] = useState<Record<string, string>>({});
+  // GET /api/health's `services` map nests {connected, version, latencyMs,
+  // ...} per service (see src/routes/health.ts), not a plain status string —
+  // reduced here to the one boolean this ticker actually needs. Rendering
+  // the raw per-service object as a JSX child previously crashed the whole
+  // Dashboard with React error #31 (dormant until 2026-07-02, when the
+  // `/dispatch/integration-dashboard` URL typo was fixed and `data` started
+  // populating, reaching this code for the first time).
+  const [health, setHealth] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,12 +39,16 @@ export default function IntegrationDashboardPanel() {
     (async () => {
       try {
         const [integ, h] = await Promise.all([
-          apiFetch<IntegrationData>('/dispatch/aggregates/integration-dashboard').catch(() => null),
-          apiFetch<{ status: string; services?: Record<string, string> }>('/health').catch(() => null),
+          apiFetch<IntegrationData>('/dispatch/integration-dashboard').catch(() => null),
+          apiFetch<{ status: string; services?: Record<string, { connected?: boolean }> }>('/health').catch(() => null),
         ]);
         if (cancelled) return;
         setData(integ);
-        if (h?.services) setHealth(h.services as Record<string, string>);
+        if (h?.services) {
+          setHealth(Object.fromEntries(
+            Object.entries(h.services).map(([k, v]) => [k, !!v?.connected]),
+          ));
+        }
       } catch { /* ignore */ }
       setLoading(false);
     })();
@@ -47,7 +58,7 @@ export default function IntegrationDashboardPanel() {
   if (loading) return <SpmGroup title="INTEGRATION OVERVIEW" tone="steel"><div className="p-2 text-[10px] text-rmpg-500">Loading…</div></SpmGroup>;
   if (!data) return null;
 
-  const allHealthy = Object.values(health).every(s => s === 'ok');
+  const allHealthy = Object.values(health).every(Boolean);
 
   return (
     <SpmGroup title="INTEGRATION OVERVIEW" tone="steel" collapsible defaultCollapsed>
@@ -61,9 +72,9 @@ export default function IntegrationDashboardPanel() {
         <div className="flex items-center gap-1.5 px-1.5 py-0.5 border-t border-rmpg-700/50">
           <div className={`w-1.5 h-1.5 rounded-full ${allHealthy ? 'bg-green-500' : 'bg-amber-500'}`} />
           <span className="text-[9px] text-rmpg-400">Systems:</span>
-          {Object.entries(health).slice(0, 3).map(([k, v]) => (
-            <span key={k} className={`text-[9px] ${v === 'ok' ? 'text-green-400' : 'text-amber-400'}`}>
-              {k}: {v}
+          {Object.entries(health).slice(0, 3).map(([k, ok]) => (
+            <span key={k} className={`text-[9px] ${ok ? 'text-green-400' : 'text-amber-400'}`}>
+              {k}: {ok ? 'ok' : 'down'}
             </span>
           ))}
         </div>

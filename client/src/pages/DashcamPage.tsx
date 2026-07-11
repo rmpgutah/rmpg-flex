@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Camera, MapPin, Radio, RefreshCw, Activity, Search, Monitor } from 'lucide-react';
 import IconButton from '../components/IconButton';
 import UnitPicker from '../components/UnitPicker';
@@ -26,6 +27,7 @@ export default function DashcamPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+  const canEdit = canManage;
 
   const [searchParams] = useSearchParams();
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isLegacyBlackForced, LEGACY_FLAG_KEY, getThemeChromeColor, normalizeThemePreference, applyThemePreference } from '../theme';
+import { isLegacyBlackForced, LEGACY_FLAG_KEY, getThemeChromeColor, normalizeThemePreference, applyThemePreference, BLUE_SILVER_FLAG_KEY } from '../theme';
 
 describe('legacy escape hatch', () => {
   beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
@@ -30,7 +30,12 @@ describe('normalizeThemePreference', () => {
 });
 
 describe('legacy kill-switch overrides day theme', () => {
-  beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+  // Blue & Silver defaults ON as of the 2026-07-04 re-theme and would
+  // otherwise force 'dark' regardless of legacy/light state — opt out so
+  // these tests exercise the legacy kill-switch in isolation.
+  beforeEach(() => {
+    try { localStorage.clear(); localStorage.setItem(BLUE_SILVER_FLAG_KEY, '0'); } catch { /* ignore */ }
+  });
 
   it('forces dark color-scheme + black chrome even when theme is light', () => {
     localStorage.setItem(LEGACY_FLAG_KEY, '1');

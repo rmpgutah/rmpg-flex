@@ -44,11 +44,13 @@ public struct StandByDashboardView: View {
 
 public class StandByManager {
     public static func configureStandBy() {
+        #if os(iOS)
         if #available(iOS 17.0, *) {
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification,
                 object: nil, queue: .main
             ) { _ in }
         }
+        #endif
     }
 }

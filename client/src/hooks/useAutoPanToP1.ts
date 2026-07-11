@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Map } from 'mapbox-gl';
-import type { ActiveCall } from './useLiveSync';
+import type { ActiveCall } from '../pages/map/utils/mapConstants';
 
 export function useAutoPanToP1(
   map: Map | null | undefined,
@@ -10,7 +10,7 @@ export function useAutoPanToP1(
   const prevLenRef = useRef(0);
   useEffect(() => {
     if (!map || !options.enabled) return;
-    const p1 = calls.find((c) => c.priority === 1);
+    const p1 = calls.find((c) => String(c.priority) === '1');
     if (!p1) return;
     if (calls.length === prevLenRef.current) return;
     prevLenRef.current = calls.length;

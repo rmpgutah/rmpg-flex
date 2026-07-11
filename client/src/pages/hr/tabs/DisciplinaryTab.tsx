@@ -10,6 +10,7 @@ import {
   ChevronUp, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -128,7 +129,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       if (filterStatus) params.set('status', filterStatus);
       const qs = params.toString();
       const data = await apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary${qs ? `?${qs}` : ''}`);
-      setRecords(data);
+      setRecords(asArray<DisciplinaryRecord>(data));
     } catch {
       toast.addToast('Failed to load disciplinary records', 'error');
     } finally {
@@ -142,7 +143,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     apiFetch<Array<{ id: number; full_name: string }>>('/personnel')
       .then(data => {
         // personnel endpoint may return more fields; just keep id & full_name
-        setOfficers(data.map((o: any) => ({ id: o.id, full_name: o.full_name })));
+        setOfficers(asArray<any>(data).map((o: any) => ({ id: o.id, full_name: o.full_name })));
       })
       .catch(() => {});
   }, [manager]);
@@ -159,7 +160,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     }
     setTimelineLoading(true);
     apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary/${selectedOfficerId}/timeline`)
-      .then(setTimelineRecords)
+      .then((data) => setTimelineRecords(asArray<DisciplinaryRecord>(data)))
       .catch(() => toast.addToast('Failed to load timeline', 'error'))
       .finally(() => setTimelineLoading(false));
   }, [viewMode, selectedOfficerId, toast]);

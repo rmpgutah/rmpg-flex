@@ -7,6 +7,8 @@
 // correlation, and situational awareness dashboard.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 71: Live Camera Feeds */
 export interface CameraFeed { id:string; cameraName:string; location:string; latitude:number; longitude:number; feedUrl:string; status:'online'|'offline'|'maintenance'; resolution:string; ptz:boolean; recording:boolean; retentionDays:number; }
 export function monitorCameraHealth(feeds:CameraFeed[]): { online:number; offline:number; uptimePct:number } {
@@ -78,7 +80,7 @@ export function correlateAlerts(alerts:Array<{id:string;location:{lat:number;lng
   const correlations:CorrelatedAlert[] = [];
   for (let i=0;i<alerts.length;i++) {
     for (let j=i+1;j<alerts.length;j++) {
-      const timeDiff = Math.abs(new Date(alerts[i].timestamp).getTime()-new Date(alerts[j].timestamp).getTime())/60000;
+      const timeDiff = Math.abs(parseTimestamp(alerts[i].timestamp).getTime()-parseTimestamp(alerts[j].timestamp).getTime())/60000;
       if (timeDiff<15) {
         correlations.push({ primaryAlertId:alerts[i].id, relatedAlerts:[alerts[j].id], correlationType:'temporal', correlationScore:Math.round((1-timeDiff/15)*100), narrative:`Alerts ${alerts[i].id} and ${alerts[j].id} within ${Math.round(timeDiff)} min`, recommendedAction:'Investigate possible connection' });
       }

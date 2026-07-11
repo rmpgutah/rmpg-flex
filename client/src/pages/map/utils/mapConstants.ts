@@ -23,6 +23,7 @@ export interface MapUnit {
   current_call_type: string | null;
   current_call_location: string | null;
   gps_source?: string;
+  gps_updated_at?: string; // timestamp of the last GPS fix — drives the stale/lost marker dimming
   gps_speed?: number | null;       // m/s from GPS tracker
   gps_heading?: number | null;     // degrees 0-360
   battery_level?: number | null;   // 0-100 from mobile device
@@ -41,6 +42,15 @@ export interface ActiveCall {
   latitude: number | null;
   longitude: number | null;
   property_name: string | null;
+  cross_street?: string | null;
+  beat_name?: string | null;
+  officer_safety_caution?: boolean;
+  weapons_involved?: boolean;
+  felony_in_progress?: boolean;
+  domestic_violence?: boolean;
+  hazmat?: boolean;
+  mental_health_crisis?: boolean;
+  gang_related?: boolean;
   created_at?: string | null;
 }
 
@@ -245,3 +255,8 @@ export function getZoomLevel(zoom: number): 'overview' | 'neighborhood' | 'stree
   if (zoom >= MAP_ZOOM_BREAKPOINTS.neighborhood) return 'neighborhood';
   return 'overview';
 }
+
+/** Shared className prefix for floating toolbar buttons (Advanced Map Tools
+ * toolbar + ToolbarDropdownGroup triggers/items) — one source of truth so the
+ * 5 toolbar-declutter groups don't each hand-copy this string. */
+export const TOOLBAR_ITEM_CLASS = 'bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm';

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Input, Select, TimePicker, DatePicker, Space, Typography, message } from 'antd';
 import { CalendarOutlined, ClockCircleOutlined, UserOutlined, FileTextOutlined } from '@ant-design/icons';
 import { ScheduleSlot } from '../../utils/schedulerView';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 const { Text } = Typography;
 
@@ -29,7 +30,7 @@ const EditSlotModal: React.FC<EditSlotModalProps> = ({
     if (visible && slot) {
       form.setFieldsValue({
         ...slot,
-        scheduled_date: slot.scheduled_date ? new Date(slot.scheduled_date) : null,
+        scheduled_date: slot.scheduled_date ? parseTimestamp(slot.scheduled_date) : null,
         window_start: slot.window_start ? new Date(`1970-01-01T${slot.window_start}:00`) : null,
         window_end: slot.window_end ? new Date(`1970-01-01T${slot.window_end}:00`) : null,
         notify_before_secs: slot.notify_before_secs ?? 1800,

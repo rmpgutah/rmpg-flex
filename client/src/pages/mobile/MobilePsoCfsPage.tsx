@@ -4,6 +4,7 @@ import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';
 import OfficerPicker, { type OfficerSummary } from '../../components/OfficerPicker';
+import { toDisplayLabel } from '../../utils/formatters';
 type Call = {
   id: number;
   call_number: string;
@@ -311,7 +312,7 @@ export default function MobilePsoCfsPage() {
           <div className="text-sm text-rmpg-100">{call?.location}</div>
           {call?.pso_service_type && <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>}
           {call?.contract_id && <div className="text-[10px] text-rmpg-500 mt-0.5">Contract {call.contract_id}</div>}
-          <div className="text-[10px] text-rmpg-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{call?.status}</span></div>
+          <div className="text-[10px] text-rmpg-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{toDisplayLabel(call?.status)}</span></div>
         </div>
 
         <div className="bg-surface-base border border-border-default p-3">

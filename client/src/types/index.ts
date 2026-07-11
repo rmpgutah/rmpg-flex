@@ -474,6 +474,13 @@ export interface Unit {
    *  officer is detected out of the vehicle (CoreMotion). */
   on_foot?: number | boolean | null;
   on_foot_since?: string | null;
+  /** ClearPathGPS/FlexCam dashcam device mapping (cpg_device_mappings, active
+   *  rows only). Non-null camera_device_id means the unit's vehicle has a
+   *  mapped dashcam — the device records continuously (no live on/off
+   *  toggle), so this is a capability indicator, not a "recording now" flag.
+   *  ignition_state ('on'/'off'/etc.) is the last-synced vehicle state. */
+  camera_device_id?: string | null;
+  camera_ignition_state?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1996,6 +2003,10 @@ export type WSMessageType =
   // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
   // brain fan-in — MapPage moves the marker / rotates the arrow directly.
   | 'unit_position'
+  // Geofence zone entry/exit (src/routes/dispatch/gps.ts). Payload:
+  // { unit_id, call_sign, zone_id, zone_name, zone_type, event_type:'enter'|'exit',
+  // latitude, longitude }. One message per event.
+  | 'geofence_alert'
   // Trip lifecycle (unit_trips → AlertHubDO). Payload:
   // { type:'trip_update', action:'opened'|'closed', unit_id, trip }.
   // 'appended' is intentionally NOT broadcast — live distance/duration
@@ -3637,7 +3648,7 @@ export interface CpgpsAlert {
 
 // ── Nav Trip Log ─────────────────────────────────────────────
 
-export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+export type NavTripStatus = 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
 
 export interface NavRoutePoint {
   lat: number;

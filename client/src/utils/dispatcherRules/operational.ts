@@ -8,6 +8,7 @@
 // ============================================================
 
 import type { DispatcherRule } from './types';
+import { parseTimestamp } from '../dateUtils';
 
 const FIVE_MIN    = 5 * 60_000;
 const TEN_MIN     = 10 * 60_000;
@@ -20,7 +21,7 @@ export const OPERATIONAL_RULES: DispatcherRule[] = [
     trigger: 'timer',
     match: (ctx) => {
       if (!ctx.shiftEndTime) return false;
-      const end = new Date(ctx.shiftEndTime).getTime();
+      const end = parseTimestamp(ctx.shiftEndTime).getTime();
       if (isNaN(end)) return false;
       const minutesLeft = (end - Date.now()) / 60_000;
       return minutesLeft > 0 && minutesLeft <= 30;
@@ -98,7 +99,7 @@ export const OPERATIONAL_RULES: DispatcherRule[] = [
     trigger: 'timer',
     match: (ctx) => {
       if (!ctx.shiftEndTime) return false;
-      const end = new Date(ctx.shiftEndTime).getTime();
+      const end = parseTimestamp(ctx.shiftEndTime).getTime();
       if (isNaN(end)) return false;
       const minutesLeft = (end - Date.now()) / 60_000;
       return minutesLeft > 0 && minutesLeft <= 15;
@@ -106,7 +107,7 @@ export const OPERATIONAL_RULES: DispatcherRule[] = [
     severity: 'moderate',
     cooldownMs: FIFTEEN_MIN,
     compose: (ctx) => {
-      const end = new Date(ctx.shiftEndTime!).getTime();
+      const end = parseTimestamp(ctx.shiftEndTime!).getTime();
       const minutesLeft = Math.round((end - Date.now()) / 60_000);
       return `Shift ends in ${minutesLeft} minutes. Initiate handoff if not already started.`;
     },

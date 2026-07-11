@@ -76,7 +76,9 @@ struct TasksView: View {
                 }
             }
         }
+        #if os(iOS)
         .listStyle(.insetGrouped)
+        #endif
         .scrollContentBackground(.hidden)
         .background(theme.colors.surfaceBase)
     }
@@ -292,7 +294,7 @@ struct OfficerTask: Decodable, Identifiable {
         return d < ISO8601DateFormatter().string(from: Date()).prefix(10).description
     }
 
-    func statusColor(_ theme: AppTheme) -> Color {
+    func statusColor(_ theme: ThemeEnvironment) -> Color {
         switch status {
         case "completed":  return theme.colors.success
         case "in_progress": return theme.colors.brandGold
@@ -314,7 +316,7 @@ enum TaskPriority: String, CaseIterable {
         }
     }
 
-    func color(_ theme: AppTheme) -> Color {
+    func color(_ theme: ThemeEnvironment) -> Color {
         switch self {
         case .urgent: return theme.colors.critical
         case .high:   return theme.colors.warning

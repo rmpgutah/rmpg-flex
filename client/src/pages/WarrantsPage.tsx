@@ -20,6 +20,7 @@ import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
+import JurisdictionLookup from '../components/JurisdictionLookup';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -28,6 +29,7 @@ import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
 import EmptyState from '../components/EmptyState';
+import ViewOnMapLink from '../components/ViewOnMapLink';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
@@ -2509,8 +2511,9 @@ export default function WarrantsPage() {
                         <div className="text-green-400">{formatDateTime(selectedWarrant.served_at)}</div>
                         {selectedWarrant.served_by_name && <div className="text-rmpg-500 text-[9px]">{selectedWarrant.served_by_name}</div>}
                         {selectedWarrant.served_location && (
-                          <div className="text-rmpg-500 text-[9px] flex items-center gap-0.5 mt-0.5">
+                          <div className="text-rmpg-500 text-[9px] flex items-center gap-1 mt-0.5">
                             <MapPin className="w-2.5 h-2.5" /> {selectedWarrant.served_location}
+                            <ViewOnMapLink address={selectedWarrant.served_location} label={selectedWarrant.subject_name || undefined} />
                           </div>
                         )}
                       </div>
@@ -2574,7 +2577,13 @@ export default function WarrantsPage() {
                       {selectedWarrant.subject_address && (
                         <div className="col-span-2">
                           <span className="text-rmpg-500 text-[9px]">Address</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_address}</div>
+                          <div className="text-rmpg-300 flex items-center gap-1.5">
+                            {selectedWarrant.subject_address}
+                            <ViewOnMapLink address={selectedWarrant.subject_address} label={selectedWarrant.subject_name || undefined} />
+                          </div>
+                          <div className="mt-1">
+                            <JurisdictionLookup address={selectedWarrant.subject_address} />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2951,7 +2960,7 @@ export default function WarrantsPage() {
                         <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors cursor-pointer" onClick={() => openUtahDetail({ first_name: w.subject_first_name || '', last_name: w.subject_last_name || '', charges: w.charge_description, court_name: w.issuing_court || undefined, bail_amount: w.bail_amount ?? undefined, offense_level: w.offense_level || undefined, warrant_type: w.type, status: w.status, case_id: undefined, issue_date: w.created_at }, 'local')}>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-rmpg-100">{w.warrant_number}</span>
-                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.status}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{toDisplayLabel(w.status)}</span>
                             <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'}`}>{w.type}</span>
                           </div>
                           <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
@@ -3636,7 +3645,7 @@ export default function WarrantsPage() {
                       All Sources ({totalSources})
                     </h3>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
-                      {stateCodes.map((state: string) => {
+                      {stateCodes.map((state: any) => {
                         const sources: ScraperSource[] = byState.get(state) || [];
                         const active = sources.reduce((sum: number, s) => sum + (s.active_warrants || 0), 0);
                         const enabled = sources.filter(s => s.enabled).length;

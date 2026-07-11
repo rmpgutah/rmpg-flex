@@ -7,6 +7,8 @@
 // management, and property room statistics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 61: Intake Processing */
 export interface PropertyIntake { id:string; caseNumber:string; submittingOfficer:string; submissionDate:string; items:Array<{description:string;category:string;quantity:number;condition:string;estimatedValue:number;barcode:string|null}>; totalItems:number; storageLocation:string|null; status:'pending'|'processed'|'stored'; }
 export function processIntakeBatch(intake:PropertyIntake): { barcodes:string[]; storageInstructions:string[]; highValue:boolean; narcoticsPresent:boolean } {
@@ -52,11 +54,11 @@ export function calculateInventoryAccuracy(audits:InventoryAudit[]): { overallAc
 export interface CustodyTransfer { evidenceId:string; fromPerson:string; toPerson:string; transferDate:string; reason:string; fromLocation:string; toLocation:string; signatureRef:string|null; }
 export function validateCustodyChain(transfers:CustodyTransfer[]): { gaps:CustodyTransfer[]; complete:boolean; lastCustodian:string; daysSinceLastTransfer:number } {
   if (transfers.length===0) return {gaps:[],complete:false,lastCustodian:'Unknown',daysSinceLastTransfer:0};
-  const sorted = [...transfers].sort((a,b)=>new Date(a.transferDate).getTime()-new Date(b.transferDate).getTime());
+  const sorted = [...transfers].sort((a,b)=>parseTimestamp(a.transferDate).getTime()-parseTimestamp(b.transferDate).getTime());
   const gaps:CustodyTransfer[] = [];
-  for (let i=1;i<sorted.length;i++) { const gap = (new Date(sorted[i].transferDate).getTime()-new Date(sorted[i-1].transferDate).getTime())/86400000; if (gap>30) gaps.push(sorted[i]); }
+  for (let i=1;i<sorted.length;i++) { const gap = (parseTimestamp(sorted[i].transferDate).getTime()-parseTimestamp(sorted[i-1].transferDate).getTime())/86400000; if (gap>30) gaps.push(sorted[i]); }
   const last = sorted[sorted.length-1];
-  const daysSince = Math.ceil((Date.now()-new Date(last.transferDate).getTime())/86400000);
+  const daysSince = Math.ceil((Date.now()-parseTimestamp(last.transferDate).getTime())/86400000);
   return { gaps, complete:gaps.length===0, lastCustodian:last.toPerson, daysSinceLastTransfer:daysSince };
 }
 
@@ -95,6 +97,6 @@ export function calculateDigitalStorageUsage(evidence:DigitalEvidence[]): { tota
 export interface PropertyRoomStats { period:string; totalItems:number; itemsIn:number; itemsOut:number; currentValue:number; narcoticsStored:number; firearmsStored:number; currencyStored:number; auditsCompleted:number; auditAccuracy:number; }
 export function compilePropertyRoomReport(items:Array<{dateIn:string;dateOut:string|null;category:string;value:number}>): PropertyRoomStats {
   const now = new Date(); const yearStart = new Date(now.getFullYear(),0,1);
-  const current = items.filter(i=>!i.dateOut); const thisYearIn = items.filter(i=>new Date(i.dateIn)>=yearStart); const thisYearOut = items.filter(i=>i.dateOut&&new Date(i.dateOut)>=yearStart);
+  const current = items.filter(i=>!i.dateOut); const thisYearIn = items.filter(i=>parseTimestamp(i.dateIn)>=yearStart); const thisYearOut = items.filter(i=>i.dateOut&&parseTimestamp(i.dateOut)>=yearStart);
   return { period:now.toISOString().slice(0,7), totalItems:items.length, itemsIn:thisYearIn.length, itemsOut:thisYearOut.length, currentValue:current.reduce((s,i)=>s+i.value,0), narcoticsStored:current.filter(i=>i.category==='narcotics').length, firearmsStored:current.filter(i=>i.category==='firearm').length, currencyStored:current.filter(i=>i.category==='currency').length, auditsCompleted:0, auditAccuracy:100 };
 }

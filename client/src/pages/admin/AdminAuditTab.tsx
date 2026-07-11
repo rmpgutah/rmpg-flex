@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
-import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
+import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // Types
@@ -32,7 +33,7 @@ interface AdminAuditTabProps {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -193,7 +194,7 @@ export default function AdminAuditTab({
                   </div>
                 </td>
                 <td className="text-xs font-semibold text-rmpg-100">{entry.user}</td>
-                <td className="text-xs text-brand-400 font-medium">{entry.action}</td>
+                <td className="text-xs text-brand-400 font-medium">{toDisplayLabel(entry.action)}</td>
                 <td className="text-xs text-rmpg-300 max-w-[300px] truncate" title={entry.details}>{entry.details}</td>
               </tr>
             ))}

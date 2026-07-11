@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 const businessVisits = new Hono<Env>();
 
 // GET /api/business-visits/:businessId?since=YYYY-MM-DD&limit=N
@@ -41,11 +42,7 @@ businessVisits.get('/:businessId', async (c) => {
     }
     return c.json(rows);
   } catch (err) {
-    return c.json({
-      error: 'Failed to load business visits',
-      code: 'LOAD_BUSINESS_VISITS_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to load business visits', 'LOAD_BUSINESS_VISITS_ERROR');
   }
 });
 
@@ -82,11 +79,7 @@ businessVisits.post('/', async (c) => {
 
     return c.json(row, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to log business visit',
-      code: 'LOG_BUSINESS_VISIT_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to log business visit', 'LOG_BUSINESS_VISIT_ERROR');
   }
 });
 

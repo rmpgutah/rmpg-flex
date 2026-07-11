@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { Bookmark, Trash2, Play, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 import { SectionHeader } from '../components';
 import { AudioPlayButton, transmissionAudioUrl, transmissionAudioUrlSigned } from './LiveTab';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioRecording } from '../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // Shared one-at-a-time haze player for context-menu "Play" (mirrors the
 // AudioPlayButton DSP chain). Stops any prior clip before starting a new one.
@@ -33,7 +35,7 @@ export default function RecordingsTab() {
   const load = () => {
     setLoading(true);
     apiFetch<RadioRecording[]>('/radio/recordings')
-      .then(setRecordings)
+      .then((data) => setRecordings(asArray<RadioRecording>(data)))
       .catch((err) => console.error('[radio] recordings', err))
       .finally(() => setLoading(false));
   };
@@ -76,7 +78,7 @@ export default function RecordingsTab() {
           <ul className="divide-y" style={{ borderColor: 'var(--rt-border)' }}>
             {recordings.map((r) => {
               const time = (() => {
-                try { return new Date(r.transmitted_at).toLocaleString('en-US', { hour12: false }); }
+                try { return parseTimestamp(r.transmitted_at).toLocaleString('en-US', { hour12: false }); }
                 catch { return r.transmitted_at; }
               })();
               return (

@@ -7,11 +7,13 @@
 // keyholder database, and alarm statistical reporting.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 51: Alarm Permit Tracking */
 export interface AlarmPermit { id:string; address:string; permitHolder:string; contactPhone:string; permitNumber:string; issuedDate:string; expirationDate:string; alarmCompany:string; alarmType:'burglary'|'fire'|'panic'|'medical'|'holdup'|'environmental'; status:'active'|'expired'|'revoked'|'pending'; annualFee:number; paid:boolean; }
 export function checkPermitCompliance(permits:AlarmPermit[]): { active:number; expired:number; expiredUnpaid:AlarmPermit[]; complianceRate:number } {
-  const now = new Date(); const active = permits.filter(p=>p.status==='active'&&new Date(p.expirationDate)>now);
-  const expired = permits.filter(p=>new Date(p.expirationDate)<now||p.status==='expired');
+  const now = new Date(); const active = permits.filter(p=>p.status==='active'&&parseTimestamp(p.expirationDate)>now);
+  const expired = permits.filter(p=>parseTimestamp(p.expirationDate)<now||p.status==='expired');
   const expiredUnpaid = expired.filter(p=>!p.paid);
   return { active:active.length, expired:expired.length, expiredUnpaid, complianceRate:permits.length>0?Math.round(active.length/permits.length*100):100 };
 }
@@ -32,7 +34,7 @@ export function evaluateCompanyPerformance(company:AlarmCompany, falseAlarmRate:
   const issues:string[] = [];
   if (company.complianceStatus==='non_compliant') issues.push('Company is non-compliant with local ordinance');
   if (falseAlarmRate > 30) issues.push(`High false alarm rate (${falseAlarmRate}%)`);
-  if (!company.lastAudit||new Date(company.lastAudit).getTime()<Date.now()-365*86400000) issues.push('Audit overdue');
+  if (!company.lastAudit||parseTimestamp(company.lastAudit).getTime()<Date.now()-365*86400000) issues.push('Audit overdue');
   const rating = issues.length>=2?'Poor':issues.length>=1?'Fair':'Good';
   return { rating, recommended:issues.length===0, issues };
 }
@@ -54,7 +56,7 @@ export const DEFAULT_ALARM_FEES: AlarmFeeSchedule = { permitType:'residential', 
 export function calculateAlarmFees(permit:AlarmPermit, falseAlarmsThisYear:number): { permitFee:number; falseAlarmFee:number; lateFee:number; total:number } {
   let falseFee = 0;
   for (const fee of DEFAULT_ALARM_FEES.falseAlarmFees) { if (falseAlarmsThisYear >= fee.occurrence) falseFee += fee.fee; else break; }
-  const lateFee = !permit.paid && new Date(permit.expirationDate) < new Date() ? DEFAULT_ALARM_FEES.lateFee : 0;
+  const lateFee = !permit.paid && parseTimestamp(permit.expirationDate) < new Date() ? DEFAULT_ALARM_FEES.lateFee : 0;
   return { permitFee:permit.annualFee||DEFAULT_ALARM_FEES.annualFee, falseAlarmFee:falseFee, lateFee, total:permit.annualFee+falseFee+lateFee };
 }
 

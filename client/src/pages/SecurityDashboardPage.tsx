@@ -55,6 +55,7 @@ export default function SecurityDashboardPage() {
   // ConfirmDialog state for unblock-IP (admin-only destructive action)
   const [unblockTarget, setUnblockTarget] = useState<string | null>(null);
   const [unblocking, setUnblocking] = useState(false);
+  const ipRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Strip deep-link param after first mount
   useEffect(() => {

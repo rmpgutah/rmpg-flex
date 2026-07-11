@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Clock, Users, Shield, AlertTriangle,
   Plus, RefreshCw, Check, Sun, Moon, Sunset
@@ -74,7 +77,7 @@ export default function ShiftBriefingsPage() {
     setLoading(true);
     try {
       const data = await apiFetch<Briefing[]>('/api/shift-briefings');
-      setBriefings(data);
+      setBriefings(asArray<Briefing>(data));
     } catch (err) {
       console.error('Failed to load briefings', err);
     } finally {
@@ -85,7 +88,7 @@ export default function ShiftBriefingsPage() {
   async function loadSafetyAlerts() {
     try {
       const data = await apiFetch<SafetyAlert[]>('/api/shift-briefings/officer-safety/alerts');
-      setSafetyAlerts(data);
+      setSafetyAlerts(asArray<SafetyAlert>(data));
     } catch (err) {
       console.error('Failed to load safety alerts', err);
     }
@@ -318,7 +321,7 @@ export default function ShiftBriefingsPage() {
                 generated.units_on_duty.map((u) => (
                   <div key={u.unit_id} className="text-xs text-neutral-300 py-0.5 border-b border-[#1a1a1a] last:border-0 flex justify-between">
                     <span><span className="font-mono text-neutral-400">{u.unit_id}</span> {u.officer_name}</span>
-                    <span className="text-neutral-500">{u.status}</span>
+                    <span className="text-neutral-500">{toDisplayLabel(u.status)}</span>
                   </div>
                 ))
               )}
@@ -355,7 +358,7 @@ export default function ShiftBriefingsPage() {
                     {shiftIcon(b.shift_type)}
                     <span className="font-mono text-neutral-400">{b.briefing_number}</span>
                     <span className="text-neutral-200">{b.title}</span>
-                    <span className="text-neutral-500">{new Date(b.created_at).toLocaleDateString()}</span>
+                    <span className="text-neutral-500">{parseTimestamp(b.created_at).toLocaleDateString()}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-neutral-500">
@@ -412,7 +415,7 @@ export default function ShiftBriefingsPage() {
                     <p className="text-xs text-neutral-400 mt-0.5 truncate">{alert.description}</p>
                   </div>
                   <span className="text-[10px] text-neutral-600 whitespace-nowrap">
-                    {new Date(alert.created_at).toLocaleDateString()}
+                    {parseTimestamp(alert.created_at).toLocaleDateString()}
                   </span>
                 </div>
               ))

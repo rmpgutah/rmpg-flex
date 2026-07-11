@@ -7,6 +7,8 @@
 // and animal control statistics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 11: Dangerous Dog Registry */
 export interface DangerousDog { id:string; dogName:string; breed:string; ownerName:string; ownerAddress:string; registrationDate:string; incidentHistory:Array<{date:string;type:'bite'|'attack'|'at_large'|'menacing';severity:'minor'|'moderate'|'severe'}>; restrictions:string[]; insuranceRequired:boolean; insuranceVerified:boolean; status:'active'|'euthanized'|'relocated'|'deceased'; }
 export function assessDogRisk(dog:DangerousDog): { riskLevel:'low'|'moderate'|'high'|'extreme'; publicSafetyThreat:boolean; recommendedAction:string } {
@@ -72,9 +74,9 @@ export function respondToLivestock(incident:LivestockIncident): { urgencyLevel:s
 /* FEATURE 18: Exotic Animal Permits */
 export interface ExoticAnimalPermit { id:string; ownerName:string; address:string; animalSpecies:string; animalCount:number; permitNumber:string; issuedDate:string; expirationDate:string; inspectionDate:string|null; inspectionPassed:boolean|null; insuranceVerified:boolean; status:'active'|'expired'|'revoked'; }
 export function checkPermitValidity(permits:ExoticAnimalPermit[]): { active:number; expired:number; needsInspection:number; complianceRate:number } {
-  const now = new Date(); const active = permits.filter(p=>p.status==='active'&&new Date(p.expirationDate)>now);
-  const expired = permits.filter(p=>new Date(p.expirationDate)<now||p.status==='expired');
-  const needsInsp = active.filter(p=>!p.inspectionDate||new Date(p.inspectionDate).getTime()<now.getTime()-365*86400000);
+  const now = new Date(); const active = permits.filter(p=>p.status==='active'&&parseTimestamp(p.expirationDate)>now);
+  const expired = permits.filter(p=>parseTimestamp(p.expirationDate)<now||p.status==='expired');
+  const needsInsp = active.filter(p=>!p.inspectionDate||parseTimestamp(p.inspectionDate).getTime()<now.getTime()-365*86400000);
   return { active:active.length, expired:expired.length, needsInspection:needsInsp.length, complianceRate:permits.length>0?Math.round(active.length/permits.length*100):0 };
 }
 

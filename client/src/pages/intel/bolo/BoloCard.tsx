@@ -1,7 +1,7 @@
 import { User, Car, Flag as FlagIcon } from 'lucide-react';
 import { authedImageUrl } from '../../../hooks/useApi';
 import type { Bolo } from '../useBolos';
-import { formatEnumValue } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 // Priority tags. Kept as inline hex for the warning red/amber bands — these
 // are alert semantics (officer-safety), not theme decoration, and live as
@@ -41,7 +41,7 @@ export default function BoloCard({ bolo, canDelete, onResolve, onDelete }: {
           )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] border ${PRIORITY_TAG[bolo.priority] || PRIORITY_TAG.P3}`}>{bolo.priority}</span>
+            <span className={`font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] border ${PRIORITY_TAG[bolo.priority] || PRIORITY_TAG.P3}`}>{toDisplayLabel(bolo.priority)}</span>
             <span className="font-mono text-[9px] text-rmpg-500">{bolo.bolo_number}</span>
             {expired && <span className="font-mono text-[8px] text-rmpg-500 uppercase">{formatEnumValue(bolo.status)}</span>}
           </div>

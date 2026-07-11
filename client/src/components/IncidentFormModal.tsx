@@ -138,7 +138,13 @@ const TRAFFIC_TYPES: string[] = ['traffic_accident', 'hit_and_run', 'dui_dwi', '
 const MEDICAL_TYPES: string[] = ['medical_emergency', 'overdose', 'mental_health_crisis'];
 const TRESPASS_TYPES: string[] = ['trespass'];
 const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery', 'use_of_force'];
-const PSO_TYPES: string[] = ['pso_client_request'];
+// Matches PROCESS_SERVICE_INCIDENT_TYPES in constants/dispositionCodes.ts
+// and PSO_INCIDENT_TYPES in dispatch/DispatchPage.tsx. This list drifted to
+// a single-member array at some point — a call created/edited as
+// 'process_service' or 'civil_paper_service' never showed the "PSO /
+// Service" tab (serve details, attempts, etc.), the same class of bug as
+// DispatchPage.tsx's Serve-tab filter (caught 2026-07-03, same session).
+const PSO_TYPES: string[] = ['pso_client_request', 'process_service', 'civil_paper_service'];
 
 const GUIDED_NARRATIVE_FIELDS = [
   { key: 'initial_contact_details', label: 'INITIAL CONTACT / COMPLAINT' },

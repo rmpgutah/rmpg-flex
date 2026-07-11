@@ -11,6 +11,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const jail = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -108,7 +109,7 @@ jail.post('/inmates', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmates WHERE id = ?', newId);
     return c.json({ data: created, booking_number: bookingNumber }, 201);
   } catch (err) {
-    return c.json({ error: 'Failed to create inmate record', code: 'CREATE_ERROR', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to create inmate record', 'CREATE_ERROR');
   }
 });
 

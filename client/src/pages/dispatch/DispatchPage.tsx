@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
@@ -12,11 +12,12 @@ import { callPosture } from '../../utils/callThreat';
 import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
+import { SpillmanCadBoard } from './spillman';
 import ZsbBadge from '../../components/ZsbBadge';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
-import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
+import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES, PROCESS_SERVICE_INCIDENT_TYPES } from '../../constants/dispositionCodes';
 import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
@@ -61,7 +62,7 @@ import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings, type FilterTab,
 } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
@@ -79,7 +80,7 @@ import { useAuth } from '../../context/AuthContext';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
 import CallDocumentsPanel from './components/CallDocumentsPanel';
-import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
+import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useLinkOptions } from '../../hooks/useLinkOptions';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
@@ -98,9 +99,8 @@ import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo, humanizeStatus, humanizeType,
+  formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
-import { coded } from '../../utils/searchText';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -342,6 +342,17 @@ export default function DispatchPage() {
   useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
+  // Spillman CAD console view (P1 structural replica). Persisted; defaults ON
+  // per program decision "replaces default look" — '0' opts back to classic.
+  const [cadBoardView, setCadBoardView] = useState<boolean>(
+    () => { try { return localStorage.getItem('rmpg_dispatch_cad_board') !== '0'; } catch { return true; } },
+  );
+  const toggleCadBoardView = () => {
+    setCadBoardView((v) => {
+      try { localStorage.setItem('rmpg_dispatch_cad_board', v ? '0' : '1'); } catch { /* private mode */ }
+      return !v;
+    });
+  };
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
@@ -834,6 +845,7 @@ export default function DispatchPage() {
     openEditUnit,
     handleSaveUnit, handleDisposeUnit,
     handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
+    handleDragUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
     units, setCalls, setUnits,
@@ -878,11 +890,22 @@ export default function DispatchPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showAttachUnitDropdown]);
 
+  // Intel-screening hit indicator for the CAD board (GET /dispatch/calls/hits
+  // — call IDs with a hit worth a glance: stolen/watchlisted vehicle, a
+  // linked person with an active warrant/watchlist entry, or an NSOPW
+  // registry match). Fetched independently of the main calls/units load,
+  // best-effort — a failure here just means the CAD board shows no hit
+  // badges this cycle, it must never break the load.
+  const [hitCallIds, setHitCallIds] = useState<Set<string>>(new Set());
+
   // Fetch calls and units on mount
   const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
     const controller = options?.signal ? undefined : new AbortController();
     const signal = options?.signal || controller!.signal;
     const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
+    apiFetch<{ call_ids: number[] }>('/dispatch/calls/hits', { signal })
+      .then((res) => setHitCallIds(new Set((res?.call_ids || []).map(String))))
+      .catch(() => { /* best-effort — badges just don't show this cycle */ });
     try {
       const [callsRes, unitsRes] = await Promise.all([
         apiFetch<any>('/dispatch/calls?limit=200', { signal }),
@@ -1023,6 +1046,16 @@ export default function DispatchPage() {
     next.delete('call_id'); next.delete('callId');
     setSearchParams(next, { replace: true });
   }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
+
+  // Open NewCallModal on mount if ?newCall=1 is present (used by Tools menu, Records, etc.)
+  useEffect(() => {
+    if (searchParams.get('newCall') === '1') {
+      setShowNewCallModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('newCall');
+      setSearchParams(next, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
   // Each refresh refetches the active call list + units, so on a busy shift a
@@ -1351,7 +1384,14 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
+    // Geofence entry/exit alert — mirrors the panic_alert handler above.
+    const unsubGeofence = subscribe('geofence_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const verb = data.event_type === 'enter' ? 'entered' : 'exited';
+      addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -1459,7 +1499,7 @@ export default function DispatchPage() {
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
       // Fetch serve queue link for PSO calls
-      if (selectedCall.incident_type === 'pso_client_request') {
+      if (PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) {
         try {
           const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
           if (!cancelled) setServeLink(serveData);
@@ -1489,9 +1529,6 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
 
-  // PSO incident types — must be declared before filteredCalls which references it
-  const PSO_INCIDENT_TYPES = ['pso_client_request'];
-
   // When the admin-config disposition list is empty (production default),
   // derive the correct fallback codes from the incident type so PSO calls
   // see PS codes in the clear prompt and general calls see general codes.
@@ -1512,31 +1549,12 @@ export default function DispatchPage() {
       case 'pending': return call.status === 'pending';
       case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
       case 'hold': return call.status === 'on_hold';
-      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type);
+      case 'serve': return PROCESS_SERVICE_INCIDENT_TYPES.has(call.incident_type);
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'archived': return true;
       default: return true;
     }
-  }).filter((call) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (call.call_number || '').toLowerCase().includes(q) ||
-      (call.location || '').toLowerCase().includes(q) ||
-      coded(call.incident_type, humanizeType).includes(q) ||
-      (call.description || '').toLowerCase().includes(q) ||
-      (call.caller_name || '').toLowerCase().includes(q) ||
-      // Geography: let dispatchers filter the queue to a district by typing a
-      // Spillman code ("SL1", "SL1-HER/C") or a place name ("Herriman").
-      (call.dispatch_code || '').toLowerCase().includes(q) ||
-      (call.zone_beat || '').toLowerCase().includes(q) ||
-      (call.sector_name || '').toLowerCase().includes(q) ||
-      (call.zone_id || '').toLowerCase().includes(q) ||
-      (call.zone_name || '').toLowerCase().includes(q) ||
-      (call.beat_id || '').toLowerCase().includes(q) ||
-      (call.beat_name || '').toLowerCase().includes(q)
-    );
-  }).filter((call) => {
+  }).filter((call) => callMatchesSearch(call, searchQuery)).filter((call) => {
     if (priorityFilter && call.priority !== priorityFilter) return false;
     return true;
   }).filter((call) => {
@@ -1560,7 +1578,7 @@ export default function DispatchPage() {
       const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
       const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
       if (pDiff !== 0) return pDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Pinned calls float to the top regardless of sort mode
     const aPin = a.pinned ? 1 : 0;
@@ -1594,6 +1612,17 @@ export default function DispatchPage() {
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+
+  // The "Search calls" box lives in the shared toolbar above both the CAD
+  // board and the classic list, but was only ever wired into filteredCalls
+  // (the classic-list pipeline) — typing into it did nothing while the CAD
+  // board was showing. Same callMatchesSearch predicate as filteredCalls
+  // above, minus the tab/priority/type/signal/sort stages the CAD board
+  // doesn't expose.
+  const cadBoardCalls = useMemo(
+    () => calls.filter((call) => callMatchesSearch(call, searchQuery)),
+    [calls, searchQuery],
+  );
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -1917,7 +1946,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: payloadValue }),
+        body: JSON.stringify({ [field]: value }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
@@ -1927,12 +1956,13 @@ export default function DispatchPage() {
       // real one from the UI ("editing time destructs the call"). When the
       // response isn't a full row, patch just the edited field locally —
       // the DB write already succeeded (or the catch below fires).
+      const looksLikeFullRow = result && typeof result === 'object' && 'id' in result;
       const apply = (c: typeof selectedCall) =>
         looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setArchivedCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
-      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+      addToast(`Timeline updated: ${toDisplayLabel(field.replace(/_at$/, ''))}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
       const msg = err instanceof Error ? err.message : 'Failed to update timeline';
@@ -2324,7 +2354,7 @@ export default function DispatchPage() {
       hold,
       cleared,
       archived: archivedCalls.length,
-      serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+      serve: calls.filter((c) => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type)).length,
     };
   }, [calls, archivedCalls, user?.id]);
 
@@ -2886,7 +2916,7 @@ export default function DispatchPage() {
                 </div>
 
                 {/* PSO Details + Schedule Return Visit (mobile) */}
-                {selectedCall.incident_type === 'pso_client_request' && (
+                {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
@@ -3168,7 +3198,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
-                    {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -3258,7 +3288,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] min-w-[320px] border-r border-[var(--spm-border)] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className={`${cadBoardView ? 'w-[52%] min-w-[560px]' : 'w-[35%] min-w-[320px]'} border-r border-[var(--spm-border)] flex flex-col`} style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           {/* Enhancement 27: Live sync indicator */}
@@ -3432,7 +3462,30 @@ export default function DispatchPage() {
             <Shield style={{ width: 10, height: 10 }} />
             PSO
           </button>
+          <button type="button"
+            onClick={toggleCadBoardView}
+            className="toolbar-btn"
+            title={cadBoardView ? 'Switch to classic call list' : 'Switch to Spillman CAD console'}
+          >
+            <Terminal style={{ width: 10, height: 10 }} />
+            {cadBoardView ? 'List' : 'CAD'}
+          </button>
         </PanelTitleBar>
+        {cadBoardView && (
+          <SpillmanCadBoard
+            calls={cadBoardCalls}
+            units={units}
+            hitCallIds={hitCallIds}
+            selectedCallId={selectedCall?.id ?? null}
+            onSelectCall={setSelectedCall}
+            onOpenNewCall={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
+            onAssignUnitToCall={handleDragAssignUnit}
+            onUnassignUnitFromCall={handleDragUnassignUnit}
+            onClearCall={(callId) => handleClearWithDisposition(callId)}
+            onCommandFeedback={(msg, level) => addToast(msg, level === 'info' ? 'success' : level)}
+          />
+        )}
+        {!cadBoardView && (<>
         <TabBar
           spillman
           tabs={[
@@ -3731,7 +3784,8 @@ export default function DispatchPage() {
                     onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}
-                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    hasIntelHit={hitCallIds.has(call.id)}
+                    warnings={deriveCallWarnings(call)}
                     onTogglePin={handleTogglePin}
                     signalInfo={signalLookup(call.incident_type || '') || null}
                   />
@@ -3740,6 +3794,7 @@ export default function DispatchPage() {
             })
           )}
         </div>
+        </>)}
       </div>
 
       {/* ============================================================ */}
@@ -3924,8 +3979,22 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
+                {/* Row 2: Action buttons — separate row to prevent cramping. This row
+                    scrolls horizontally (it can hold 15+ buttons depending on call
+                    state), but the scrollbar-dark thumb is low-contrast against
+                    dark surfaces (dark gray thumb on a transparent track) — the
+                    mask-image fade below gives a visual cue that more buttons
+                    exist to the right, instead of the row silently truncating
+                    with no affordance. No extra wrapper element needed: the mask
+                    applies to this div's own painted content. */}
+                <div
+                  className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark"
+                  style={{
+                    background: 'var(--surface-deep)',
+                    WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                    maskImage: 'linear-gradient(to right, black calc(100% - 24px), transparent 100%)',
+                  }}
+                >
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
@@ -4028,7 +4097,7 @@ export default function DispatchPage() {
                       <button type="button"
                         className="toolbar-btn"
                         title="Open Route Builder for assigned unit"
-                        style={{ color: '#d4a017' }}
+                        style={{ color: 'var(--brand-gold)' }}
                         onClick={() => {
                           const firstUnitId = selectedCall.assigned_units?.[0];
                           if (!firstUnitId) return;
@@ -4068,7 +4137,7 @@ export default function DispatchPage() {
                     {/* Notice of Communication — PSO client requests with a failed attempt
                         being re-dispatched. Autofills from this call (client, service,
                         attempt) into a printable client notice. */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -4101,7 +4170,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Send to Serve Queue — PSO calls */}
-                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)' }}
@@ -4392,8 +4461,11 @@ export default function DispatchPage() {
                 })}
               </div>
 
-              {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              {/* Detail Body — Scrollable, tab-controlled. `.cad-detail-body`
+                  applies the CAD board's dense monospace treatment (see
+                  spillman-kit.css) via a scoped CSS rule rather than touching
+                  every individual Tailwind class in this ~1500-line region. */}
+              <div className="cad-detail-body flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -4458,8 +4530,8 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.weather_conditions && (
                         <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
                           <Thermometer style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">{selectedCall.weather_conditions}</span>
-                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {selectedCall.lighting_conditions}</span>}
+                          <span className="text-rmpg-300">{toDisplayLabel(selectedCall.weather_conditions)}</span>
+                          {selectedCall.lighting_conditions && <span className="text-rmpg-500 ml-1">/ {toDisplayLabel(selectedCall.lighting_conditions)}</span>}
                         </p>
                       )}
                     </div>
@@ -4803,7 +4875,7 @@ export default function DispatchPage() {
                                 key={unitIdStr}
                                 className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
                                 style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
-                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ').toUpperCase()})` : displayName}
+                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${toDisplayLabel(unitObj.status || '')})` : displayName}
                               >
                                 <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
@@ -5003,32 +5075,29 @@ export default function DispatchPage() {
                           sectionCode={getSectionCode(selectedCall.sector_id ?? '')}
                         />
                         {selectedCall.sector_id && (() => {
+                          // Area name only — area_code is just area_name mechanically
+                          // upper-snake-cased ("WASATCH_FRONT"), not a real short code
+                          // like Sector/Zone/Beat have, so showing it alongside the name
+                          // is pure noise.
                           const area = getArea(selectedCall.sector_id);
-                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
+                          return area?.name ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {area.name}</span> : null;
                         })()}
                         {selectedCall.sector_id && (() => {
-                          // Police format: show the Spillman sector code ("SL1"), not the
-                          // numeric dispatch_sectors.id row key. Fall back to the id only
-                          // if the districts lookup hasn't loaded / has no code.
+                          // Code only — dispatch_beats.beat_name/beat_descriptor (and by
+                          // extension names sourced from the same districts data) have
+                          // been found corrupted for an unknown subset of live rows
+                          // (chart-code composites like "SL1/SSL/A1" stored where a human
+                          // name should be — see docs/superpowers/specs/2026-07-07-
+                          // geography-naming-and-beat-descriptor-fix-design.md). The leaf/
+                          // prefix codes below are derived structurally from the call's
+                          // own stored fields, not from that unreliable name data.
                           const code = getSectionCode(selectedCall.sector_id) || sectionPrefix(selectedCall.zone_id || '') || selectedCall.sector_id;
-                          const name = sectionLabels.get(normalizeSectorId(selectedCall.sector_id)) || '';
-                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
+                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {code}</span>;
                         })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
-                        {selectedCall.beat_id && (() => {
-                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
-                          // to its name. getBeatLabel falls back to the raw code, so guard
-                          // against an "C — C" echo. Lookups stay keyed by the full code.
-                          const code = beatLeaf(selectedCall.beat_id);
-                          // Beat labels are "beat_name — beat_descriptor" and beat_name
-                          // usually IS the leaf code, so prefixing blindly echoes it
-                          // ("A1 — A1 — SSL/A1"). Only prepend when the label adds info.
-                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = !label || label === selectedCall.beat_id || label === code ? code
-                            : label.startsWith(`${code} — `) ? label
-                            : `${code} — ${label}`;
-                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
-                        })()}
+                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {zoneLeaf(selectedCall.zone_id)}</span>}
+                        {selectedCall.beat_id && (
+                          <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {beatLeaf(selectedCall.beat_id)}</span>
+                        )}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
@@ -5193,9 +5262,9 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callBusinesses.map((cb: any) => (
                                 <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cb.role || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
                                   {cb.name}
-                                  {cb.business_type && <span className="text-rmpg-500">{cb.business_type}</span>}
+                                  {cb.business_type && <span className="text-rmpg-500">{toDisplayLabel(cb.business_type)}</span>}
                                   <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
                               ))}
@@ -5258,8 +5327,8 @@ export default function DispatchPage() {
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
-                                {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
-                                {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}
+                                {cp.race && <span className="text-rmpg-500">{toDisplayLabel(cp.race)}</span>}
+                                {cp.sex && <span className="text-rmpg-500">{toDisplayLabel(cp.sex)}</span>}
                               </div>
                             ))}
                           </div>
@@ -5372,7 +5441,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
+                {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
@@ -5410,7 +5479,7 @@ export default function DispatchPage() {
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
-                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
                         const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -5431,7 +5500,7 @@ export default function DispatchPage() {
                         }
                         return null;
                       })()}
-                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
@@ -5574,7 +5643,7 @@ export default function DispatchPage() {
                           {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
-                        {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
@@ -5590,14 +5659,14 @@ export default function DispatchPage() {
                             </div>
                           );
                         })()}
-                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
+                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (
                           <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
                     )}
 
                     {/* PSO Service Window Compliance Checklist (desktop) */}
-                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && (() => {
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (() => {
                       const w = typeof selectedCall.pso_service_windows === 'string'
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
@@ -6140,11 +6209,11 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note.text === 'string' ? note.text : String(note.text ?? ''))}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-[var(--spm-text)] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note.text === 'string' ? note.text : String(note.text ?? ''))}{note.edited_at && <span className="text-[var(--spm-text-muted)] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--spm-text)] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--sev-critical)] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
@@ -6247,7 +6316,7 @@ export default function DispatchPage() {
                         {auditTrail.map((ev: any) => (
                           <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
-                            <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
+                            <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{toDisplayLabel(ev.action)}</span>
                             <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
@@ -6323,7 +6392,7 @@ export default function DispatchPage() {
                   const updated = { ...selectedCall, [flag]: 1 };
                   setSelectedCall(updated);
                   setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-                  addToast(`Flag "${flag.replace(/_/g, ' ').toUpperCase()}" accepted`, 'success');
+                  addToast(`Flag "${toDisplayLabel(flag)}" accepted`, 'success');
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
@@ -6338,9 +6407,25 @@ export default function DispatchPage() {
             />
           )}
 
-          {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
-            {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
+          {/* Dispatch Map Panel (right side, always visible on screen; hidden
+              on print — a live interactive map has no printable value, and
+              without print:hidden this w-[35%] flex-col panel squeezed down
+              to a near-zero-height sliver alongside the call record data
+              instead of being excluded like every other page's
+              interactive-only chrome (see print:hidden usage elsewhere,
+              e.g. CaseManagementPage.tsx). */}
+          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0 print:hidden" style={{ background: 'var(--surface-deep)' }}>
+            {(() => {
+              const callHasLocation = selectedCall?.latitude != null && selectedCall?.longitude != null;
+              // Mapbox path is null-call safe (renders units even with no
+              // selected call), so it can stay up whenever any unit has a
+              // GPS fix — e.g. the CAD board before a call is picked. The
+              // Google Maps fallback assumes a located call throughout, so
+              // it keeps the stricter gate.
+              const anyUnitHasLocation = units.some((u) => u.latitude != null && u.longitude != null);
+              if (mapEngine === 'mapbox' ? (callHasLocation || anyUnitHasLocation) : callHasLocation) return true;
+              return false;
+            })() ? (
               mapEngine === 'mapbox' ? (
                 <MapboxMiniMap
                   call={selectedCall}
@@ -6354,8 +6439,8 @@ export default function DispatchPage() {
                   units={units}
                   fullHeight
                   onRouteUpdate={setRouteInfo}
-                  serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
-                  serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
+                  serveRouteJobs={PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
+                  serveRouteOrder={PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
                 />
               )
             ) : (
@@ -6604,7 +6689,7 @@ export default function DispatchPage() {
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
                   quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
-                }`}>{quickTemplateData.priority}</span>
+                }`}>{toDisplayLabel(quickTemplateData.priority)}</span>
                 <span className="text-xs font-bold text-rmpg-100">{quickTemplateData.name}</span>
                 <span className="text-[10px] text-rmpg-400 ml-auto">{formatIncidentType(quickTemplateData.incident_type)}</span>
               </div>
@@ -6969,7 +7054,7 @@ export default function DispatchPage() {
                 const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
                 const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
                 const pending = calls.filter(c => c.status === 'pending');
-                const psoServes = completed.filter(c => c.incident_type === 'pso_client_request');
+                const psoServes = completed.filter(c => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type));
                 const totalMi = activeCalls.reduce((sum, c) => {
                   if (c.starting_mileage && c.ending_mileage) return sum + (Number(c.ending_mileage) - Number(c.starting_mileage));
                   return sum;
@@ -6996,27 +7081,44 @@ export default function DispatchPage() {
                 break;
               }
               case 'voice_serve': {
-                // Announce serve details for a call
+                // Announce serve details for a call. process_service_type/
+                // pso_service_type/process_served_to/pso_attempt_number/
+                // process_attempts/process_service_result all live in
+                // calls_for_service_ext (D1 100-col-cap overflow table) —
+                // GET /dispatch/calls (the list this `calls` array comes
+                // from) never returns them, so reading them off a list-row
+                // was silently always undefined. Only GET /:id joins the
+                // ext table, so fetch the real detail before announcing.
                 const call = calls.find(c => c.call_number === action.callNumber);
                 if (call) {
-                  const docType = (call as any).process_service_type || (call as any).pso_service_type || 'unknown';
-                  const servedTo = (call as any).process_served_to || (call as any).caller_name || 'unknown';
-                  const attempt = (call as any).pso_attempt_number || (call as any).process_attempts || 1;
-                  const result = (call as any).process_service_result || 'pending';
-                  announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                  apiFetch<any>(`/dispatch/calls/${call.id}`).then((full) => {
+                    const docType = full?.process_service_type || full?.pso_service_type || 'unknown';
+                    const servedTo = full?.process_served_to || call.caller_name || 'unknown';
+                    const attempt = full?.pso_attempt_number || full?.process_attempts || 1;
+                    const result = full?.process_service_result || 'pending';
+                    announceServeComplete(servedTo, call.location || '', docType, attempt, result);
+                  }).catch(() => {
+                    announceServeComplete(call.caller_name || 'unknown', call.location || '', 'unknown', 1, 'pending');
+                  });
                 }
                 break;
               }
               case 'voice_deadline': {
-                // Announce 72hr deadline status for a PSO call
+                // Announce 72hr deadline status for a PSO call. closed_at/
+                // cleared_at are in the list projection, but
+                // process_served_to is ext-only (see voice_serve above) —
+                // fetch the detail for that one field rather than always
+                // falling back to caller_name.
                 const call = calls.find(c => c.call_number === action.callNumber);
                 if (call) {
-                  const terminalTime = (call as any).closed_at || (call as any).cleared_at;
+                  const terminalTime = call.closed_at || call.cleared_at;
                   if (terminalTime) {
                     const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                     const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                     const caseNum = call.case_number || call.call_number;
-                    announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
+                    apiFetch<any>(`/dispatch/calls/${call.id}`)
+                      .then((full) => announceCourtDeadline(caseNum, hoursLeft, full?.process_served_to || call.caller_name))
+                      .catch(() => announceCourtDeadline(caseNum, hoursLeft, call.caller_name));
                   } else {
                     announceCallUpdate('', `Call ${call.call_number} has not been cleared or closed yet. No deadline active.`);
                   }

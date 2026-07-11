@@ -35,9 +35,15 @@ html.theme-dark,
   --stat-accent-amber: #f59e0b;
   --stat-accent-amber-bright: #fbbf24;
   --stat-accent-purple: #a855f7;
+  /* Decorative/branding accent — for stat cards, nav shortcuts, and icons
+     that are NOT reporting a warning state (unlike --stat-accent-amber,
+     which stays reserved for genuine pending/overdue/threshold signals).
+     Mirrors --brand-gold so it's silver in Blue & Silver, gold in night/day. */
+  --stat-accent-silver: var(--brand-gold);
   /* Priority neutrals: P3 routine uses --spm-text-muted; P4 scheduled is a
      dimmer step so the two read distinctly (esp. as adjacent pie slices). */
   --pri-scheduled: #5c6672;
+  /* SEPARATOR: NIGHT-specific tokens above, shared structure below */
 
   /* ── Semantic severity palette (THEMED — bright on dark night, darker on
      light day; see day/legacy blocks). Map status/severity hues onto these by
@@ -110,6 +116,7 @@ html.theme-light {
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
   --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
+  --pri-scheduled: #8a929b;
   /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
   --record-tile-bg: #dceaf7; --record-tile-border: #5b86b6; --record-tile-fg: #2c659f;
   --record-tile-bg-muted: #e7e4d9; --record-tile-border-muted: #9a958a; --record-tile-fg-muted: #6f7b8a;
@@ -179,6 +186,7 @@ html.theme-legacy-black {
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
   --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
+  --pri-scheduled: #4a4a4a;
   /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
   --record-tile-bg: #14202c; --record-tile-border: #2f5070; --record-tile-fg: #6f9fce;
   --record-tile-bg-muted: #141414; --record-tile-border-muted: #2d2d2d; --record-tile-fg-muted: #8a8a8a;
@@ -231,6 +239,90 @@ html.theme-legacy-black {
   --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
   --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
+}
+
+/* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
+   an independent forced palette selectable in Settings, not part of the
+   day/night schedule). Deep navy-blue surfaces with a cool silver/platinum
+   accent replacing the warm gold used everywhere else — that swap (via
+   --brand-gold and --field-label-color) IS the theme's identity. Severity/
+   priority colors stay the fixed, safety-critical hues shared by every theme. */
+html.theme-blue-silver {
+  /* Navy-gray-blue repair pass (2026-07-07): the 2026-07-06 "lighter" pass still
+     read too dark and its surfaces/chrome/tiles drifted across mismatched blues.
+     Every color below is re-derived from ONE navy-gray-blue ramp
+     (base #22405f → raised #2c4f74 → sunken #1a3350 → overlay #142840) so
+     nothing clashes. Tactical surfaces (map/dashcam/MDT/nav) are unaffected —
+     they force .tactical-dark's own fixed dark values regardless of this palette. */
+  --surface-base: #22405f;  --surface-base-rgb: 34 64 95;
+  --surface-raised: #2c4f74; --surface-raised-rgb: 44 79 116;
+  --surface-sunken: #1a3350; --surface-sunken-rgb: 26 51 80;
+  --surface-overlay: #142840; --surface-overlay-rgb: 20 40 64;
+  --surface-deep: #142840;   --surface-deep-rgb: 20 40 64;
+  /* Extra tonal steps (2026-07-08) so panel headers and hover states read as a
+     close, deliberate shade shift off the ramp instead of a flat jump. */
+  --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
+  --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
+  --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
+  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
+  --brand-blue: #5a9ae0; --brand-gold: #c3ccd6;
+  --pri-scheduled: #63768f;
+  /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
+  --record-tile-bg: #223e5c; --record-tile-border: #4a80b8; --record-tile-fg: #97c8f7;
+  --record-tile-bg-muted: #1a3350; --record-tile-border-muted: #46688c; --record-tile-fg-muted: #7f96ac;
+
+  --rmpg-50-rgb: 240 244 249; --rmpg-100-rgb: 218 226 235; --rmpg-200-rgb: 190 203 216;
+  --rmpg-300-rgb: 157 175 194; --rmpg-400-rgb: 129 149 171; --rmpg-500-rgb: 99 118 143;
+  --rmpg-600-rgb: 68 89 113;  --rmpg-700-rgb: 44 79 116;   --rmpg-800-rgb: 34 64 95;
+  --rmpg-900-rgb: 26 51 80;   --rmpg-950-rgb: 20 40 64;
+  --brand-50-rgb: 245 247 250; --brand-100-rgb: 225 231 238; --brand-200-rgb: 197 209 220;
+  --brand-300-rgb: 165 182 199; --brand-400-rgb: 134 154 175; --brand-500-rgb: 109 128 150;
+  --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;
+  --brand-900-rgb: 20 40 64;
+  --blue-50-rgb: 244 247 250; --blue-100-rgb: 221 229 237; --blue-200-rgb: 195 208 219;
+  --blue-300-rgb: 168 185 200; --blue-400-rgb: 129 149 171; --blue-500-rgb: 99 118 143;
+  --blue-600-rgb: 68 89 113;  --blue-700-rgb: 44 79 116;    --blue-800-rgb: 34 64 95;
+  --blue-900-rgb: 26 51 80;
+  /* gold token renders SILVER here — --brand-gold above is the theme's metallic accent. */
+  --brand-gold-300-rgb: 229 233 238; --brand-gold-400-rgb: 208 216 224; --brand-gold-500-rgb: 195 204 214;
+  --brand-gold-600-rgb: 160 173 189; --brand-gold-700-rgb: 124 139 158;
+  --brand-gold-rgb: 195 204 214;
+
+  /* Severity palette — bright, like night (dark background). Fixed hues, not re-derived. */
+  --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
+  --sev-high: #f97316;
+  --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;
+  --sev-caution: #facc15;
+  --sev-ok: #22c55e; --sev-ok-soft: #86efac;
+  --sev-info: #60a5fa;
+  --sev-special: #c084fc; --sev-special-soft: #a855f7;
+  --sev-critical-rgb: 239 68 68; --sev-high-rgb: 249 115 22;
+  --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
+  --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
+  --sev-special-rgb: 192 132 252;
+
+  /* Records chrome tokens — BLUE & SILVER */
+  --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
+  --spm-border: #46688c; --spm-field-border: #46688c; --spm-accent: #5a9ae0;
+  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #9bb0c7;
+  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 155 176 199;
+  --spm-group-head: linear-gradient(#2c4f74, #22405f);
+  --spm-toolbar: linear-gradient(#2c4f74, #22405f);
+  --spm-toolbar-hover: linear-gradient(#345c85, #294a6b);
+  --spm-toolbar-active: linear-gradient(#1a3350, #142840);
+  --spm-toolbar-primary: linear-gradient(#4478ad, #34608c);
+
+  /* App chrome tokens — BLUE & SILVER */
+  --toolbar-gradient-start: #1a3350; --toolbar-gradient-end: #2c4f74;
+  --grid-header-bg: #10213a; --grid-row-alt: #1a3350;
+  --field-label-color: #c3ccd6;
+  --surface-panel: #1a3350; --surface-panel-alt: #182f4a; --surface-hover: #294a6b;
+  --info-text: #cdd8e6; --info-bg: rgba(90, 154, 224, 0.12); --info-border: rgba(90, 154, 224, 0.24);
+  --desktop-shell-start: #142840; --desktop-shell-end: #1a3350;
+  --desktop-shell-raised-start: #1a3350; --desktop-shell-raised-end: #2c4f74;
+  --desktop-shell-border: #46688c; --desktop-shell-accent: #5a9ae0;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --desktop-shell-subtle-text: #91a3ba; --desktop-shell-icon: #91a3ba;
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */

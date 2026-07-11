@@ -36,6 +36,8 @@ async function generateReviewNumber(db: ReturnType<typeof getDb>): Promise<strin
 // ═══════════════════════════════════════════════════════════════
 
 qa.get('/reviews', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='qa_reviews'");

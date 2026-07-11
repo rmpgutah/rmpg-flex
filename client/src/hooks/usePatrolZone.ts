@@ -10,6 +10,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { asArray } from '../utils/asArray';
+import { parseTimestamp } from '../utils/dateUtils';
 
 /* ── FEATURE 81: Patrol Zone Allocation ─────────────────────
    Spillman Flex intelligently allocates officers to patrol
@@ -34,7 +36,7 @@ export function usePatrolZoneAllocation() {
     setLoading(true);
     try {
       const result = await apiFetch<ZoneAllocation[]>('/dispatch/geography/zone-allocation');
-      if (result) setAllocations(result);
+      setAllocations(asArray<ZoneAllocation>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -207,7 +209,7 @@ export function useDirectedPatrol() {
     try {
       const params = zone ? `?zone=${zone}` : '';
       const result = await apiFetch<DirectedPatrol[]>(`/dispatch/geography/directed-patrols${params}`);
-      if (result) setPatrols(result);
+      setPatrols(asArray<DirectedPatrol>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -311,12 +313,12 @@ export function useCrimePatternOverlay(zone: string | null) {
     try {
       const params = zone ? `?zone=${zone}` : '';
       const result = await apiFetch<CrimePatternOverlay[]>(`/dispatch/geography/crime-patterns${params}`);
-      if (result) setPatterns(result);
+      setPatterns(asArray<CrimePatternOverlay>(result));
     } catch { /* ignore */ }
     setLoading(false);
   }, [zone]);
 
-  const activePatterns = useMemo(() => patterns.filter(p => new Date(p.lastIncident).getTime() > Date.now() - 7 * 86400000), [patterns]);
+  const activePatterns = useMemo(() => patterns.filter(p => parseTimestamp(p.lastIncident).getTime() > Date.now() - 7 * 86400000), [patterns]);
 
   return { patterns, loading, load, activePatterns };
 }

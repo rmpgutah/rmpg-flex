@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { resolveMapboxAccessToken, initMapbox, isMapboxReady } from '../../../../utils/mapboxLoader';
+import { applyRmpgBasemap } from '../../../../utils/mapboxBasemap';
 import { isValidLngLat } from '../../../../utils/mapMarkers';
 import {
   ResponsiveContainer, ScatterChart, Scatter,
@@ -171,7 +172,7 @@ function ReadinessCard() {
 
 function StatusBadge({ status }: { status: string }) {
   const tone = status === 'in_service' ? 'bg-emerald-500/15 text-emerald-300' :
-               status === 'in_shop' ? 'bg-amber-500/15 text-amber-300' :
+               status === 'maintenance' ? 'bg-amber-500/15 text-amber-300' :
                status === 'out_of_service' ? 'bg-red-500/15 text-red-300' :
                'bg-rmpg-700/40 text-rmpg-300';
   return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] uppercase tracking-wide ${tone}`}>{status.replace(/_/g, ' ')}</span>;
@@ -891,6 +892,7 @@ function FleetMapCard() {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }));
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+        map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         mapRef.current = map;
         // Clear any prior mapErr (e.g. a transient init failure) — a
         // successful map init means Mapbox is alive. Without this, the

@@ -32,6 +32,7 @@ import {
   generateBoloPdf,
   generateWarrantSummaryPdf,
   setActiveOfficerSignature,
+  truncatePostureChip,
 } from '../recordPdfGenerator';
 
 // Stub fetch:
@@ -495,5 +496,29 @@ describe('recordPdfGenerator smoke tests', () => {
     })).not.toThrow();
     // Reset for subsequent tests
     setActiveOfficerSignature(undefined);
+  });
+});
+
+describe('truncatePostureChip', () => {
+  it('leaves short flags untouched', () => {
+    expect(truncatePostureChip('GANG')).toBe('GANG');
+    expect(truncatePostureChip('MENTAL HEALTH')).toBe('MENTAL HEALTH');
+  });
+
+  it('cuts long freeform values at a word boundary with an ellipsis, not mid-word', () => {
+    // Regression: a bare .slice(0, 22) previously produced
+    // "REGISTERED SEX OFFENDE" (23-char value hard-cut with no
+    // indication it was truncated) — caught 2026-07-03 on a live
+    // person-record PDF print.
+    const result = truncatePostureChip('REGISTERED SEX OFFENDER');
+    expect(result.endsWith('...')).toBe(true);
+    expect(result).not.toContain('OFFENDE...'); // must not cut inside the word
+    expect(result.length).toBeLessThanOrEqual(22);
+  });
+
+  it('cuts a long caution narrative at a word boundary', () => {
+    const result = truncatePostureChip('TURLEY CAN BE UNPREDICTABLE AT TIMES');
+    expect(result.endsWith('...')).toBe(true);
+    expect(result).not.toContain('UNPREDIC...');
   });
 });

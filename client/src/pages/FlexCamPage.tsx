@@ -11,6 +11,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Req {
   id: number; title: string | null; status: string;
@@ -487,7 +488,7 @@ export default function FlexCamPage() {
                   ) : (
                     custodyOpen[r.id]!.custody.map((entry, i) => (
                       <div key={i} className="flex items-baseline gap-2 py-0.5 border-b border-border-default last:border-0">
-                        <span className="text-[9px] font-bold uppercase text-brand-400 w-20 flex-shrink-0">{entry.action}</span>
+                        <span className="text-[9px] font-bold uppercase text-brand-400 w-20 flex-shrink-0">{toDisplayLabel(entry.action)}</span>
                         <span className="text-[10px] text-rmpg-300 flex-1 min-w-0">
                           {entry.actor_name ?? (entry.actor_user_id != null ? `#${entry.actor_user_id}` : '—')}
                           {entry.reason && <span className="ml-1 text-rmpg-500 text-[9px]">({entry.reason})</span>}

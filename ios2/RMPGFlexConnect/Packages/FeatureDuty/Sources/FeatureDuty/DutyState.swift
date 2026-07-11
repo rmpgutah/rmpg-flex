@@ -23,7 +23,7 @@ public final class DutyState {
         self.odometerStart = nil
     }
 
-    public func elapsedSinceShiftStart(now: Date) -> TimeInterval {
+    public func elapsedSinceShiftStart(now: Date = Date()) -> TimeInterval {
         guard let start = shiftStartedAt else { return 0 }
         return now.timeIntervalSince(start)
     }

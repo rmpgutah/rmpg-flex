@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -225,7 +226,7 @@ export function generateTrespassOrderPdf(order: TrespassOrder): jsPDF {
   y += 12;
 
   const orderFields: Array<[string, string]> = [
-    ['Order Type', ORDER_TYPE_LABELS[order.order_type] || String(order.order_type).replace(/_/g, ' ')],
+    ['Order Type', ORDER_TYPE_LABELS[order.order_type] || toDisplayLabel(String(order.order_type))],
     ['Status', STATUS_LABELS[order.status] || String(order.status)],
     ['Property', order.property_name || '—'],
     ['Location', order.location || '—'],

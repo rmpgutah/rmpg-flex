@@ -21,7 +21,7 @@
 // ============================================================
 
 import { useState, useCallback, useRef } from 'react';
-import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { apiFetch } from './useApi';
 import {
   snapToRoute,
   type RouteInfo,
@@ -30,6 +30,14 @@ import {
   type RouteStep,
   type CongestionLevel,
 } from './useMapRouting';
+import {
+  nextWaypointIndex,
+  hasArrivedAtWaypoint,
+  advanceWaypoint,
+  type NavWaypoint,
+} from './waypointAdvance';
+
+export type { NavWaypoint } from './waypointAdvance';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -75,6 +83,13 @@ const REROUTE_THROTTLE_MS = 30_000;
 const REROUTE_DISTANCE_THRESHOLD = 100;
 const CORRIDOR_METERS = 45;
 const OFFROUTE_SAMPLES = 3;
+// Multi-stop waypoint arrival radius. No single-destination "arrival" concept
+// lives in this engine today — NavigationPage detects arrival page-side via a
+// crow-flight 0.15 mi (~241 m) threshold against guidance.destination (see
+// NavigationPage.tsx destCrowMi). Reused here so a waypoint-to-waypoint
+// advance in a multi-stop route fires at the same real-world distance as the
+// existing single-destination "Arrived" banner.
+const WAYPOINT_ARRIVAL_METERS = 241;
 
 const CONGESTION_RANK: Record<CongestionLevel, number> = { low: 0, moderate: 1, heavy: 2, severe: 3, unknown: -1 };
 
@@ -139,8 +154,14 @@ export function useNavGuidanceEngine() {
   const [routeRender, setRouteRender] = useState<RouteRenderData | null>(null);
   const [offRoute, setOffRoute] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [waypoints, setWaypoints] = useState<NavWaypoint[]>([]);
+  // Set from the Directions response (src/routes/mapbox.ts) when the chosen
+  // route crosses an active exclusion geofence zone. Server-computed only —
+  // no count, just a boolean, so the HUD copy stays generic.
+  const [excludedZoneWarning, setExcludedZoneWarning] = useState(false);
 
   const destRef = useRef<GuidanceDestination | null>(null);
+  const waypointsRef = useRef<NavWaypoint[]>([]);
   const geomRef = useRef<{ coords: [number, number][]; cum: number[]; totalMeters: number; totalSec: number } | null>(null);
   const lastOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastQueryTimeRef = useRef<number>(0);
@@ -160,17 +181,17 @@ export function useNavGuidanceEngine() {
     const gen = genRef.current;
     setRouteLoading(true);
     try {
-      const token = await getMapboxAccessToken();
-      if (!token) return null;
-
+      // Routed through the Worker's /api/mapbox/directions proxy
+      // (src/routes/mapbox.ts) rather than hitting api.mapbox.com directly
+      // with an embedded public token — the officer's live turn-by-turn
+      // route no longer depends on the client holding any Mapbox credential
+      // at all; the MAPBOX_ACCESS_TOKEN secret stays server-side. Uses the
+      // same auth (rmpg_token bearer) as every other apiFetch call.
       const coordStr = `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`;
-      const url =
-        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}` +
-        `?access_token=${token}&geometries=geojson&overview=full&steps=true&annotations=congestion`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiFetch<{ routes?: any[]; excludedZoneWarning?: boolean }>(
+        `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
+        `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
+      );
       const route = data.routes?.[0];
       if (!route) throw new Error('No route found');
       if (gen !== genRef.current) return null; // guidance changed mid-fetch — discard
@@ -196,12 +217,19 @@ export function useNavGuidanceEngine() {
       const steps: RouteStep[] = ((route.legs?.[0]?.steps ?? []) as any[]).map((s) => {
         const man = s.maneuver || {};
         const meters = typeof s.distance === 'number' ? s.distance : 0;
+        const rawLanes = s.intersections?.[0]?.lanes as
+          { valid?: boolean; active?: boolean; indications?: string[] }[] | undefined;
         return {
           instruction: man.instruction || s.name || 'Continue',
           distanceMeters: Math.round(meters),
           distanceText: fmtStepDist(meters),
           maneuverType: man.type || '',
           modifier: man.modifier,
+          lanes: rawLanes?.map((l) => ({
+            valid: l.valid === true,
+            active: l.active === true,
+            indications: Array.isArray(l.indications) ? l.indications : [],
+          })),
         };
       });
 
@@ -222,6 +250,7 @@ export function useNavGuidanceEngine() {
       lastOriginRef.current = origin;
       lastQueryTimeRef.current = Date.now();
       setOffRoute(false);
+      setExcludedZoneWarning(data.excludedZoneWarning === true);
       setRouteGeom({ coords, cum, totalMeters: total });
       setRouteRender({
         geometry: { type: 'LineString', coordinates: coords },
@@ -277,7 +306,9 @@ export function useNavGuidanceEngine() {
     return queryRoute({ lat: originLat, lng: originLng }, dest);
   }, [queryRoute]);
 
-  /** End guidance and clear all derived state. */
+  /** End guidance and clear all derived state. Declared above startMultiStop
+   *  (which calls it directly) so both can be reached from the exhaustive
+   *  dep array without a temporal-dead-zone reference error. */
   const stopGuidance = useCallback(() => {
     genRef.current += 1;
     queryInFlightRef.current = false;
@@ -285,13 +316,41 @@ export function useNavGuidanceEngine() {
     geomRef.current = null;
     lastOriginRef.current = null;
     offRouteStreakRef.current = 0;
+    waypointsRef.current = [];
+    setWaypoints([]);
     setDestination(null);
     setActiveRoute(null);
     setRouteProgress(null);
     setRouteGeom(null);
     setRouteRender(null);
     setOffRoute(false);
+    setExcludedZoneWarning(false);
   }, []);
+
+  /** Begin a multi-stop route: sets the waypoint list and routes to the first
+   *  incomplete stop via the same startGuidance path a single-destination
+   *  route uses. Each waypoint's `id`/`label` become the route's
+   *  callNumber/label so the existing HUD ("to <label>") needs no changes. */
+  const startMultiStop = useCallback((
+    unitCallSign: string,
+    originLat: number,
+    originLng: number,
+    stops: NavWaypoint[],
+  ): Promise<RouteInfo | null> => {
+    const idx = nextWaypointIndex(stops);
+    if (idx === null) {
+      // Every stop already completed — there is nothing to route to. Clear
+      // via the same path stopGuidance uses so a stale destination/route from
+      // a PRIOR session can never linger silently (this mirrors stopGuidance
+      // exactly rather than duplicating its clear list).
+      stopGuidance();
+      return Promise.resolve(null);
+    }
+    waypointsRef.current = stops;
+    setWaypoints(stops);
+    const wp = stops[idx];
+    return startGuidance(unitCallSign, String(wp.id), originLat, originLng, wp.lat, wp.lng, wp.label);
+  }, [startGuidance, stopGuidance]);
 
   /** Read the live destination from inside async closures / stale renders. */
   const getDestination = useCallback((): GuidanceDestination | null => destRef.current, []);
@@ -305,6 +364,24 @@ export function useNavGuidanceEngine() {
     const g = geomRef.current;
     if (!dest || !g || g.coords.length < 2) return;
     if (!validCoord(lat, lng)) return;
+
+    // Multi-stop advance: only engages when a waypoint list is active
+    // (empty by default) — a no-op for every existing single-destination
+    // caller, preserving today's behavior byte-for-byte.
+    if (waypointsRef.current.length > 0 && hasArrivedAtWaypoint(waypointsRef.current, lat, lng, WAYPOINT_ARRIVAL_METERS)) {
+      const advanced = advanceWaypoint(waypointsRef.current);
+      waypointsRef.current = advanced;
+      setWaypoints(advanced);
+      const nextIdx = nextWaypointIndex(advanced);
+      if (nextIdx !== null) {
+        const wp = advanced[nextIdx];
+        startGuidance(dest.unitCallSign, String(wp.id), lat, lng, wp.lat, wp.lng, wp.label);
+        return;
+      }
+      // Final stop reached — fall through to the existing single-destination
+      // logic below (unchanged), which already drives NavigationPage's
+      // crow-flight "Arrived" banner off guidance.destination/routeProgress.
+    }
 
     // Jump detection — reject teleportation glitches.
     if (lastOriginRef.current) {
@@ -348,7 +425,7 @@ export function useNavGuidanceEngine() {
       if (moved < REROUTE_DISTANCE_THRESHOLD) return;
     }
     queryRoute({ lat, lng }, dest);
-  }, [queryRoute]);
+  }, [queryRoute, startGuidance]);
 
   return {
     destination,
@@ -357,8 +434,11 @@ export function useNavGuidanceEngine() {
     routeGeom,
     routeRender,
     offRoute,
+    excludedZoneWarning,
     routeLoading,
+    waypoints,
     startGuidance,
+    startMultiStop,
     stopGuidance,
     updateOrigin,
     getDestination,

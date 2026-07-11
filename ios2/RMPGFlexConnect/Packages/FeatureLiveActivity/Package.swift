@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "FeatureLiveActivity",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "FeatureLiveActivity", targets: ["FeatureLiveActivity"])],
     dependencies: [],
     targets: [

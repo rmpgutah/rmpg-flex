@@ -21,6 +21,7 @@ import {
   ScanLine,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { parseTimestamp } from '../utils/dateUtils';
 import { recordTypeLabel } from '../utils/recordTypeLabel';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -61,7 +62,7 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 // ============================================================
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);

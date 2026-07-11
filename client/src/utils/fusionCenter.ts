@@ -7,6 +7,8 @@
 // and fusion center metrics.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 91: Intelligence Products */
 export interface IntelProduct { id:string; title:string; productType:'IIR'|'IIM'|'BOLO'|'BULLETIN'|'ASSESSMENT'|'BRIEFING'|'REPORT'; classification:'UNCLASSIFIED'|'FOUO'|'LES'|'SECRET'; date:string; author:string; summary:string; distribution:string[]; }
 export function classifyIntelProduct(sources:string[]): { classification:string; rationale:string } { const hasProtectedSources=sources.some(s=>s.includes('CHS')||s.includes('UC')); return { classification:hasProtectedSources?'SECRET':'FOUO', rationale:hasProtectedSources?'Contains protected source information':'Law enforcement sensitive' }; }
@@ -33,7 +35,7 @@ export function trackISESharing(transactions:ISETransaction[]): { totalShared:nu
 
 /* FEATURE 97: Liaison Coordination */
 export interface FusionLiaison { id:string; agency:string; liaisonName:string; contactInfo:string; assignedDesk:string; clearances:string[]; lastContact:string; nextContact:string; }
-export function manageLiaisonSchedule(liaisons:FusionLiaison[]): { total:number; overdue:number } { const now=new Date(); return { total:liaisons.length, overdue:liaisons.filter(l=>new Date(l.lastContact).getTime()<now.getTime()-90*86400000).length }; }
+export function manageLiaisonSchedule(liaisons:FusionLiaison[]): { total:number; overdue:number } { const now=new Date(); return { total:liaisons.length, overdue:liaisons.filter(l=>parseTimestamp(l.lastContact).getTime()<now.getTime()-90*86400000).length }; }
 
 /* FEATURE 98: Intelligence Cycle Management */
 export interface IntelCycle { id:string; cycleName:string; phase:'planning'|'collection'|'processing'|'analysis'|'dissemination'|'evaluation'; startDate:string; endDate:string|null; objectives:string[]; products:number; status:'active'|'completed'; }

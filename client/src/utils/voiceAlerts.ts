@@ -126,8 +126,8 @@ const TONE_GAP_MS = 400;
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
 
-/** SpeechSynthesisUtterance configuration — tuned for natural human-like cadence */
-const SPEECH_RATE = 0.95;   // slightly slower than default — clearer, more natural
+/** SpeechSynthesisUtterance configuration — tuned for Spillman Flex terminal announcer cadence */
+const SPEECH_RATE = 0.98;   // slightly faster — clipped dispatch cadence
 const SPEECH_PITCH = 1.02;  // very slight pitch lift for authority/clarity
 const SPEECH_VOLUME = 0.92; // loud but not clipping
 

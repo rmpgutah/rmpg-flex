@@ -84,7 +84,7 @@ export async function recognizeBatch(
     const result = await recognizeText(images[i], {
       language: options.language,
       onProgress: options.onProgress
-        ? (p) => options.onProgress!(i, p)
+        ? (p: any) => options.onProgress!(i, p)
         : undefined,
     });
     results.push(result);

@@ -13,6 +13,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const audit = new Hono<Env>();
 
 // ── Role gate ──────────────────────────────────────────────
@@ -95,10 +96,7 @@ audit.get('/logs', async (c) => {
 
     return c.json({ data, pagination: { page: pageNum, limit: limitNum, total, totalPages } });
   } catch (err) {
-    return c.json({
-      error: 'Failed to fetch audit logs', code: 'FAILED_TO_FETCH_AUDIT',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to fetch audit logs', 'FAILED_TO_FETCH_AUDIT');
   }
 });
 
@@ -164,7 +162,7 @@ audit.get('/count', async (c) => {
     c.header('Cache-Control', 'private, max-age=30');
     return c.json({ action, since, count: row?.count ?? 0 });
   } catch (err) {
-    return c.json({ error: 'Failed to count audit entries', code: 'AUDIT_COUNT_FAILED', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to count audit entries', 'AUDIT_COUNT_FAILED');
   }
 });
 

@@ -85,13 +85,31 @@ if command -v xcrun &>/dev/null; then
     xcrun codesign -d --verbose=4 "$IPA_PATH" 2>/dev/null | head -3 || warn "Could not verify signature"
 fi
 
+log "Assembling OTA upload package..."
+ICON_SRC="App/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+if [ -f "$ICON_SRC" ] && command -v sips &>/dev/null; then
+    sips -Z 57 "$ICON_SRC" --out "$EXPORT_PATH/icon-57.png" >/dev/null
+    cp "$ICON_SRC" "$EXPORT_PATH/icon-512.png"
+else
+    warn "Skipping icon generation ($ICON_SRC or sips missing) — manifest icon URLs will 404 until you add them manually."
+fi
+
+sed \
+    -e "s#__IPA_URL__#$OTA_BASE/RMPGFlexConnect.ipa#g" \
+    -e "s#__ICON_57_URL__#$OTA_BASE/icon-57.png#g" \
+    -e "s#__ICON_512_URL__#$OTA_BASE/icon-512.png#g" \
+    OTA/manifest.plist > "$EXPORT_PATH/manifest.plist"
+cp OTA/index.html "$EXPORT_PATH/index.html"
+
 log ""
 log "Wireless OTA install URL:"
 log "  itms-services://?action=download-manifest&url=$OTA_BASE/manifest.plist"
 log ""
-log "To deploy, upload these files to your web server:"
-log "  1. $IPA_PATH → $OTA_BASE/RMPGFlexConnect.ipa"
-log "  2. OTA/manifest.plist → $OTA_BASE/manifest.plist (update __IPA_URL__)"
-log "  3. OTA/index.html → $OTA_BASE/index.html"
+log "OTA package ready at $EXPORT_PATH/ — upload its contents as-is to your web server:"
+log "  $EXPORT_PATH/RMPGFlexConnect.ipa → $OTA_BASE/RMPGFlexConnect.ipa"
+log "  $EXPORT_PATH/manifest.plist     → $OTA_BASE/manifest.plist"
+log "  $EXPORT_PATH/index.html        → $OTA_BASE/index.html"
+log "  $EXPORT_PATH/icon-57.png       → $OTA_BASE/icon-57.png"
+log "  $EXPORT_PATH/icon-512.png      → $OTA_BASE/icon-512.png"
 log ""
 log "Test the install page: https://rmpgutah.us/ios/ota/"

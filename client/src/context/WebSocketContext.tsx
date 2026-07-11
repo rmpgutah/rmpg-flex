@@ -425,21 +425,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, connect, connectAlerts]);
 
   // Visibility + online recovery — separate effect so it doesn't tear down sockets
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && authRef.current) {
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-          retryCountRef.current = 0;
-          reconnectDelayRef.current = WS_RECONNECT_DELAY;
-          connect();
-        }
-        if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
-          alertsRetryCountRef.current = 0;
-          alertsDelayRef.current = WS_RECONNECT_DELAY;
-          connectAlerts();
-        }
+  // handleVisibility is defined outside so both effects can use it
+  const handleVisibility = useCallback(() => {
+    if (document.visibilityState === 'visible' && authRef.current) {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        retryCountRef.current = 0;
+        reconnectDelayRef.current = WS_RECONNECT_DELAY;
+        connect();
       }
-    };
+      if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
+        alertsRetryCountRef.current = 0;
+        alertsDelayRef.current = WS_RECONNECT_DELAY;
+        connectAlerts();
+      }
+    }
+  }, [connect, connectAlerts]);
+
+  useEffect(() => {
     const handleOnline = () => {
       if (!authRef.current) return;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -459,7 +461,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
     };
-  }, [connect, connectAlerts]);
+  }, [connect, connectAlerts, handleVisibility]);
 
   const subscribe = useCallback((type: WSMessageType, handler: MessageHandler) => {
     if (!subscribersRef.current.has(type)) {

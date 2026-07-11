@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
+import { denverOffsetHours } from '../utils/denverTime';
 import type { Env } from '../types';
 
 const reports = new Hono<Env>();
@@ -41,6 +42,24 @@ function clampDays(raw: string | undefined, fallback: number): number {
   const n = Number.parseInt(raw ?? '', 10);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return Math.min(n, 365);
+}
+
+// created_at is stored UTC, but "today"/"yesterday" dashboard tiles mean
+// Mountain Time. `datetime('now','start of day')` and `DATE('now')` both
+// resolve in UTC, so a call made at, say, 11pm MDT (05:00 UTC the NEXT
+// day) was silently excluded from "today," or a call from just after UTC
+// midnight (still yesterday evening in MT) was counted as "today." Shift
+// both sides of every DATE(...)/datetime(...) day comparison by the
+// current MT UTC offset so they compare in Denver-local calendar days.
+// Single current-moment offset (not per-row DST-aware) — see the
+// shift-comparison endpoint's identical tradeoff note below.
+function denverDateExpr(column: string): string {
+  const offset = denverOffsetHours();
+  return `DATE(${column}, '${offset} hours')`;
+}
+function denverNowDateExpr(modifier?: string): string {
+  const offset = denverOffsetHours();
+  return modifier ? `DATE('now', '${modifier}', '${offset} hours')` : `DATE('now', '${offset} hours')`;
 }
 
 // GET /api/reports/incidents-summary?days=30
@@ -174,11 +193,18 @@ reports.get('/crime-trends', async (c) => {
 });
 
 // GET /api/reports/beat-activity?days=30
-// One row per active beat with call/incident/citation counts.
-// Joins:
+// One row per active beat with call/incident/citation counts + average
+// response time (minutes). Joins:
 //   calls    — calls_for_service.beat_id = dispatch_beats.beat_code
 //   incidents — via calls_for_service (incidents have no beat_id of their own)
 //   citations — citations.beat_id = dispatch_beats.beat_code
+//   response — AVG(calls_for_service.response_time_seconds) per beat, minutes.
+//     response_time_seconds is populated on arrival (see dispatch/calls.ts's
+//     onscene handler: (julianday(onscene_at) - julianday(dispatched_at)) *
+//     86400), so this is real observed dispatch-to-arrival time, not a
+//     theoretical drive-time estimate. Beats with zero arrived calls in the
+//     window get avg_response_min: null (the client's map layer already
+//     treats null distinctly from 0 — see useMapboxResponseTime.ts).
 // Inactive beats are excluded.
 reports.get('/beat-activity', async (c) => {
   try {
@@ -193,6 +219,7 @@ reports.get('/beat-activity', async (c) => {
     calls: number;
     incidents: number;
     citations: number;
+    avg_response_min: number | null;
   }>(
     db,
     `SELECT b.beat_code,
@@ -200,7 +227,8 @@ reports.get('/beat-activity', async (c) => {
             b.district_letter,
             COALESCE(c.n, 0)  AS calls,
             COALESCE(i.n, 0)  AS incidents,
-            COALESCE(ci.n, 0) AS citations
+            COALESCE(ci.n, 0) AS citations,
+            r.avg_min AS avg_response_min
        FROM dispatch_beats b
        LEFT JOIN (
          SELECT beat_id, COUNT(*) AS n
@@ -221,10 +249,17 @@ reports.get('/beat-activity', async (c) => {
           WHERE created_at >= datetime('now', ?)
           GROUP BY beat_id
        ) ci ON ci.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT beat_id, AVG(response_time_seconds) / 60.0 AS avg_min
+           FROM calls_for_service
+          WHERE created_at >= datetime('now', ?)
+            AND response_time_seconds IS NOT NULL
+          GROUP BY beat_id
+       ) r  ON r.beat_id = b.beat_code
       WHERE b.active = 1
       ORDER BY (COALESCE(c.n,0) + COALESCE(i.n,0) + COALESCE(ci.n,0)) DESC,
                b.beat_code ASC`,
-    since, since, since
+    since, since, since, since
   );
 
   return c.json({ days, beats });
@@ -399,7 +434,7 @@ reports.get('/response-times', async (c) => {
     const db = getDb(c.env);
     const days = clampDays(c.req.query('days'), 30);
     const since = `-${days} days`;
-    const RESP = `COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)`;
+    const RESP = `COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)`;
 
     const overall = await queryFirst<{
       avgDispatch: number | null;
@@ -613,13 +648,18 @@ reports.get('/dashboard', async (c) => {
       // served every dashboard tile from the all-zeros catch fallback). The
       // column is also NULL on all current live rows, so fall back to the
       // onscene_at − created_at delta when it's missing.
-      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)), 1) AS avg FROM calls_for_service WHERE (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL) AND created_at >= datetime('now','-24 hours')"),
+      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)), 1) AS avg FROM calls_for_service WHERE (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL) AND created_at >= datetime('now','-24 hours')"),
       query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
       query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
       query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
     ]);
-    const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    const todayCalls = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
+    // incidents_today was never computed server-side — the client defaulted it
+    // to pendingReports (open_incidents), so the dashboard tile showed "all
+    // open incidents" under a "today" label regardless of when they were
+    // created. Real count, incidents table.
+    const incidentsToday = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`);
     // Secondary stat-card metrics (added 2026-06-21 — the DashboardPage Status
     // Summary row reads these but they were never returned, so 3 of 4 cards
     // permanently showed 0). Tolerant of missing tables/cols on dev/empty
@@ -636,6 +676,7 @@ reports.get('/dashboard', async (c) => {
     return c.json({
       activeCalls: calls?.n ?? 0,
       todayCalls: todayCalls?.n ?? 0,
+      incidentsToday: incidentsToday?.n ?? 0,
       unitsOnDuty: unitsOn?.n ?? 0,
       totalUnits: totalUnits?.n ?? 0,
       pendingReports: pending?.n ?? 0,
@@ -756,8 +797,13 @@ function crimeWindow(c: { req: { query: (k: string) => string | undefined } }): 
 }
 
 // Shared SELECT expression: response minutes with the timestamp fallback.
+// Fallback measures dispatched_at -> onscene_at (actual dispatch-to-arrival),
+// NOT created_at -> onscene_at (which also bakes in queue-wait time before a
+// unit was ever assigned). response_time_seconds is now populated going
+// forward (see the /:id/status handler); this fallback only covers rows
+// created before that, or where dispatched_at was never recorded.
 const RESPONSE_MINUTES =
-  'COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)';
+  "COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)";
 
 async function buildCrimeAnalysis(db: D1Database, where: string, binds: string[]) {
   const [topOffenses, hotspots, dayOfWeek, timeOfDay, trendData, clearance, responseRaw, repeatOffenders] =
@@ -922,7 +968,7 @@ reports.get('/comparison', async (c) => {
     const days = period === 'month' ? 30 : 7;
     const currentSince = `-${days} days`;
     const previousSince = `-${days * 2} days`;
-    const RESP = `COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)`;
+    const RESP = `COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)`;
 
     const safe1 = async (sql: string, ...p: string[]): Promise<number> => {
       try { return (await queryFirst<{ n: number }>(db, sql, ...p))?.n ?? 0; } catch { return 0; }
@@ -981,7 +1027,7 @@ reports.get('/daily-briefing', async (c) => {
       safe1(`SELECT COUNT(*) AS total_calls,
                SUM(CASE WHEN priority='P1' THEN 1 ELSE 0 END) AS p1_calls,
                SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
-               ROUND(AVG(COALESCE(response_time_seconds/60.0,(julianday(onscene_at)-julianday(created_at))*1440)),1) AS avg_response
+               ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_response
              FROM calls_for_service WHERE date(created_at)=date('now','localtime','-1 day')`),
       safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
       safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
@@ -1018,7 +1064,7 @@ reports.get('/weekly-digest', async (c) => {
       safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
       (async () => {
         try {
-          const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0,(julianday(onscene_at)-julianday(created_at))*1440)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
+          const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
           return r?.v ?? null;
         } catch { return null; }
       })(),
@@ -1222,14 +1268,14 @@ reports.get('/dashboard-weekly-trend', async (c) => {
   try {
     const db = getDb(c.env);
     const daily = await query<{ date: string; count: number }>(db,
-      `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM calls_for_service
+      `SELECT ${denverDateExpr('created_at')} AS date, COUNT(*) AS count FROM calls_for_service
        WHERE created_at >= datetime('now','-14 days') GROUP BY date ORDER BY date`);
     const todayN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`))?.n ?? 0;
     const yesterdayN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-1 day')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr('-1 day')}`))?.n ?? 0;
     const lastWeekN = (await queryFirst<{ n: number }>(db,
-      "SELECT COUNT(*) AS n FROM calls_for_service WHERE DATE(created_at) = DATE('now','-7 days')"))?.n ?? 0;
+      `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr('-7 days')}`))?.n ?? 0;
     return c.json({ dailyTrend: daily, today: todayN, yesterday: yesterdayN, lastWeekSameDay: lastWeekN });
   } catch { return c.json({ dailyTrend: [], today: 0, yesterday: 0, lastWeekSameDay: 0 }); }
 });
@@ -1240,7 +1286,7 @@ reports.get('/dashboard-calls-by-type', async (c) => {
     const db = getDb(c.env);
     const rows = await query<{ type: string; count: number }>(db,
       `SELECT incident_type AS type, COUNT(*) AS count FROM calls_for_service
-       WHERE DATE(created_at) = DATE('now') GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
+       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()} GROUP BY incident_type ORDER BY count DESC LIMIT 15`);
     return c.json(rows);
   } catch { return c.json([]); }
 });
@@ -1265,14 +1311,22 @@ reports.get('/shift-comparison', async (c) => {
   try {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
-    // Shift hours: Day=0600-1359, Swing=1400-2159, Night=2200-0559
+    // Shift hours (Day=0600-1359, Swing=1400-2159, Night=2200-0559) are Mountain
+    // Time, but created_at is stored UTC and strftime('%H', created_at) read the
+    // UTC hour directly — a call at 13:00 UTC (06:00 MDT, start of Day shift)
+    // was bucketed as Night. Shift the timestamp into Denver wall-clock before
+    // extracting the hour. Single current-moment offset (denverOffsetHours),
+    // not per-row DST-aware — rows on the far side of a DST flip within the
+    // `days` window can be off by 1 hour, versus the prior 6-7 hour UTC/MT bug.
+    const offset = denverOffsetHours();
+    const shiftedHour = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
     const rows = await query<{ shift: string; calls: number; incidents: number; avg_resp_min: number; hours: number }>(db,
-      `SELECT CASE WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 6 AND 13 THEN 'Day'
-                   WHEN CAST(strftime('%H', created_at) AS INTEGER) BETWEEN 14 AND 21 THEN 'Swing'
+      `SELECT CASE WHEN ${shiftedHour} BETWEEN 6 AND 13 THEN 'Day'
+                   WHEN ${shiftedHour} BETWEEN 14 AND 21 THEN 'Swing'
                    ELSE 'Night' END AS shift,
               COUNT(*) AS calls,
               COALESCE(SUM(CASE WHEN incident_type IS NOT NULL THEN 1 ELSE 0 END), 0) AS incidents,
-              ROUND(AVG(COALESCE(response_time_seconds/60.0, (julianday(onscene_at)-julianday(created_at))*1440)),1) AS avg_resp_min,
+              ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_resp_min,
               COUNT(DISTINCT DATE(created_at)) * 8 AS hours
        FROM calls_for_service WHERE created_at >= datetime('now','-${days} days') GROUP BY shift`);
     return c.json({ shifts: rows, period_days: days });

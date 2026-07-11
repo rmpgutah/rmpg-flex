@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import SparklineChart from './dashboard/SparklineChart';
 
 interface StatsCardProps {
   icon: React.ElementType;
@@ -11,6 +12,8 @@ interface StatsCardProps {
   accent?: string;
   className?: string;
   onClick?: () => void;
+  sparklineData?: number[];
+  animated?: boolean;
 }
 
 const ACCENT_COLORS: Record<string, string> = {
@@ -19,6 +22,7 @@ const ACCENT_COLORS: Record<string, string> = {
   green: 'border-green-700',
   amber: 'border-amber-700',
   purple: 'border-purple-700',
+  gold: 'border-brand-gold-600',
 };
 
 const ICON_COLORS: Record<string, string> = {
@@ -27,6 +31,7 @@ const ICON_COLORS: Record<string, string> = {
   green: 'text-green-400 bg-green-900/50',
   amber: 'text-amber-400 bg-amber-900/50',
   purple: 'text-purple-400 bg-purple-900/50',
+  gold: 'text-brand-gold-400 bg-brand-gold-900/30',
 };
 
 const VALUE_COLORS: Record<string, string> = {
@@ -35,6 +40,7 @@ const VALUE_COLORS: Record<string, string> = {
   green: 'text-green-400',
   amber: 'text-amber-400',
   purple: 'text-purple-400',
+  gold: 'text-brand-gold-400',
 };
 
 const TREND_COLOR_MAP: Record<string, string> = {
@@ -54,6 +60,8 @@ function StatsCard({
   accent = 'blue',
   className = '',
   onClick,
+  sparklineData,
+  animated = true,
 }: StatsCardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
@@ -63,6 +71,7 @@ function StatsCard({
     green: 'var(--stat-accent-green)',
     amber: 'var(--stat-accent-amber)',
     purple: 'var(--stat-accent-purple)',
+    gold: 'var(--brand-gold)',
   };
   const glowColor = accentVar[accent] || accentVar.blue;
   // 25% / 13% alpha tints of the accent for glow/border washes (replaces the
@@ -81,6 +90,8 @@ function StatsCard({
         relative overflow-hidden border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
+        ${animated ? 'animate-stagger' : ''}
+        hover-lift
         ${className}
       `}
       style={{ background: 'var(--surface-sunken)' }}
@@ -112,6 +123,12 @@ function StatsCard({
           </div>
         )}
       </div>
+
+      {sparklineData && sparklineData.length > 0 && (
+        <div className="sparkline-container">
+          <SparklineChart data={sparklineData} width={60} height={32} color={glowColor} />
+        </div>
+      )}
     </div>
   );
 }

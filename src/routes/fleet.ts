@@ -8,6 +8,7 @@ import { isEvidenceLocked } from '../utils/evidenceLock';
 import { recordAudit } from '../utils/auditLog';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const fleet = new Hono<Env>();
 
 // Manager-tier roles can create/update/delete vehicles. Read endpoints
@@ -52,6 +53,43 @@ const WRITABLE_COLS: readonly string[] = [
 
 const VALID_STATUSES = new Set(['in_service', 'out_of_service', 'maintenance', 'retired', 'archived']);
 
+// A stray Title-Case / space-separated status ("In Service" instead of
+// 'in_service') has landed on live D1 before via an out-of-band write
+// (legacy import), and every exact-match status filter/count in this repo
+// silently returns zero for those rows instead of erroring — a "vehicle
+// data looks wrong" bug that's invisible until you diff against the raw
+// table. `normalizeStatus` coerces on write (belt) and `statusNormSql`
+// re-derives the canonical form on read (suspenders), so a future stray
+// value degrades gracefully instead of zeroing out KPIs again.
+function normalizeStatus(raw: unknown): string {
+  return String(raw).trim().toLowerCase().replace(/\s+/g, '_');
+}
+/** SQL expression that canonicalizes a status column the same way `normalizeStatus` does. */
+function statusNormSql(col: string): string {
+  return `LOWER(REPLACE(TRIM(${col}), ' ', '_'))`;
+}
+/**
+ * Self-heal any stray non-canonical status value (e.g. "In Service" from a
+ * legacy import) back to the canonical form. The dozen+ analytics/report
+ * endpoints below all do exact-match `status = 'in_service'`-style SQL —
+ * rather than rewrite every one of those raw queries, normalize the column
+ * itself once here so they're all correct downstream. Idempotent no-op when
+ * everything's already canonical (WHERE clause makes the common case a
+ * zero-row UPDATE). Called from the list endpoint since that's the primary
+ * Fleet page load.
+ */
+async function healStatusDrift(db: D1Database): Promise<void> {
+  try {
+    await execute(
+      db,
+      `UPDATE fleet_vehicles SET status = ${statusNormSql('status')}
+       WHERE status IS NOT NULL AND status != ${statusNormSql('status')}`,
+    );
+  } catch {
+    // Best-effort — never let a self-heal failure break the list response.
+  }
+}
+
 // D1 `.bind()` only accepts null | number | string | boolean | ArrayBuffer.
 // Columns like `equipment` arrive from the client as JS arrays (multi-select);
 // binding one directly throws `D1_TYPE_ERROR: Type 'object' not supported`.
@@ -80,6 +118,7 @@ fleet.get('/', async (c) => {
     if (!tableCheck?.n) {
       return c.json({ data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } });
     }
+    await healStatusDrift(db);
     const q = c.req.query();
 
     // Pagination — default 200, cap 500 (matches FleetPage which fetches
@@ -141,7 +180,7 @@ fleet.get('/', async (c) => {
     });
   } catch (err) {
     console.error('GET /fleet failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -562,7 +601,7 @@ fleet.get('/dashcam-videos', async (c) => {
     }
   } catch (err) {
     console.error('GET /fleet/dashcam-videos failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -701,7 +740,7 @@ fleet.post('/dashcam-videos', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /fleet/dashcam-videos failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -768,7 +807,7 @@ fleet.get('/dashcam-videos/:id{[0-9]+}/stream', async (c) => {
     return new Response(obj.body, { status: 200, headers });
   } catch (err) {
     console.error('GET /fleet/dashcam-videos/:id/stream failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -805,7 +844,7 @@ fleet.put('/dashcam-videos/:id{[0-9]+}', async (c) => {
     return c.json(updated ?? { success: true });
   } catch (err) {
     console.error('PUT /fleet/dashcam-videos/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -860,7 +899,7 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /fleet/dashcam-videos/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -880,7 +919,7 @@ fleet.post('/dashcam-videos/:id{[0-9]+}/burn', async (c) => {
     return c.json({ success: true, burn_status: 'pending' });
   } catch (err) {
     console.error('POST /fleet/dashcam-videos/:id/burn failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -912,7 +951,7 @@ fleet.post('/dashcam-videos/:id{[0-9]+}/links', async (c) => {
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
     console.error('POST /fleet/dashcam-videos/:id/links failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -926,7 +965,7 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}/links/:linkId{[0-9]+}', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /fleet/dashcam-videos/:id/links/:linkId failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1094,7 +1133,7 @@ fleet.get('/:id{[0-9]+}', async (c) => {
     });
   } catch (err) {
     console.error('GET /fleet/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1117,6 +1156,7 @@ fleet.post('/', async (c) => {
     const vehicleNumber = typeof body.vehicle_number === 'string' ? body.vehicle_number.trim() : '';
     if (!vehicleNumber) return c.json({ error: 'vehicle_number is required' }, 400);
 
+    if (body.status != null) body.status = normalizeStatus(body.status);
     if (body.status != null && !VALID_STATUSES.has(String(body.status))) {
       return c.json({ error: 'Invalid status', valid: Array.from(VALID_STATUSES) }, 400);
     }
@@ -1168,7 +1208,7 @@ fleet.post('/', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /fleet failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1193,6 +1233,7 @@ fleet.put('/:id{[0-9]+}', async (c) => {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
+    if (body.status != null) body.status = normalizeStatus(body.status);
     if (body.status != null && !VALID_STATUSES.has(String(body.status))) {
       return c.json({ error: 'Invalid status', valid: Array.from(VALID_STATUSES) }, 400);
     }
@@ -1244,7 +1285,7 @@ fleet.put('/:id{[0-9]+}', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /fleet/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1301,7 +1342,7 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
     return c.json({ success: true, id });
   } catch (err) {
     console.error('DELETE /fleet/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -1423,7 +1464,7 @@ fleet.get('/:id/fuel', async (c) => {
     // unreliable — we still record distance but skip them in MPG aggregates.
     const enriched = computeFuelAnalytics(logs);
     return c.json({ data: enriched.logs, pagination: { page, per_page: limit, total, totalPages: Math.ceil(total / limit) }, summary: enriched.summary });
-  } catch (err) { console.error('GET /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/:id/fuel failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // POST /:id/fuel — log fuel entry (Feature 11)
@@ -1460,7 +1501,7 @@ fleet.post('/:id/fuel', async (c) => {
     } catch { /* executionCtx unavailable in tests */ }
 
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /fuel/:id — edit fuel entry (Feature 12)
@@ -1504,7 +1545,7 @@ fleet.put('/fuel/:id', async (c) => {
     } catch { /* executionCtx unavailable in tests */ }
 
     return c.json(updated);
-  } catch (err) { console.error('PUT /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/fuel/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // DELETE /fuel/:id — delete fuel entry (Feature 13)
@@ -1528,7 +1569,7 @@ fleet.delete('/fuel/:id', async (c) => {
     } catch { /* executionCtx unavailable in tests */ }
 
     return c.json({ success: true });
-  } catch (err) { console.error('DELETE /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('DELETE /fleet/fuel/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1546,7 +1587,7 @@ fleet.get('/:id/maintenance', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM fleet_maintenance WHERE vehicle_id = ? ORDER BY performed_at DESC LIMIT ? OFFSET ?', vehicleId, limit, offset);
     const total = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) as n FROM fleet_maintenance WHERE vehicle_id = ?', vehicleId))?.n ?? 0;
     return c.json({ data: rows, total });
-  } catch (err) { console.error('GET /fleet/:id/maintenance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/:id/maintenance failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.post('/:id/maintenance', async (c) => {
@@ -1559,7 +1600,7 @@ fleet.post('/:id/maintenance', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_maintenance (vehicle_id, type, description, mileage_at_service, cost, labor_cost, vendor, performed_by, performed_at, next_due_date, next_due_mileage, service_tasks, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.type, body.description ?? null, body.mileage_at_service ?? null, body.cost ?? null, body.labor_cost ?? null, body.vendor ?? null, body.performed_by ?? null, body.performed_at, body.next_due_date ?? null, body.next_due_mileage ?? null, body.service_tasks ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_maintenance WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/maintenance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/maintenance failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/maintenance/:id', async (c) => {
@@ -1578,7 +1619,7 @@ fleet.put('/maintenance/:id', async (c) => {
     await execute(db, `UPDATE fleet_maintenance SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_maintenance WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { console.error('PUT /fleet/maintenance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/maintenance/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/maintenance/:id', async (c) => {
@@ -1587,7 +1628,7 @@ fleet.delete('/maintenance/:id', async (c) => {
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid maintenance id' }, 400);
     await execute(getDb(c.env), 'DELETE FROM fleet_maintenance WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { console.error('DELETE /fleet/maintenance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('DELETE /fleet/maintenance/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1620,7 +1661,7 @@ fleet.get('/:id/inspections', async (c) => {
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_inspections WHERE vehicle_id = ? ORDER BY inspection_date DESC', vehicleId);
     return c.json(rows.map((r) => mapInspectionRow(r)));
-  } catch (err) { console.error('GET /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/:id/inspections failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.post('/:id/inspections', async (c) => {
@@ -1658,7 +1699,7 @@ fleet.post('/:id/inspections', async (c) => {
       }
     }
     return c.json({ ...mapInspectionRow(created), out_of_service: summary.oos, defect_count: summary.defects }, 201);
-  } catch (err) { console.error('POST /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/inspections failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/inspections/:id', async (c) => {
@@ -1679,7 +1720,7 @@ fleet.put('/inspections/:id', async (c) => {
     await execute(db, `UPDATE fleet_inspections SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_inspections WHERE id = ?', id);
     return c.json(mapInspectionRow(updated));
-  } catch (err) { console.error('PUT /fleet/inspections/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/inspections/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/inspections/:id', async (c) => {
@@ -1688,7 +1729,7 @@ fleet.delete('/inspections/:id', async (c) => {
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid inspection id' }, 400);
     await execute(getDb(c.env), 'DELETE FROM fleet_inspections WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { console.error('DELETE /fleet/inspections/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('DELETE /fleet/inspections/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1701,7 +1742,7 @@ fleet.get('/:id/assignments', async (c) => {
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_assignments WHERE vehicle_id = ? ORDER BY assigned_at DESC', vehicleId);
     return c.json(rows);
-  } catch (err) { console.error('GET /fleet/:id/assignments failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/:id/assignments failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // PUT /:id/assign — assign or unassign a vehicle to/from a unit.
@@ -1791,7 +1832,7 @@ fleet.put('/:id/assign', async (c) => {
     }
     const updated = await queryFirst<Record<string, unknown>>(db, `SELECT v.*, u.call_sign as assigned_unit_call_sign FROM fleet_vehicles v LEFT JOIN units u ON u.id = v.assigned_unit_id WHERE v.id = ?`, vehicleId);
     return c.json(updated);
-  } catch (err) { console.error('PUT /fleet/:id/assign failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/:id/assign failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.post('/:id/archive', async (c) => {
@@ -1801,7 +1842,7 @@ fleet.post('/:id/archive', async (c) => {
     const db = getDb(c.env);
     await execute(db, `UPDATE fleet_vehicles SET status = 'archived', archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, vehicleId);
     return c.json({ success: true, id: vehicleId });
-  } catch (err) { console.error('POST /fleet/:id/archive failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/archive failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.post('/:id/unarchive', async (c) => {
@@ -1811,7 +1852,7 @@ fleet.post('/:id/unarchive', async (c) => {
     const db = getDb(c.env);
     await execute(db, `UPDATE fleet_vehicles SET status = 'in_service', archived_at = NULL, updated_at = datetime('now') WHERE id = ?`, vehicleId);
     return c.json({ success: true, id: vehicleId });
-  } catch (err) { console.error('POST /fleet/:id/unarchive failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/unarchive failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1830,7 +1871,7 @@ fleet.get('/:id/personnel', async (c) => {
     if (vehicle.assigned_unit_id) unit = await queryFirst<Record<string, unknown>>(db, 'SELECT id, call_sign FROM units WHERE id = ?', vehicle.assigned_unit_id);
     const notes = await query<Record<string, unknown>>(db, 'SELECT * FROM fleet_personnel_notes WHERE vehicle_id = ? ORDER BY created_at DESC', vehicleId);
     return c.json({ assignments, unit, notes, activeOfficerName: assignments.length > 0 ? (assignments[0] as any).officer_name : null });
-  } catch (err) { console.error('GET /fleet/:id/personnel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/:id/personnel failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.post('/:id/personnel-notes', async (c) => {
@@ -1857,12 +1898,12 @@ fleet.post('/:id/personnel-notes', async (c) => {
     );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_personnel_notes WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/personnel-notes failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/personnel-notes failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/:id/personnel-notes/:noteId', async (c) => {
   try { const noteId = Number(c.req.param('noteId')); await execute(getDb(c.env), 'DELETE FROM fleet_personnel_notes WHERE id = ?', noteId); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/:id/personnel-notes/:noteId failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/:id/personnel-notes/:noteId failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1878,7 +1919,7 @@ fleet.post('/pretrip', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_pretrip_checklists (vehicle_id, officer_id, check_date, lights, brakes, radio, mdt, dashcam, tires, fluids, exterior, interior, emergency_equip, notes, status) VALUES (?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?)`, body.vehicle_id, userId ?? null, body.lights ?? 0, body.brakes ?? 0, body.radio ?? 0, body.mdt ?? 0, body.dashcam ?? 0, body.tires ?? 0, body.fluids ?? 0, body.exterior ?? 0, body.interior ?? 0, body.emergency_equip ?? 0, body.notes ?? null, body.status ?? 'completed');
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_pretrip_checklists WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/pretrip failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/pretrip failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.get('/pretrip/:vehicleId', async (c) => {
@@ -1910,7 +1951,7 @@ fleet.get('/cost-per-mile/:id', async (c) => {
     // an empty "$" and Cost/Mile always showed "N/A". Returned as aliases here.
     const veh = await queryFirst<{ vehicle_number: string }>(db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
     return c.json({ vehicle_number: veh?.vehicle_number ?? '', fuel_cost_per_mile: Math.round(fuelCostPerMile * 100) / 100, maintenance_cost_per_mile: Math.round(maintCostPerMile * 100) / 100, total_cost_per_mile: costPerMile, cost_per_mile: costPerMile, total_miles: totalMiles, total_fuel_cost: fuel?.total_cost ?? 0, total_maintenance_cost: maint?.total_cost ?? 0, total_cost: Math.round(totalCost * 100) / 100, total_gallons: fuel?.total_gallons ?? 0 });
-  } catch (err) { console.error('GET /fleet/cost-per-mile/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/cost-per-mile/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2120,7 +2161,7 @@ fleet.get('/export/csv', async (c) => {
     const header = 'vehicle_number,make,model,year,plate_number,status,mileage,assigned_unit,insurance_expiry,registration_expiry\n';
     const csv = rows.map(r => [r.vehicle_number, r.make, r.model, r.year, r.plate_number, r.status, r.current_mileage, (r as any).assigned_unit_call_sign ?? '', r.insurance_expiry, r.registration_expiry].map(v => `"${v ?? ''}"`).join(',')).join('\n');
     return new Response(header + csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=fleet_export.csv' } });
-  } catch (err) { console.error('GET /fleet/export/csv failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/export/csv failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2181,7 +2222,7 @@ fleet.post('/:id/insurance', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_insurance (vehicle_id, carrier, policy_number, coverage_type, coverage_amount, premium, effective_date, expiry_date, premium_frequency, deductible, liability_limit, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.carrier ?? null, b.policy_number ?? null, b.coverage_type ?? null, b.coverage_amount ?? null, b.premium ?? null, b.effective_date ?? null, b.expiry_date ?? null, b.premium_frequency ?? 'monthly', b.deductible ?? null, b.liability_limit ?? null, b.status ?? 'active', b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_insurance WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/insurance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/insurance failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/insurance/:id', async (c) => {
@@ -2195,12 +2236,12 @@ fleet.put('/insurance/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_insurance SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/insurance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/insurance/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/insurance/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_insurance WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/insurance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/insurance/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2223,7 +2264,7 @@ fleet.post('/:id/registration', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_registration (vehicle_id, state, registration_number, effective_date, expiry_date, renewal_status, notes) VALUES (?,?,?,?,?,?,?)`, vehicleId, body.state ?? 'UT', body.registration_number, body.effective_date, body.expiry_date, body.renewal_status ?? 'current', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_registration WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/registration failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/registration failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/registration/:id', async (c) => {
@@ -2238,12 +2279,12 @@ fleet.put('/registration/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_registration SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/registration/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/registration/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/registration/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_registration WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/registration/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/registration/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2275,7 +2316,7 @@ fleet.post('/:id/loans', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_loans (vehicle_id, lender, original_amount, current_balance, monthly_payment, interest_rate, term_months, start_date, payoff_date, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.lender ?? null, b.original_amount ?? null, b.current_balance ?? null, b.monthly_payment ?? null, b.interest_rate ?? null, b.term_months ?? null, b.start_date ?? null, b.payoff_date ?? null, b.status ?? 'active', b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_loans WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/loans failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/loans failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/loans/:id', async (c) => {
@@ -2290,12 +2331,12 @@ fleet.put('/loans/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_loans SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/loans/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/loans/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_loans WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/loans/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // — Accessories — (modal `warranty_until` → column `warranty_expiry`)
@@ -2336,7 +2377,7 @@ fleet.post('/:id/accessories', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_accessories (vehicle_id, name, category, installed_date, removed_date, cost, vendor, warranty_expiry, serial_number, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.name ?? null, b.category ?? null, b.installed_date ?? null, b.removed_date ?? null, b.cost ?? null, b.vendor ?? null, b.warranty_expiry ?? null, b.serial_number ?? null, b.status ?? 'installed', b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_accessories WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/accessories failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/accessories failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/accessories/:id', async (c) => {
@@ -2350,12 +2391,12 @@ fleet.put('/accessories/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_accessories SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/accessories/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/accessories/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_accessories WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/accessories/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // — Utility costs —
@@ -2375,7 +2416,7 @@ fleet.post('/:id/utilities', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_utility_costs (vehicle_id, category, provider, cost_amount, cost_frequency, period_start, period_end, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, b.category ?? null, b.provider ?? null, b.cost_amount ?? null, b.cost_frequency ?? 'monthly', b.period_start ?? null, b.period_end ?? null, b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_utility_costs WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/utilities failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/utilities failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/utilities/:id', async (c) => {
@@ -2390,12 +2431,12 @@ fleet.put('/utilities/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_utility_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/utilities/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/utilities/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_utility_costs WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/utilities/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // — Other costs — (user-defined flexible cost types, one-off or recurring)
@@ -2415,7 +2456,7 @@ fleet.post('/:id/other-costs', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_other_costs (vehicle_id, cost_type, provider, amount, frequency, incurred_date, period_end, status, notes) VALUES (?,?,?,?,?,?,?,?,?)`, vehicleId, b.cost_type ?? null, b.provider ?? null, b.amount ?? null, b.frequency ?? 'one_time', b.incurred_date ?? null, b.period_end ?? null, b.status ?? 'active', b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_other_costs WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/other-costs failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/other-costs failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/other-costs/:id', async (c) => {
@@ -2430,12 +2471,12 @@ fleet.put('/other-costs/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_other_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/other-costs/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/other-costs/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_other_costs WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/other-costs/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // — Per-category monthly budgets (Budget vs. Actual) —
@@ -2462,7 +2503,7 @@ fleet.put('/:id/cost-budgets', async (c) => {
       await execute(db, `INSERT INTO fleet_cost_budgets (vehicle_id, category, monthly_budget, updated_at) VALUES (?,?,?,datetime('now')) ON CONFLICT(vehicle_id, category) DO UPDATE SET monthly_budget = excluded.monthly_budget, updated_at = datetime('now')`, vehicleId, cat, amt);
     }
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/:id/cost-budgets failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/:id/cost-budgets failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2485,7 +2526,7 @@ fleet.post('/:id/tires', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_tires (vehicle_id, tire_position, brand, model, size, dot_code, tread_depth, pressure_psi, installed_date, installed_mileage, cost, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.tire_position ?? null, body.brand ?? null, body.model ?? null, body.size ?? null, body.dot_code ?? null, body.tread_depth ?? null, body.pressure_psi ?? null, body.installed_date ?? null, body.installed_mileage ?? null, body.cost ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_tires WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/tires failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/tires failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/tires/:id', async (c) => {
@@ -2500,12 +2541,12 @@ fleet.put('/tires/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_tires SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/tires/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/tires/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/tires/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_tires WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/tires/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/tires/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2528,7 +2569,7 @@ fleet.post('/:id/damage', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/damage failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/damage failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/damage/:id', async (c) => {
@@ -2543,7 +2584,7 @@ fleet.put('/damage/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_damage SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/damage/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/damage/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ── damage-reports aliases (client FleetDamageTab uses these paths) ──
@@ -2558,7 +2599,7 @@ fleet.post('/:id/damage-reports', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/damage-reports failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/damage-reports failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 fleet.put('/damage-reports/:id', async (c) => {
   try {
@@ -2569,12 +2610,12 @@ fleet.put('/damage-reports/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_damage SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/damage-reports/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/damage-reports/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/damage/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_damage WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/damage/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/damage/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2602,7 +2643,7 @@ fleet.post('/recalls', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, body.vehicle_id, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/recalls failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/recalls/:id', async (c) => {
@@ -2614,12 +2655,12 @@ fleet.put('/recalls/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_recalls SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/recalls/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/recalls/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/recalls/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_recalls WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/recalls/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/recalls/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.get('/:id/recalls', async (c) => {
@@ -2637,7 +2678,7 @@ fleet.post('/:id/recalls', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/:id/recalls failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2663,8 +2704,11 @@ fleet.post('/parts', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number ?? null, body.name ?? null, body.category ?? null, body.description ?? null, body.unit_cost ?? null, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', result.meta.last_row_id);
+    await emitFleetioEvent(c, 'part.create', created, {
+      rmpgTable: 'fleet_parts', rmpgId: result.meta.last_row_id as number, versionToken: String(Date.now()),
+    });
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/parts failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/parts failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/parts/:id', async (c) => {
@@ -2678,13 +2722,24 @@ fleet.put('/parts/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_parts SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', id);
+    await emitFleetioEvent(c, 'part.update', updated, {
+      rmpgTable: 'fleet_parts', rmpgId: id, versionToken: String(Date.now()),
+    });
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/parts/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/parts/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/parts/:id', async (c) => {
-  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_parts WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/parts/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  try {
+    const id = Number(c.req.param('id'));
+    await execute(getDb(c.env), 'DELETE FROM fleet_parts WHERE id = ?', id);
+    await emitFleetioEvent(c, 'part.delete', { id }, {
+      rmpgTable: 'fleet_parts', rmpgId: id, versionToken: String(Date.now()),
+    });
+    return c.json({ success: true });
+  }
+  catch (err) { console.error('DELETE /fleet/parts/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2712,7 +2767,7 @@ fleet.post('/warranties', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_warranties (vehicle_id, coverage_type, provider, policy_number, coverage_details, start_date, expiry_date, expiry_mileage, deductible, contact_info, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, body.vehicle_id, body.coverage_type, body.provider ?? null, body.policy_number ?? null, body.coverage_details ?? null, body.start_date, body.expiry_date, body.expiry_mileage ?? null, body.deductible ?? null, body.contact_info ?? null, body.status ?? 'active', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_warranties WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/warranties failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/warranties failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/warranties/:id', async (c) => {
@@ -2727,12 +2782,12 @@ fleet.put('/warranties/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_warranties SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/warranties/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/warranties/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/warranties/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_warranties WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/warranties/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/warranties/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2759,7 +2814,7 @@ fleet.post('/keys', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_keys (vehicle_id, key_number, key_type, rfid_tag, status, current_holder, last_checkout, last_return, notes) VALUES (?,?,?,?,?,?,datetime('now'),NULL,?)`, body.vehicle_id, body.key_number ?? '1', body.key_type ?? 'ignition', body.rfid_tag ?? null, body.status ?? 'available', body.current_holder ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_keys WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/keys failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/keys failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/keys/:id/checkout', async (c) => {
@@ -2770,7 +2825,7 @@ fleet.put('/keys/:id/checkout', async (c) => {
     await execute(db, `UPDATE fleet_keys SET status = 'checked_out', current_holder = ?, last_checkout = datetime('now') WHERE id = ?`, body.holder_name ?? (c.get('user') as { full_name: string } | undefined)?.full_name ?? 'Unknown', id);
     const logResult = await execute(db, `INSERT INTO fleet_key_log (key_id, action, holder_name, timestamp) VALUES (?, 'checkout', ?, datetime('now'))`, id, body.holder_name ?? (c.get('user') as { full_name: string } | undefined)?.full_name ?? 'Unknown');
     return c.json({ success: true, log_id: logResult.meta.last_row_id });
-  } catch (err) { console.error('PUT /fleet/keys/:id/checkout failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/keys/:id/checkout failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/keys/:id/return', async (c) => {
@@ -2780,7 +2835,7 @@ fleet.put('/keys/:id/return', async (c) => {
     await execute(db, `UPDATE fleet_keys SET status = 'available', current_holder = NULL, last_return = datetime('now') WHERE id = ?`, id);
     await execute(db, `INSERT INTO fleet_key_log (key_id, action, holder_name, timestamp) VALUES (?, 'return', 'Returned', datetime('now'))`, id);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/keys/:id/return failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/keys/:id/return failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.get('/keys/:id/log', async (c) => {
@@ -2816,7 +2871,7 @@ fleet.post('/accidents', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_accidents (vehicle_id, accident_date, location, severity, description, driver_id, weather_conditions, road_conditions, police_report_number, insurance_claim_number, estimated_damage, injuries, fault_determination, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, body.vehicle_id, body.accident_date ?? null, body.location, body.severity ?? 'minor', body.description, body.driver_id ?? null, body.weather_conditions ?? null, body.road_conditions ?? null, body.police_report_number ?? null, body.insurance_claim_number ?? null, body.estimated_damage ?? null, body.injuries ?? 0, body.fault_determination ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_accidents WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/accidents failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/accidents failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/accidents/:id', async (c) => {
@@ -2831,7 +2886,7 @@ fleet.put('/accidents/:id', async (c) => {
     bindings.push(id);
     await execute(db, `UPDATE fleet_accidents SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/accidents/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/accidents/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2849,7 +2904,7 @@ fleet.post('/service-providers', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_service_providers (name, provider_type, phone, email, address, contact_name, tax_id, preferred, notes) VALUES (?,?,?,?,?,?,?,?,?)`, body.name, body.provider_type ?? 'general', body.phone ?? null, body.email ?? null, body.address ?? null, body.contact_name ?? null, body.tax_id ?? null, body.preferred ?? 0, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_service_providers WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/service-providers failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/service-providers failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/service-providers/:id', async (c) => {
@@ -2861,12 +2916,12 @@ fleet.put('/service-providers/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_service_providers SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/service-providers/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/service-providers/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/service-providers/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_service_providers WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/service-providers/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/service-providers/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2884,7 +2939,7 @@ fleet.post('/fuel-cards', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_fuel_cards (card_number, provider, assigned_vehicle_id, pin, credit_limit, status, expiration_date, notes) VALUES (?,?,?,?,?,?,?,?)`, body.card_number, body.provider, body.assigned_vehicle_id ?? null, body.pin ?? null, body.credit_limit ?? null, body.status ?? 'active', body.expiration_date ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_cards WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/fuel-cards failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/fuel-cards failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/fuel-cards/:id', async (c) => {
@@ -2896,12 +2951,12 @@ fleet.put('/fuel-cards/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_fuel_cards SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/fuel-cards/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/fuel-cards/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/fuel-cards/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_fuel_cards WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/fuel-cards/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/fuel-cards/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // Budget CRUD (Features 200-209)
@@ -2921,7 +2976,7 @@ fleet.post('/budgets', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_budgets (fiscal_year, category, allocated_amount, spent_amount, notes) VALUES (?,?,?,?,?)`, body.fiscal_year, body.category, body.allocated_amount, body.spent_amount ?? 0, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_budgets WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/budgets failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/budgets failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/budgets/:id', async (c) => {
@@ -2933,12 +2988,12 @@ fleet.put('/budgets/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_budgets SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/budgets/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/budgets/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.delete('/budgets/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_budgets WHERE id = ?', id); return c.json({ success: true }); }
-  catch (err) { console.error('DELETE /fleet/budgets/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  catch (err) { console.error('DELETE /fleet/budgets/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2963,7 +3018,7 @@ fleet.post('/depreciation', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_depreciation (vehicle_id, purchase_price, salvage_value, useful_life_months, depreciation_method, monthly_depreciation, accumulated_depreciation, current_book_value, calculated_date) VALUES (?,?,?,?,?,?,?,?,datetime('now'))`, body.vehicle_id, body.purchase_price, body.salvage_value ?? 0, body.useful_life_months ?? 60, body.depreciation_method ?? 'straight_line', body.monthly_depreciation ?? 0, body.accumulated_depreciation ?? 0, body.current_book_value ?? body.purchase_price);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_depreciation WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/depreciation failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/depreciation failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -2984,7 +3039,7 @@ fleet.post('/replacement-plan', async (c) => {
     const result = await execute(db, `INSERT INTO fleet_replacement_plan (vehicle_id, replacement_year, replacement_reason, estimated_replacement_cost, priority, status, notes) VALUES (?,?,?,?,?,?,?)`, body.vehicle_id, body.replacement_year, body.replacement_reason ?? null, body.estimated_replacement_cost ?? null, body.priority ?? 'medium', body.status ?? 'planned', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_replacement_plan WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/replacement-plan failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('POST /fleet/replacement-plan failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 fleet.put('/replacement-plan/:id', async (c) => {
@@ -2996,7 +3051,7 @@ fleet.put('/replacement-plan/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_replacement_plan SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     return c.json({ success: true });
-  } catch (err) { console.error('PUT /fleet/replacement-plan/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('PUT /fleet/replacement-plan/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -3582,7 +3637,7 @@ fleet.post('/fuel/import/preview', async (c) => {
     return c.json({ rows, headers });
   } catch (err) {
     console.error('POST /fleet/fuel/import/preview failed:', err);
-    return c.json({ error: 'Failed to parse CSV', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed to parse CSV');
   }
 });
 
@@ -3627,7 +3682,7 @@ fleet.get('/scorecard', async (c) => {
     const avgMpg = await queryFirst<{ mpg: number }>(db, `SELECT ROUND(AVG(NULLIF(avg_mpg, 0)), 1) as mpg FROM fleet_vehicles WHERE archived_at IS NULL`);
     const healthScore = total > 0 ? Math.max(0, Math.round(100 - ((needingService * 15) + (expiringInsurance * 10) + (expiringRegistration * 10) + (openRecalls * 5) + (openAccidents * 10) + (maintCount * 5)) / total)) : 0;
     return c.json({ total, active, in_maintenance: maintCount, needing_service: needingService, expiring_insurance: expiringInsurance, expiring_registration: expiringRegistration, open_recalls: openRecalls, open_accidents: openAccidents, fuel_this_month: fuelThisMonth, maintenance_this_month: maintThisMonth, avg_mpg: avgMpg?.mpg ?? null, health_score: healthScore });
-  } catch (err) { console.error('GET /fleet/scorecard failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('GET /fleet/scorecard failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -3645,7 +3700,7 @@ fleet.get('/fuel/anomalies', async (c) => {
 });
 // 252: Fuel vendor price comparison
 fleet.get('/fuel/vendors', async (c) => { try { const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_fuel_vendors ORDER BY current_price_per_gallon'); return c.json(rows); } catch (err) { console.error('GET /fleet/fuel/vendors failed:', err); return c.json([]); } });
-fleet.post('/fuel/vendors', async (c) => { try { const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>(); const r = await execute(db, 'INSERT INTO fleet_fuel_vendors (name, location, brand, current_price_per_gallon, last_updated, notes) VALUES (?,?,?,?,datetime(\'now\'),?)', body.name, body.location ?? null, body.brand ?? null, body.current_price_per_gallon ?? null, body.notes ?? null); return c.json(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_vendors WHERE id = ?', r.meta.last_row_id), 201); } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); } });
+fleet.post('/fuel/vendors', async (c) => { try { const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>(); const r = await execute(db, 'INSERT INTO fleet_fuel_vendors (name, location, brand, current_price_per_gallon, last_updated, notes) VALUES (?,?,?,?,datetime(\'now\'),?)', body.name, body.location ?? null, body.brand ?? null, body.current_price_per_gallon ?? null, body.notes ?? null); return c.json(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_vendors WHERE id = ?', r.meta.last_row_id), 201); } catch (err) { return dbErrorResponse(c, err, 'Failed'); } });
 // 253: Fuel efficiency trend per vehicle
 fleet.get('/fuel/efficiency-trend', async (c) => {
   try { const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT vehicle_id, strftime(\'%Y-%m\', fuel_date) as month, SUM(gallons) as gallons, SUM(total_cost) as cost, AVG(NULLIF(total_cost/gallons,0)) as avg_ppg FROM fleet_fuel_log GROUP BY vehicle_id, month ORDER BY vehicle_id, month'); return c.json(rows); }
@@ -4083,7 +4138,7 @@ fleet.get('/daily-gps-mileage', async (c) => {
     return c.json({ daily_mileage: result });
   } catch (err) {
     console.error('GET /fleet/daily-gps-mileage failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -4141,7 +4196,7 @@ fleet.get('/:id/gps-history', async (c) => {
     return c.json({ breadcrumbs, dashcam_events: dashcamEvents, unit_id: unitId });
   } catch (err) {
     console.error('GET /fleet/:id/gps-history failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -4220,7 +4275,7 @@ fleet.get('/:id/gps-mileage', async (c) => {
     });
   } catch (err) {
     console.error('GET /fleet/:id/gps-mileage failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -4248,7 +4303,7 @@ fleet.put('/:id/gps-mileage', async (c) => {
     return c.json({ previous_mileage: previous, new_mileage: next });
   } catch (err) {
     console.error('PUT /fleet/:id/gps-mileage failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -4602,6 +4657,117 @@ fleet.get('/:id/readiness', async (c) => {
   } catch (err) {
     console.error('GET /fleet/:id/readiness error:', err);
     return c.json({ error: 'Failed to compute readiness' }, 500);
+  }
+});
+
+// ── Fleet Expenses — per-vehicle expense tracking (2026-07-04) ──
+// Backs FleetExpensesTab.tsx. Registration/tolls/parking/tickets/etc.
+// Manager-tier write gate already applied at the router level (top
+// of this file) — no per-route role check needed here.
+
+fleet.get('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('vehicleId'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const rows = await query(
+      db,
+      `SELECT * FROM fleet_expenses WHERE vehicle_id = ? ORDER BY expense_date DESC, id DESC`,
+      vehicleId,
+    );
+    return c.json({ data: rows });
+  } catch (err) { console.error('GET /fleet/:vehicleId/expenses failed:', err); return dbErrorResponse(c, err, 'Failed to fetch vehicle expenses'); }
+});
+
+fleet.post('/:vehicleId{[0-9]+}/expenses', async (c) => {
+  const db = getDb(c.env);
+  const vehicleId = Number(c.req.param('vehicleId'));
+  if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+
+  const user = c.get('user') as { id: number } | undefined;
+  const body = await c.req.json<{
+    expense_date?: string; category?: string; amount?: number; vendor?: string | null;
+    description?: string | null; receipt_path?: string | null; odometer_reading?: number | null;
+    recurring?: boolean; recurring_frequency?: string | null; notes?: string | null;
+  }>();
+  if (!body.expense_date || !body.category || body.amount === undefined) {
+    return c.json({ error: 'expense_date, category, and amount are required' }, 400);
+  }
+
+  try {
+    const result = await execute(
+      db,
+      `INSERT INTO fleet_expenses
+       (vehicle_id, expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      vehicleId,
+      body.expense_date,
+      body.category,
+      body.amount,
+      body.vendor ?? null,
+      body.description ?? null,
+      body.receipt_path ?? null,
+      body.odometer_reading ?? null,
+      body.recurring ? 1 : 0,
+      body.recurring_frequency ?? null,
+      body.notes ?? null,
+      user?.id ?? null,
+    );
+    return c.json({ id: result.meta.last_row_id, success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] create failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to create expense');
+  }
+});
+
+const EXPENSE_FIELDS = [
+  'expense_date', 'category', 'amount', 'vendor', 'description', 'receipt_path',
+  'odometer_reading', 'recurring', 'recurring_frequency', 'notes',
+] as const;
+
+fleet.put('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  const body = await c.req.json<Record<string, unknown>>();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const field of EXPENSE_FIELDS) {
+    if (field in body) {
+      sets.push(`${field} = ?`);
+      values.push(field === 'recurring' ? (body[field] ? 1 : 0) : body[field]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+
+  sets.push(`updated_at = datetime('now')`);
+  values.push(id);
+  try {
+    await execute(db, `UPDATE fleet_expenses SET ${sets.join(', ')} WHERE id = ?`, ...values);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[fleet.expenses] update failed:', err instanceof Error ? err.message : String(err));
+    return dbErrorResponse(c, err, 'Failed to update expense');
+  }
+});
+
+fleet.delete('/expenses/:id{[0-9]+}', async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+  const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_expenses WHERE id = ?', id);
+  if (!existing) return c.json({ error: 'Expense not found' }, 404);
+
+  try {
+    await execute(db, 'DELETE FROM fleet_expenses WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to delete expense');
   }
 });
 

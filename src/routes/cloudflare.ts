@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const cloudflare = new Hono<Env>();
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
@@ -82,7 +83,7 @@ cloudflare.get('/config', async (c) => {
       token_mask: mask(token),
     });
   } catch (err) {
-    return c.json({ error: 'Failed to read config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to read config');
   }
 });
 
@@ -108,7 +109,7 @@ cloudflare.put('/config', async (c) => {
     } catch { /* audit best-effort */ }
     return c.json({ success: true, updated: written });
   } catch (err) {
-    return c.json({ error: 'Failed to save config', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return dbErrorResponse(c, err, 'Failed to save config');
   }
 });
 

@@ -31,4 +31,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_scraped_warrants_src_wid
   ON scraped_warrants(source_key, warrant_id);
 
 -- Re-enable Baton Rouge (disabled inline in 0107 for the per-hit budget reason).
+-- NOTE: this UPDATE is the actual source of truth for Baton Rouge's enabled
+-- state — earlier migrations (0107, 0110_national_warrant_pdf_sources) both
+-- describe it staying disabled; that description is stale as of this file.
+-- See migrations/README.md's duplicate-prefix notes for the full trail.
 UPDATE national_warrant_sources SET enabled = 1 WHERE source_key = 'socrata-brla-citycourt';

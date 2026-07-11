@@ -150,6 +150,14 @@ dar.post('/', async (c): Promise<Response> => {
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   if (!b.shift_date) return c.json({ error: 'shift_date is required', code: 'DAR_DATE_REQUIRED' }, 400);
   const userId = c.get('userId') as number;
+  const actor = c.get('user') as { role: string } | undefined;
+  // Only a supervisor-tier actor may file a DAR on another officer's behalf
+  // (e.g. backfilling for someone on leave) — otherwise officer_id is
+  // whatever the client sends, letting any authenticated user forge another
+  // officer's activity report.
+  const officerId = (actor && REVIEW_ROLES.has(actor.role) && b.officer_id != null)
+    ? (b.officer_id as number)
+    : userId;
 
   const year = new Date().getFullYear().toString().slice(-2);
   const maxRow = await queryFirst<{ m: string | null }>(db,
@@ -167,7 +175,7 @@ dar.post('/', async (c): Promise<Response> => {
      calls_handled, incidents_created, citations_issued, patrols_completed,
      activities_narrative, notable_events, safety_concerns)
     VALUES (?,?,?,?,?, 'draft', ?,?,?,?, ?,?,?)`,
-    number, (b.officer_id as number) ?? userId, b.shift_date, b.shift_start ?? null, b.shift_end ?? null,
+    number, officerId, b.shift_date, b.shift_start ?? null, b.shift_end ?? null,
     JSON.stringify(ap.calls), JSON.stringify(ap.incidents), JSON.stringify(ap.citations), JSON.stringify(ap.patrols),
     narrative, b.notable_events ?? null, b.safety_concerns ?? null);
   const created = await queryFirst(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, r.meta.last_row_id);
@@ -188,8 +196,14 @@ const UPDATABLE = new Set(['shift_start', 'shift_end', 'calls_handled', 'inciden
 dar.put('/:id', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
   const id = parseInt(c.req.param('id'), 10);
-  const existing = await queryFirst<{ status: string }>(db, `SELECT status FROM daily_activity_reports WHERE id = ?`, id);
+  const existing = await queryFirst<{ status: string; officer_id: number }>(db, `SELECT status, officer_id FROM daily_activity_reports WHERE id = ?`, id);
   if (!existing) return c.json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }, 404);
+  const userId = c.get('userId') as number;
+  const actor = c.get('user') as { role: string } | undefined;
+  const isOwner = existing.officer_id === userId;
+  if (!isOwner && !(actor && REVIEW_ROLES.has(actor.role))) {
+    return c.json({ error: 'Not authorized to edit this DAR', code: 'FORBIDDEN' }, 403);
+  }
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
   const sets: string[] = []; const vals: unknown[] = [];
   for (const [k, v] of Object.entries(b)) if (UPDATABLE.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); }
@@ -202,6 +216,14 @@ dar.put('/:id', async (c): Promise<Response> => {
 dar.put('/:id/submit', async (c): Promise<Response> => {
   const db = getDb(c.env); await ensureTable(db);
   const id = parseInt(c.req.param('id'), 10);
+  const existing = await queryFirst<{ officer_id: number }>(db, `SELECT officer_id FROM daily_activity_reports WHERE id = ?`, id);
+  if (!existing) return c.json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }, 404);
+  const userId = c.get('userId') as number;
+  const actor = c.get('user') as { role: string } | undefined;
+  const isOwner = existing.officer_id === userId;
+  if (!isOwner && !(actor && REVIEW_ROLES.has(actor.role))) {
+    return c.json({ error: 'Not authorized to submit this DAR', code: 'FORBIDDEN' }, 403);
+  }
   await execute(db, `UPDATE daily_activity_reports SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?`, id);
   const row = await queryFirst<Record<string, unknown>>(db, `${SELECT_WITH_OFFICER} WHERE d.id = ?`, id);
 

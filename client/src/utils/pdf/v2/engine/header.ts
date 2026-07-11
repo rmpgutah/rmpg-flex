@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY } from './style';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING, AGENCY, TONES_RGB } from './style';
 import type { FormMeta } from './types';
 
 export interface HeaderContext {
@@ -8,6 +8,11 @@ export interface HeaderContext {
   caseLabel?: string;
   pageNumber?: number;
   totalPages?: number;
+  /** Dark-colored emblem (RMPG Logo Dark, composited onto white) — the
+   *  header renders on white paper, so only the dark variant applies here.
+   *  A light/white emblem variant exists in pdfAssets.ts for future
+   *  dark-filled surfaces, but has no header placement. */
+  logoBase64?: string;
 }
 
 const PAGE_WIDTH = 215.9;  // letter, mm
@@ -36,9 +41,25 @@ export function drawDefaultHeader(
   const right = PAGE_WIDTH - SPACING.pageMarginRight;
   const center = PAGE_WIDTH / 2;
 
-  // 1) Top rule — thin (low ink, was thick)
+  // 1) Top rule — steel-blue accent (2026-07: restrained color upgrade,
+  // replaces the black rule; still renders as a distinguishable mid-gray
+  // on B&W laser printers).
+  doc.setDrawColor(...TONES_RGB.accentSteel);
   doc.setLineWidth(RULE_WEIGHTS.headerThick);
   doc.line(left, TOP, right, TOP);
+  doc.setDrawColor(0, 0, 0); // reset for the bottom rule + everything downstream
+
+  // 1b) Emblem — dark-colored logo, top-left of the header block (white
+  // paper background). 12mm square, doesn't collide with the centered
+  // agency name/title text below.
+  if (ctx.logoBase64) {
+    const logoSize = 12;
+    try {
+      doc.addImage(ctx.logoBase64, 'PNG', left, TOP + 1, logoSize, logoSize);
+    } catch {
+      /* ignore malformed image, header renders without it */
+    }
+  }
 
   // 2) Agency name
   doc.setFont('helvetica', TYPOGRAPHY.agencyName.weight);

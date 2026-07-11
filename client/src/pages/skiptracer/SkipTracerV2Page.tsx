@@ -1210,7 +1210,7 @@ export default function SkipTracerV2Page() {
                     <div className="flex items-center gap-3 mt-0.5 text-[11px] text-rmpg-400 flex-wrap">
                       {selected.age !== undefined && <span className="flex items-center gap-1"><User size={10} /> Age {selected.age}</span>}
                       {selected.dob && <span className="font-mono">DOB: {selected.dob}</span>}
-                      {selected.gender && <span>{selected.gender}</span>}
+                      {selected.gender && <span>{toDisplayLabel(selected.gender)}</span>}
                       {selected.confidenceScore !== undefined && <ConfidenceBadge score={selected.confidenceScore} />}
                     </div>
                   </div>

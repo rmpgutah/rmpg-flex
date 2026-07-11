@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -70,7 +71,7 @@ const UTAH_COUNTIES = [
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -796,7 +797,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                   {(scraperStatus.counties || []).map((county: any) => {
                     const isCircuitBroken = county.consecutive_errors >= 5;
                     const lastSyncAgo = county.last_scrape_at
-                      ? Math.round((Date.now() - new Date(county.last_scrape_at).getTime()) / 60000) : null;
+                      ? Math.round((Date.now() - parseTimestamp(county.last_scrape_at).getTime()) / 60000) : null;
                     const isStale = lastSyncAgo !== null && lastSyncAgo > (county.scrape_interval_minutes || 30) * 2;
 
                     return (

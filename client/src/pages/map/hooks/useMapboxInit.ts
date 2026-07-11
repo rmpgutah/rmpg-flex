@@ -14,9 +14,9 @@ import {
   setMapboxStyle,
   injectMapboxStyles,
   addMapbox3DBuildings,
-  type MapboxStyleId,
 } from '../../../utils/mapboxLoader';
 import { getMapboxToken } from '../../../utils/mapboxApiKey';
+import { type MapStyleId as MapboxStyleId } from '../utils/mapConstants';
 import { devLog, devWarn } from '../../../utils/devLog';
 
 export interface UseMapboxInitResult {
@@ -50,7 +50,8 @@ export function useMapboxInit(initialStyle: MapboxStyleId = 'dark'): UseMapboxIn
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [currentStyle, setCurrentStyle] = useState<MapboxStyleId>(initialStyle);
-  const [mapLibreFallback, setMapLibreFallback] = useState(false);
+  const mapLibreFallback = false;
+  const setMapLibreFallback = (_val: boolean) => {};
   const [retryNonce, setRetryNonce] = useState(0);
 
   const isAuthError = mapError !== null && (
@@ -102,13 +103,11 @@ export function useMapboxInit(initialStyle: MapboxStyleId = 'dark'): UseMapboxIn
         devLog('[Mapbox] Initializing map with style:', currentStyle);
 
         // Create the map
-        const map = createMapboxMap({
-          container: mapRef.current!,
-          accessToken: token,
-          style: currentStyle,
-          center: [-111.891, 40.7608], // SLC
-          zoom: 12,
-        });
+        const map = createMapboxMap(
+          mapRef.current!,
+          token,
+          currentStyle,
+        );
 
         mapInstanceRef.current = map;
 

@@ -16,7 +16,8 @@ import StatsCard from '../components/StatsCard';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
-import { safeDateStr, localToday } from '../utils/dateUtils';
+import { safeDateStr, localToday, parseTimestamp } from '../utils/dateUtils';
+import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -96,8 +97,8 @@ export default function AccreditationsPage() {
 
   const isExpiringSoon = (d: string) => {
     if (!d) return false;
-    const exp = new Date(d);
-    const now = new Date(today);
+    const exp = parseTimestamp(d);
+    const now = parseTimestamp(today);
     const diff = (exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
     return diff >= 0 && diff <= 60;
   };
@@ -120,7 +121,7 @@ export default function AccreditationsPage() {
       if (expiringFilter) params.set('expiring_within_days', expiringFilter);
       const qs = params.toString();
       const data = await apiFetch<Accreditation[]>(`/api/accreditations${qs ? `?${qs}` : ''}`);
-      setRecords(data);
+      setRecords(asArray<Accreditation>(data));
     } catch {
       addToast('Failed to load accreditations', 'error');
     } finally {
@@ -131,7 +132,7 @@ export default function AccreditationsPage() {
   const fetchOfficers = useCallback(async () => {
     try {
       const data = await apiFetch<Officer[]>('/api/users?role=officer');
-      setOfficers(data);
+      setOfficers(asArray<Officer>(data));
     } catch { /* non-critical */ }
   }, []);
 
@@ -279,7 +280,7 @@ export default function AccreditationsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Shield} message="No accreditations found" />
+        <EmptyState icon={Shield} title="No accreditations found" />
       ) : (
         <div className="overflow-x-auto border border-[#222] rounded-sm">
           <table className="w-full text-[11px]">

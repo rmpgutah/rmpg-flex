@@ -26,6 +26,7 @@ import {
 import { isConfigured } from '../utils/nsopw/client';
 import { listRecentQueries, vacuumCache } from '../utils/nsopw/cache';
 import { recordAudit } from '../utils/auditLog';
+import { enrichPendingOffenders } from '../utils/sorEnrichment/runner';
 
 const nsopw = new Hono<Env>();
 
@@ -143,6 +144,16 @@ nsopw.get('/cache', requireRole(...ADMIN_ROLES), async (c) => {
 nsopw.post('/cache/vacuum', requireRole(...ADMIN_ROLES), async (c) => {
   const n = await vacuumCache(c.env).catch(() => 0);
   return c.json({ ok: true, removed: n });
+});
+
+// ── POST /api/nsopw/enrich ──────────────────────────────────
+// Admin-triggered batch run of the per-state SOR detail-page enrichment
+// (see src/utils/sorEnrichment/). Also rides the */30 cron tick — see
+// src/index.ts — this route exists for on-demand/manual runs.
+nsopw.post('/enrich', requireRole(...ADMIN_ROLES), async (c) => {
+  const db = getDb(c.env);
+  const summary = await enrichPendingOffenders(db);
+  return c.json(summary);
 });
 
 // ── GET /api/nsopw/offender/:id ─────────────────────────────

@@ -23,7 +23,7 @@ jobs:
           # Need history so we can diff against the base branch.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 

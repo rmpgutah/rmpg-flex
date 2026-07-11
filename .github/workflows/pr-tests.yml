@@ -1,0 +1,77 @@
+# PR Tests — runs on every pull request and push to main
+# Mirrors .husky/pre-push but in CI so the gate is enforced even when
+# a contributor bypasses the pre-push hook with --no-verify.
+name: PR Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  worker-typecheck:
+    name: Worker typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  client-typecheck:
+    name: Client typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx tsc --noEmit
+
+  client-tests:
+    name: Client tests
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run
+
+  client-build:
+    name: Client build
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vite build
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}

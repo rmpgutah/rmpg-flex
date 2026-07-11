@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import {
   generatePersonnelProductivityReport,
   generateInspectionAnalysisReport,
@@ -115,7 +116,7 @@ export default function FleetAnalysisFormsTab({
 
       const inRange = (dateStr?: string) => {
         if (!dateStr || dateRange === 'all') return true;
-        const d = new Date(dateStr.replace(' ', 'T'));
+        const d = parseTimestamp(dateStr);
         return d >= dateRangeStart;
       };
 
@@ -307,7 +308,7 @@ export default function FleetAnalysisFormsTab({
           const today = new Date();
           const inDays = (s?: string) => {
             if (!s) return Infinity;
-            const d = new Date(s.replace(' ', 'T'));
+            const d = parseTimestamp(s);
             return Math.round((d.getTime() - today.getTime()) / 86400_000);
           };
           const statusFrom = (s?: string): 'valid' | 'expiring' | 'expired' => {
@@ -323,7 +324,7 @@ export default function FleetAnalysisFormsTab({
               (m) => m.vehicle_id === v.id && m.performed_at,
             ).filter((m) => {
               if (!m.next_due_date) return false;
-              return new Date(m.next_due_date.replace(' ', 'T')) < today;
+              return parseTimestamp(m.next_due_date) < today;
             }).length;
             const score = Math.max(0, 100
               - (insuranceDays < 0 ? 25 : insuranceDays < 30 ? 10 : 0)

@@ -74,12 +74,12 @@ function getCurrentTime() {
 
 // Status bar text/led for each step
 const stepStatus: Record<LoginStep, { text: string; color: string }> = {
-  username:           { text: 'AWAITING CREDENTIALS', color: '#d4a017' },
-  password:           { text: 'AUTHENTICATING',       color: '#d4a017' },
+  username:           { text: 'AWAITING CREDENTIALS', color: 'var(--brand-gold)' },
+  password:           { text: 'AUTHENTICATING',       color: 'var(--brand-gold)' },
   verify_2fa:         { text: '2FA VERIFICATION',     color: '#a855f7' },
   setup_2fa:          { text: '2FA SETUP REQUIRED',   color: '#bc1010' },
   confirm_setup_2fa:  { text: '2FA SETUP — VERIFY',   color: '#bc1010' },
-  show_backup_codes:  { text: 'SAVE BACKUP CODES',    color: '#d4a017' },
+  show_backup_codes:  { text: 'SAVE BACKUP CODES',    color: 'var(--brand-gold)' },
   password_change:    { text: 'PASSWORD CHANGE REQ.',  color: '#bc1010' },
   complete:           { text: 'AUTHENTICATED',         color: '#22c55e' },
 };
@@ -599,11 +599,11 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(212,160,23,0.25)]"
               style={{
                 height: 'clamp(48px, 12vw, 88px)',
                 width: 'clamp(48px, 12vw, 88px)',
                 objectFit: 'contain',
+                filter: 'drop-shadow(0 0 15px color-mix(in srgb, var(--brand-gold) 25%, transparent))',
               }}
               draggable={false}
               loading="eager"
@@ -800,7 +800,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
                                     className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
-                  onMouseEnter={(e) => { e.currentTarget.style.color = '#d4a017'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   aria-label="Forgot password"
                 >
@@ -1139,7 +1139,7 @@ export default function LoginPage() {
             {loginStep === 'show_backup_codes' && pendingBackupCodes && (
               <div>
                 <div className="text-center mb-4">
-                  <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#d4a017' }} />
+                  <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--brand-gold)' }} />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Backup Recovery Codes
                   </p>
@@ -1238,7 +1238,7 @@ export default function LoginPage() {
                 {forgotPwStep === 'username' && (
                   <form onSubmit={handleForgotStart} className="space-y-3">
                     <div className="text-center mb-1">
-                      <HelpCircle className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <HelpCircle className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--brand-gold)' }} />
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Forgot Password
                       </p>
@@ -1290,7 +1290,7 @@ export default function LoginPage() {
                 {forgotPwStep === 'questions' && (
                   <form onSubmit={handleForgotAnswerSubmit} className="space-y-3">
                     <div className="text-center mb-1">
-                      <ShieldCheck className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <ShieldCheck className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--brand-gold)' }} />
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Answer Security Questions
                       </p>
@@ -1348,7 +1348,7 @@ export default function LoginPage() {
                 {forgotPwStep === 'reset' && (
                   <form onSubmit={handleForgotReset} className="space-y-3">
                     <div className="text-center mb-1">
-                      <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: 'var(--brand-gold)' }} />
                       <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Reset Password
                       </p>

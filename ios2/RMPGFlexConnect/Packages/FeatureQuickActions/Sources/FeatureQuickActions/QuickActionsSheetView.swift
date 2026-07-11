@@ -44,7 +44,7 @@ public struct QuickActionsSheetView: View {
         }
         .presentationDetents([.fraction(0.6), .large])
         .sheet(isPresented: $showStartPatrol) {
-            StartPatrolView(dutyState: dutyState)
+            StartPatrolView(dutyState: dutyState, apiClient: apiClient)
         }
         .sheet(isPresented: $showNewCall) {
             NewCallForm(vm: NewCallViewModel(api: CFSAPI(client: apiClient)))

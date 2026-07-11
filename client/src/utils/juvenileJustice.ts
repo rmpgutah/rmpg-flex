@@ -8,6 +8,8 @@
 // services referral network.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /* FEATURE 1: Juvenile Diversion Tracking */
 export interface DiversionProgram { id:string; juvenileName:string; age:number; offense:string; referralDate:string; programType:'teen_court'|'community_service'|'counseling'|'restorative_justice'|'educational'|'other'; programProvider:string; completionDate:string|null; completed:boolean; recidivism:boolean; }
 export function evaluateDiversionOutcomes(programs:DiversionProgram[]): { total:number; completionRate:number; recidivismRate:number; mostEffective:string } {
@@ -29,15 +31,15 @@ export function assessAlternativeEffectiveness(alternatives:DetentionAlternative
 /* FEATURE 3: Parental Notification */
 export interface ParentalNotification { id:string; juvenileId:string; incidentDate:string; notificationDate:string; parentName:string; notificationMethod:'phone'|'in_person'|'certified_mail'|'email'; parentPresent:boolean; interpreterNeeded:boolean; notificationOutcome:string; }
 export function checkNotificationCompliance(notifications:ParentalNotification[], statutoryHours:number=2): { complianceRate:number; lateNotifications:ParentalNotification[] } {
-  const late = notifications.filter(n=>{const d=new Date(n.notificationDate);const i=new Date(n.incidentDate);return(d.getTime()-i.getTime())>statutoryHours*3600000;});
+  const late = notifications.filter(n=>{const d=parseTimestamp(n.notificationDate);const i=parseTimestamp(n.incidentDate);return(d.getTime()-i.getTime())>statutoryHours*3600000;});
   return { complianceRate:notifications.length>0?Math.round((notifications.length-late.length)/notifications.length*100):0, lateNotifications:late };
 }
 
 /* FEATURE 4: Juvenile Court Coordination */
 export interface JuvenileCourtCase { id:string; caseNumber:string; juvenileName:string; petitionFiled:boolean; petitionDate:string|null; hearingDate:string|null; adjudicationDate:string|null; adjudicationResult:string|null; dispositionDate:string|null; disposition:string|null; probationOfficer:string|null; }
 export function trackCourtTimeline(cases:JuvenileCourtCase[]): { avgDaysToHearing:number; avgDaysToDisposition:number; casesPendingAdjudication:number } {
-  const withHearing = cases.filter(c=>c.petitionDate&&c.hearingDate).map(c=>(new Date(c.hearingDate!).getTime()-new Date(c.petitionDate!).getTime())/86400000);
-  const withDisp = cases.filter(c=>c.petitionDate&&c.dispositionDate).map(c=>(new Date(c.dispositionDate!).getTime()-new Date(c.petitionDate!).getTime())/86400000);
+  const withHearing = cases.filter(c=>c.petitionDate&&c.hearingDate).map(c=>(parseTimestamp(c.hearingDate!).getTime()-parseTimestamp(c.petitionDate!).getTime())/86400000);
+  const withDisp = cases.filter(c=>c.petitionDate&&c.dispositionDate).map(c=>(parseTimestamp(c.dispositionDate!).getTime()-parseTimestamp(c.petitionDate!).getTime())/86400000);
   return { avgDaysToHearing:withHearing.length>0?Math.round(withHearing.reduce((s,v)=>s+v,0)/withHearing.length):0, avgDaysToDisposition:withDisp.length>0?Math.round(withDisp.reduce((s,v)=>s+v,0)/withDisp.length):0, casesPendingAdjudication:cases.filter(c=>!c.adjudicationDate).length };
 }
 
@@ -73,7 +75,7 @@ export interface JuvenileProbation { id:string; juvenileName:string; probationOf
 export function calculateProbationCompliance(probation:JuvenileProbation): { complianceRate:number; checkInRate:number; violationCount:number; riskOfRevocation:boolean } {
   const conditionsMet = probation.conditions.filter(c=>c.compliant).length;
   const complianceRate = probation.conditions.length>0?Math.round(conditionsMet/probation.conditions.length*100):0;
-  const monthsActive = Math.max(1,Math.ceil((Date.now()-new Date(probation.startDate).getTime())/86400000/30));
+  const monthsActive = Math.max(1,Math.ceil((Date.now()-parseTimestamp(probation.startDate).getTime())/86400000/30));
   const expectedCheckIns = monthsActive;
   const actualCheckIns = probation.checkIns.length;
   return { complianceRate, checkInRate:Math.round(actualCheckIns/Math.max(1,expectedCheckIns)*100), violationCount:probation.violations.length, riskOfRevocation:probation.violations.length>=3||complianceRate<50 };
@@ -82,7 +84,7 @@ export function calculateProbationCompliance(probation:JuvenileProbation): { com
 /* FEATURE 9: Age Verification */
 export interface AgeVerification { subjectName:string; claimedAge:number; claimedDOB:string; verifiedDOB:string|null; verificationMethod:'birth_certificate'|'school_records'|'parental_statement'|'medical_records'|'dental'|'bone_age_scan'; verified:boolean; actualAge:number|null; juvenile:boolean|null; }
 export function verifyAge(claimedDOB:string, verifiedDOB:string): { age:number; isJuvenile:boolean; discrepancy:boolean } {
-  const claimed = new Date(claimedDOB); const verified = new Date(verifiedDOB);
+  const claimed = parseTimestamp(claimedDOB); const verified = parseTimestamp(verifiedDOB);
   const age = Math.floor((Date.now()-verified.getTime())/86400000/365.25);
   const discrepancy = Math.abs(claimed.getTime()-verified.getTime())>86400000;
   return { age, isJuvenile:age<18, discrepancy };

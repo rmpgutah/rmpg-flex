@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { CallForService } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -214,7 +215,7 @@ export function generateClearedSummaryPdf(input: ClearedSummaryInput): jsPDF {
     const clAt = (c as any).cleared_at as string | undefined;
     const row: Record<string, string> = {
       call_number: c.call_number,
-      incident_type: ellipsize(String(c.incident_type || '').replace(/_/g, ' '), 14),
+      incident_type: ellipsize(toDisplayLabel(c.incident_type), 14),
       priority: c.priority,
       units: ellipsize((c.assigned_units || []).join(','), 9),
       duration: fmtDuration(c.created_at, clAt),

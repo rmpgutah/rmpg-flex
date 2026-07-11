@@ -1,5 +1,7 @@
 import SwiftUI
 import CoreAPI
+import CoreAuth
+import FeatureQuickActions
 import DesignSystem
 
 public struct SettingsView: View {
@@ -8,6 +10,13 @@ public struct SettingsView: View {
     @State private var isChecking = true
     @AppStorage("gps_enabled") private var gpsEnabled = true
     @AppStorage("auto_refresh_seconds") private var refreshInterval = 30.0
+    @AppStorage(BiometricLoginPreference.key) private var biometricLoginEnabled = true
+    @State private var rememberedUsername: String?
+    @State private var showClearHistoryConfirm = false
+    @State private var showForgetUserConfirm = false
+    @State private var historyClearedMessage: String?
+    @State private var showResetConfirm = false
+    @State private var resetMessage: String?
 
     public init() {}
 
@@ -18,13 +27,18 @@ public struct SettingsView: View {
                 VStack(spacing: 12) {
                     serverSection
                     dispatchSection
+                    securitySection
+                    dataSection
                     aboutSection
                 }
                 .padding(12)
             }
         }
         .navigationTitle("Settings")
-        .task { await checkServer() }
+        .task {
+            await checkServer()
+            rememberedUsername = RememberedUser.username
+        }
     }
 
     private var serverSection: some View {
@@ -68,6 +82,102 @@ public struct SettingsView: View {
         }
     }
 
+    private var securitySection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("Security")
+            VStack(spacing: 0) {
+                ToggleRow(BiometricAuth.available == .faceID ? "Face ID Login" : "Touch ID Login", $biometricLoginEnabled)
+                RMPGDivider()
+                RMPGDataRow(
+                    label: "Remembered User",
+                    value: rememberedUsername ?? "None"
+                )
+            }
+            .background(RMPGTheme.raisedSurface).cornerRadius(2)
+
+            if BiometricAuth.available == .none {
+                Text("Face ID / Touch ID isn't available on this device.")
+                    .font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted).padding(.top, 4)
+            }
+
+            if rememberedUsername != nil {
+                Button("Forget Remembered Username") { showForgetUserConfirm = true }
+                    .font(.system(size: 11)).foregroundColor(RMPGTheme.statusRed).padding(.top, 4)
+            }
+        }
+        .alert("Forget Remembered Username?", isPresented: $showForgetUserConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Forget", role: .destructive) {
+                RememberedUser.forget()
+                rememberedUsername = nil
+            }
+        } message: {
+            Text("The login screen will no longer pre-fill a username.")
+        }
+    }
+
+    private var dataSection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("Data")
+            VStack(spacing: 0) {
+                Button {
+                    showClearHistoryConfirm = true
+                } label: {
+                    HStack {
+                        Text("Clear Scan History").font(.system(size: 11)).foregroundColor(RMPGTheme.statusRed)
+                        Spacer()
+                        Image(systemName: "trash").font(.system(size: 11)).foregroundColor(RMPGTheme.statusRed)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                }
+                RMPGDivider()
+                Button {
+                    showResetConfirm = true
+                } label: {
+                    HStack {
+                        Text("Reset Preferences to Defaults").font(.system(size: 11)).foregroundColor(RMPGTheme.textMuted)
+                        Spacer()
+                        Image(systemName: "arrow.counterclockwise").font(.system(size: 11)).foregroundColor(RMPGTheme.textMuted)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                }
+            }
+            .background(RMPGTheme.raisedSurface).cornerRadius(2)
+
+            if let message = historyClearedMessage {
+                Text(message).font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted).padding(.top, 4)
+            }
+            if let message = resetMessage {
+                Text(message).font(.system(size: 10)).foregroundColor(RMPGTheme.textMuted).padding(.top, 4)
+            }
+        }
+        .alert("Clear Scan History?", isPresented: $showClearHistoryConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                ScanHistoryStore().clear()
+                historyClearedMessage = "Scan history cleared. Takes effect next time Quick Actions loads."
+            }
+        } message: {
+            Text("This removes every locally-saved ID scan. This can't be undone.")
+        }
+        .alert("Reset Preferences?", isPresented: $showResetConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) { resetPreferences() }
+        } message: {
+            Text("Restores GPS tracking, auto-refresh, and Face ID login to their defaults. Doesn't sign you out or touch scan history.")
+        }
+    }
+
+    /// Resets only local device preferences this screen itself owns —
+    /// deliberately does NOT touch the auth session (RememberedUser/tokens)
+    /// or scan history, which have their own dedicated, explicit controls.
+    private func resetPreferences() {
+        gpsEnabled = true
+        refreshInterval = 30.0
+        biometricLoginEnabled = true
+        resetMessage = "Preferences reset to defaults."
+    }
+
     private var aboutSection: some View {
         VStack(spacing: 0) {
             sectionHeader("About")
@@ -81,7 +191,31 @@ public struct SettingsView: View {
                 RMPGDataRow(label: "License", value: "Confidential — Law Enforcement Use Only")
             }
             .background(RMPGTheme.raisedSurface).cornerRadius(2)
+
+            // Real support workflow: bundles version/device/connectivity info
+            // an IT/help-desk ticket would actually need, so an officer isn't
+            // reading server status off this screen aloud over the phone.
+            ShareLink(item: diagnosticsText) {
+                HStack {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 11))
+                    Text("Share Diagnostics").font(.system(size: 11))
+                }
+                .foregroundColor(RMPGTheme.brandGold)
+            }
+            .padding(.top, 6)
         }
+    }
+
+    private var diagnosticsText: String {
+        """
+        RMPG Flex Connect Diagnostics
+        App Version: 1.0.0 (Build 1)
+        API Endpoint: api.rmpgutah.us
+        Server Status: \(serverStatus)
+        Server Version: \(serverVersion)
+        Device: \(UIDevice.current.model), iOS \(UIDevice.current.systemVersion)
+        Generated: \(Date().formatted(date: .abbreviated, time: .standard))
+        """
     }
 
     private func sectionHeader(_ t: String) -> some View {

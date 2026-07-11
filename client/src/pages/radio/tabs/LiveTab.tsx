@@ -13,9 +13,11 @@ import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls';
+import { asArray } from '../../../utils/asArray';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   selectedChannelId: number | null;
@@ -78,7 +80,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const lastSeenIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(err => console.warn('[LiveTab] channels load failed:', err));
+    apiFetch<RadioChannel[]>('/radio/channels').then(d => setChannels(asArray(d))).catch(err => console.warn('[LiveTab] channels load failed:', err));
   }, []);
 
   // Reset the new-TX baseline whenever the feed query changes, so
@@ -272,9 +274,9 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const time = useMemo(() => {
-    try { return new Date(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
+    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
-  const isLive = tx.duration_seconds > 0 && Date.now() - new Date(tx.transmitted_at).getTime() < 10_000;
+  const isLive = tx.duration_seconds > 0 && Date.now() - parseTimestamp(tx.transmitted_at).getTime() < 10_000;
 
   const buildTxMenu = (): ContextMenuItem[] => [
     ...(tx.audio_url

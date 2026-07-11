@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { dbErrorResponse } from '../utils/dbErrors';
 const forensics = new Hono<Env>();
 
 // ── Allowed-value sets (mirror migration CHECK constraints) ──
@@ -311,10 +312,7 @@ forensics.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', newId);
     return c.json({ data: created, lab_number: labNumber }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to create forensics case', code: 'CREATE_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to create forensics case', 'CREATE_ERROR');
   }
 });
 
@@ -488,10 +486,7 @@ forensics.post('/:caseId/exhibits', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_exhibits WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
-    return c.json({
-      error: 'Failed to add exhibit', code: 'EXHIBIT_POST_ERROR',
-      detail: err instanceof Error ? err.message : String(err),
-    }, 500);
+    return dbErrorResponse(c, err, 'Failed to add exhibit', 'EXHIBIT_POST_ERROR');
   }
 });
 

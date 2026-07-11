@@ -21,11 +21,13 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
+import { dbErrorResponse } from '../utils/dbErrors';
 import {
   parseWarehouse,
   extractRows,
   buildPlateHistorySql,
   buildAlprSummarySql,
+  buildAlprDistinctCountSql,
   buildEventsSql,
   buildEventSummarySql,
   buildCfsTrendsSql,
@@ -94,7 +96,7 @@ function sqlErrorResponse(c: Context<Env>, err: unknown): Response {
     // 4xx from R2 SQL is usually a query/permission problem on our side → 502
     // so the client sees "upstream analytics error" rather than a bare 500.
     console.error('[analytics] R2 SQL error:', err.status, err.message);
-    return c.json({ error: 'analytics query failed', detail: err.message, upstream_status: err.status }, 502);
+    return dbErrorResponse(c, err, 'analytics query failed');
   }
   console.error('[analytics] unexpected error:', err instanceof Error ? err.message : String(err));
   return c.json({ error: 'analytics query failed' }, 500);
@@ -155,6 +157,29 @@ analytics.get('/alpr/summary', operational, async (c) => {
   try {
     const rows = await runR2Sql(c.env, sql);
     return c.json({ since: sinceIso, count: rows.length, plates: rows });
+  } catch (err) {
+    return sqlErrorResponse(c, err);
+  }
+});
+
+// ── ALPR: true distinct-plate / distinct-hit-plate counts ────
+// GET /api/analytics/alpr/distinct-count?days=7
+// Unbounded by LIMIT, unlike /alpr/summary's top-N-by-volume rows — the
+// client's "Distinct plates"/"Plates with a hit" cards previously derived
+// these from summary.length, silently undercounting whenever more than
+// (summary's limit, default 100) distinct plates existed in the window.
+analytics.get('/alpr/distinct-count', operational, async (c) => {
+  const days = Number(c.req.query('days'));
+  const sinceIso = daysAgoIso(Number.isFinite(days) ? days : 7);
+  const sql = buildAlprDistinctCountSql({ sinceIso });
+  try {
+    const rows = await runR2Sql(c.env, sql);
+    const row = (rows[0] ?? {}) as Record<string, unknown>;
+    return c.json({
+      since: sinceIso,
+      distinct_plates: Number(row.distinct_plates) || 0,
+      distinct_hit_plates: Number(row.distinct_hit_plates) || 0,
+    });
   } catch (err) {
     return sqlErrorResponse(c, err);
   }

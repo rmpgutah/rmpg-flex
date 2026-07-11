@@ -35,6 +35,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { EVIDENCE_HOLD_VALUES, isEvidenceLocked } from '../../utils/evidenceLock';
 import { recordAudit } from '../../utils/auditLog';
 
+import { dbErrorResponse } from '../../utils/dbErrors';
 // Roles that can see every officer's cameras/videos. Officers (and any
 // other role not in this set) are scoped to officer_id = self. The
 // supervisor split (read-all but not write) mirrors the spec: gear
@@ -80,7 +81,7 @@ bodyCamerasRouter.get('/', async (c) => {
     return c.json(rows);
   } catch (err) {
     console.error('GET /personnel/body-cameras failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -111,7 +112,7 @@ bodyCamerasRouter.get('/:id', async (c) => {
     return c.json(row);
   } catch (err) {
     console.error('GET /personnel/body-cameras/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -178,7 +179,7 @@ bodyCamerasRouter.post('/', async (c) => {
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /personnel/body-cameras failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -246,7 +247,7 @@ bodyCamerasRouter.put('/:id', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /personnel/body-cameras/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -353,7 +354,7 @@ bodyCamerasRouter.delete('/:id', async (c) => {
     return c.json({ ok: true, id, videos_destroyed: assigned.length });
   } catch (err) {
     console.error('DELETE /personnel/body-cameras/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -415,7 +416,7 @@ bodycamVideosRouter.get('/retention/report', async (c) => {
     });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/retention/report failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -452,7 +453,7 @@ bodycamVideosRouter.get('/', async (c) => {
     return c.json(rows);
   } catch (err) {
     console.error('GET /personnel/bodycam-videos failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -516,7 +517,7 @@ bodycamVideosRouter.get('/:id/custody', async (c) => {
     });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id/custody failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -558,7 +559,7 @@ bodycamVideosRouter.post('/:id/view-event', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/:id/view-event failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -592,7 +593,7 @@ bodycamVideosRouter.get('/:id', async (c) => {
     return c.json(row);
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -623,7 +624,7 @@ bodycamVideosRouter.put('/:id', async (c) => {
     return c.json(updated);
   } catch (err) {
     console.error('PUT /personnel/bodycam-videos/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 
@@ -680,7 +681,7 @@ bodycamVideosRouter.delete('/:id', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/bodycam-videos/:id failed:', err);
-    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+    return dbErrorResponse(c, err, 'Failed');
   }
 });
 

@@ -10,21 +10,27 @@ import { parseTimestamp } from './dateUtils';
 /**
  * Normalize a snake_case / lowercase enum value for display.
  *
- * `pso_client_request` → `PSO CLIENT REQUEST`
- * `in_progress`        → `IN PROGRESS`
+ * `pso_client_request` → `PSO Client Request`
+ * `in_progress`        → `In Progress`
  * `Christopher Zamora` → `Christopher Zamora` (free text passes through)
+ *
+ * Title Case with acronym-awareness, matching every other label formatter
+ * in this file (toDisplayLabel/formatLabel) — this used to shout in ALL
+ * CAPS ("PSO CLIENT REQUEST"), the only formatter in the module that did,
+ * which read as inconsistent shouting next to Title Case labels everywhere
+ * else on the same screen (status chips, warrant/CRM/serve-job badges, etc).
  *
  * Heuristic: a value is enum-like if it's a single token of lowercase
  * letters/digits/underscores, OR if it contains an underscore. Names,
  * addresses, and free-form text pass through untouched so we don't
- * accidentally uppercase data the user typed in mixed case.
+ * accidentally re-case data the user typed in mixed case.
  */
 export function formatEnumValue(s: string | null | undefined): string {
   if (s == null) return '';
   const trimmed = String(s).trim();
   if (!trimmed) return '';
   const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
-  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
+  return isEnumLike ? toDisplayLabel(trimmed) : trimmed;
 }
 
 /**
@@ -489,4 +495,50 @@ export function maskValue(value: string, showLast = 4, maskChar = '*'): string {
   if (!value) return '';
   if (value.length <= showLast) return value;
   return maskChar.repeat(value.length - showLast) + value.slice(-showLast);
+}
+
+/**
+ * Strip HTML tags and decode entities for PDF plain-text rendering.
+ *
+ * Decodes HTML entities first (`&lt;` → `<`) so that encoded script/style
+ * blocks become real tags and are removed by the tag-strip pass.  `&amp;`
+ * is decoded last so that `&amp;lt;` stays as the literal text `&lt;`.
+ *
+ * Tag stripping runs in a do-while loop so that tags that reform after
+ * entity decoding (e.g. `<scr&lt;ipt>` → `<script>`) are caught on the
+ * next pass.  A final `[<>]` cleanup catches any residual angle brackets.
+ *
+ * NOT a security boundary — the input has already been sanitized before
+ * reaching this function.
+ */
+export function stripHtmlForPdf(input: string | undefined | null): string {
+  if (!input) return '';
+  // Phase 1: entity-decode so encoded tags become real tags.
+  let result = String(input)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(div|li|tr|h[1-6])>/gi, '\n');
+
+  // Phase 2: strip tags in a loop — repeated passes catch tags that reform
+  // after entity decoding (e.g. <scr&lt;ipt> → <script> after decode).
+  let prev: string;
+  do {
+    prev = result;
+    result = result.replace(/<[^>]+>/g, '');
+  } while (result !== prev);
+
+  // Phase 3: final cleanup — decode &amp; last, remove residual brackets,
+  // collapse whitespace.
+  return result
+    .replace(/&amp;/g, '&')
+    .replace(/[<>]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

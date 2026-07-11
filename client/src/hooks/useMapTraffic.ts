@@ -12,6 +12,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
+import { hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -44,13 +45,13 @@ export function useMapTraffic(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
     if (!enabled) {
       [TRAFFIC_LAYER, TRAFFIC_CASE].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(TRAFFIC_SOURCE)) map.removeSource(TRAFFIC_SOURCE);
+      safeRemoveSource(map, TRAFFIC_SOURCE);
       return;
     }
 
-    if (!map.getSource(TRAFFIC_SOURCE)) {
+    if (!hasSource(map, TRAFFIC_SOURCE)) {
       map.addSource(TRAFFIC_SOURCE, {
         type: 'vector',
         url: 'mapbox://mapbox.mapbox-traffic-v1',
@@ -104,9 +105,9 @@ export function useMapTraffic(map: mapboxgl.Map | null, mapLoaded: boolean): Use
 
     return () => {
       [TRAFFIC_LAYER, TRAFFIC_CASE].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
-      if (map.getSource(TRAFFIC_SOURCE)) map.removeSource(TRAFFIC_SOURCE);
+      safeRemoveSource(map, TRAFFIC_SOURCE);
     };
   }, [map, mapLoaded, enabled]);
 

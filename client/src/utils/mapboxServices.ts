@@ -182,6 +182,25 @@ export async function tileQuery(
   return apiFetch<any>(`/mapbox/tilequery?${params}`);
 }
 
+// ─── Boundaries (jurisdiction lookup) ─────────────────────
+
+export interface BoundariesResult {
+  county: string | null;
+  municipality: string | null;
+  place: string | null;
+  source?: string;
+  ok?: boolean;
+  skipped?: boolean;
+  code?: string;
+  reason?: string;
+}
+
+export async function lookupJurisdiction(lng: number, lat: number) {
+  return apiFetch<BoundariesResult>(
+    `/mapbox/boundaries?lng=${lng}&lat=${lat}`
+  );
+}
+
 // ─── Static Map ────────────────────────────────────────────
 
 export async function getStaticMapUrl(

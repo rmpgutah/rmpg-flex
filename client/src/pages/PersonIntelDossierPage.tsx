@@ -13,6 +13,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { parseTimestamp } from '../utils/dateUtils';
 import PersonIntelGraphTab from './PersonIntelGraphTab';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface DataPoint {
   id: number;
@@ -412,7 +413,7 @@ export default function PersonIntelDossierPage() {
               <div key={s.id} className="bg-surface-raised rounded px-3 py-2 flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'success' ? 'bg-green-400' : s.status === 'not_configured' ? 'bg-rmpg-600' : s.status === 'skipped' ? 'bg-rmpg-600' : 'bg-red-400'}`} />
                 <span className="text-xs text-rmpg-200 flex-1">{s.source_name}</span>
-                <span className={`text-[10px] ${s.status === 'success' ? 'text-green-400' : s.status === 'not_configured' || s.status === 'skipped' ? 'text-rmpg-500' : 'text-red-400'}`}>{s.status}</span>
+                <span className={`text-[10px] ${s.status === 'success' ? 'text-green-400' : s.status === 'not_configured' || s.status === 'skipped' ? 'text-rmpg-500' : 'text-red-400'}`}>{toDisplayLabel(s.status)}</span>
                 <span className="text-[10px] text-rmpg-600">{s.data_points_found} pts</span>
                 <span className="text-[10px] text-rmpg-600">{s.response_time_ms}ms</span>
                 <span className="text-[10px] text-rmpg-700">Ph{s.phase}</span>
