@@ -63,9 +63,13 @@ interface AuthContextType {
 // tests. Most callers should still use the throwing `useAuth()` hook.
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const TOKEN_KEY = 'rmpg_token';
-const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
-const SESSION_ID_KEY = 'rmpg_session_id';
+// Exported so other localStorage writers of the same session (e.g. the SSO
+// callback page, which persists a token bundle outside of AuthProvider's own
+// fetch flows) always target the identical keys — a local copy here would
+// silently drift if these ever get renamed.
+export const TOKEN_KEY = 'rmpg_token';
+export const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
+export const SESSION_ID_KEY = 'rmpg_session_id';
 const LAST_USERNAME_KEY = 'rmpg_last_username';
 
 // Access window.electron safely (only present in Electron desktop app)
@@ -99,7 +103,7 @@ function parseJwtExpiry(token: string): number | null {
 // Last server-confirmed user, persisted so a returning field device can render
 // optimistically on the next cold boot instead of blocking the "Initializing"
 // splash on a slow-cellular /auth/me round-trip.
-const CACHED_USER_KEY = 'rmpg_cached_user';
+export const CACHED_USER_KEY = 'rmpg_cached_user';
 
 function readCachedUser(): User | null {
   try {
@@ -128,7 +132,7 @@ function initialOptimisticUser(): User | null {
 }
 
 /** Fetch with an AbortController timeout so auth requests never hang indefinitely. */
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AUTH_FETCH_TIMEOUT_MS): Promise<Response> {
+export function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AUTH_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));

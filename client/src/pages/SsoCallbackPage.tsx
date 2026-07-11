@@ -9,11 +9,7 @@
 // provider tree).
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-
-const TOKEN_KEY = 'rmpg_token';
-const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
-const SESSION_ID_KEY = 'rmpg_session_id';
-const CACHED_USER_KEY = 'rmpg_cached_user';
+import { TOKEN_KEY, REFRESH_TOKEN_KEY, SESSION_ID_KEY, CACHED_USER_KEY, fetchWithTimeout } from '../context/AuthContext';
 
 export default function SsoCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -27,7 +23,7 @@ export default function SsoCallbackPage() {
     }
     (async () => {
       try {
-        const res = await fetch('/api/auth/sso/exchange', {
+        const res = await fetchWithTimeout('/api/auth/sso/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
@@ -36,11 +32,19 @@ export default function SsoCallbackPage() {
           setError('This sign-in link has expired or was already used. Return to the login page and try again.');
           return;
         }
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        // Guard against a malformed/incomplete body before persisting anything --
+        // an unguarded write here could stash the literal string "undefined"
+        // under these keys, which then throws when AuthContext's own code
+        // later JSON.parses the cached-user entry back out.
+        if (!data || typeof data.token !== 'string' || !data.token) {
+          setError('Unable to complete sign-in. Return to the login page and try again.');
+          return;
+        }
         localStorage.setItem(TOKEN_KEY, data.token);
-        localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        localStorage.setItem(SESSION_ID_KEY, data.sessionId);
-        localStorage.setItem(CACHED_USER_KEY, JSON.stringify(data.user));
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        if (data.user) localStorage.setItem(CACHED_USER_KEY, JSON.stringify(data.user));
         window.location.href = '/';
       } catch {
         setError('Unable to complete sign-in. Return to the login page and try again.');
