@@ -18,6 +18,8 @@ interface Props {
   todayYmd: string;
   /** Deep-link highlight: auto-scroll to this slot and ring it on first render. */
   highlightSlotId?: number;
+  /** Highlight an officer lane row */
+  highlightOfficerId?: number;
   onSlotClick?: (slot: ScheduleSlot) => void;
   onSlotDrop?: (slot: ScheduleSlot, target: { date: string; officer_id: number | null }) => void;
   onQueueDrop?: (queueId: number, target: { date: string; officer_id: number | null }) => void;
@@ -25,8 +27,6 @@ interface Props {
   onSlotDismiss?: (slot: ScheduleSlot) => void;
   /** admin/manager only — gate unassign (PATCH officer→null) icon on chip */
   onSlotUnassign?: (slot: ScheduleSlot) => void;
-  /** Highlight lane for a given officer id */
-  highlightOfficerId?: number;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
