@@ -281,7 +281,7 @@ async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { err
   return { user };
 }
 
-async function issueLoginTokens(c: any, db: any, user: any) {
+export async function issueLoginTokens(c: any, db: any, user: any) {
   const secret = c.env.JWT_SECRET;
   const claims = tokenClaims(user);
   const refreshToken = await signRefreshToken(secret, claims);
@@ -296,7 +296,7 @@ async function issueLoginTokens(c: any, db: any, user: any) {
   } catch { /* non-fatal */ }
   const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
   await recordLoginAttempt(db, user.username, ip, true, null);
-  return c.json({
+  return {
     token: accessToken,
     refreshToken,
     sessionId,
@@ -304,7 +304,7 @@ async function issueLoginTokens(c: any, db: any, user: any) {
     lastLoginAt: null,
     lastLoginIp: null,
     user: userPayload(user),
-  });
+  };
 }
 
 // POST /auth/login/verify-2fa — { tempToken, code } → full login tokens.
@@ -328,7 +328,7 @@ auth.post('/login/verify-2fa', async (c) => {
     if (!(await verifyTotpCode(secretB32, code || ''))) {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
-    return await issueLoginTokens(c, db, user);
+    return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('verify-2fa failed:', err);
     return c.json({ error: 'Verification failed', code: 'VERIFY_2FA_ERROR' }, 500);
@@ -357,7 +357,7 @@ auth.post('/login/verify-backup-code', async (c) => {
     }
     hashes.splice(idx, 1); // single use
     await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), user.id);
-    return await issueLoginTokens(c, db, user);
+    return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('verify-backup-code failed:', err);
     return c.json({ error: 'Verification failed', code: 'VERIFY_BACKUP_ERROR' }, 500);
@@ -1498,7 +1498,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
 
-    return await issueLoginTokens(c, db, user);
+    return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('webauthn/authenticate-verify failed:', err);
     return c.json({ error: 'Failed to verify security key', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' }, 500);
