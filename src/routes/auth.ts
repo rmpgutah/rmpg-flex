@@ -43,7 +43,7 @@ const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refr
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
 // (those columns do not exist on live D1).
-const USER_SELECT =
+export const USER_SELECT =
   'id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_enabled';
 
 async function sha256Hex(input: string): Promise<string> {
@@ -289,7 +289,13 @@ async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { err
   return { user };
 }
 
-async function issueLoginTokens(c: any, db: any, user: any) {
+// Mints a full session (tokens + sessions row + login bookkeeping) for an
+// already-authenticated user, independent of the response shape the caller
+// wants. Shared by password login, 2FA/WebAuthn verify, AND the dialer OIDC
+// callback (src/routes/oidc.ts) — an SSO login is "authenticated" the moment
+// the id_token verifies, so it goes straight here rather than through
+// password/2FA checks.
+export async function mintLoginTokens(c: any, db: any, user: any) {
   const secret = c.env.JWT_SECRET;
   const claims = tokenClaims(user);
   const refreshToken = await signRefreshToken(secret, claims);
@@ -304,7 +310,7 @@ async function issueLoginTokens(c: any, db: any, user: any) {
   } catch { /* non-fatal */ }
   const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
   await recordLoginAttempt(db, user.username, ip, true, null);
-  return c.json({
+  return {
     token: accessToken,
     refreshToken,
     sessionId,
@@ -312,7 +318,11 @@ async function issueLoginTokens(c: any, db: any, user: any) {
     lastLoginAt: null,
     lastLoginIp: null,
     user: userPayload(user),
-  });
+  };
+}
+
+async function issueLoginTokens(c: any, db: any, user: any) {
+  return c.json(await mintLoginTokens(c, db, user));
 }
 
 // POST /auth/login/verify-2fa — { tempToken, code } → full login tokens.
