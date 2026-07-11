@@ -319,6 +319,44 @@ export default function DownloadsPage() {
           </div>
         )}
 
+        {/* Dial Connect — a separate product, not another RMPG Flex platform build */}
+        <div
+          className="flex items-center justify-between gap-4 p-4 mb-8"
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+        >
+          <div className="flex items-center gap-3">
+            <img
+              src="https://dialer.rmpgutah.us/icons/icon-192.png"
+              alt="Dial Connect"
+              className="w-10 h-10 rounded-full"
+              style={{ objectFit: 'contain' }}
+            />
+            <div>
+              <h4 className="text-sm font-bold text-rmpg-100 mb-1">Dial Connect</h4>
+              <p className="text-xs" style={{ color: 'var(--rmpg-500)' }}>
+                E911 dispatch companion &mdash; install as an app on any device.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://dialer.rmpgutah.us"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
+            style={{
+              background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+              border: '1px solid #d4a017',
+              color: '#d4a017',
+              borderRadius: 2,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-raised) 100%)'; e.currentTarget.style.borderColor = '#e8b52a'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)'; e.currentTarget.style.borderColor = '#d4a017'; }}
+          >
+            Open Dial Connect
+            <ChevronRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
         {/* Web App Banner */}
         <div
           className="flex items-center justify-between gap-4 p-4 mb-8"
