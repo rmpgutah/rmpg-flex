@@ -199,6 +199,7 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 // question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
+const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 // CrashReportsPage existed on disk but had no route in App.tsx — sidebar link
 // hit the 404 catch-all. No backend route exists yet either; the page is a
@@ -489,9 +490,10 @@ function AppRoutes() {
               on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
           <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          {/* Dial Connect SSO redirect landing page — see src/routes/ssoAuth.ts
-              and client/src/pages/SsoCallbackPage.tsx for the full handoff flow. */}
-          <Route path="/sso-callback" element={<SsoCallbackPage />} />
+          {/* Landing page for src/routes/oidc.ts's dialer SSO callback — see
+              OidcCallbackPage.tsx for why the session arrives in the URL
+              fragment instead of via a normal API call. */}
+          <Route path="/oidc-callback" element={<OidcCallbackPage />} />
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
           <Route path="/m/shift/:token" element={<MobileShiftPage />} />

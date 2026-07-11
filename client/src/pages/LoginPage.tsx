@@ -172,6 +172,12 @@ export default function LoginPage() {
   }, [searchParams]);
   const [resetSuccess, setResetSuccess] = useState<boolean>(() => searchParams.get('reset') === '1');
   const [urlError, setUrlError] = useState<string | null>(() => {
+    // src/routes/oidc.ts's backToLogin() sends failed dialer SSO attempts
+    // here as ?sso=dialer&status=error&message=... — surface that message
+    // directly since it's already operator-facing (e.g. "no linked account").
+    if (searchParams.get('sso') === 'dialer' && searchParams.get('status') === 'error') {
+      return searchParams.get('message') || 'Dialer sign-in failed. Please try again.';
+    }
     const code = searchParams.get('error');
     if (!code) return null;
     switch (code) {
@@ -187,7 +193,7 @@ export default function LoginPage() {
     if (deepLinkConsumedRef.current) return;
     deepLinkConsumedRef.current = true;
     const hasTransient = searchParams.has('reset') || searchParams.has('error') ||
-      searchParams.has('forgot') || searchParams.has('username');
+      searchParams.has('forgot') || searchParams.has('username') || searchParams.has('sso');
     if (!hasTransient) return;
     const next = new URLSearchParams(searchParams);
     // Pre-fill username if provided and field is empty
@@ -199,6 +205,9 @@ export default function LoginPage() {
     next.delete('error');
     next.delete('forgot');
     next.delete('username');
+    next.delete('sso');
+    next.delete('status');
+    next.delete('message');
     // Preserve `return` — it's still load-bearing for the post-login navigate.
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -836,18 +845,25 @@ export default function LoginPage() {
                     showPasswordField ? 'Sign In' : 'Continue'
                   )}
                 </button>
-                {showPasswordField && (
-                  <button
-                    type="button"
-                    onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
-                                      className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
-                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                    aria-label="Forgot password"
-                  >
-                    Forgot Password?
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
+                                    className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                  aria-label="Forgot password"
+                >
+                  Forgot Password?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/api/oidc/dialer/login'; }}
+                  className="toolbar-btn w-full h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-rmpg-300 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 mt-2"
+                  aria-label="Sign in with Dialer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Sign in with Dialer
+                </button>
               </form>
             )}
 

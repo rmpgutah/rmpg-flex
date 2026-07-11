@@ -194,7 +194,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/serve-intake': 'Service Intake',
   '/web-research': 'Web Research',
   '/settings': 'Settings',
-  '/navigation': 'Navigation & Route Planning',
+  '/route-builder': 'Navigation & Route Planning',
   '/jail': 'Jail Management',
   '/affairs': 'Internal Affairs',
   '/assets': 'Asset Management',

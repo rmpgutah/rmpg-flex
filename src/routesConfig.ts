@@ -66,6 +66,7 @@ import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
+import oidc from './routes/oidc';
 import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
@@ -282,6 +283,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/oidc/dialer', router: ssoAuth, auth: 'public',
     note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
+  { prefix: '/api/oidc', router: oidc, auth: 'public',
+    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC). Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
