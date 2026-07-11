@@ -140,7 +140,7 @@ ssoAuth.get('/callback', async (c) => {
     if (!tok.id_token) return loginFailedRedirect(c);
 
     const jwks = createRemoteJWKSet(new URL(endpoints.jwksUri));
-    let claims: { sub: string; email?: string; role?: string; nonce?: string };
+    let claims: { sub: string; email?: string; email_verified?: boolean; role?: string; nonce?: string };
     try {
       const { payload } = await jwtVerify(tok.id_token, jwks, {
         issuer: endpoints.issuer,
@@ -151,7 +151,7 @@ ssoAuth.get('/callback', async (c) => {
       log.error('[SSO] id_token verification failed', {}, err);
       return loginFailedRedirect(c);
     }
-    if (claims.nonce !== pkce.nonce || !claims.email) return loginFailedRedirect(c);
+    if (claims.nonce !== pkce.nonce || !claims.email || claims.email_verified !== true) return loginFailedRedirect(c);
 
     const db = getDb(c.env);
     const matches = await queryFirst<{ count: number }>(
