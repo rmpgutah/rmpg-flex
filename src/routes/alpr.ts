@@ -288,24 +288,28 @@ async function finalizeCapture(
     captureRowId: number; read: CloudflarePlateResult | null;
     callId: number | null; incidentId: number | null;
     lat: number | null; lng: number | null; locationText: string | null; userId: number;
+    derivedTrust?: number;
   },
 ): Promise<FinalizeResult> {
   const read = args.read;
   const plate = read?.plate ?? null;
   // Never trust the vision model's self-reported confidence directly (it emits
   // ~1.0 constantly — see clearpathAlpr.ts's captureTrust, which fixed the same
-  // bug on the dashcam path). Derive real trust from plateTrust.trustScore
-  // instead; a single read is capped at 0.84 inside trustScore, so one capture
-  // alone can never clear the default 0.85 accept gate.
-  const derivedConf = plate
+  // bug on the dashcam path). Prefer the caller's pre-computed derivedTrust
+  // (the /capture route already derives it via trustScore for the alpr_captures
+  // insert, so this reuses that single source of truth); fall back to deriving
+  // it here via trustScore for any caller that doesn't pass one. A single read
+  // is capped at 0.84 inside trustScore, so one capture alone can never clear
+  // the default 0.85 accept gate.
+  const plateConf = args.derivedTrust ?? (plate
     ? trustScore({ reads: [plate], modelPct: read?.confidence ?? undefined }).trustScore
-    : null;
+    : null);
   const out: FinalizeResult = {
     hits: [], vehicles: [], recordIds: [], sightingId: null,
-    accepted: false, plateConf: derivedConf,
+    accepted: false, plateConf,
   };
   const TH = acceptThreshold(env);
-  const accepted = !!plate && (out.plateConf ?? 0) >= TH;
+  const accepted = !!plate && (plateConf ?? 0) >= TH;
   out.accepted = accepted;
 
   try {
@@ -530,8 +534,15 @@ alpr.post('/capture', operational, async (c) => {
   }
   const plate = read?.plate ?? null;
 
-  // Capture row (plate known). finalizeCapture then screens + applies the 0.85
-  // gate + creates records, and stamps the row 'done'.
+  // Derive trust from the vision model's read — a single read is capped at
+  // 0.84 max regardless of the model's self-reported confidence, preventing
+  // false-positive auto-accepts (see plateTrust.ts trustScore).
+  const derivedTrust = plate && read?.confidence != null
+    ? trustScore({ reads: [plate], modelPct: read.confidence }).trustScore
+    : 0;
+
+  // Capture row (plate known). finalizeCapture then screens + applies the
+  // derived trust 0.85 gate + creates records, and stamps the row 'done'.
   const ins = await execute(db,
     `INSERT INTO alpr_captures
        (sighting_id, capture_id, case_id, plate, state, confidence, plate_confidence,
@@ -539,7 +550,7 @@ alpr.post('/capture', operational, async (c) => {
         call_id, incident_id, field_photo_id, vehicle_count, vehicle_record_ids, enrich_status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
     null, captureId, strOrNull(params.case_id), plate, read?.state ?? null,
-    read?.confidence ?? null, read?.confidence ?? null, 'pending', imageKey,
+    derivedTrust, derivedTrust, 'pending', imageKey,
     JSON.stringify({ engine: read?.model_id ?? 'workers-ai', plate, read }),
     lat, lng, locationText, userId,
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
@@ -547,6 +558,7 @@ alpr.post('/capture', operational, async (c) => {
 
   const fin = await finalizeCapture(c.env, db, {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
+    derivedTrust,
   });
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());

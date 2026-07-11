@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
+import { log } from '../utils/logger';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
@@ -283,31 +284,92 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
   });
 }
 
-// POST /search-all — unified search across local, utah, and scraped buckets
+// POST /warrants/search-all — unified cross-source warrant search.
+// Queries local warrants, Utah warrants, and scraped warrants tables
+// with the supplied filters. Only scraped warrants are queried when a
+// name, court, charge, or case number filter is provided (dob-only
+// searches skip the scraped bucket to avoid noise).
 warrants.post('/search-all', async (c) => {
-  const db = getDb(c.env);
-  const body = await c.req.json().catch(() => ({} as any));
-  // Determine if any non‑dob filter is present; for tests we treat any key other than 'dob' as a trigger.
-  const hasNonDob = Object.keys(body).some((k) => k !== 'dob');
-  let scrapedRows: any[] = [];
-  if (hasNonDob) {
-    // Simple query returning all scraped_warrants rows; real implementation would filter.
-    scrapedRows = await query<any>(db, 'SELECT * FROM scraped_warrants');
+  const traceId = c.get('traceId');
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      lastName?: string;
+      firstName?: string;
+      dob?: string;
+      courtName?: string;
+      charge?: string;
+      caseNumber?: string;
+    }>();
+
+    const limit = 50;
+
+    // Each source table has its own column names — there's no shared schema
+    // to build one WHERE clause from. `warrants` only has a combined
+    // subject_name (no first/last split) and no case_number column at all;
+    // `utah_warrants` has no dob/charge/case_number columns; only
+    // `scraped_warrants` supports every filter (using date_of_birth, not dob).
+    const localConditions: string[] = [];
+    const localParams: unknown[] = [];
+    if (body.lastName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.firstName}%`); }
+    if (body.dob) { localConditions.push('subject_dob = ?'); localParams.push(body.dob); }
+    if (body.courtName) { localConditions.push('court LIKE ?'); localParams.push(`%${body.courtName}%`); }
+    if (body.charge) { localConditions.push('offense LIKE ?'); localParams.push(`%${body.charge}%`); }
+    const localWhere = localConditions.length ? `WHERE ${localConditions.join(' AND ')}` : '';
+
+    const utahConditions: string[] = [];
+    const utahParams: unknown[] = [];
+    if (body.lastName) { utahConditions.push('last_name LIKE ?'); utahParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { utahConditions.push('first_name LIKE ?'); utahParams.push(`%${body.firstName}%`); }
+    if (body.courtName) { utahConditions.push('court_name LIKE ?'); utahParams.push(`%${body.courtName}%`); }
+    const utahWhere = utahConditions.length ? `WHERE ${utahConditions.join(' AND ')}` : '';
+
+    const scrapedConditions: string[] = [];
+    const scrapedParams: unknown[] = [];
+    if (body.lastName) { scrapedConditions.push('last_name LIKE ?'); scrapedParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { scrapedConditions.push('first_name LIKE ?'); scrapedParams.push(`%${body.firstName}%`); }
+    if (body.dob) { scrapedConditions.push('date_of_birth = ?'); scrapedParams.push(body.dob); }
+    if (body.courtName) { scrapedConditions.push('court_name LIKE ?'); scrapedParams.push(`%${body.courtName}%`); }
+    if (body.charge) { scrapedConditions.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge}%`); }
+    if (body.caseNumber) { scrapedConditions.push('case_number LIKE ?'); scrapedParams.push(`%${body.caseNumber}%`); }
+    const scrapedWhere = scrapedConditions.length ? `WHERE ${scrapedConditions.join(' AND ')}` : '';
+
+    const [local, utah] = await Promise.all([
+      query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, limit)
+        .catch((err) => { log.error('warrants/search-all: local query failed', { traceId }, err); return []; }),
+      query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, limit)
+        .catch((err) => { log.error('warrants/search-all: utah query failed', { traceId }, err); return []; }),
+    ]);
+
+    // Only query scraped_warrants when there's a meaningful filter (not dob-only)
+    const hasScrapedFilter = body.lastName || body.firstName || body.courtName || body.charge || body.caseNumber;
+    let scraped: Record<string, unknown>[] = [];
+    if (hasScrapedFilter) {
+      scraped = await query<Record<string, unknown>>(db, `SELECT * FROM scraped_warrants ${scrapedWhere} LIMIT ?`, ...scrapedParams, limit)
+        .catch((err) => { log.error('warrants/search-all: scraped query failed', { traceId }, err); return []; });
+    }
+
+    const allResults = [...local, ...utah, ...scraped];
+    return c.json({
+      local,
+      utah,
+      scraped,
+      meta: {
+        sources: [
+          ...(local.length ? ['local'] : []),
+          ...(utah.length ? ['utah'] : []),
+          ...(scraped.length ? ['scraped'] : []),
+        ],
+        totalHits: allResults.length,
+      },
+    });
+  } catch (err) {
+    log.error('warrants/search-all failed', { traceId }, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ local: [], utah: [], scraped: [], meta: { sources: [], totalHits: 0 } });
   }
-  const response = {
-    local: [],
-    utah: [],
-    scraped: scrapedRows,
-    meta: {
-      sources: [] as string[],
-      totalHits: scrapedRows.length,
-    },
-  };
-  if (response.local.length) response.meta.sources.push('local');
-  if (response.utah.length) response.meta.sources.push('utah');
-  if (response.scraped.length) response.meta.sources.push('scraped');
-  return c.json(response);
 });
+
 // GET /national-coverage — per-state source/warrant counts for the
 // NationalWarrantSearchPage coverage map. A state counts as 'active' if it
 // has at least one enabled source, from EITHER national_warrant_sources
