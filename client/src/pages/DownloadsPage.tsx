@@ -73,6 +73,10 @@ export default function DownloadsPage() {
   const [fetchError, setFetchError] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
+  // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
+  // depends on a concurrently-shipping PWA deploy, so it may 404 — fall back to
+  // a bundled lucide icon rather than showing a broken-image glyph.
+  const [dialConnectIconFailed, setDialConnectIconFailed] = useState(false);
 
   // Refs used by the N shortcut to programmatically click the active download link.
   const downloadRefs = useRef<Record<Platform, HTMLAnchorElement | null>>({
@@ -325,12 +329,22 @@ export default function DownloadsPage() {
           style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
         >
           <div className="flex items-center gap-3">
-            <img
-              src="https://dialer.rmpgutah.us/icons/icon-192.png"
-              alt="Dial Connect"
-              className="w-10 h-10 rounded-full"
-              style={{ objectFit: 'contain' }}
-            />
+            {dialConnectIconFailed ? (
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}
+              >
+                <Smartphone className="w-5 h-5" style={{ color: '#d4a017' }} />
+              </div>
+            ) : (
+              <img
+                src="https://dialer.rmpgutah.us/icons/icon-192.png"
+                alt="Dial Connect"
+                className="w-10 h-10 rounded-full"
+                style={{ objectFit: 'contain' }}
+                onError={() => setDialConnectIconFailed(true)}
+              />
+            )}
             <div>
               <h4 className="text-sm font-bold text-rmpg-100 mb-1">Dial Connect</h4>
               <p className="text-xs" style={{ color: 'var(--rmpg-500)' }}>
