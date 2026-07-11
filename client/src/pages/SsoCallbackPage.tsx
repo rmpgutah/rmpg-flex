@@ -23,7 +23,7 @@ export default function SsoCallbackPage() {
     }
     (async () => {
       try {
-        const res = await fetchWithTimeout('/api/auth/sso/exchange', {
+        const res = await fetchWithTimeout('/api/oidc/dialer/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),

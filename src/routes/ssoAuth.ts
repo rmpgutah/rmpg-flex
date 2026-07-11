@@ -1,5 +1,5 @@
 // Dial Connect SSO (OpenID Connect relying party) -- public router.
-// Mounted at /api/auth/sso, auth: 'public' (see routesConfig.ts): every
+// Mounted at /api/oidc/dialer, auth: 'public' (see routesConfig.ts): every
 // endpoint here runs before the caller has any RMPG Flex session.
 //
 // Flow: /check (identifier-first probe) -> /login (PKCE redirect to Dial
@@ -16,7 +16,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, queryFirst } from '../utils/db';
 import { issueLoginTokens } from './auth';
-import { readSsoConfig, SSO_CONFIG_KEYS, generateCodeVerifier, codeChallengeS256 } from '../utils/sso';
+import { readDialerOidcEndpoints, generateCodeVerifier, codeChallengeS256 } from '../utils/sso';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 
@@ -29,7 +29,7 @@ const EXCHANGE_TTL_SECONDS = 30;
 // failure -- clears the cookie rather than letting it linger until its
 // 300s maxAge expires.
 function clearPkceCookie(c: Context<Env>): void {
-  setCookie(c, PKCE_COOKIE, '', { maxAge: 0, path: '/api/auth/sso' });
+  setCookie(c, PKCE_COOKIE, '', { maxAge: 0, path: '/api/oidc/dialer' });
 }
 
 function loginFailedRedirect(c: Context<Env>): Response {
@@ -37,7 +37,7 @@ function loginFailedRedirect(c: Context<Env>): Response {
   return c.redirect('https://rmpgutah.us/login?error=sso_failed', 302);
 }
 
-// GET /api/auth/sso/check?email= -- identifier-first probe for LoginPage.
+// GET /api/oidc/dialer/check?email= -- identifier-first probe for LoginPage.
 // Same response shape whether the email doesn't exist OR just isn't
 // SSO-enabled, so this can't be used to enumerate valid accounts.
 ssoAuth.get('/check', async (c) => {
@@ -57,12 +57,16 @@ ssoAuth.get('/check', async (c) => {
   return c.json({ ssoEnabled: !!user?.sso_enabled });
 });
 
-// GET /api/auth/sso/login -- start the PKCE authorization-code flow.
+// GET /api/oidc/dialer/login -- start the PKCE authorization-code flow.
 ssoAuth.get('/login', async (c) => {
-  const cfg = await readSsoConfig(c.env);
-  const clientId = cfg[SSO_CONFIG_KEYS.clientId];
-  const issuer = cfg[SSO_CONFIG_KEYS.issuer];
-  if (!clientId || !issuer) {
+  const clientId = c.env.DIALER_OIDC_CLIENT_ID;
+  const redirectUri = c.env.DIALER_OIDC_REDIRECT_URI;
+  if (!clientId || !redirectUri) {
+    return c.json({ error: 'Dial Connect SSO is not configured' }, 503);
+  }
+
+  const endpoints = await readDialerOidcEndpoints(c.env);
+  if (!endpoints) {
     return c.json({ error: 'Dial Connect SSO is not configured' }, 503);
   }
 
@@ -76,14 +80,14 @@ ssoAuth.get('/login', async (c) => {
     secure: true,
     sameSite: 'Lax',
     maxAge: 300,
-    path: '/api/auth/sso',
+    path: '/api/oidc/dialer',
   });
 
-  const authorizeUrl = new URL(`${issuer}/auth`);
+  const authorizeUrl = new URL(endpoints.authorizationEndpoint);
   authorizeUrl.searchParams.set('client_id', clientId);
   authorizeUrl.searchParams.set('response_type', 'code');
   authorizeUrl.searchParams.set('scope', 'openid profile email');
-  authorizeUrl.searchParams.set('redirect_uri', 'https://api.rmpgutah.us/api/auth/sso/callback');
+  authorizeUrl.searchParams.set('redirect_uri', redirectUri);
   authorizeUrl.searchParams.set('state', state);
   authorizeUrl.searchParams.set('nonce', nonce);
   authorizeUrl.searchParams.set('code_challenge', challenge);
@@ -92,7 +96,7 @@ ssoAuth.get('/login', async (c) => {
   return c.redirect(authorizeUrl.toString(), 302);
 });
 
-// GET /api/auth/sso/callback -- the redirect_uri registered with Dial Connect.
+// GET /api/oidc/dialer/callback -- the redirect_uri registered with Dial Connect.
 ssoAuth.get('/callback', async (c) => {
   try {
     const code = c.req.query('code');
@@ -108,19 +112,21 @@ ssoAuth.get('/callback', async (c) => {
     }
     if (state !== pkce.state) return loginFailedRedirect(c);
 
-    const cfg = await readSsoConfig(c.env);
-    const clientId = cfg[SSO_CONFIG_KEYS.clientId];
-    const clientSecret = cfg[SSO_CONFIG_KEYS.clientSecret];
-    const issuer = cfg[SSO_CONFIG_KEYS.issuer];
-    if (!clientId || !clientSecret || !issuer) return loginFailedRedirect(c);
+    const clientId = c.env.DIALER_OIDC_CLIENT_ID;
+    const clientSecret = c.env.DIALER_OIDC_CLIENT_SECRET;
+    const redirectUri = c.env.DIALER_OIDC_REDIRECT_URI;
+    if (!clientId || !clientSecret || !redirectUri) return loginFailedRedirect(c);
 
-    const tokenRes = await fetch(`${issuer}/token`, {
+    const endpoints = await readDialerOidcEndpoints(c.env);
+    if (!endpoints) return loginFailedRedirect(c);
+
+    const tokenRes = await fetch(endpoints.tokenEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: 'https://api.rmpgutah.us/api/auth/sso/callback',
+        redirect_uri: redirectUri,
         client_id: clientId,
         client_secret: clientSecret,
         code_verifier: pkce.verifier,
@@ -133,11 +139,11 @@ ssoAuth.get('/callback', async (c) => {
     const tok = await tokenRes.json<{ id_token?: string }>();
     if (!tok.id_token) return loginFailedRedirect(c);
 
-    const jwks = createRemoteJWKSet(new URL(`${issuer}/jwks`));
+    const jwks = createRemoteJWKSet(new URL(endpoints.jwksUri));
     let claims: { sub: string; email?: string; role?: string; nonce?: string };
     try {
       const { payload } = await jwtVerify(tok.id_token, jwks, {
-        issuer,
+        issuer: endpoints.issuer,
         audience: clientId,
       });
       claims = payload as typeof claims;
@@ -177,7 +183,7 @@ ssoAuth.get('/callback', async (c) => {
   }
 });
 
-// POST /api/auth/sso/exchange -- single-use handoff, called by the SPA's
+// POST /api/oidc/dialer/exchange -- single-use handoff, called by the SPA's
 // /sso-callback page immediately after the redirect above.
 ssoAuth.post('/exchange', async (c) => {
   const body = await c.req.json<{ code?: string }>().catch(() => ({}) as any);

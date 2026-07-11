@@ -279,8 +279,8 @@ export interface RouteMount {
 export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Public ─────────────────────────────────────────────────
   { prefix: '/api/health', router: health, auth: 'public' },
-  { prefix: '/api/auth/sso', router: ssoAuth, auth: 'public',
-    note: 'Dial Connect SSO (OIDC relying party) — BEFORE /api/auth so the longer prefix wins.' },
+  { prefix: '/api/oidc/dialer', router: ssoAuth, auth: 'public',
+    note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },

@@ -374,10 +374,10 @@ export default function LoginPage() {
     setSsoChecking(true);
     clearError();
     try {
-      const res = await fetchWithTimeout(`/api/auth/sso/check?email=${encodeURIComponent(loginUsername.trim())}`);
+      const res = await fetchWithTimeout(`/api/oidc/dialer/check?email=${encodeURIComponent(loginUsername.trim())}`);
       const data = await res.json();
       if (data.ssoEnabled) {
-        window.location.href = '/api/auth/sso/login';
+        window.location.href = '/api/oidc/dialer/login';
         return;
       }
     } catch {

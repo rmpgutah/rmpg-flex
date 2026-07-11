@@ -948,9 +948,6 @@ const ALLOWED_THIRD_PARTY_KEYS = new Set<string>([
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
   'traccar_webhook_token', 'traccar_url', 'traccar_email', 'traccar_password',
   'traccar_enabled', 'traccar_poll_interval',
-  // Dial Connect SSO (OIDC relying-party config — must stay in sync with
-  // SSO_CONFIG_KEYS in src/utils/sso.ts, which reads these same keys).
-  'dial_connect_client_id', 'dial_connect_client_secret', 'dial_connect_issuer',
 ]);
 
 // GET /api/admin/third-party-keys — bulk list: which keys are configured.
