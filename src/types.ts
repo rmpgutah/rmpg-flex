@@ -24,6 +24,10 @@ export type Bindings = {
   PDF_SIGNING_KEY?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
+  // falls back to the incoming request's origin so non-prod environments
+  // (previews, local dev) redirect back to themselves instead of prod.
+  APP_ORIGIN?: string;
   // Mapbox access token (secret, optional). When set, the Worker can call
   // the Mapbox Directions API for true drive-time ETAs (see src/utils/eta.ts);
   // the geocode route also hands it to the client. Absent → ETA falls back to

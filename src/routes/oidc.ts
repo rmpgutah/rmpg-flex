@@ -42,7 +42,6 @@ import { log } from '../utils/logger';
 
 const oidc = new Hono<Env>();
 
-const APP_ORIGIN = 'https://rmpgutah.us';
 const STATE_TTL_SECONDS = 300; // 5 minutes — matches the 2fa_pending token TTL convention
 
 interface DiscoveryDoc {
@@ -77,17 +76,18 @@ async function getDiscoveryDoc(env: Env['Bindings']): Promise<DiscoveryDoc> {
   return doc;
 }
 
-function backToLogin(status: 'error', message: string) {
+function backToLogin(appOrigin: string, status: 'error', message: string) {
   const params = new URLSearchParams({ sso: 'dialer', status, message });
-  return Response.redirect(`${APP_ORIGIN}/login?${params}`, 302);
+  return Response.redirect(`${appOrigin}/login?${params}`, 302);
 }
 
 oidc.get('/dialer/login', async (c) => {
   const env = c.env as Env['Bindings'];
+  const appOrigin = env.APP_ORIGIN || new URL(c.req.url).origin;
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
   const redirectUri = env.DIALER_OIDC_REDIRECT_URI as string | undefined;
   if (!clientId || !redirectUri || !env.DIALER_OIDC_ISSUER) {
-    return backToLogin('error', 'Dialer SSO is not configured');
+    return backToLogin(appOrigin, 'error', 'Dialer SSO is not configured');
   }
 
   let discovery: DiscoveryDoc;
@@ -95,7 +95,7 @@ oidc.get('/dialer/login', async (c) => {
     discovery = await getDiscoveryDoc(env);
   } catch (err) {
     console.error('[oidc] discovery fetch failed:', err);
-    return backToLogin('error', 'Dialer SSO is temporarily unavailable');
+    return backToLogin(appOrigin, 'error', 'Dialer SSO is temporarily unavailable');
   }
 
   // Random CSRF state, single-use, KV-backed (mirrors the 2fa_pending TTL
@@ -120,27 +120,28 @@ oidc.get('/dialer/login', async (c) => {
 
 oidc.get('/dialer/callback', async (c) => {
   const env = c.env as Env['Bindings'];
+  const appOrigin = env.APP_ORIGIN || new URL(c.req.url).origin;
   const code = c.req.query('code');
   const state = c.req.query('state');
   const errParam = c.req.query('error');
-  if (errParam) return backToLogin('error', c.req.query('error_description') || errParam);
-  if (!code || !state) return backToLogin('error', 'Missing authorization code or state');
+  if (errParam) return backToLogin(appOrigin, 'error', c.req.query('error_description') || errParam);
+  if (!code || !state) return backToLogin(appOrigin, 'error', 'Missing authorization code or state');
 
   const stateKey = `oidc:dialer:state:${state}`;
   const stateValid = await env.KV.get(stateKey);
-  if (!stateValid) return backToLogin('error', 'Sign-in session expired — please try again');
+  if (!stateValid) return backToLogin(appOrigin, 'error', 'Sign-in session expired — please try again');
   await env.KV.delete(stateKey); // single-use
   let expectedNonce: string | undefined;
   try {
     expectedNonce = (JSON.parse(stateValid) as { nonce?: string }).nonce;
   } catch { /* legacy state entries without a nonce fail closed below */ }
-  if (!expectedNonce) return backToLogin('error', 'Sign-in session expired — please try again');
+  if (!expectedNonce) return backToLogin(appOrigin, 'error', 'Sign-in session expired — please try again');
 
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
   const clientSecret = env.DIALER_OIDC_CLIENT_SECRET as string | undefined;
   const redirectUri = env.DIALER_OIDC_REDIRECT_URI as string | undefined;
   if (!clientId || !clientSecret || !redirectUri) {
-    return backToLogin('error', 'Dialer SSO is not configured');
+    return backToLogin(appOrigin, 'error', 'Dialer SSO is not configured');
   }
 
   let discovery: DiscoveryDoc;
@@ -148,7 +149,7 @@ oidc.get('/dialer/callback', async (c) => {
     discovery = await getDiscoveryDoc(env);
   } catch (err) {
     console.error('[oidc] discovery fetch failed:', err);
-    return backToLogin('error', 'Dialer SSO is temporarily unavailable');
+    return backToLogin(appOrigin, 'error', 'Dialer SSO is temporarily unavailable');
   }
 
   let idToken: string;
@@ -166,14 +167,14 @@ oidc.get('/dialer/callback', async (c) => {
     });
     if (!tokenRes.ok) {
       log.error('[oidc] token exchange failed', { traceId: c.get('traceId'), status: tokenRes.status });
-      return backToLogin('error', 'Token exchange failed');
+      return backToLogin(appOrigin, 'error', 'Token exchange failed');
     }
     const tok = await tokenRes.json<{ id_token?: string }>();
-    if (!tok.id_token) return backToLogin('error', 'No id_token returned by dialer');
+    if (!tok.id_token) return backToLogin(appOrigin, 'error', 'No id_token returned by dialer');
     idToken = tok.id_token;
   } catch (err) {
     console.error('[oidc] token exchange error:', err);
-    return backToLogin('error', 'Token exchange failed');
+    return backToLogin(appOrigin, 'error', 'Token exchange failed');
   }
 
   let sub: string;
@@ -184,13 +185,13 @@ oidc.get('/dialer/callback', async (c) => {
       issuer: discovery.issuer,
       audience: clientId,
     });
-    if (payload.nonce !== expectedNonce) return backToLogin('error', 'Could not verify dialer identity');
-    if (!payload.sub) return backToLogin('error', 'id_token missing sub claim');
+    if (payload.nonce !== expectedNonce) return backToLogin(appOrigin, 'error', 'Could not verify dialer identity');
+    if (!payload.sub) return backToLogin(appOrigin, 'error', 'id_token missing sub claim');
     sub = payload.sub;
     email = typeof payload.email === 'string' ? payload.email : undefined;
   } catch (err) {
     console.error('[oidc] id_token verification failed:', err);
-    return backToLogin('error', 'Could not verify dialer identity');
+    return backToLogin(appOrigin, 'error', 'Could not verify dialer identity');
   }
 
   const db = getDb(env);
@@ -217,10 +218,10 @@ oidc.get('/dialer/callback', async (c) => {
     }
   }
   if (!user) {
-    return backToLogin('error', 'No Flex account is linked to this dialer identity. Contact your administrator.');
+    return backToLogin(appOrigin, 'error', 'No Flex account is linked to this dialer identity. Contact your administrator.');
   }
   if (user.status !== 'active') {
-    return backToLogin('error', 'Account is inactive');
+    return backToLogin(appOrigin, 'error', 'Account is inactive');
   }
 
   const tokens = await mintLoginTokens(c, db, user);
@@ -230,7 +231,7 @@ oidc.get('/dialer/callback', async (c) => {
     sessionId: tokens.sessionId,
     expiresIn: String(tokens.expiresIn),
   });
-  return c.redirect(`${APP_ORIGIN}/oidc-callback#${fragment.toString()}`, 302);
+  return c.redirect(`${appOrigin}/oidc-callback#${fragment.toString()}`, 302);
 });
 
 export default oidc;
