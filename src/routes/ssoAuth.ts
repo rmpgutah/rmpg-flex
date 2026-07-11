@@ -10,7 +10,7 @@
 // tokens from localStorage, not cookies, so a full-page OAuth redirect
 // can't hand them off directly without exposing them in the URL/logs) ->
 // POST /exchange consumes the code and returns the token bundle once.
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Env } from '../types';
@@ -18,14 +18,23 @@ import { getDb, queryFirst } from '../utils/db';
 import { issueLoginTokens } from './auth';
 import { readSsoConfig, SSO_CONFIG_KEYS, generateCodeVerifier, codeChallengeS256 } from '../utils/sso';
 import { rateLimitAllow } from '../utils/rateLimit';
+import { log } from '../utils/logger';
 
 const ssoAuth = new Hono<Env>();
 
 const PKCE_COOKIE = 'sso_pkce';
 const EXCHANGE_TTL_SECONDS = 30;
 
-function loginFailedRedirect(): Response {
-  return Response.redirect('https://rmpgutah.us/login?error=sso_failed', 302);
+// Single-use PKCE artifact: every exit from /callback -- success or
+// failure -- clears the cookie rather than letting it linger until its
+// 300s maxAge expires.
+function clearPkceCookie(c: Context<Env>): void {
+  setCookie(c, PKCE_COOKIE, '', { maxAge: 0, path: '/api/auth/sso' });
+}
+
+function loginFailedRedirect(c: Context<Env>): Response {
+  clearPkceCookie(c);
+  return c.redirect('https://rmpgutah.us/login?error=sso_failed', 302);
 }
 
 // GET /api/auth/sso/check?email= -- identifier-first probe for LoginPage.
@@ -89,21 +98,21 @@ ssoAuth.get('/callback', async (c) => {
     const code = c.req.query('code');
     const state = c.req.query('state');
     const pkceCookie = getCookie(c, PKCE_COOKIE);
-    if (!code || !state || !pkceCookie) return loginFailedRedirect();
+    if (!code || !state || !pkceCookie) return loginFailedRedirect(c);
 
     let pkce: { verifier: string; state: string; nonce: string };
     try {
       pkce = JSON.parse(pkceCookie);
     } catch {
-      return loginFailedRedirect();
+      return loginFailedRedirect(c);
     }
-    if (state !== pkce.state) return loginFailedRedirect();
+    if (state !== pkce.state) return loginFailedRedirect(c);
 
     const cfg = await readSsoConfig(c.env);
     const clientId = cfg[SSO_CONFIG_KEYS.clientId];
     const clientSecret = cfg[SSO_CONFIG_KEYS.clientSecret];
     const issuer = cfg[SSO_CONFIG_KEYS.issuer];
-    if (!clientId || !clientSecret || !issuer) return loginFailedRedirect();
+    if (!clientId || !clientSecret || !issuer) return loginFailedRedirect(c);
 
     const tokenRes = await fetch(`${issuer}/token`, {
       method: 'POST',
@@ -118,11 +127,11 @@ ssoAuth.get('/callback', async (c) => {
       }),
     });
     if (!tokenRes.ok) {
-      console.error('[SSO] token exchange failed:', tokenRes.status, await tokenRes.text());
-      return loginFailedRedirect();
+      log.error('[SSO] token exchange failed', { status: tokenRes.status, body: await tokenRes.text() });
+      return loginFailedRedirect(c);
     }
     const tok = await tokenRes.json<{ id_token?: string }>();
-    if (!tok.id_token) return loginFailedRedirect();
+    if (!tok.id_token) return loginFailedRedirect(c);
 
     const jwks = createRemoteJWKSet(new URL(`${issuer}/jwks`));
     let claims: { sub: string; email?: string; role?: string; nonce?: string };
@@ -133,10 +142,10 @@ ssoAuth.get('/callback', async (c) => {
       });
       claims = payload as typeof claims;
     } catch (err) {
-      console.error('[SSO] id_token verification failed:', err);
-      return loginFailedRedirect();
+      log.error('[SSO] id_token verification failed', {}, err);
+      return loginFailedRedirect(c);
     }
-    if (claims.nonce !== pkce.nonce || !claims.email) return loginFailedRedirect();
+    if (claims.nonce !== pkce.nonce || !claims.email) return loginFailedRedirect(c);
 
     const db = getDb(c.env);
     const matches = await queryFirst<{ count: number }>(
@@ -144,7 +153,7 @@ ssoAuth.get('/callback', async (c) => {
       `SELECT COUNT(*) as count FROM users WHERE LOWER(email) = LOWER(?) AND sso_enabled = 1 AND status = 'active'`,
       claims.email,
     );
-    if (!matches || matches.count !== 1) return loginFailedRedirect();
+    if (!matches || matches.count !== 1) return loginFailedRedirect(c);
 
     const user = await queryFirst<any>(
       db,
@@ -152,7 +161,7 @@ ssoAuth.get('/callback', async (c) => {
        FROM users WHERE LOWER(email) = LOWER(?) AND sso_enabled = 1 AND status = 'active'`,
       claims.email,
     );
-    if (!user) return loginFailedRedirect();
+    if (!user) return loginFailedRedirect(c);
 
     const bundle = await issueLoginTokens(c, db, user);
     const exchangeCode = crypto.randomUUID();
@@ -160,10 +169,11 @@ ssoAuth.get('/callback', async (c) => {
       expirationTtl: EXCHANGE_TTL_SECONDS,
     });
 
+    clearPkceCookie(c);
     return c.redirect(`https://rmpgutah.us/sso-callback?code=${exchangeCode}`, 302);
   } catch (err) {
-    console.error('[SSO] callback failed:', err);
-    return loginFailedRedirect();
+    log.error('[SSO] callback failed', {}, err);
+    return loginFailedRedirect(c);
   }
 });
 
