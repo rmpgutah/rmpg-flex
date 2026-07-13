@@ -1620,6 +1620,10 @@ export default function PersonnelPage() {
             timeEntries={timeEntries}
             credentials={credentials}
             onOfficerClick={officer => { setActiveTab('roster'); setSelectedOfficer(officer); setDetailTab('profile'); }}
+            onClockIn={handleClockIn}
+            onClockOut={handleClockOut}
+            onStartBreak={handleStartBreak}
+            onEndBreak={handleEndBreak}
           />
         )}
 
