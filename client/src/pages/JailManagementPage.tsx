@@ -30,9 +30,7 @@ interface Inmate {
 interface HousingUnit {
   id: number;
   name: string;
-  capacity: number;
   current_count: number;
-  unit_type: string;
 }
 
 interface Movement {
@@ -50,8 +48,6 @@ interface JailStats {
   total_inmates: number;
   by_status: Record<string, number>;
   by_classification: Record<string, number>;
-  total_capacity: number;
-  occupancy_pct: number;
 }
 
 type TabId = 'intake' | 'housing' | 'search' | 'movements' | 'stats';
@@ -91,8 +87,13 @@ export default function JailManagementPage() {
   const [inmateLoading, setInmateLoading] = useState(true);
 
   // ── Movements state ──
+  // No inter-unit movement log exists in the schema yet (only inmate_transports,
+  // which tracks external transports like court/hospital, not cell-to-cell
+  // moves) — surfaced honestly rather than showing "No movements recorded",
+  // which reads as "feature works, nothing happened" instead of "not built yet".
   const [movements, setMovements] = useState<Movement[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(true);
+  const [movementsAvailable, setMovementsAvailable] = useState(true);
 
   // ── Stats state ──
   const [stats, setStats] = useState<JailStats | null>(null);
@@ -124,7 +125,8 @@ export default function JailManagementPage() {
     try {
       const data = await apiFetch<Movement[]>('/jail/movements');
       setMovements(Array.isArray(data) ? data : []);
-    } catch { /* empty */ }
+      setMovementsAvailable(true);
+    } catch { setMovementsAvailable(false); }
     finally { setMovementsLoading(false); }
   }, []);
 
@@ -159,13 +161,6 @@ export default function JailManagementPage() {
 
   const handleIntakeField = (field: string, value: string) => {
     setIntakeForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const getOccupancyColor = (unit: HousingUnit) => {
-    const pct = unit.capacity > 0 ? unit.current_count / unit.capacity : 0;
-    if (pct >= 0.9) return 'bg-red-900/50 border-red-700/50';
-    if (pct >= 0.5) return 'bg-amber-900/40 border-amber-700/50';
-    return 'bg-green-900/30 border-green-700/50';
   };
 
   const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
@@ -270,22 +265,16 @@ export default function JailManagementPage() {
           {housingLoading ? (
             <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#888888]" /></div>
           ) : housingUnits.length === 0 ? (
-            <div className="text-center py-12 text-[#888888] text-sm">No housing units configured</div>
+            <div className="text-center py-12 text-[#888888] text-sm">No inmates currently assigned to a housing unit</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {housingUnits.map(unit => (
-                <div key={unit.id} className={`border rounded-[2px] p-3 ${getOccupancyColor(unit)}`}>
+                <div key={unit.id} className="border rounded-[2px] p-3 bg-[#141414] border-[#222222]">
                   <div className="text-xs font-bold text-white mb-1">{unit.name}</div>
-                  <div className="text-[10px] text-[#888888] uppercase mb-2">{unit.unit_type}</div>
                   <div className="text-lg font-mono text-white">
-                    {unit.current_count}<span className="text-[#888888]">/{unit.capacity}</span>
+                    {unit.current_count}
                   </div>
-                  <div className="mt-1 w-full bg-[#0a0a0a] rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full ${unit.current_count / unit.capacity >= 0.9 ? 'bg-red-500' : unit.current_count / unit.capacity >= 0.5 ? 'bg-amber-500' : 'bg-green-500'}`}
-                      style={{ width: `${Math.min(100, (unit.current_count / unit.capacity) * 100)}%` }}
-                    />
-                  </div>
+                  <div className="text-[10px] text-[#888888] uppercase">Occupants</div>
                 </div>
               ))}
             </div>
@@ -346,35 +335,41 @@ export default function JailManagementPage() {
       {/* ═══ Movements Tab ═══ */}
       {activeTab === 'movements' && (
         <div className="space-y-4">
-          <div className="bg-[#141414] border border-[#222222] rounded-[2px] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-[#222222]">
-                    {['Inmate', 'From', 'To', 'Reason', 'Time', 'Moved By'].map(h => (
-                      <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-[#888888] uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {movementsLoading ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-[#888888]"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : movements.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-8 text-[#888888]">No movements recorded</td></tr>
-                  ) : movements.map(mov => (
-                    <tr key={mov.id} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
-                      <td className="px-3 py-[2px] text-white">{mov.inmate_name}</td>
-                      <td className="px-3 py-[2px] text-[#888888]">{mov.from_unit}</td>
-                      <td className="px-3 py-[2px] text-[#888888]">{mov.to_unit}</td>
-                      <td className="px-3 py-[2px] text-[#888888]">{mov.reason}</td>
-                      <td className="px-3 py-[2px] text-[#888888]">{mov.moved_at}</td>
-                      <td className="px-3 py-[2px] text-[#888888]">{mov.moved_by}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {!movementsLoading && !movementsAvailable ? (
+            <div className="text-center py-12 text-[#888888] text-sm">
+              Inter-unit movement logging isn't available yet — only external transports (court, hospital) are tracked today.
             </div>
-          </div>
+          ) : (
+            <div className="bg-[#141414] border border-[#222222] rounded-[2px] overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#222222]">
+                      {['Inmate', 'From', 'To', 'Reason', 'Time', 'Moved By'].map(h => (
+                        <th key={h} className="text-left px-3 py-[3px] text-[9px] font-semibold text-[#888888] uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movementsLoading ? (
+                      <tr><td colSpan={6} className="text-center py-8 text-[#888888]"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    ) : movements.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-8 text-[#888888]">No movements recorded</td></tr>
+                    ) : movements.map(mov => (
+                      <tr key={mov.id} className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
+                        <td className="px-3 py-[2px] text-white">{mov.inmate_name}</td>
+                        <td className="px-3 py-[2px] text-[#888888]">{mov.from_unit}</td>
+                        <td className="px-3 py-[2px] text-[#888888]">{mov.to_unit}</td>
+                        <td className="px-3 py-[2px] text-[#888888]">{mov.reason}</td>
+                        <td className="px-3 py-[2px] text-[#888888]">{mov.moved_at}</td>
+                        <td className="px-3 py-[2px] text-[#888888]">{mov.moved_by}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -386,18 +381,10 @@ export default function JailManagementPage() {
           ) : stats ? (
             <>
               {/* Summary cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
                   <div className="text-lg font-bold text-white">{stats.total_inmates}</div>
                   <div className="text-[10px] text-[#888888] uppercase tracking-wider">Total Inmates</div>
-                </div>
-                <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
-                  <div className="text-lg font-bold text-white">{stats.total_capacity}</div>
-                  <div className="text-[10px] text-[#888888] uppercase tracking-wider">Total Capacity</div>
-                </div>
-                <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
-                  <div className="text-lg font-bold text-[#d4a017]">{stats.occupancy_pct}%</div>
-                  <div className="text-[10px] text-[#888888] uppercase tracking-wider">Occupancy</div>
                 </div>
                 <div className="bg-[#141414] border border-[#222222] rounded-[2px] p-3">
                   <div className="text-lg font-bold text-white">{Object.keys(stats.by_classification).length}</div>
