@@ -23,10 +23,10 @@ function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
-function statusFromError(err: ApiError): number {
+export function statusFromError(err: ApiError): number {
   if (typeof err.status === 'number' && Number.isFinite(err.status)) return err.status;
   // Fallback for the bare `throw new Error(\`HTTP ${status}\`)` path in useApi.ts
-  const m = err.message?.match(/\b(?:HTTP|status)\s*(\d{3})\b/i) ?? err.message?.match(/\b(\d{3})\b/);
+  const m = err.message?.match(/\b(?:HTTP|status)\s*(\d{3})\b/i);
   return m ? parseInt(m[1], 10) : 0;
 }
 
