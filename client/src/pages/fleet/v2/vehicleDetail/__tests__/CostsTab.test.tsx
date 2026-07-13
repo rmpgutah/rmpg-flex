@@ -23,7 +23,7 @@ describe('<CostsTab>', () => {
   });
 
   it('renders empty state when no costs at all', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))));
     render(<CostsTab vehicleId={42} />);
     await screen.findByText(/no costs/i, {}, { timeout: 3000 });
   });
