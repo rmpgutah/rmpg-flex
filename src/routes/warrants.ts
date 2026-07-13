@@ -1,13 +1,14 @@
-// Warrants routes for the CF Worker. Initially minimal — surfaces the
-// warrant-watch run history that the legacy server's /warrants page
-// + dashboard widget consume. The CRUD warrant routes (list, create,
-// archive, etc.) stay on the legacy server until the full warrants
-// subsystem is migrated.
+// Warrants routes for the CF Worker. Surfaces warrant-watch run history plus
+// the full manual-warrant CRUD lifecycle (get/create/update/serve/archive/
+// unarchive/delete) consumed by WarrantsPage.tsx. The CRUD routes were
+// historically deferred to "the legacy server" — but that VPS was
+// decommissioned 2026-06-15 (see CLAUDE.md), so they have nowhere else to
+// live. Every POST/PUT/DELETE the client sent 404'd until these were added.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
 import { log } from '../utils/logger';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
@@ -832,6 +833,203 @@ warrants.get('/unified', async (c) => {
   } catch (err) {
     console.error('[warrants] unified error', err);
     return c.json({ warrants: [], total: 0 });
+  }
+});
+
+// ============================================================
+// Manual warrant CRUD — WarrantsPage.tsx's New/Edit Warrant form, serve,
+// archive/unarchive, and delete actions. Registered after every other
+// literal-path route in this file so a numeric warrant id can never shadow
+// a named route like /watch/runs or /dashboard/stats (Hono's router is a
+// radix trie and prioritizes static segments regardless of declaration
+// order, but keeping /: routes last matches this file's existing style
+// and stays correct even if that routing guarantee ever changes).
+// ============================================================
+
+const ALLOWED_WARRANT_COLUMNS = [
+  'type', 'status', 'charge_description', 'subject_person_id',
+  'subject_name', 'subject_first_name', 'subject_last_name', 'subject_dob',
+  'issuing_court', 'issuing_judge', 'bail_amount', 'offense_level',
+  'expires_at', 'notes', 'statute_id', 'statute_citation', 'priority',
+] as const;
+
+// GET /warrants/:id — single warrant detail for WarrantsPage's fetchWarrantDetail.
+warrants.get('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Warrant not found' }, 404);
+    return c.json(row);
+  } catch (err) {
+    console.error('[warrants] get by id error', err);
+    return c.json({ error: 'Failed to load warrant' }, 500);
+  }
+});
+
+// POST /warrants — create a manual warrant.
+warrants.post('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    const user = c.get('user') as { id?: number } | undefined;
+
+    if (!body.type || typeof body.type !== 'string') {
+      return c.json({ error: 'type is required' }, 400);
+    }
+    if (!body.charge_description || typeof body.charge_description !== 'string' || body.charge_description.trim().length < 3) {
+      return c.json({ error: 'charge_description is required (min 3 chars)' }, 400);
+    }
+
+    let subjectName: string | null = null;
+    if (body.subject_person_id) {
+      const person = await queryFirst<{ first_name: string; last_name: string }>(
+        db, 'SELECT first_name, last_name FROM persons WHERE id = ?', body.subject_person_id);
+      if (person) subjectName = [person.first_name, person.last_name].filter(Boolean).join(' ');
+    }
+
+    const warrantNumber = `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+    const result = await execute(
+      db,
+      `INSERT INTO warrants (
+         warrant_number, type, warrant_type, status,
+         subject_person_id, subject_name,
+         charge_description, offense, issuing_court, court, issuing_judge, judge,
+         bail_amount, bond_amount, offense_level, expires_at, expiry_date, notes,
+         statute_id, statute_citation, source, entered_by, created_by,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, 'active',
+         ?, ?,
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, 'manual', ?, ?,
+         datetime('now'), datetime('now'))`,
+      warrantNumber, body.type, body.type,
+      body.subject_person_id ?? null, subjectName,
+      body.charge_description, body.charge_description, body.issuing_court ?? null, body.issuing_court ?? null,
+      body.issuing_judge ?? null, body.issuing_judge ?? null,
+      body.bail_amount ?? null, body.bail_amount ?? null, body.offense_level ?? null,
+      body.expires_at ?? null, body.expires_at ?? null, body.notes ?? null,
+      body.statute_id ?? null, body.statute_citation ?? null,
+      user?.id ?? null, user?.id ?? null,
+    );
+
+    const created = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM warrants WHERE id = ?', result.meta.last_row_id);
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('[warrants] create error', err);
+    return c.json({ error: 'Failed to create warrant' }, 500);
+  }
+});
+
+// PUT /warrants/:id — partial update. Accepts any subset of
+// ALLOWED_WARRANT_COLUMNS (WarrantsPage's edit form sends the full set;
+// handleUpdateStatus sends just { status }).
+warrants.put('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const col of ALLOWED_WARRANT_COLUMNS) {
+      if (col in body) {
+        sets.push(`${col} = ?`);
+        params.push(body[col]);
+      }
+    }
+    if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+    sets.push(`updated_at = datetime('now')`);
+    params.push(id);
+
+    await execute(db, `UPDATE warrants SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] update error', err);
+    return c.json({ error: 'Failed to update warrant' }, 500);
+  }
+});
+
+// PUT /warrants/:id/serve — mark a warrant served.
+warrants.put('/:id/serve', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+
+    const body = await c.req.json<{ served_location?: string | null }>().catch(() => ({} as { served_location?: string | null }));
+    const user = c.get('user') as { id?: number } | undefined;
+
+    await execute(
+      db,
+      `UPDATE warrants SET status = 'served', served_at = datetime('now'), service_date = datetime('now'),
+         served_location = ?, served_by = ?, updated_at = datetime('now') WHERE id = ?`,
+      body.served_location ?? null, user?.id ?? null, id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] serve error', err);
+    return c.json({ error: 'Failed to mark warrant served' }, 500);
+  }
+});
+
+// POST /warrants/:id/archive
+warrants.post('/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[warrants] archive error', err);
+    return c.json({ error: 'Failed to archive warrant' }, 500);
+  }
+});
+
+// POST /warrants/:id/unarchive
+warrants.post('/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, `UPDATE warrants SET archived_at = NULL, updated_at = datetime('now') WHERE id = ?`, id);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] unarchive error', err);
+    return c.json({ error: 'Failed to unarchive warrant' }, 500);
+  }
+});
+
+// DELETE /warrants/:id
+warrants.delete('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, 'DELETE FROM warrants WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[warrants] delete error', err);
+    return c.json({ error: 'Failed to delete warrant' }, 500);
   }
 });
 
