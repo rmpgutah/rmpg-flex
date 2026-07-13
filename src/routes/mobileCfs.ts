@@ -269,7 +269,12 @@ mobileCfs.post('/cfs/:id/pso', async (c) => {
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', auth.callId);
     await execute(db, `UPDATE calls_for_service_ext SET ${sets.join(', ')} WHERE id = ?`, ...vals, auth.callId);
     await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", auth.callId);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
+    // The PSO fields just written live on the ext table (base is at the
+    // column cap) — merge it in, or the response's `call` never reflects
+    // what was just saved and the mobile UI has nothing to redisplay.
+    const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
+    const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', auth.callId);
+    const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
     await bestEffortAudit(c, auth.userId, 'MOBILE_PSO', auth.callId, { fields: sets, source: 'pso-mobile' });
     return c.json({ success: true, call: updated });
   } catch (err) {
