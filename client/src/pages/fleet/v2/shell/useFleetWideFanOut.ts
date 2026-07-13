@@ -29,7 +29,11 @@ export interface FanOutResult<T> {
  *  callers re-run the whole fan-out after a mutation (e.g. creating a row
  *  via a modal) without a full page reload. `vehicles` is exposed so
  *  callers needing a "pick a vehicle" dropdown (e.g. a fleet-wide create
- *  form) don't need a second `/fleet?limit=500` fetch. */
+ *  form) don't need a second `/fleet?limit=500` fetch.
+ *
+ *  Note: changing `pathFor` or `extract`'s identity no longer auto-retriggers
+ *  the fetch (only `refetch()` and internal `refreshToken` do) — call
+ *  `refetch()` after changing inputs that affect the request. */
 export function useFleetWideFanOut<T>(
   pathFor: (vehicleId: number) => string,
   extract?: (resp: unknown) => T[],
