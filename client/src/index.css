@@ -4369,20 +4369,22 @@ html:not(.theme-light) {
    Feature 22: Page transition animations
    ═══════════════════════════════════════════════════════════════ */
 @keyframes page-fade-in {
-  /* Animates margin-top, NOT transform. Ending a transform keyframe on
-     `none` does NOT stop the element from being a fixed-position containing
-     block: per spec, ANY element that is the target of a CSS animation on
-     the transform property establishes a containing block for
-     position:fixed descendants for as long as that animation is associated
-     with the element — independent of the resolved value. With
-     animation-fill-mode:both that association never expires, so a
-     transform-based slide-in permanently traps every fixed modal
-     (.fixed.inset-0, e.g. DocumentViewer's print/preview overlay) inside
-     this scrollable, below-the-nav content area instead of the viewport.
-     Animating margin-top instead achieves the same 4px slide without ever
-     making .spm-page a transform-animation target. */
-  from { opacity: 0; margin-top: 4px; }
-  to { opacity: 1; margin-top: 0; }
+  /* Opacity only — NOT transform, NOT margin-top. Ending a transform
+     keyframe on `none` does NOT stop the element from being a
+     fixed-position containing block: per spec, ANY element that is the
+     target of a CSS animation on the transform property establishes a
+     containing block for position:fixed descendants for as long as that
+     animation is associated with the element — independent of the
+     resolved value. With animation-fill-mode:both that association never
+     expires, so a transform-based slide-in permanently traps every fixed
+     modal (.fixed.inset-0, e.g. DocumentViewer's print/preview overlay)
+     inside this scrollable, below-the-nav content area instead of the
+     viewport. A margin-top slide sidesteps that trap but forces a layout
+     reflow every frame since .spm-page is a flex item in a fixed-height
+     column; dropping the slide and animating opacity alone stays fully
+     GPU-composited and avoids both problems. */
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .animate-page-enter {
   animation: page-fade-in 0.2s ease-out both;
