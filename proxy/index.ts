@@ -66,41 +66,10 @@ const STUBS: StubRule[] = [
   // (removed 2026-05-29) /api/warrants/utah-search/auto-poll-status stub —
   // the rewrite now serves a real status handler (src/routes/warrants.ts).
   // Routed to env.API below.
-  // /api/personnel/equipment — no equipment table or handler in either backend.
-  // PersonnelPage's Equipment tab issues this GET on mount; without a stub
-  // it 404s and produces visible console noise. Return [] (callsites do
-  // `apiFetch<any[]>('/personnel/equipment')`). Sub-routes (/equipment/:id,
-  // /equipment/:id/checkout, etc.) are user-triggered, not background, so they
-  // stay 404 until a real implementation lands.
-  {
-    match: /^\/api\/personnel\/equipment$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no equipment table/handler; empty list silences dashboard polling',
-  },
-  // /api/hr/benefits — no hr_benefits table on live D1 (HR rewrite only
-  // patched leave_requests / disciplinary_records / review_cycles in
-  // PR #660). BenefitsTab GETs this on mount; without a stub it 500s
-  // and shows the "Failed to load benefits" toast on every Benefits
-  // tab visit. Remove the stub the moment a real hr_benefits schema
-  // lands on live D1 — POST is intentionally NOT stubbed so the admin
-  // "Add benefit" button still fails loudly until the table exists.
-  {
-    match: /^\/api\/hr\/benefits$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no hr_benefits table on live D1',
-  },
-  // /api/arrests/recent — handler queries `FROM arrests`, no such table
-  // on live D1, so it 500s. Both ArrestRecordsPage and the AdminArrestsTab
-  // hit this on mount. Stub the shape AdminArrestsTab expects (the wider
-  // page also reads `data.records` per ArrestRecordsPage.tsx:291).
-  {
-    match: /^\/api\/arrests\/recent(\?.*)?$/,
-    methods: ['GET'],
-    body: { records: [], total: 0 },
-    reason: 'no arrests table on live D1',
-  },
+  // (removed 2026-07-12) /api/personnel/equipment, /api/hr/benefits,
+  // /api/arrests/recent stubs — real handlers exist (personnel.ts
+  // .get('/equipment'), hr.ts .get('/benefits'), arrests.ts .get('/recent'))
+  // and were being shadowed. Routed to env.API below.
   // ── Body camera surfaces ──────────────────────────────────────
   // None of these are implemented on the new worker, but the proxy
   // routes /api/personnel/body-cameras + /api/personnel/bodycam-videos
@@ -175,68 +144,19 @@ const STUBS: StubRule[] = [
     reason: 'no index-stats handler',
   },
   // ── Fleet surfaces ────────────────────────────────────────────
-  // Proxy routes the whole /api/fleet prefix to env.API but the new
-  // worker has no fleet router. FleetPage hits four endpoints on mount.
-  // Stub the GETs the dashboards poll. POST/PUT/DELETE stay 404 since
-  // those are user-triggered.
-  {
-    match: /^\/api\/fleet$/,
-    methods: ['GET'],
-    // The page does `apiFetch<...>('/fleet?...')` and reads `.data` from
-    // the result (see fleet-B_2rGABR.js console error path). Match a
-    // paginated empty shape; the wider FleetVehicle[] consumers tolerate
-    // an empty `data` array.
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
-    reason: 'no fleet handler in new worker yet',
-  },
-  // Trailing /?... variants — FleetPage calls /fleet?per_page=200 and
-  // /fleet?archived=false. The bare-match regex above already covers
-  // /fleet (no slash); explicitly match query-string variants too.
-  {
-    match: /^\/api\/fleet\?.*/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
-    reason: 'no fleet handler in new worker yet',
-  },
-  {
-    match: /^\/api\/fleet\/analytics(\?.*)?$/,
-    methods: ['GET'],
-    // Mirrors FleetAnalytics interface in client/src/types/index.ts:1631.
-    body: {
-      maintenance_cost_trend: [],
-      mileage_distribution: [],
-      status_breakdown: [],
-      fuel_economy_trend: [],
-      fleet_summary: {
-        total_vehicles: 0,
-        avg_mileage: 0,
-        avg_mpg: null,
-      },
-    },
-    reason: 'no fleet analytics handler',
-  },
-  {
-    match: /^\/api\/fleet\/dashcam-videos(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 25 } },
-    reason: 'no fleet dashcam handler',
-  },
-  // ── Other dashboard polls ─────────────────────────────────────
-  {
-    match: /^\/api\/reports\/crime-analysis(\?.*)?$/,
-    methods: ['GET'],
-    body: { totals: {}, by_type: [], by_day: [], by_hour: [], by_property: [], generated_at: null },
-    reason: 'no crime-analysis report yet',
-  },
-  // /api/records/vehicles/:id/history — PrintRecordButton + VehiclesTab
-  // both fetch this when opening a vehicle detail / running a printout.
-  // Empty array degrades cleanly to "no prior history".
-  {
-    match: /^\/api\/records\/vehicles\/\d+\/history$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no vehicle history index yet',
-  },
+  // Bare /api/fleet, /api/fleet/analytics, and /api/fleet/dashcam-videos
+  // are now real handlers in src/routes/fleet.ts (fleet.get('/'),
+  // fleet.get('/analytics'), fleet.get('/dashcam-videos')). These stubs
+  // used to shadow them with empty payloads (200 OK, so the SPA never
+  // saw an error) before the rewrite grew handlers — removed 2026-07-12
+  // after they were found still shadowing the live /analytics handler,
+  // silently serving stale zeroed data on rmpgutah.us while
+  // api.rmpgutah.us (which bypasses this proxy) returned the real
+  // payload. See the "── Fleet sub-tabs that aren't ported yet ──"
+  // block further down for the sub-paths that still need stubs.
+  // (removed 2026-07-12) /api/reports/crime-analysis, /api/records/vehicles/:id/history
+  // stubs — real handlers exist (reports.ts .get('/crime-analysis'),
+  // records.ts .get('/vehicles/:id/history')) and were being shadowed.
   // ── Bucket G (system review 2026-05-27) ───────────────────────
   // The following routes are listed in API_ROUTES below as going to
   // env.API, but the new worker has no matching handler (either no
@@ -247,88 +167,18 @@ const STUBS: StubRule[] = [
   // yet because the parent page isn't open. Stubbing pre-emptively
   // so they degrade quietly when those pages eventually open.
   //
-  // Skip tracer status/stats — SkipTracerPage dashboard polls.
-  // No /api/skiptracer mount in src/routesConfig.ts.
-  {
-    match: /^\/api\/skiptracer\/status$/,
-    methods: ['GET'],
-    body: { status: 'idle', running_searches: 0, last_run: null },
-    reason: 'no /api/skiptracer mount in new worker',
-  },
-  {
-    match: /^\/api\/skiptracer\/stats$/,
-    methods: ['GET'],
-    body: { total_searches: 0, searches_this_month: 0, recent_dossiers: [] },
-    reason: 'no /api/skiptracer mount in new worker',
-  },
-  // IPED forensics surface — no /api/iped mount in new worker.
-  // ForensicsPage polls the status sub-path on mount.
-  {
-    match: /^\/api\/iped\/status$/,
-    methods: ['GET'],
-    body: { configured: false, last_sync: null },
-    reason: 'no /api/iped mount in new worker',
-  },
-  {
-    match: /^\/api\/iped\/hash-sets(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /api/iped mount in new worker',
-  },
-  // Personnel sub-paths — /api/personnel is mounted (personnel router)
-  // but these sub-paths aren't registered there. PersonnelPage opens
-  // four tabs that GET them on mount.
-  {
-    match: /^\/api\/personnel\/schedules(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /schedules handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/time(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /time handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/deployments(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /deployments handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/coverage-gaps(\?.*)?$/,
-    methods: ['GET'],
-    body: { gaps: [], total_uncovered_minutes: 0 },
-    reason: 'no /coverage-gaps handler in personnel router',
-  },
-  // Reports sub-paths — /api/reports IS mounted to the stubs router
-  // in src/routes/stubs.ts but only /response-times exists there.
-  // Everything else 404s.
-  {
-    match: /^\/api\/reports\/incidents-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: { total_incidents: 0, by_type: [], by_status: [], by_day: [] },
-    reason: 'no /incidents-summary in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/crime-trends(\?.*)?$/,
-    methods: ['GET'],
-    body: { trends: [], top_categories: [] },
-    reason: 'no /crime-trends in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/beat-activity(\?.*)?$/,
-    methods: ['GET'],
-    body: { beats: [] },
-    reason: 'no /beat-activity in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/citation-revenue(\?.*)?$/,
-    methods: ['GET'],
-    body: { total_revenue: 0, by_violation: [], by_month: [] },
-    reason: 'no /citation-revenue in stubs router',
-  },
+  // (removed 2026-07-12) /api/skiptracer/status, /api/skiptracer/stats,
+  // /api/iped/status, /api/iped/hash-sets, /api/personnel/schedules,
+  // /api/personnel/time, /api/personnel/deployments,
+  // /api/personnel/coverage-gaps, /api/reports/incidents-summary,
+  // /api/reports/crime-trends, /api/reports/beat-activity,
+  // /api/reports/citation-revenue stubs — real handlers exist for all of
+  // these (skiptracer.ts, iped.ts, personnel.ts, reports.ts) and were
+  // being shadowed. Routed to env.API below.
+  //
+  // /api/reports/schedules and /api/reports/templates below are left
+  // stubbed even though real handlers exist — those handlers currently
+  // just `c.json([])`, so the stub is functionally identical, not a bug.
   {
     match: /^\/api\/reports\/schedules(\?.*)?$/,
     methods: ['GET'],
@@ -341,108 +191,16 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no /templates in stubs router',
   },
-  {
-    match: /^\/api\/reports\/statute-analytics(\?.*)?$/,
-    methods: ['GET'],
-    body: { top_statutes: [], by_category: [] },
-    reason: 'no /statute-analytics in stubs router',
-  },
-  // ── Surfaces flagged in 2026-05-27 second-pass console log ────
-  // (PR #667 was still open / unmerged when the user opened these pages.
-  //  Adding now so they degrade quietly post-merge.)
-  //
-  // Personnel training tabs — TrainingPage opens three GETs on mount.
-  // No `training_records` queries in /src/, legacy queries the table but
-  // didn't surface the path. Empty list each.
-  {
-    match: /^\/api\/personnel\/training(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training records handler',
-  },
-  {
-    match: /^\/api\/personnel\/training-requirements(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training-requirements handler',
-  },
-  {
-    match: /^\/api\/personnel\/training-completion(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training-completion handler',
-  },
-  // PersonnelAnalyticsDashboard's DutyHoursPanel — guards on
-  // `data?.officers?.length` so any object shape passes; we still
-  // need to silence the 500 noise.
-  {
-    match: /^\/api\/personnel\/duty-hours(\?.*)?$/,
-    methods: ['GET'],
-    body: { officers: [], flagged_excessive_hours: [] },
-    reason: 'no duty-hours aggregation handler',
-  },
-  // ── CRM module (entirely legacy-only on live D1) ──────────────
-  // CrmPage's mount issues 6 GETs in parallel. All hit legacy which
-  // queries crm_leads / crm_tasks / crm_activity etc — those tables
-  // don't exist on live D1. Empty/zeroed shapes match each consumer.
-  {
-    match: /^\/api\/crm\/dashboard(\?.*)?$/,
-    methods: ['GET'],
-    body: {
-      total_leads: 0, qualified_leads: 0, won_deals: 0, lost_deals: 0,
-      pipeline_value: 0, expected_revenue: 0, conversion_rate: 0,
-      avg_deal_size: 0, avg_sales_cycle_days: 0,
-    },
-    reason: 'no crm tables on live D1',
-  },
-  {
-    match: /^\/api\/crm\/recent-activity(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_activity table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/tasks(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_tasks table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/expiring-contracts(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no contract expiry tracking yet',
-  },
-  {
-    match: /^\/api\/crm\/leads\/source-analytics(\?.*)?$/,
-    methods: ['GET'],
-    body: { by_source: [], total: 0 },
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/leads\/follow-ups(\?.*)?$/,
-    methods: ['GET'],
-    body: { overdue: [], today: [], upcoming: [] },
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/leads\/pipeline-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/pipeline-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: { stages: [], total_value: 0 },
-    reason: 'no crm tables on live D1',
-  },
-  {
-    match: /^\/api\/crm\/revenue-forecast(\?.*)?$/,
-    methods: ['GET'],
-    body: { monthly: [], total_forecast: 0 },
-    reason: 'no crm revenue forecast engine',
-  },
+  // (removed 2026-07-12) /api/reports/statute-analytics, /api/personnel/training,
+  // /api/personnel/training-requirements, /api/personnel/training-completion,
+  // /api/personnel/duty-hours, and ALL /api/crm/* stubs (dashboard,
+  // recent-activity, tasks, expiring-contracts, leads/source-analytics,
+  // leads/follow-ups, leads/pipeline-summary, pipeline-summary,
+  // revenue-forecast) — real handlers exist for all of these
+  // (reports.ts, personnel.ts, crm.ts — CRM is fully backed by live
+  // crm_leads/crm_tasks/crm_lead_activity/crm_proposals tables now) and
+  // were being shadowed, most notably CrmPage silently showing fake
+  // empty data on rmpgutah.us. Routed to env.API below.
   // /records/reports/approval-queue — ReportsPage opens this on mount.
   // Was previously routed to env.API via the proxy (line ~152) but no
   // handler exists in /src/routes/records.ts for /reports/approval-queue.
@@ -478,33 +236,12 @@ const STUBS: StubRule[] = [
   // Howen handlers now live in src/routes/howen.ts (devices, events, status,
   // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
   // rule below.
-  // ── Personnel sub-tabs not yet ported ─────────────────────────────────
-  // training, training-requirements, training-completion, body-cameras,
-  // bodycam-videos (+ retention/report, reviews/pending, redaction-requests),
-  // and duty-hours are now real handlers in src/routes/personnel.ts. The
-  // remaining sub-paths below (training-alerts, training-materials) still
-  // 404 from the rewrite — no backing tables yet — so stub them empty.
-  {
-    match: /^\/api\/personnel\/training-alerts$/,
-    methods: ['GET'],
-    body: { alerts: [] },
-    reason: 'no training alerts pipeline yet; TrainingPage tolerates empty',
-  },
-  {
-    match: /^\/api\/personnel\/training-materials$/,
-    methods: ['GET'],
-    body: { data: [] },
-    reason: 'no training materials table; TrainingPage tolerates empty data',
-  },
-  // ── Skiptracer v1 — proxy routes to env.API per the API_ROUTES rules
-  //    above, but no handler exists in src/. Stub them so the dashboard
-  //    polling stops 404ing. v2 is a separate legacy thing untouched. ──
-  {
-    match: /^\/api\/skiptracer\/(status|stats)$/,
-    methods: ['GET'],
-    body: { enabled: false, status: 'disabled', last_run_at: null, total: 0 },
-    reason: 'no skiptracer v1 backend in rewrite; dashboard tolerates disabled',
-  },
+  // (removed 2026-07-12) /api/personnel/training-alerts,
+  // /api/personnel/training-materials stubs — real handlers exist
+  // (personnel.ts .get('/training-alerts'|'/training-materials')) and
+  // were being shadowed. Also removed the duplicate
+  // /api/skiptracer/(status|stats) stub here — same paths already
+  // handled (and routed correctly) above.
   // (removed 2026-05-29) /api/warrants/scraped/status stub — the rewrite
   // now serves a real status handler (src/routes/warrants.ts). Routed to
   // env.API below.
@@ -519,29 +256,12 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no backing tables yet; HrPage tabs render empty until schema lands',
   },
-  // ── CRM module (entire namespace 500s on legacy) ──
-  {
-    match: /^\/api\/crm\/(dashboard|pipeline-summary|revenue-forecast|leads\/source-analytics)/,
-    methods: ['GET'],
-    body: {},
-    reason: 'legacy CRM stat handlers 500; CrmPage tolerates empty object',
-  },
-  {
-    match: /^\/api\/crm\/(recent-activity|leads\/follow-ups|tasks|expiring-contracts)/,
-    methods: ['GET'],
-    body: [],
-    reason: 'legacy CRM list handlers 500; CrmPage tolerates empty arrays',
-  },
-  // /api/offender-registry/stats now has a real handler in
-  // src/routes/offenderRegistry.ts. /api/sex-offender-registry/stats stays
-  // stubbed — no dedicated sex-offender table on live D1 yet (use the
-  // alert_type filter on offender_alerts when that page is rewritten).
-  {
-    match: /^\/api\/sex-offender-registry\/stats$/,
-    methods: ['GET'],
-    body: { data: {} },
-    reason: 'no sex-offender-specific table; SexOffenderRegistryPage tolerates empty',
-  },
+  // (removed 2026-07-12) duplicate /api/crm/* stubs — already removed
+  // above; the offenderRegistry router is mounted at BOTH
+  // /api/offender-registry and /api/sex-offender-registry
+  // (routesConfig.ts), so /api/sex-offender-registry/stats has a real
+  // handler too (offenderRegistry.ts .get('/stats')) and was being
+  // shadowed. Removed.
   // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
   // (alias of /shift-swaps to match the client's existing path). Stub removed.
 
@@ -558,12 +278,10 @@ const STUBS: StubRule[] = [
   // ── Admin → Training/Credentials tabs ───────────────────────────────
   // Legacy queries `personnel_certifications` + `officer_credentials`,
   // neither on live D1. Admin training tab opens these on tab switch.
-  {
-    match: /^\/api\/admin\/expiring-certifications(\?.*)?$/,
-    methods: ['GET'],
-    body: { certifications: [], total: 0 },
-    reason: 'no personnel_certifications table on live D1; admin tab tolerates empty',
-  },
+  // (removed 2026-07-12) /api/admin/expiring-certifications stub — real
+  // handler exists (admin.ts .get('/expiring-certifications')) and was
+  // being shadowed. /api/admin/training below stays stubbed — its real
+  // backing table (officer_credentials) still doesn't exist on live D1.
   {
     match: /^\/api\/admin\/training(\?.*)?$/,
     methods: ['GET'],
@@ -575,25 +293,20 @@ const STUBS: StubRule[] = [
   // queried on page mount. Other paths (POST /, PUT /:id, /import,
   // /export/csv) stay 404 — those are user-triggered writes that should
   // fail loudly until the schema lands.
-  {
-    match: /^\/api\/sex-offender-registry\/?(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 50 } },
-    reason: 'no sex_offender_registry table; root list tolerates empty data',
-  },
+  // (removed 2026-07-12) /api/sex-offender-registry root-list stub — the
+  // offenderRegistry router's real .get('/') handler serves this path
+  // (mounted at both /api/offender-registry and /api/sex-offender-registry)
+  // and was being shadowed.
   {
     match: /^\/api\/(sex-)?offender-registry\/expiring-registrations(\?.*)?$/,
     methods: ['GET'],
     body: [],
     reason: 'no sex_offender_registry table; expiring-registrations tolerates empty list',
   },
-  // ── Dispatch GPS speed zones (Map page may poll) ────────────────────
-  {
-    match: /^\/api\/dispatch\/gps\/speed-zones(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no speed_zones table on live D1; map page tolerates empty array',
-  },
+  // (removed 2026-07-12) /api/dispatch/gps/speed-zones stub — real
+  // handler exists (gps.ts .get('/speed-zones')) and was being shadowed.
+  // /api/dispatch/gps/zone-speed-stats below is a DIFFERENT path with no
+  // matching handler found — stays stubbed.
   // ── Trespass orders → violations sub-tab ────────────────────────────
   // TrespassPage detail view opens this when a card is clicked. Empty
   // list = "no violations on file" — a valid UX state.
@@ -629,17 +342,9 @@ const STUBS: StubRule[] = [
     body: { top: [], total: 0 },
     reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
   },
-  // ── WebAuthn / TOTP MFA setup (security tab on profile page) ────────
-  // Profile page hits these on every open. Stub the read shape so the
-  // security tab renders an "MFA not enrolled" state. Enrollment POSTs
-  // (register-options, register-verify, etc.) stay 404 — enabling MFA
-  // would need real `webauthn_credentials` + `user_totp_secrets` tables.
-  {
-    match: /^\/api\/auth\/webauthn\/(credentials|status)(\?.*)?$/,
-    methods: ['GET'],
-    body: { credentials: [], enrolled: false },
-    reason: 'no webauthn_credentials table; security tab shows un-enrolled state',
-  },
+  // (removed 2026-07-12) /api/auth/webauthn/(credentials|status) stub —
+  // real handlers exist (auth.ts .get('/webauthn/status'|'/credentials'),
+  // auth-required) and were being shadowed.
   // ── ServeManager job linked-records (typo in legacy handler) ────────
   // Legacy queries `FROM calls` — that table doesn't exist on live D1;
   // the actual dispatch table is `calls_for_service`. The fix can't be
@@ -658,13 +363,8 @@ const STUBS: StubRule[] = [
   // the subagent's static scan (these are runtime-only surfaces — admin
   // tiles, page-specific reports, dispatch GPS analytics).
   //
-  // ── Reports comparison (ReportsPage period-over-period card) ────────
-  {
-    match: /^\/api\/reports\/comparison(\?.*)?$/,
-    methods: ['GET'],
-    body: { current: {}, previous: {}, deltas: {} },
-    reason: 'no comparison endpoint in src/routes/reports.ts; period card tolerates empty deltas',
-  },
+  // (removed 2026-07-12) /api/reports/comparison stub — real handler
+  // exists (reports.ts .get('/comparison')) and was being shadowed.
   // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
   {
     match: /^\/api\/arrests\/status(\?.*)?$/,
@@ -672,57 +372,25 @@ const STUBS: StubRule[] = [
     body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
     reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
   },
-  // ── IPED download/info (admin tile, separate from /iped/status) ─────
-  {
-    match: /^\/api\/iped\/download\/info(\?.*)?$/,
-    methods: ['GET'],
-    body: { available: false, version: null, size_bytes: 0, last_updated: null },
-    reason: 'IPED download metadata endpoint; admin tile tolerates "not available"',
-  },
+  // (removed 2026-07-12) /api/iped/download/info stub — real handler
+  // exists (iped.ts .get('/download/info')) and was being shadowed.
   // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
-  // These are admin-only db maintenance buttons. The legacy worker
-  // doesn't implement them and the new worker has no admin/database
-  // mount. POSTs are user-clicks (no background polling), so returning
-  // a structured "not implemented" body is honest: the button reports
-  // success status from the response shape but no actual operation runs.
-  // True implementation would require D1 metadata APIs which Workers
-  // doesn't expose. Leaving the buttons visible is intentional — admins
-  // can request these in writing if they need them.
+  // integrity-check: kept stubbed — its real handler in admin.ts is
+  // GET-only while the client calls it via POST, so removing the stub
+  // would just turn a fake-success 200 into a real 404. Needs a proper
+  // fix (add a POST handler or fix the client) before this stub can go.
   {
     match: /^\/api\/admin\/database\/integrity-check$/,
     methods: ['POST'],
     body: { status: 'not_implemented', message: 'D1 integrity check not exposed by Cloudflare Workers runtime' },
-    reason: 'no D1 admin API for integrity-check; honest "not implemented" body',
+    reason: 'admin.ts has a GET /database/integrity-check handler but the client POSTs; method mismatch, not yet fixed',
   },
-  {
-    match: /^\/api\/admin\/database\/vacuum$/,
-    methods: ['POST'],
-    body: { status: 'not_implemented', message: 'D1 VACUUM is managed by Cloudflare, not exposed to Workers' },
-    reason: 'no user VACUUM on D1; honest "not implemented" body',
-  },
-  // ── Auth security login-history (ProfilePage Security tab) ──────────
-  // The proxy already routes /api/auth/security/login-history to env.API
-  // (API_ROUTES rule above), but the new worker has no handler for it,
-  // so it 404s. Stub needs to satisfy TWO consumers with different shapes:
-  //   - LoginHistoryTable.tsx reads `data.entries` + `data.total`
-  //   - SecurityDashboardPage.tsx reads `data.data` (typed as `{ data: LoginEntry[] }`)
-  // The previous stub returned only `{ data, pagination }` which crashed
-  // LoginHistoryTable with `undefined.length` on `entries.length === 0`
-  // (observed in prod 2026-05-27 ~16:00 UTC, AdminPage ErrorBoundary).
-  // Union shape below satisfies both readers — empty everywhere.
-  // The route registry will need a real handler against the `login_attempts`
-  // table (which DOES exist on live D1) in a follow-up PR.
-  {
-    match: /^\/api\/auth\/security\/login-history(\?.*)?$/,
-    methods: ['GET'],
-    body: {
-      entries: [],          // LoginHistoryTable.tsx:54
-      total: 0,             // LoginHistoryTable.tsx:55
-      data: [],             // SecurityDashboardPage.tsx:48
-      pagination: { total: 0, totalPages: 0, page: 1, limit: 15 },
-    },
-    reason: 'no handler in src/routes/auth.ts; union shape satisfies LoginHistoryTable + SecurityDashboardPage',
-  },
+  // (removed 2026-07-12) /api/admin/database/vacuum (POST) stub — real
+  // handler exists (admin.ts .post('/database/vacuum')) and the client
+  // does call it via POST, so this was being shadowed.
+  // (removed 2026-07-12) /api/auth/security/login-history stub — real
+  // handler exists (auth.ts .get('/security/login-history')) and was
+  // being shadowed.
   // ── Skiptracer v2 (different mount from v1) ─────────────────────────
   // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a
   // separate legacy mount at /api/skiptracer-v2/* that queries `people_index`,
