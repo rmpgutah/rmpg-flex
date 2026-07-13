@@ -21,6 +21,7 @@ import mapboxgl from 'mapbox-gl';
 import { resolveMapboxAccessToken, initMapbox, isMapboxReady } from '../../../../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../../../../utils/mapboxBasemap';
 import { isValidLngLat } from '../../../../utils/mapMarkers';
+import { toDisplayLabel } from '../../../../utils/formatters';
 import {
   ResponsiveContainer, ScatterChart, Scatter,
   XAxis, YAxis, ZAxis, Tooltip, CartesianGrid,
@@ -175,7 +176,7 @@ function StatusBadge({ status }: { status: string }) {
                status === 'maintenance' ? 'bg-amber-500/15 text-amber-300' :
                status === 'out_of_service' ? 'bg-red-500/15 text-red-300' :
                'bg-rmpg-700/40 text-rmpg-300';
-  return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] uppercase tracking-wide ${tone}`}>{status.replace(/_/g, ' ')}</span>;
+  return <span className={`px-1.5 py-0.5 rounded-sm text-[10px] uppercase tracking-wide ${tone}`}>{toDisplayLabel(status)}</span>;
 }
 
 // ─── V7: Calls per gallon — THE moat ───────────────────────
@@ -697,7 +698,7 @@ function WorkOrderFlowCard({ period }: { period: Period }) {
                        className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle"
                        style={{ background: WO_STATUS_TONES[n.name] ?? '#475569' }}
                      />
-                     <span className="text-rmpg-100">{n.name.replace('_', ' ')}</span>
+                     <span className="text-rmpg-100">{toDisplayLabel(n.name)}</span>
                    </td>
                    <td className="py-1 text-right font-mono text-rmpg-100">{n.count.toLocaleString()}</td>
                    <td className="py-1 pl-2 text-right text-rmpg-400 w-12">

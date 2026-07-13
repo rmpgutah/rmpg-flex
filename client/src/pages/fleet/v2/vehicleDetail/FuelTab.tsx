@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
-import { apiFetch } from '../../../../hooks/useApi';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
@@ -23,7 +22,7 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
 
   const fetchConflicts = (ids: number[]) => {
     if (ids.length === 0) return;
-    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+    apiFetchV2<{ conflicts: Record<string, unknown>[] }>(
       `/fleetio/conflicts?table=fleet_fuel_log&ids=${ids.join(',')}`,
     )
       .then((r) => {

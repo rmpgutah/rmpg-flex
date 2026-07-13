@@ -12,7 +12,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, X, AlertTriangle, BarChart3, Calendar, Clock } from 'lucide-react';
 import { VmrsPicker, type VmrsSelection } from '../../../../components/fleet/VmrsPicker';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
-import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
@@ -101,7 +100,7 @@ export function WorkOrdersRoute() {
     const key = ids.join(',');
     if (!ids.length || key === fetchedIds.current) return;
     fetchedIds.current = key;
-    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+    apiFetchV2<{ conflicts: Record<string, unknown>[] }>(
       `/fleetio/conflicts?table=work_order&ids=${ids.join(',')}`,
     )
       .then((r) => {

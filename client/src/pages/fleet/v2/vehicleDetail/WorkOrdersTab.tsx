@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Wrench } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
+import { toDisplayLabel } from '../../../../utils/formatters';
 
 interface WoRow {
   id: number;
@@ -76,7 +77,7 @@ export function WorkOrdersTab({ vehicleId }: { vehicleId: number }) {
                 <td className="px-3 py-1 font-mono text-rmpg-100">{r.number ?? `#${r.id}`}</td>
                 <td className="px-3 py-1">
                   <span className={`px-1.5 py-0.5 rounded-sm text-[10px] uppercase tracking-wide ${STATUS_TONES[r.status] ?? 'bg-rmpg-700/40 text-rmpg-400'}`}>
-                    {r.status.replace('_', ' ')}
+                    {toDisplayLabel(r.status)}
                   </span>
                 </td>
                 <td className="px-3 py-1">
