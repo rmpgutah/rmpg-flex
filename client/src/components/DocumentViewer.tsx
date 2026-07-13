@@ -248,16 +248,25 @@ export default function DocumentViewer({
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+      {/* Content Area — margin-based centering, NOT flex items-center/justify-center.
+          A centered flex child that overflows a scrollable parent has its
+          overflow clipped symmetrically by the browser (you can't scroll to
+          reach the top/left edge), which is exactly what happened once the
+          PDF was zoomed past ~100%: the top of the document became
+          permanently unreachable. margin: auto on the child keeps it
+          centered when it fits, but degrades to a normal scrollable block
+          once it overflows. */}
+      <div className="flex-1 overflow-auto p-4">
         {detectedType === 'pdf' ? (
           <iframe
             id="doc-viewer-iframe"
             src={safeSrc}
-            className="border border-rmpg-600 bg-white"
+            className="border border-rmpg-600 bg-white block"
             style={{
               width: isFullscreen ? '100%' : `${Math.min(zoom, 100)}%`,
               height: '100%',
+              minHeight: '100%',
+              margin: '0 auto',
               transform: zoom > 100 ? `scale(${zoom / 100})` : undefined,
               transformOrigin: 'top center',
             }}
@@ -267,11 +276,12 @@ export default function DocumentViewer({
           <img
             src={safeSrc}
             alt={title}
-            className="max-w-full max-h-full object-contain select-none"
+            className="max-w-full max-h-full object-contain select-none block"
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
               transformOrigin: 'center center',
               transition: 'transform 0.2s ease',
+              margin: '0 auto',
             }}
             draggable={false}
           />
