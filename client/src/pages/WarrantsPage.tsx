@@ -1126,13 +1126,13 @@ export default function WarrantsPage() {
       if (first.trim()) body.firstName = first.trim();
       if (last.trim()) body.lastName = last.trim();
       if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
-      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
-      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
+      if (uniSearchWarrantNum.trim()) body.caseNumber = uniSearchWarrantNum.trim();
+      if (uniSearchCourt.trim()) body.courtName = uniSearchCourt.trim();
       if (uniSearchSource) body.source = uniSearchSource;
       if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
       if (uniSearchStatus) body.status = uniSearchStatus;
       if (uniSearchType) body.type = uniSearchType;
-      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
+      if (uniSearchCharge.trim()) body.charge = uniSearchCharge.trim();
       if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
       if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
 
