@@ -37,7 +37,13 @@ export default function StaggerWrapper({
   return (
     <div
       className={`${animClass} ${delayClass} ${className}`}
-      onAnimationEnd={() => setAnimating(false)}
+      onAnimationEnd={(e) => {
+        // animationend bubbles — without this guard, a descendant's own
+        // animation (dropdown-appear, spinners, hover transitions) would
+        // fire this handler and strip the wrapper's animation class
+        // mid-entrance, causing a visible jump.
+        if (e.target === e.currentTarget) setAnimating(false);
+      }}
     >
       {children}
     </div>

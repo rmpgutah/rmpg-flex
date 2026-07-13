@@ -288,7 +288,12 @@ export default function DocumentViewer({
             className="max-w-full max-h-full object-contain select-none block"
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              transformOrigin: 'center center',
+              // 'top center', not 'center center' — a transform doesn't
+              // affect layout or the scroll container's scrollable area, so
+              // a center-origin scale overflows symmetrically and the top
+              // half becomes permanently unreachable by scroll once zoomed
+              // past 100%, same as the PDF branch this mirrors.
+              transformOrigin: 'top center',
               transition: 'transform 0.2s ease',
               margin: '0 auto',
             }}
