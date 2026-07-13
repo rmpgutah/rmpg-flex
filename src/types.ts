@@ -33,13 +33,6 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
-  // "Sign in with Dialer" OIDC SSO (src/routes/oidc.ts). ISSUER/CLIENT_ID/
-  // REDIRECT_URI are plain wrangler.toml vars; CLIENT_SECRET is a Worker
-  // secret (`wrangler secret put`), never committed.
-  DIALER_OIDC_ISSUER?: string;
-  DIALER_OIDC_CLIENT_ID?: string;
-  DIALER_OIDC_CLIENT_SECRET?: string;
-  DIALER_OIDC_REDIRECT_URI?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // DeepResearchDO namespace — one instance per research job; alarm-driven
@@ -98,6 +91,15 @@ export type Bindings = {
   // `wrangler secret put RECOVERY_KEY`; used as a bypass when no one can log in.
   // Pass as `X-Recovery-Key` header. Keep secure — resets ALL user passwords.
   RECOVERY_KEY?: string;
+  // Dial Connect SSO (OIDC relying party) config — see src/routes/oidc.ts.
+  // Set via wrangler.toml vars (issuer/client id/redirect
+  // uri) + `wrangler secret put DIALER_OIDC_CLIENT_SECRET`. DIALER_OIDC_ISSUER
+  // is the full discovery-DOCUMENT URL (ends in /.well-known/openid-configuration),
+  // not a bare issuer.
+  DIALER_OIDC_ISSUER?: string;
+  DIALER_OIDC_CLIENT_ID?: string;
+  DIALER_OIDC_CLIENT_SECRET?: string;
+  DIALER_OIDC_REDIRECT_URI?: string;
 };
 
 export type Variables = {
