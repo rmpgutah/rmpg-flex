@@ -4361,17 +4361,20 @@ html:not(.theme-light) {
    Feature 22: Page transition animations
    ═══════════════════════════════════════════════════════════════ */
 @keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  /* End on transform:none — NOT translateY(0). With animation-fill-mode:both
-     the final keyframe persists forever, and translateY(0) computes to
-     matrix(1,0,0,1,0,0): a non-none transform STILL establishes a containing
-     block for position:fixed descendants. That trapped every fixed modal
-     (.fixed.inset-0.z-50) inside this scrollable, below-the-nav content area
-     instead of the viewport, so tall modals slid their title bar under the
-     sticky top nav and the window-chrome buttons (minimize/maximize/close)
-     became partly/fully unclickable. transform:none clears the containing
-     block at rest while still animating the 4px slide-in. */
-  to { opacity: 1; transform: none; }
+  /* Animates margin-top, NOT transform. Ending a transform keyframe on
+     `none` does NOT stop the element from being a fixed-position containing
+     block: per spec, ANY element that is the target of a CSS animation on
+     the transform property establishes a containing block for
+     position:fixed descendants for as long as that animation is associated
+     with the element — independent of the resolved value. With
+     animation-fill-mode:both that association never expires, so a
+     transform-based slide-in permanently traps every fixed modal
+     (.fixed.inset-0, e.g. DocumentViewer's print/preview overlay) inside
+     this scrollable, below-the-nav content area instead of the viewport.
+     Animating margin-top instead achieves the same 4px slide without ever
+     making .spm-page a transform-animation target. */
+  from { opacity: 0; margin-top: 4px; }
+  to { opacity: 1; margin-top: 0; }
 }
 .animate-page-enter {
   animation: page-fade-in 0.2s ease-out both;
