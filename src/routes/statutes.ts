@@ -182,6 +182,155 @@ statutes.get('/chapter', async (c) => {
   }
 });
 
+// Standard Utah statutory penalty ranges by offense_level (Utah Code
+// §76-3-203 felony sentencing, §76-3-204 class A misdemeanor,
+// §76-3-301 fines). Reference data, not case-specific — used to give
+// the Penalty Lookup / Enhancement Calculator a real range when the
+// per-statute citation_fine column is unset.
+const PENALTY_RANGES: Record<string, { jail_max: string; fine_max: number; rank: number }> = {
+  infraction: { jail_max: 'None', fine_max: 750, rank: 0 },
+  class_c_misdemeanor: { jail_max: 'Up to 90 days', fine_max: 750, rank: 1 },
+  class_b_misdemeanor: { jail_max: 'Up to 6 months', fine_max: 1000, rank: 2 },
+  class_a_misdemeanor: { jail_max: 'Up to 364 days', fine_max: 2500, rank: 3 },
+  third_degree_felony: { jail_max: 'Up to 5 years', fine_max: 5000, rank: 4 },
+  second_degree_felony: { jail_max: '1-15 years', fine_max: 10000, rank: 5 },
+  first_degree_felony: { jail_max: '5 years to life', fine_max: 10000, rank: 6 },
+  capital_felony: { jail_max: 'Life / death penalty', fine_max: 10000, rank: 7 },
+};
+const PENALTY_ORDER = Object.keys(PENALTY_RANGES).sort((a, b) => PENALTY_RANGES[a].rank - PENALTY_RANGES[b].rank);
+
+function penaltyRangeFor(offenseLevel: string | null | undefined, citationFine?: number | null) {
+  const base = offenseLevel ? PENALTY_RANGES[offenseLevel] : undefined;
+  if (!base) return null;
+  return {
+    jail_max: base.jail_max,
+    fine_max: citationFine && citationFine > base.fine_max ? citationFine : base.fine_max,
+  };
+}
+
+// GET /penalty/:citation — penalty range lookup (Feature 36: Penalty Lookup bar).
+statutes.get('/penalty/:citation', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const citation = c.req.param('citation');
+    const row = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${COLS} FROM utah_statutes WHERE citation = ? AND is_active = 1`,
+      citation,
+    );
+    if (!row) return c.json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' }, 404);
+    const shaped = shape(row);
+    return c.json({
+      data: {
+        ...shaped,
+        penalty_range: penaltyRangeFor(row.offense_level as string | null, row.citation_fine as number | null),
+      },
+    });
+  } catch (err) {
+    console.error('[statutes] penalty lookup error', err);
+    return c.json({ error: 'Penalty lookup failed', code: 'STATUTE_PENALTY_ERR' }, 500);
+  }
+});
+
+// GET /analytics/top-charged?days=365&limit=20 — most-cited statutes
+// (Feature 37: Top Charged panel). Joins the citations table's
+// statute_citation column back to utah_statutes for the short_title.
+statutes.get('/analytics/top-charged', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(Math.max(parseInt(c.req.query('days') || '365', 10) || 365, 1), 3650);
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '20', 10) || 20, 1), 100);
+    const rows = await query<{ citation: string; short_title: string | null; offense_level: string | null; total_count: number }>(
+      db,
+      `SELECT ct.statute_citation AS citation,
+              MAX(s.short_title) AS short_title,
+              MAX(s.offense_level) AS offense_level,
+              COUNT(*) AS total_count
+       FROM citations ct
+       LEFT JOIN utah_statutes s ON s.citation = ct.statute_citation AND s.is_active = 1
+       WHERE ct.statute_citation IS NOT NULL AND ct.statute_citation != ''
+         AND ct.created_at >= datetime('now', ?)
+       GROUP BY ct.statute_citation
+       ORDER BY total_count DESC
+       LIMIT ?`,
+      `-${days} days`, limit,
+    );
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('[statutes] top-charged error', err);
+    return c.json({ error: 'Top-charged lookup failed', code: 'STATUTE_TOP_CHARGED_ERR' }, 500);
+  }
+});
+
+// POST /calculate-enhancement { citation, factors: {repeat_offender, weapon_used,
+// vulnerable_victim, gang_related, domestic_violence} } — bumps the base offense
+// level up the PENALTY_ORDER ladder by one step per triggered factor (Feature 39:
+// Enhancement Calculator). Simple, transparent model — not a substitute for a
+// prosecutor's charging decision, just a quick "how much worse could this get" tool.
+statutes.post('/calculate-enhancement', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ citation?: string; factors?: Record<string, boolean> }>().catch(() => ({}) as { citation?: string; factors?: Record<string, boolean> });
+    const citation = (body.citation || '').trim();
+    if (!citation) return c.json({ error: 'citation is required', code: 'BAD_REQUEST' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${COLS} FROM utah_statutes WHERE citation = ? AND is_active = 1`,
+      citation,
+    );
+    if (!row) return c.json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' }, 404);
+
+    const baseLevel = row.offense_level as string | null;
+    const baseRank = baseLevel && PENALTY_RANGES[baseLevel] ? PENALTY_RANGES[baseLevel].rank : null;
+    const factors = body.factors || {};
+    const triggered = Object.entries(factors).filter(([, v]) => v).map(([k]) => k);
+    const enhancedLevel = baseRank == null
+      ? baseLevel
+      : PENALTY_ORDER[Math.min(baseRank + triggered.length, PENALTY_ORDER.length - 1)];
+
+    return c.json({
+      data: {
+        ...shape(row),
+        base_offense_level: baseLevel,
+        base_penalty_range: penaltyRangeFor(baseLevel, row.citation_fine as number | null),
+        triggered_factors: triggered,
+        enhanced_offense_level: enhancedLevel,
+        enhanced_penalty_range: penaltyRangeFor(enhancedLevel, row.citation_fine as number | null),
+      },
+    });
+  } catch (err) {
+    console.error('[statutes] enhancement calculation error', err);
+    return c.json({ error: 'Enhancement calculation failed', code: 'STATUTE_ENHANCEMENT_ERR' }, 500);
+  }
+});
+
+// POST /compare { statute_ids: number[] } — side-by-side statute detail
+// (Feature 40: Statute Comparison). Returns rows in the order requested.
+statutes.post('/compare', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ statute_ids?: number[] }>().catch(() => ({}) as { statute_ids?: number[] });
+    const ids = (body.statute_ids || []).map((id) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0);
+    if (ids.length < 2) return c.json({ error: 'At least 2 statute_ids are required', code: 'BAD_REQUEST' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT ${COLS} FROM utah_statutes WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active = 1`,
+      ...ids,
+    );
+    const byId = new Map(rows.map((r: Record<string, unknown>) => [r.id as number, r]));
+    const ordered = ids.map((id: number) => byId.get(id)).filter((r): r is Record<string, unknown> => !!r);
+    return c.json({
+      data: ordered.map((r) => ({
+        ...shape(r),
+        penalty_range: penaltyRangeFor(r.offense_level as string | null, r.citation_fine as number | null),
+      })),
+    });
+  } catch (err) {
+    console.error('[statutes] compare error', err);
+    return c.json({ error: 'Statute comparison failed', code: 'STATUTE_COMPARE_ERR' }, 500);
+  }
+});
+
 // GET /section/:citation — single statute/rule full detail.
 statutes.get('/section/:citation', async (c) => {
   try {
