@@ -444,7 +444,10 @@ duty.post('/end', async (c) => {
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.
-    if (unit) {
+    // Gated on `entry` too — without an open shift there's nothing to close,
+    // and releasing a unit's vehicle based on a stray /end call (double-tap,
+    // stale client state) would silently strand the vehicle assignment.
+    if (unit && entry) {
       await execute(db,
         `UPDATE units SET status = 'off_duty', current_call_id = NULL, on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
       await releaseUnitVehicle(db, unit.id);
