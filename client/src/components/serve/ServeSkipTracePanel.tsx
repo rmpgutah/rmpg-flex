@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  X, Search, Loader2, CheckCircle2, MapPin, Phone, Briefcase,
-  ChevronDown, ChevronRight, AlertTriangle, User, Plus,
+  X, Search, Loader2, CheckCircle2,
+  ChevronDown, ChevronRight, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob, ServeSkipAddress, ServeSkipTrace } from '../../types';
@@ -15,84 +15,6 @@ interface ServeSkipTracePanelProps {
   job: ServeJob;
   onAddToRoute: (address: ServeSkipAddress) => void;
   onLookupComplete?: () => void;
-}
-
-interface SkipTraceResult {
-  success: boolean;
-  addresses: ServeSkipAddress[];
-  resultCount: number;
-  persons?: SkipTracePerson[];
-  phones?: SkipTracePhone[];
-  employment?: SkipTraceEmployment[];
-}
-
-interface SkipTracePerson {
-  name: string;
-  age?: number;
-  aliases?: string[];
-}
-
-interface SkipTracePhone {
-  number: string;
-  type?: string;
-  carrier?: string;
-}
-
-interface SkipTraceEmployment {
-  employer: string;
-  title?: string;
-  address?: string;
-}
-
-// ─── Address Type Badge ─────────────────────────────────────────────────
-
-function AddressTypeBadge({ type }: { type: string }) {
-  const lower = type.toLowerCase();
-  let cls = 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50';
-  if (lower === 'current') cls = 'bg-green-900/40 text-green-400 border-green-700/50';
-  else if (lower === 'previous') cls = 'bg-yellow-900/40 text-yellow-400 border-yellow-700/50';
-
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${cls}`}>
-      {type}
-    </span>
-  );
-}
-
-// ─── Address Match Check ────────────────────────────────────────────────
-
-function normalizeAddr(s: string | null): string {
-  if (!s) return '';
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function addressMatchesJob(addr: ServeSkipAddress, job: ServeJob): boolean {
-  const jobAddr = normalizeAddr(job.recipient_address);
-  const jobCity = normalizeAddr(job.recipient_city);
-  const jobZip = normalizeAddr(job.recipient_zip);
-  const skipAddr = normalizeAddr(addr.address);
-  const skipCity = normalizeAddr(addr.city);
-  const skipZip = normalizeAddr(addr.zip);
-
-  if (!jobAddr) return false;
-  return (skipAddr.includes(jobAddr) || jobAddr.includes(skipAddr))
-    && (skipCity === jobCity || skipZip === jobZip);
-}
-
-// ─── Sort addresses: Current first, then Previous, then Historical ──────
-
-function sortAddresses(addrs: ServeSkipAddress[]): ServeSkipAddress[] {
-  const typeOrder: Record<string, number> = { current: 0, previous: 1 };
-  return [...addrs].sort((a, b) => {
-    const oa = typeOrder[a.type.toLowerCase()] ?? 2;
-    const ob = typeOrder[b.type.toLowerCase()] ?? 2;
-    if (oa !== ob) return oa - ob;
-    // Within same type, most recent first
-    if (a.last_seen && b.last_seen) return b.last_seen.localeCompare(a.last_seen);
-    if (a.last_seen) return -1;
-    if (b.last_seen) return 1;
-    return 0;
-  });
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
@@ -110,7 +32,6 @@ export default function ServeSkipTracePanel({
       .filter(Boolean).join(', ')
   );
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<SkipTraceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -123,7 +44,6 @@ export default function ServeSkipTracePanel({
       [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ')
     );
-    setResult(null);
     setError(null);
     setNotice(null);
     setHistoryOpen(false);
@@ -133,7 +53,6 @@ export default function ServeSkipTracePanel({
     setLoading(true);
     setError(null);
     setNotice(null);
-    setResult(null);
     try {
       // /api/process-server is the same router as /api/serve — neither
       // defines a skip-trace route. The real handler lives at
@@ -166,7 +85,6 @@ export default function ServeSkipTracePanel({
 
   if (!isOpen) return null;
 
-  const sortedAddresses = result?.addresses ? sortAddresses(result.addresses) : [];
   const priorTraces = job.skipTraces || [];
 
   return (
@@ -255,159 +173,6 @@ export default function ServeSkipTracePanel({
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30 rounded-sm">
               <CheckCircle2 size={14} />
               <span>{notice}</span>
-            </div>
-          )}
-
-          {/* Results */}
-          {result && (
-            <div className="space-y-4">
-              {/* Result Count Badge */}
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#888888]/20 text-rmpg-400 border border-[#888888]/40 font-mono">
-                  {result.resultCount} person(s) found
-                </span>
-              </div>
-
-              {/* No Results */}
-              {result.resultCount === 0 && (
-                <div className="text-center py-6 space-y-2">
-                  <User size={32} className="text-rmpg-600 mx-auto" />
-                  <p className="text-sm text-rmpg-400">No Results Found</p>
-                  <p className="text-[11px] text-rmpg-500">
-                    Try an alternate name or spelling
-                  </p>
-                </div>
-              )}
-
-              {/* Person Match Cards */}
-              {result.persons && result.persons.length > 0 && (
-                <div className="space-y-2">
-                  {result.persons.map((person, i) => (
-                    <div
-                      key={i}
-                      className="px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-[2px] transition-colors hover:bg-surface-base"
-                    >
-                      <div className="flex items-center gap-2">
-                        <User size={14} className="text-rmpg-400" />
-                        <span className="text-sm text-rmpg-100 font-medium">{person.name}</span>
-                        {person.age && (
-                          <span className="text-[10px] text-rmpg-500">Age {person.age}</span>
-                        )}
-                      </div>
-                      {person.aliases && person.aliases.length > 0 && (
-                        <p className="text-[10px] text-rmpg-500 mt-1 ml-5">
-                          AKA: {person.aliases.join(', ')}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Addresses */}
-              {sortedAddresses.length > 0 && (
-                <div className="space-y-1">
-                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
-                    <MapPin size={12} /> Addresses
-                  </h3>
-                  <div className="space-y-1.5">
-                    {sortedAddresses.map((addr, i) => {
-                      const matches = addressMatchesJob(addr, job);
-                      return (
-                        <div
-                          key={i}
-                          className={`px-3 py-2 bg-surface-sunken border rounded-[2px] text-sm transition-all duration-150 hover:bg-surface-base ${
-                            matches
-                              ? 'border-green-700/50 bg-green-900/10 shadow-[0_0_6px_rgba(34,197,94,0.1)]'
-                              : 'border-rmpg-700'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {matches && (
-                                  <CheckCircle2 size={12} className="text-green-400 shrink-0" />
-                                )}
-                                <span className="text-rmpg-100 text-xs break-words">
-                                  {addr.address}, {addr.city}, {addr.state} {addr.zip}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-1">
-                                <AddressTypeBadge type={addr.type} />
-                                {addr.last_seen && (
-                                  <span className="text-[10px] text-rmpg-500">
-                                    Last seen {addr.last_seen}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <button type="button"
-                              onClick={() => onAddToRoute(addr)}
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#888888]/20 hover:bg-[#888888]/40 text-rmpg-400 border border-[#888888]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
-                              title="Add to Route"
-                            >
-                              <Plus size={10} />
-                              Route
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Phone Numbers */}
-              {result.phones && result.phones.length > 0 && (
-                <div className="space-y-1">
-                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
-                    <Phone size={12} /> Phone Numbers
-                  </h3>
-                  <div className="space-y-1">
-                    {result.phones.map((ph, i) => (
-                      <div
-                        key={i}
-                        className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm flex items-center justify-between"
-                      >
-                        <span className="text-xs text-rmpg-100 font-mono">{ph.number}</span>
-                        <div className="flex items-center gap-2">
-                          {ph.type && (
-                            <span className="text-[10px] text-rmpg-500">{ph.type}</span>
-                          )}
-                          {ph.carrier && (
-                            <span className="text-[10px] text-rmpg-600">{ph.carrier}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Employment */}
-              {result.employment && result.employment.length > 0 && (
-                <div className="space-y-1">
-                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
-                    <Briefcase size={12} /> Employment
-                  </h3>
-                  <div className="space-y-1">
-                    {result.employment.map((emp, i) => (
-                      <div
-                        key={i}
-                        className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm"
-                      >
-                        <p className="text-xs text-rmpg-100">{emp.employer}</p>
-                        {emp.title && (
-                          <p className="text-[10px] text-rmpg-500">{emp.title}</p>
-                        )}
-                        {emp.address && (
-                          <p className="text-[10px] text-rmpg-600">{emp.address}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
