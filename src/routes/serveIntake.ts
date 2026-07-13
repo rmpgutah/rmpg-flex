@@ -644,7 +644,20 @@ si.post('/upload', async (c) => {
   const failedDocs: string[] = [];   // docs that yielded no usable extraction
   for (const c2 of collected) {
     if (c2.error && !c2.text) {
-      documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
+      // Persist even pre-extraction failures (upload/OCR error before any
+      // text was recovered) — previously these were dropped from the
+      // response only and never written to serve_intake_documents, so they
+      // could never surface in the doc-recovery review queue for a retry.
+      const failRes = await execute(
+        db,
+        `INSERT INTO serve_intake_documents (
+          uploaded_by, file_name, file_type, r2_key, size_bytes, page_count,
+          ocr_used, ocr_engine, status, error_message
+        ) VALUES (?,?,?,?,?,?, ?,?,?,?)`,
+        user.id, c2.file.name, c2.file.type, c2.r2Key, c2.file.size, c2.pageCount,
+        c2.ocrUsed ? 1 : 0, c2.ocrEngine, 'failed', c2.error,
+      );
+      documents.push({ id: failRes.meta.last_row_id, file_name: c2.file.name, status: 'failed', error: c2.error });
       failedDocs.push(c2.file.name);
       continue;
     }
@@ -1034,6 +1047,8 @@ si.post('/intake', async (c) => {
 
 // ── GET /:id/documents — list documents on a queue entry ────
 si.get('/:id/documents', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -1052,6 +1067,8 @@ si.get('/:id/documents', async (c) => {
 
 // ── GET /documents/:docId/file — stream the R2 object ───────
 si.get('/documents/:docId/file', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const docId = parseInt(c.req.param('docId'), 10);
   if (isNaN(docId)) return c.json({ error: 'Invalid docId' }, 400);
   const db = getDb(c.env);
@@ -1211,6 +1228,8 @@ si.post('/reprocess-failed', async (c) => {
 
 // ── GET /stats ──────────────────────────────────────────────
 si.get('/stats', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const total = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM serve_queue');
   const pending = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='pending'");
@@ -1231,6 +1250,9 @@ si.get('/stats', async (c) => {
 
 // ── GET / — list with filters ───────────────────────────────
 si.get('/', async (c) => {
+  // Exposes recipient names + addresses + case numbers — same gate as /queue.
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const status = c.req.query('status');
   const officerId = c.req.query('officer_id');
@@ -1680,6 +1702,9 @@ si.delete('/schedule/:slotId', async (c) => {
 // alarm codes, and key-holder info from existing records while the
 // operator is still reviewing the extracted fields before submitting.
 si.get('/record-lookup', async (c) => {
+  // Exposes gate/alarm codes and key-holder contact info — same gate as /queue.
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const addressQ = (c.req.query('address') || '').trim();
   const nameQ = (c.req.query('business_name') || '').trim();
@@ -1718,6 +1743,8 @@ si.get('/record-lookup', async (c) => {
 
 // ── GET /clients — active clients for the intake client selector ──
 si.get('/clients', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const rows = await query<{ id: number; name: string; contact_name: string | null; contact_phone: string | null }>(
     db,
@@ -2010,7 +2037,12 @@ si.post('/:id/attempts', async (c) => {
   let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
   const attemptId = ins.meta.last_row_id as number;
 
-  if (REPLAN_RESULTS.has(String(body.result ?? ''))) {
+  // Use finalResult (the resolved outcome), not raw body.result -- a
+  // disposition-code-only submission (structured PS/xx code, no body.result)
+  // derives finalResult via codeToLegacyResult() but left body.result
+  // undefined, so this check silently never triggered auto-replan for those
+  // submissions even when the derived result should have.
+  if (REPLAN_RESULTS.has(finalResult)) {
     // Re-read the queue row to get the post-increment attempt_count + recipient details.
     const q = await queryFirst<{
       id: number; deadline: string | null; max_attempts: number;
@@ -2032,7 +2064,7 @@ si.post('/:id/attempts', async (c) => {
       const next = replanAfterFailedAttempt(
         {
           attempt_at: new Date().toISOString(),
-          result: String(body.result),
+          result: finalResult,
           window: typeof body.window === 'string' ? body.window : null,
         },
         {
