@@ -91,8 +91,8 @@ export type Bindings = {
   // `wrangler secret put RECOVERY_KEY`; used as a bypass when no one can log in.
   // Pass as `X-Recovery-Key` header. Keep secure — resets ALL user passwords.
   RECOVERY_KEY?: string;
-  // Dial Connect SSO (OIDC relying party) config — see src/routes/ssoAuth.ts
-  // and src/utils/sso.ts. Set via wrangler.toml vars (issuer/client id/redirect
+  // Dial Connect SSO (OIDC relying party) config — see src/routes/oidc.ts.
+  // Set via wrangler.toml vars (issuer/client id/redirect
   // uri) + `wrangler secret put DIALER_OIDC_CLIENT_SECRET`. DIALER_OIDC_ISSUER
   // is the full discovery-DOCUMENT URL (ends in /.well-known/openid-configuration),
   // not a bare issuer.
