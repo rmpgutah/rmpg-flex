@@ -30,7 +30,10 @@ function statusFromError(err: ApiError): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
-export async function apiFetchV2<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetchV2<T>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number; directWorker?: boolean },
+): Promise<T> {
   try {
     return await apiFetch<T>(path, init);
   } catch (err) {
