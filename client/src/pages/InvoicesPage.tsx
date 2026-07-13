@@ -291,10 +291,10 @@ export default function InvoicesPage() {
       if (dateTo) params.set('date_to', dateTo);
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
-      const res = await apiFetch<{ data: Invoice[]; total: number; page: number; limit: number }>(`/invoices?${params}`);
+      const res = await apiFetch<{ data: Invoice[]; pagination: { page: number; per_page: number; total: number; totalPages: number } }>(`/invoices?${params}`);
       setInvoices(res.data || []);
-      setTotalCount(res.total || 0);
-      setTotalPages(Math.max(1, Math.ceil((res.total || 0) / (res.limit || 50))));
+      setTotalCount(res.pagination?.total || 0);
+      setTotalPages(res.pagination?.totalPages || 1);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load invoices');
     } finally {
