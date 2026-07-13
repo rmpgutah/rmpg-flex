@@ -763,24 +763,30 @@ si.post('/upload', async (c) => {
   // instead of a silent partial success (doc rows but no queue entry).
   const noRecords = commit.serve_queue_id == null && commit.call_id == null;
   const hadText = collected.some((c2) => (c2.text || '').trim().length > 0);
-  let warning: string | null = noRecords
-    ? (hadText
-        ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
-        : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.')
-    : null;
+  // Collected rather than a single reassigned string -- these three
+  // conditions are independent (a duplicate-intake match can co-occur with a
+  // partial extraction failure on one of the attached documents), and
+  // overwriting a prior warning previously hid it entirely.
+  const warnings: string[] = [];
+  if (noRecords) {
+    warnings.push(hadText
+      ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
+      : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.');
+  }
   // Partial failure: the entry WAS created, but one or more documents didn't
   // extract — fields that live only on those (e.g. attorney/case details from a
   // Court Docket whose OCR timed out) may be missing. Previously this was
   // silent; surface it so the user knows to review those documents.
   if (!noRecords && failedDocs.length > 0) {
-    warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
+    warnings.push(`Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`);
   }
   // Duplicate intake: an ACTIVE queue entry already covers this case +
   // recipient. The uploaded documents were attached to it (back-link above);
   // no new call/queue/person records were created.
   if (commit.duplicate_of) {
-    warning = `Active serve entry #${commit.duplicate_of.serve_queue_id} already exists for this case and recipient (status: ${commit.duplicate_of.status}). Documents were attached to the existing entry — no new call was created.`;
+    warnings.push(`Active serve entry #${commit.duplicate_of.serve_queue_id} already exists for this case and recipient (status: ${commit.duplicate_of.status}). Documents were attached to the existing entry — no new call was created.`);
   }
+  const warning: string | null = warnings.length > 0 ? warnings.join(' ') : null;
 
   // Intake can spawn a CAD call (createServiceCall writes calls_for_service
   // directly, bypassing the calls.ts POST broadcast). Fan it to every dispatch
@@ -967,7 +973,17 @@ function buildCallDescription(
   // ── 10. Document count ───────────────────────────────────────
   if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
 
-  return parts.join(' · ');
+  // No hard cap previously — a packet with long business/attorney names,
+  // multiple parties, and a long court name could produce a description well
+  // past what the CAD board's one-line summary can show. Truncate at a
+  // whole-segment boundary (never mid-word) so it still reads cleanly.
+  const MAX_DESCRIPTION_LEN = 500;
+  const full = parts.join(' · ');
+  if (full.length <= MAX_DESCRIPTION_LEN) return full;
+  let truncated = full.slice(0, MAX_DESCRIPTION_LEN);
+  const lastSep = truncated.lastIndexOf(' · ');
+  if (lastSep > 0) truncated = truncated.slice(0, lastSep);
+  return truncated + ' …';
 }
 
 // ── POST /intake — legacy-shape commit ─────────────────────
