@@ -1063,9 +1063,9 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   }
 
   // ── Summary Statistics ──
-  const served = data.jobs.filter(j => j.result.toLowerCase() === 'served').length;
-  const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => j.result.toLowerCase().includes(s))).length;
-  const pending = data.jobs.filter(j => j.result.toLowerCase() === 'pending').length;
+  const served = data.jobs.filter(j => (j.result || '').toLowerCase() === 'served').length;
+  const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => (j.result || '').toLowerCase().includes(s))).length;
+  const pending = data.jobs.filter(j => (j.result || '').toLowerCase() === 'pending').length;
 
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Summary Statistics', y); y = sec.contentY;
