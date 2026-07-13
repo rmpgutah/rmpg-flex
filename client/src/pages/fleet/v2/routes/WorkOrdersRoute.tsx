@@ -38,15 +38,21 @@ interface WorkOrderRow {
   labor_hours?: number | null;
 }
 
+// Matches the actual /api/work-orders/stats response shape (flat status
+// counters, not a `by_status` map — see workOrders.ts GET /stats).
 interface WorkOrderStats {
-  by_status: Record<string, number>;
+  total: number;
+  open: number;
+  in_progress: number;
+  waiting_parts: number;
+  completed: number;
+  cancelled: number;
   by_priority: Record<string, number>;
   by_category: Record<string, number>;
-  total_est_cost: number;
+  total_estimated_cost: number;
   total_actual_cost: number;
   overdue_count: number;
   scheduled_count: number;
-  monthly_trend: { month: string; opened: number; completed: number }[];
 }
 
 interface VehicleStub { id: number; vehicle_number: string | null; vehicle_name: string | null; }
@@ -133,8 +139,8 @@ export function WorkOrdersRoute() {
 
   useEffect(() => {
     setStatsLoading(true);
-    apiFetchV2<WorkOrderStats>('/work-orders/stats')
-      .then((r) => { setStats(r); setStatsLoading(false); })
+    apiFetchV2<{ stats: WorkOrderStats }>('/work-orders/stats')
+      .then((r) => { setStats(r?.stats ?? null); setStatsLoading(false); })
       .catch(() => { setStatsLoading(false); });
   }, []);
 
@@ -213,7 +219,7 @@ export function WorkOrdersRoute() {
         <div className="grid grid-cols-5 gap-2 px-3 py-2 border-b border-rmpg-800/40 bg-surface-sunken/30">
           <div className="text-center">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Total Open</div>
-            <div className="text-lg font-bold font-mono text-amber-400">{(stats.by_status?.open ?? 0) + (stats.by_status?.in_progress ?? 0) + (stats.by_status?.waiting_parts ?? 0)}</div>
+            <div className="text-lg font-bold font-mono text-amber-400">{(stats.open ?? 0) + (stats.in_progress ?? 0) + (stats.waiting_parts ?? 0)}</div>
           </div>
           <div className="text-center">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Overdue</div>
@@ -225,7 +231,7 @@ export function WorkOrdersRoute() {
           </div>
           <div className="text-center">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Est. Cost</div>
-            <div className="text-lg font-bold font-mono text-rmpg-100">${(stats.total_est_cost ?? 0).toLocaleString()}</div>
+            <div className="text-lg font-bold font-mono text-rmpg-100">${(stats.total_estimated_cost ?? 0).toLocaleString()}</div>
           </div>
           <div className="text-center">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Actual Cost</div>

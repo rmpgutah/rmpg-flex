@@ -465,7 +465,7 @@ admin.get('/shift-stats', async (c) => {
       : `${shiftedHourExpr} BETWEEN ${startHour} AND ${endHour - 1}`;
     const calls = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${dateCondition}`))?.n ?? 0;
     const incidents = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE ${dateCondition}`))?.n ?? 0;
-    const citations = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE ${dateCondition.replace('created_at','issued_at')}`))?.n ?? 0;
+    const citations = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE ${dateCondition.replace(/created_at/g, 'citation_date')}`))?.n ?? 0;
     const patrolScans = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM patrol_scans'))?.n ?? 0;
     return c.json({ shift_name: shiftName, calls, incidents, citations, patrol_scans: patrolScans });
   } catch { return c.json({ shift_name: 'Unknown', calls: 0, incidents: 0, citations: 0, patrol_scans: 0 }); }
