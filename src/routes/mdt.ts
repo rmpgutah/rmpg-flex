@@ -82,10 +82,11 @@ mdt.get('/inbox', async (c) => {
   const db = getDb(c.env);
   await ensureTables(db);
 
-  // Record this poll as my presence (DELETE+INSERT — composite ON CONFLICT is
-  // unreliable on D1, see project memory).
-  await execute(db, `DELETE FROM mdt_presence WHERE user_id = ? AND endpoint = ?`, userId, endpoint);
-  await execute(db, `INSERT INTO mdt_presence (user_id, endpoint, last_seen) VALUES (?, ?, datetime('now'))`, userId, endpoint);
+  // Record this poll as my presence. INSERT OR REPLACE is atomic on the
+  // composite primary key — a separate DELETE+INSERT here raced under Worker
+  // cold-start latency (an overlapping poll could pass the DELETE and then
+  // collide on the INSERT, throwing a PK constraint error → 500).
+  await execute(db, `INSERT OR REPLACE INTO mdt_presence (user_id, endpoint, last_seen) VALUES (?, ?, datetime('now'))`, userId, endpoint);
 
   const dir = inboxDirectionFor(endpoint);
   const rows = await query<{ id: number; type: string; payload: string; created_at: string }>(db,

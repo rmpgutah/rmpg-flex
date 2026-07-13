@@ -74,7 +74,14 @@ export default function DashboardMiniMap() {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        map.on('load', () => { if (!cancelled) setLoaded(true); });
+        // 'load' can be missed if it fires before/racing this handler attaching
+        // in some embedded/sandboxed contexts (observed: canvas renders fine but
+        // 'load' never dispatches, leaving the loading overlay stuck forever).
+        // 'idle' (no pending map operations) is a more reliable "ready" signal
+        // and fires at least once after the first render regardless.
+        const markReady = () => { if (!cancelled) setLoaded(true); };
+        map.on('load', markReady);
+        map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;
       } catch (err) {
