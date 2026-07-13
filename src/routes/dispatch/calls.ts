@@ -1190,6 +1190,52 @@ calls.post('/:id/resume', async (c) => {
   catch (err) { return c.json({ error: 'Resume failed' }, 500); }
 });
 
+// POST /dispatch/calls/:id/report-issue — create a mechanical work order
+// for the vehicle assigned to this call. DispatchPage.tsx's "Report Issue"
+// toolbar button posts here; the call's first assigned unit resolves to a
+// fleet vehicle via units.vehicle_id (a vehicle_number string, not the
+// fleet_vehicles.id the work_orders table wants — same lookup units.ts's
+// GET / does for the reverse join).
+calls.post('/:id/report-issue', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const userId = (c.get('userId') as number | undefined) ?? null;
+    const body = await c.req.json<{ summary?: string }>().catch(() => ({} as { summary?: string }));
+
+    const call = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT assigned_unit_ids, call_number FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+
+    const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
+    if (assignedIds.length === 0) {
+      return c.json({ error: 'No unit assigned to this call', code: 'NO_UNIT' }, 400);
+    }
+    const unitId = assignedIds[0];
+    const unit = await queryFirst<{ vehicle_id: string | null }>(
+      db, 'SELECT vehicle_id FROM units WHERE id = ?', unitId);
+    if (!unit?.vehicle_id) {
+      return c.json({ error: 'Assigned unit has no vehicle on file', code: 'NO_VEHICLE' }, 400);
+    }
+    const vehicle = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM fleet_vehicles WHERE vehicle_number = ?', unit.vehicle_id);
+    if (!vehicle) {
+      return c.json({ error: 'Assigned vehicle not found in fleet records', code: 'NO_VEHICLE' }, 400);
+    }
+
+    const summary = body.summary || `Mechanical issue reported from Call #${call.call_number ?? id}`;
+    const result = await execute(db,
+      `INSERT INTO work_orders (vehicle_id, status, summary, priority, call_id, unit_id, reported_by_user_id, created_by)
+       VALUES (?, 'open', ?, 'normal', ?, ?, ?, ?)`,
+      vehicle.id, summary, Number(id), unitId, userId, userId);
+
+    return c.json({ data: { id: result.meta.last_row_id } }, 201);
+  } catch (err) {
+    log.error('POST /dispatch/calls/:id/report-issue failed', { id: c.req.param('id') }, err as Error);
+    return dbErrorResponse(c, err, 'Failed to report issue');
+  }
+});
+
 // POST /dispatch/calls/:id/assign-unit
 calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
