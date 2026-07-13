@@ -411,14 +411,6 @@ stubs.post('/ui-trap', async (c) => {
 // ── Firecrawl tools moved to the dedicated firecrawlTools router
 //    (/api/firecrawl-tools) — see src/routes/firecrawlTools.ts.
 
-// ── Mobile CFS (mounted at /api/mobile) ────
-stubs.get('/cfs/:callId/challenge', (c) => c.json({ valid: false }));
-stubs.post('/cfs/:callId/auth', async (c) => c.json({ authenticated: false }, 401));
-stubs.get('/cfs/:callId/status', (c) => c.json({ status: 'unknown' }));
-
-// ── CFS QR token (mounted at /api/cfs) ────
-stubs.post('/:id/qr-token', async (c) => c.json({ token: null, error: 'QR token generation not available' }));
-
 // ── PDF artifacts (mounted at /api/pdf-artifacts) ────
 stubs.post('/', async (c) => c.json({ id: null, error: 'PDF artifact storage not configured' }, 501));
 
