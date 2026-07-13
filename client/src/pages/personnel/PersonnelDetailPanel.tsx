@@ -341,7 +341,13 @@ export default function PersonnelDetailPanel({
           </div>
           {/* Action buttons */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button type="button" onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit">
+            {/* onClick={() => onEditOfficer()}, NOT onClick={onEditOfficer} — the
+                latter passes the native MouseEvent straight through as
+                openEditOfficer's optional `target` officer param, which then
+                wins over `?? selectedOfficer` and the Edit form opens
+                completely blank (every officer field reads undefined off the
+                event object). */}
+            <button type="button" onClick={() => onEditOfficer()} className="toolbar-btn text-[9px]" title="Edit">
               <Pencil className="w-3 h-3" />
             </button>
             <PersonnelPrintMenu
