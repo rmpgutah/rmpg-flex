@@ -57,6 +57,14 @@ incidents.get('/', requireRole(...READ_ROLES), async (c) => {
 });
 
 // GET /:id
+// GET /:id enriches the bare incidents row with the fields IncidentsPage.tsx's
+// fetchIncidentDetail actually reads (linked_persons, linked_vehicles,
+// evidence, call_type, call_created_at) — an incident's persons/vehicles are
+// linked through its originating call (call_persons/call_vehicles keyed on
+// incidents.call_id), the same junction tables dispatch/callLinks.ts's
+// GET /calls/:id/persons|vehicles already join through. Evidence links
+// directly via evidence.incident_id. Previously this returned only the bare
+// row, so these panels were silently always empty.
 incidents.get('/:id', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -64,7 +72,37 @@ incidents.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM incidents WHERE id = ?', id);
     if (!row) return c.json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }, 404);
-    return c.json(row);
+
+    const callId = row.call_id as number | null;
+    const [linkedPersons, linkedVehicles, evidence, call] = await Promise.all([
+      callId ? query<Record<string, unknown>>(db,
+        `SELECT cp.id, cp.call_id, cp.person_id, cp.role, cp.notes, cp.added_at,
+                p.first_name, p.last_name, p.dob, p.gender, p.race,
+                p.phone, p.address, p.caution_flags, p.is_sex_offender,
+                p.gang_affiliation, p.probation_parole, p.flags
+         FROM call_persons cp JOIN persons p ON cp.person_id = p.id
+         WHERE cp.call_id = ? ORDER BY cp.added_at DESC LIMIT 500`, callId) : [],
+      callId ? query<Record<string, unknown>>(db,
+        `SELECT cv.id, cv.call_id, cv.vehicle_id, cv.role, cv.notes, cv.added_at,
+                v.plate_number, v.state, v.make, v.model, v.year, v.color, v.vin,
+                v.owner_person_id, op.first_name as owner_first, op.last_name as owner_last
+         FROM call_vehicles cv JOIN vehicles_records v ON cv.vehicle_id = v.id
+         LEFT JOIN persons op ON v.owner_person_id = op.id
+         WHERE cv.call_id = ? ORDER BY cv.added_at DESC LIMIT 500`, callId) : [],
+      query<Record<string, unknown>>(db,
+        'SELECT * FROM evidence WHERE incident_id = ? ORDER BY created_at DESC', id),
+      callId ? queryFirst<{ incident_type: string; created_at: string }>(db,
+        'SELECT incident_type, created_at FROM calls_for_service WHERE id = ?', callId) : null,
+    ]);
+
+    return c.json({
+      ...row,
+      linked_persons: linkedPersons,
+      linked_vehicles: linkedVehicles,
+      evidence,
+      call_type: call?.incident_type ?? null,
+      call_created_at: call?.created_at ?? null,
+    });
   } catch (err) {
     console.error('[incidents] get error', err);
     return c.json({ error: 'Failed to fetch incident', code: 'INC_FETCH_ERR' }, 500);
