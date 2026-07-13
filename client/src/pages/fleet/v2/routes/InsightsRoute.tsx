@@ -698,7 +698,7 @@ function WorkOrderFlowCard({ period }: { period: Period }) {
                        className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle"
                        style={{ background: WO_STATUS_TONES[n.name] ?? '#475569' }}
                      />
-                     <span className="text-rmpg-100">{n.name.replace('_', ' ')}</span>
+                     <span className="text-rmpg-100">{toDisplayLabel(n.name)}</span>
                    </td>
                    <td className="py-1 text-right font-mono text-rmpg-100">{n.count.toLocaleString()}</td>
                    <td className="py-1 pl-2 text-right text-rmpg-400 w-12">
