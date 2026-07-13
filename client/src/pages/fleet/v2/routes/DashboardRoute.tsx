@@ -26,6 +26,12 @@ export function DashboardRoute() {
   // matching how KpiRibbon handles partial outages.
   const [analytics, setAnalytics] = useState<AnalyticsResp | null>(null);
   const [overdueCount, setOverdueCount] = useState<number | null>(null);
+  // Tracks whether the initial fetch has settled at all, independent of
+  // whether individual fields came back populated — without this, a field
+  // that's legitimately absent from the response (rather than "not yet
+  // fetched") reads as `undefined` forever and the card shows "Loading…"
+  // indefinitely instead of falling back to its empty state.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,13 +42,14 @@ export function DashboardRoute() {
       if (cancelled) return;
       if (a.status === 'fulfilled') setAnalytics(a.value);
       if (o.status === 'fulfilled' && Array.isArray(o.value)) setOverdueCount(o.value.length);
+      setLoaded(true);
     });
     return () => { cancelled = true; };
   }, []);
 
-  const needsService = analytics?.fleet_summary?.vehicles_needing_service;
-  const failingInspections = analytics?.fleet_summary?.inspections_failing;
-  const fuelEntries = analytics?.fuel_summary?.total_entries;
+  const needsService = loaded ? (analytics?.fleet_summary?.vehicles_needing_service ?? 0) : undefined;
+  const failingInspections = loaded ? (analytics?.fleet_summary?.inspections_failing ?? 0) : undefined;
+  const fuelEntries = loaded ? (analytics?.fuel_summary?.total_entries ?? 0) : undefined;
 
   return (
     <div className="h-full flex flex-col">

@@ -353,6 +353,14 @@ fleet.get('/analytics', async (c) => {
        AND inspection_date >= date('now', '-90 days')`,
   ), null))?.n ?? 0;
 
+  // fuel_summary.total_entries — backs the Fleet v2 dashboard's "Recent Fuel
+  // Entries" card (DashboardRoute.tsx), scoped to the same ?period window
+  // as the rest of this endpoint's stats.
+  const fuel_entries_total = (await safe(() => queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) as n FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod}`,
+  ), null))?.n ?? 0;
+
   // service_compliance — overdue = the vehicles_needing_service set;
   // compliant = remaining active vehicles.
   const service_compliance = await safe(async () => {
@@ -533,6 +541,9 @@ fleet.get('/analytics', async (c) => {
       total_fuel_cost: summary?.total_fuel_cost ?? 0,
       vehicles_needing_service,
       inspections_failing,
+    },
+    fuel_summary: {
+      total_entries: fuel_entries_total,
     },
     cost_per_mile_ranking,
     service_compliance,
