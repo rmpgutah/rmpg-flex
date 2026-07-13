@@ -33,13 +33,6 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
-  // "Sign in with Dialer" OIDC SSO (src/routes/oidc.ts). ISSUER/CLIENT_ID/
-  // REDIRECT_URI are plain wrangler.toml vars; CLIENT_SECRET is a Worker
-  // secret (`wrangler secret put`), never committed.
-  DIALER_OIDC_ISSUER?: string;
-  DIALER_OIDC_CLIENT_ID?: string;
-  DIALER_OIDC_CLIENT_SECRET?: string;
-  DIALER_OIDC_REDIRECT_URI?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // DeepResearchDO namespace — one instance per research job; alarm-driven
