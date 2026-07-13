@@ -473,6 +473,7 @@ export default function AdminPage() {
         certifications: data.certifications,
         notes: data.notes,
         profile_image: data.profile_image,
+        sso_enabled: data.sso_enabled === '1' ? 1 : 0,
       };
 
       if (editingUser) {
@@ -711,12 +712,6 @@ export default function AdminPage() {
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
-      ],
-    },
-    {
-      category: 'AI & Intelligence',
-      tabs: [
-        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
       ],
     },
     {

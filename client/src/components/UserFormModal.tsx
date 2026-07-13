@@ -14,6 +14,8 @@ export interface UserFormData {
   full_name: string;
   role: UserRole;
   status: string;
+  // Dial Connect SSO opt-in — '0' | '1' (see UserFormModal's ssoEnabled select)
+  sso_enabled: string;
   // Personal
   first_name: string;
   last_name: string;
@@ -67,6 +69,7 @@ interface UserFormModalProps {
     email: string;
     role: UserRole;
     status?: string;
+    sso_enabled?: number | string;
     badge_number?: string;
     phone?: string;
     department?: string;
@@ -117,6 +120,7 @@ const UNIFORM_SIZES = ['', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 
 const EMPTY_FORM: UserFormData = {
   username: '', password: '', full_name: '', role: 'officer', status: 'active',
+  sso_enabled: '0',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
   email: '', phone: '', address: '', address_2: '', city: '', state: '', zip: '',
   badge_number: '', department: '', rank: '', employee_id: '',
@@ -172,6 +176,7 @@ export default function UserFormModal({
           full_name: `${editingUser.first_name} ${editingUser.last_name}`.trim(),
           role: editingUser.role,
           status: editingUser.status || 'active',
+          sso_enabled: editingUser.sso_enabled != null ? String(editingUser.sso_enabled) : '0',
           first_name: editingUser.first_name || '',
           last_name: editingUser.last_name || '',
           middle_name: editingUser.middle_name || '',
@@ -326,6 +331,17 @@ export default function UserFormModal({
               </div>
             )}
           </div>
+          {isEdit && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="ff-userformmodal-sso" className={labelCls}>Dial Connect SSO Login</label>
+                <select id="ff-userformmodal-sso" value={form.sso_enabled} onChange={e => set('sso_enabled', e.target.value)} className={inputCls}>
+                  <option value="0">Disabled</option>
+                  <option value="1">Enabled</option>
+                </select>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-rmpg-400 flex-shrink-0">
               {form.profile_image ? (

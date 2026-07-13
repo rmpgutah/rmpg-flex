@@ -63,12 +63,19 @@ stubs.get('/activity-feed', async (c) => {
     const db = c.env.DB;
     const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200);
     const offset = parseInt(c.req.query('offset') || '0', 10) || 0;
-    const [{ total }] = (await db.prepare('SELECT COUNT(*) as total FROM audit_log').all()).results as { total: number }[];
+    // Machine telemetry actions (page-view instrumentation, API-error pings —
+    // see useFleetV2Audit.ts / auditEmit.ts) write raw JSON into `details` and
+    // were never meant for the human-facing feed; they're consumed by
+    // AdminFleetV2HealthTab via /audit/count instead. Excluding them here
+    // stops unformatted JSON blobs from leaking into Recent Activity.
+    const TELEMETRY_ACTIONS = "('FLEET_V2_VIEW','FLEET_V2_API_ERROR')";
+    const [{ total }] = (await db.prepare(`SELECT COUNT(*) as total FROM audit_log WHERE action NOT IN ${TELEMETRY_ACTIONS}`).all()).results as { total: number }[];
     const rows = (await db.prepare(
       `SELECT al.id, al.user_id, al.action, al.entity_type, al.entity_id, al.details,
               al.ip_address, al.created_at,
               u.full_name as user_name, u.badge_number, u.role as user_role
        FROM audit_log al LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.action NOT IN ${TELEMETRY_ACTIONS}
        ORDER BY al.created_at DESC LIMIT ? OFFSET ?`
     ).bind(limit, offset).all()).results as any[];
     return c.json({ data: rows, total: total ?? 0, limit, offset });

@@ -1151,7 +1151,7 @@ export default function DashboardPage() {
         ))}
 
         {/* Call Volume Comparison */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Call volume comparison">
+        <div className="panel-beveled bg-surface-base sm:col-span-2 lg:col-span-2" role="region" aria-label="Call volume comparison">
           <PanelTitleBar title="CALL VOLUME COMPARISON" icon={TrendingUp} />
           <div className="p-3 space-y-3">
             <div className="text-center">
@@ -1184,7 +1184,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Live Situational Map */}
-        <DashboardMiniMap />
+        <div className="sm:col-span-2 lg:col-span-2">
+          <DashboardMiniMap />
+        </div>
       </div>
       </div>
       </SpmGroup>
@@ -1581,10 +1583,10 @@ export default function DashboardPage() {
       )}
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
-      {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+      {hasPanel('alertsReminders') && ((shiftStats && shiftStats.shift_name !== 'Unknown') || courtDatesCount > 0 || expiringCertsCount > 0) && (
         <SpmGroup title="Alerts & Reminders" tone="blue" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
-          {shiftStats && (
+          {shiftStats && shiftStats.shift_name !== 'Unknown' && (
             <div className="panel-beveled bg-surface-base p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="led-dot led-green animate-led-pulse" />
@@ -2489,85 +2491,6 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
         </div>
       </div>
-
-      {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
-      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
-        {/* Feature 33: Shift Performance Comparison */}
-        {shiftComparison?.shifts && (
-          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
-            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
-            <div className="p-3">
-              <div className="grid grid-cols-3 gap-2">
-                {shiftComparison.shifts.map((s: any) => {
-                  const isActive = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
-                  return (
-                    <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isActive ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <span className={`led-dot ${isActive ? 'led-green animate-led-pulse' : 'led-off'}`} />
-                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>{s.shift}</span>
-                        <span className="text-[8px] text-rmpg-600 font-mono ml-auto tabular-nums">{s.hours}</span>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] text-rmpg-400">Incidents</span>
-                          <span className="text-xs font-bold font-mono text-green-400 tabular-nums">{s.incidents}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] text-rmpg-400">Avg Resp</span>
-                          <span className="text-xs font-bold font-mono text-brand-400 tabular-nums">
-                            {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Feature 42: Upcoming Court Widget */}
-        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Upcoming court appearances">
-          <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
-          <div className="p-3">
-            {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-4 justify-center" role="status">
-                <Gavel className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
-                <div className="flex items-center gap-1.5">
-                  <span className="led-dot led-green" aria-hidden="true" />
-                  <span className="text-xs text-rmpg-300 select-none">No upcoming court appearances</span>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
-                {upcomingCourt.upcoming.map((c: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
-                    <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
-                      {c.officer_name && <div className="text-[9px] text-rmpg-500 truncate">{c.officer_name}</div>}
-                    </div>
-                    {c.time && <span className="text-[9px] font-mono text-rmpg-400 flex-shrink-0 tabular-nums">{c.time}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
-      {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
-      {/* (Feature 37: Call Volume sparkline is represented by the Calls by Hour chart above) */}
-      {/* (Feature 32: Active incidents map preview — navigates to map page) */}
-      {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
 
       {/* PSO Operations Panel */}
       {hasPanel('adminExtras') && psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {

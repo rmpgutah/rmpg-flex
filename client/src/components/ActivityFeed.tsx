@@ -43,6 +43,15 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
   system: { icon: Info, color: 'text-rmpg-300' },
 };
 
+// Some audit_log rows are machine telemetry whose `details` column is raw
+// JSON rather than prose (e.g. `{"kind":"FLEET_V2_VIEW",...}`). Those are
+// filtered server-side, but this is a last-resort guard so a stray one never
+// renders as an unformatted JSON blob to the user.
+function looksLikeRawJson(text: string): boolean {
+  const trimmed = text.trim();
+  return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+}
+
 function formatTime(dateStr: string, showDate: boolean): string {
   if (!dateStr) return '--:--:--';
   const date = parseTimestamp(dateStr);
@@ -93,7 +102,7 @@ export default React.memo(function ActivityFeed({
                     {entry.user_name && (
                       <span className="font-semibold text-rmpg-200">{entry.user_name} </span>
                     )}
-                    {entry.description}
+                    {entry.description && looksLikeRawJson(entry.description) ? 'Activity recorded' : entry.description}
                   </p>
                 </div>
                 <span className="text-[9px] font-mono text-green-400/70 whitespace-nowrap flex-shrink-0">
