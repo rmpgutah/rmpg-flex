@@ -280,13 +280,14 @@ SERVER_TIMEZONE = "America/Denver"
 # webhook receiver that needs the third one).
 FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 
-# Dialer OIDC (stub — no auth flow wired yet, this just reserves the config
-# surface for a later session). Issuer is the dialer's well-known discovery
-# doc; client ID is not sensitive so it lives here as a plain var.
+# Dialer OIDC (relying-party config for src/routes/ssoAuth.ts, mounted at
+# /api/oidc/dialer — see src/routesConfig.ts). Issuer is the dialer's
+# well-known discovery DOCUMENT URL, not a bare issuer -- the relying party
+# fetches it and reads authorization_endpoint/token_endpoint/jwks_uri from
+# the real response (see src/utils/sso.ts). Client ID is not sensitive so
+# it lives here as a plain var.
 # DIALER_OIDC_CLIENT_SECRET is set via
 # `npx wrangler secret put DIALER_OIDC_CLIENT_SECRET` — never in this file.
-# Redirect URI below points at a callback route that doesn't exist yet;
-# update it when that route is built.
 DIALER_OIDC_ISSUER = "https://dialer.rmpgutah.us/api/oidc/.well-known/openid-configuration"
 DIALER_OIDC_CLIENT_ID = "flex-ceb1d9a685995b45"
 DIALER_OIDC_REDIRECT_URI = "https://api.rmpgutah.us/api/oidc/dialer/callback"
@@ -312,7 +313,7 @@ NSOPW_ENABLED = "1"
 #  - FLEETIO_API_KEY         Fleet.io API key (Token-style; app.fleetio.com/settings/api_keys)
 #  - FLEETIO_ACCOUNT_TOKEN   Fleet.io Account-Token (per-account; same settings page)
 #  - FLEETIO_WEBHOOK_SECRET  Fleet.io webhook signing secret (PR 4; set when webhooks are wired)
-#  - DIALER_OIDC_CLIENT_SECRET  Dialer OIDC client secret (config stub only — no auth flow wired yet)
+#  - DIALER_OIDC_CLIENT_SECRET  Dialer OIDC client secret (paired with DIALER_OIDC_CLIENT_ID above; used by src/routes/ssoAuth.ts's token exchange)
 
 # Scheduled cron triggers.
 # Utah warrant smoke poll runs every 4h, matching the legacy server's

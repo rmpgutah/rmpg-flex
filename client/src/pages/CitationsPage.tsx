@@ -1601,9 +1601,8 @@ export default function CitationsPage() {
                   handleStatuteSelect(statute);
                   // Also push into violations[0] so the ViolationStack reflects it.
                   setViolations(prev => {
-                    if (prev.length === 0) return [newDraft()];
-                    const first = prev[0];
-                    const next = [...prev];
+                    const first = prev.length === 0 ? newDraft() : prev[0];
+                    const next = prev.length === 0 ? [first] : [...prev];
                     next[0] = {
                       ...first,
                       statute_id: Number(statute.id),

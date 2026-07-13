@@ -40,6 +40,7 @@ export default function ServeDashboardPerformance() {
   const [deadlines, setDeadlines] = useState<DeadlineJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduleAnalytics, setScheduleAnalytics] = useState<{ summary: { total_attempts: number; success_rate: number }; by_day_of_week: Record<string, { total: number; served: number }>; by_hour: Record<string, { total: number; served: number }> } | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const hasLoadedRef = useRef(false);
 

@@ -596,11 +596,11 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   }, []);
 
   useEffect(() => {
-    if (!activeJobId) return;
+    if (!activeJobId || jobStatus?.status === 'done') return;
     pollJobStatus(activeJobId);
     const t = setInterval(() => pollJobStatus(activeJobId), 10_000);
     return () => clearInterval(t);
-  }, [activeJobId, pollJobStatus]);
+  }, [activeJobId, jobStatus?.status, pollJobStatus]);
 
   // 1-second tick so ETA countdown animates without re-polling the API.
   useEffect(() => {
