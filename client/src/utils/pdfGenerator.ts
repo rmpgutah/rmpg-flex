@@ -15,7 +15,7 @@ import { toNum } from './sentinel';
 import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
-import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
@@ -394,6 +394,39 @@ export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string
   // lines at its internal step, which bypasses the per-line Y advancement in
   // addFieldPair and causes overlapping text. Fixes PSO scene-conditions
   // weather field where the API returns multi-line summaries.
+  // Break a single "word" that alone exceeds maxWidth — e.g. a long
+  // hyphenated surname ("MONTGOMERY-FEATHERSTONEHAUGH-ALEXANDROPOULOS"), a
+  // plate string, or a URL with no whitespace. Without this, such a token
+  // silently overflowed its field box into whatever content sits next to
+  // it (visually confirmed on PERSON RECORD's half-width Last Name /
+  // First Name row — 2026-07-13 fix). Prefers breaking right after a
+  // hyphen (keeps compound names readable); falls back to a hard
+  // character break when even a hyphen-delimited chunk is still too wide.
+  function breakOversizedWord(word: string): string[] {
+    if (doc.getTextWidth(word) <= maxWidth) return [word];
+    const parts: string[] = [];
+    let chunk = '';
+    for (const ch of word) {
+      const test = chunk + ch;
+      if (doc.getTextWidth(test) > maxWidth && chunk) {
+        // Prefer to cut right after the last hyphen in the chunk so far,
+        // if there is one and it doesn't leave an empty piece.
+        const hyphenIdx = chunk.lastIndexOf('-');
+        if (hyphenIdx > -1 && hyphenIdx < chunk.length - 1) {
+          parts.push(chunk.slice(0, hyphenIdx + 1));
+          chunk = chunk.slice(hyphenIdx + 1) + ch;
+        } else {
+          parts.push(chunk);
+          chunk = ch;
+        }
+      } else {
+        chunk = test;
+      }
+    }
+    if (chunk) parts.push(chunk);
+    return parts;
+  }
+
   const out: string[] = [];
   const segments = String(text ?? '').split(/\r\n|\r|\n/);
   for (const segment of segments) {
@@ -402,12 +435,17 @@ export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string
     let currentLine = '';
     for (const word of words) {
       const testLine = currentLine + word;
-      if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
-        out.push(currentLine.trimEnd());
-        currentLine = word.trimStart();
-      } else {
+      if (doc.getTextWidth(testLine) <= maxWidth) {
         currentLine = testLine;
+        continue;
       }
+      if (currentLine.trim()) {
+        out.push(currentLine.trimEnd());
+        currentLine = '';
+      }
+      const wordChunks = breakOversizedWord(word.trimStart());
+      for (let i = 0; i < wordChunks.length - 1; i++) out.push(wordChunks[i]);
+      currentLine = wordChunks[wordChunks.length - 1] ?? '';
     }
     if (currentLine.trim()) out.push(currentLine.trimEnd());
     else if (segment) out.push('');
@@ -524,6 +562,53 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.restoreGraphicsState();
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
+}
+
+// [Improvement 75] VOID watermark — distinct red diagonal "VOID" + X-cross
+// for voided documents (citations, warrants). Moved here from
+// pdfDetailHelpers.ts (2026-07-13) so it can be called from
+// checkPageBreak()'s per-continuation-page watermark step below — that
+// file can't import from pdfDetailHelpers.ts without creating an import
+// cycle (pdfDetailHelpers.ts already imports sanitizePdfText from here).
+export function addVoidWatermark(doc: jsPDF): void {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.saveGraphicsState();
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 0.10 }));
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setTextColor(COLOR.WATERMARK_VOID[0], COLOR.WATERMARK_VOID[1], COLOR.WATERMARK_VOID[2]);
+
+  const cx = pageWidth / 2;
+  const cy = pageHeight / 2;
+
+  // Large "VOID" text
+  doc.setFontSize(80);
+  doc.text('VOID', cx, cy, { align: 'center', angle: 45 });
+
+  // Diagonal cross lines
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 0.06 }));
+  doc.setDrawColor(COLOR.WATERMARK_VOID[0], COLOR.WATERMARK_VOID[1], COLOR.WATERMARK_VOID[2]);
+  doc.setLineWidth(2);
+  doc.line(15, 15, pageWidth - 15, pageHeight - 15);
+  doc.line(pageWidth - 15, 15, 15, pageHeight - 15);
+
+  doc.restoreGraphicsState();
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+}
+
+// Module-level flag: is the document currently being generated a voided
+// citation / recalled-or-quashed warrant? Set by generateRecordPdf()
+// before the switch on recordType, read by checkPageBreak() and the
+// per-page footer loops so continuation pages also get the VOID stamp —
+// previously VOID only rendered on page 1, so a multi-page voided record
+// shipped continuation pages with no void marking at all (2026-07-13 fix).
+let activeVoidWatermark = false;
+export function setActiveVoidWatermark(active: boolean): void {
+  activeVoidWatermark = active;
 }
 
 /** Enforce strict police-report typography defaults across all PDF generators. */
@@ -737,7 +822,7 @@ export function addReportHeader(
  * Branding override (admin-configured `section_accent_color`) wins
  * when the agency wants a single color across all sections.
  */
-function resolveSectionAccentColor(title: string): readonly [number, number, number] {
+export function resolveSectionAccentColor(title: string): readonly [number, number, number] {
   if (activeBranding.section_accent_color) {
     return hexToRgb(activeBranding.section_accent_color) as readonly [number, number, number];
   }
@@ -771,24 +856,34 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Clean section header: bold UPPERCASE title + thin underline rule.
-  // No filled bands — matches the fuel-report / line-and-text standard.
+  // Filled gray section header bar: bold UPPERCASE white title on a
+  // shade-graded gray fill (resolveSectionAccentColor — darker = more
+  // critical, e.g. caution/hazard sections read near-black while
+  // notes/narrative sections read slate). Previously this drew plain
+  // black text with a thin underline and never applied the accent-color
+  // hierarchy the codebase already computed, so every section on every
+  // PDF looked visually flat/identical (2026-07-13 fix).
   const sectionY = y;
   const sectionPage = doc.getNumberOfPages();
   const barH = SPACING.SECTION_HEADER_H;
+  const accentRgb = resolveSectionAccentColor(title);
+
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
 
   doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const textY = y + (barH + capH) / 2;
   doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textY);
 
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
   doc.setLineWidth(0.3);
   doc.line(LAYOUT.PAGE_MARGIN, y + barH, LAYOUT.PAGE_MARGIN + cw, y + barH);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
 
@@ -1400,6 +1495,32 @@ export function addStackedSignatures(
       const a2 = ((i + 1) / segs) * 2 * Math.PI;
       doc.line(cx + circleR * Math.cos(a1), cy + circleR * Math.sin(a1),
                cx + circleR * Math.cos(a2), cy + circleR * Math.sin(a2));
+    }
+  }
+
+  // Agency seal image, faded to a stamp-like watermark tint inside the
+  // dashed circle. Previously this slot only ever rendered the words
+  // "COMPANY SEAL" with nothing inside the circle, reading as an
+  // unfinished/empty placeholder on every generated PDF. Uses the same
+  // seal PNG already loaded for the page header (getCachedSealBase64 —
+  // synchronous read of the module-level cache populated by the
+  // `await loadSealBase64()` every report generator calls up front), so
+  // no extra async work is needed inside this otherwise-sync function.
+  const cachedSealImg = getCachedSealBase64();
+  if (cachedSealImg) {
+    try {
+      // @ts-expect-error jsPDF GState — fade the seal so it reads as a
+      // translucent stamp, not a solid logo competing with the signature.
+      doc.setGState(new doc.GState({ opacity: 0.22 }));
+      const sealImgSize = circleR * 1.6;
+      doc.addImage(cachedSealImg, 'PNG', cx - sealImgSize / 2, cy - sealImgSize / 2, sealImgSize, sealImgSize);
+    } catch { /* non-fatal — falls back to the dashed circle + text label */ } finally {
+      // Restore MUST run even if addImage throws (corrupt/truncated cached
+      // seal PNG) — otherwise every subsequent draw call for the rest of
+      // the document, including later pages, stays stuck at 22% opacity
+      // (2026-07-13 fix: opacity reset was only reachable on the success path).
+      // @ts-expect-error jsPDF GState — restore full opacity for the label text
+      doc.setGState(new doc.GState({ opacity: 1.0 }));
     }
   }
 
@@ -2237,6 +2358,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
   if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - BARCODE_CLEARANCE) {
     doc.addPage();
     addConfidentialWatermark(doc);
+    if (activeVoidWatermark) addVoidWatermark(doc);
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const cw = getContentWidth(doc);
@@ -4293,6 +4415,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
     addPageFooter(doc, i, totalPages);
     if (i > 1) {
       addConfidentialWatermark(doc);
+      if (activeVoidWatermark) addVoidWatermark(doc);
     }
   }
 

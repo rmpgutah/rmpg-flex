@@ -1104,7 +1104,7 @@ records.get('/vehicles/:id/history', async (c) => {
       SELECT 'call' as source, c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_vehicles cv ON c.id = cv.call_id WHERE cv.vehicle_id = ?
       UNION ALL
       SELECT 'fi' as source, fi.id, NULL as call_number, fi.contact_reason as incident_type, fi.status, fi.created_at, fi.location FROM field_interviews fi JOIN fi_vehicles fv ON fi.id = fv.fi_id WHERE fv.vehicle_id = ?
-      ORDER BY created_at DESC LIMIT 100`,
+      ORDER BY 6 DESC LIMIT 100`,
       id, id);
     return c.json(rows);
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }

@@ -25,6 +25,7 @@ import {
   formSectionPageBreak,
   sanitizePdfText,
   finalizePoliceReport,
+  resolveSectionAccentColor,
 } from './pdfGenerator';
 import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
@@ -174,16 +175,17 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, boxH);
 
-  // Flat header: black title + thin rule below.
+  // Filled gray header bar — matches openAutoSection's styling (2026-07-13
+  // fix) so the notary block reads consistently with every other section
+  // on the affidavit instead of the old flat black-text-and-rule look.
   const barH = SPACING.SECTION_HEADER_H;
+  const notaryAccentRgb = resolveSectionAccentColor('NOTARY PUBLIC');
+  doc.setFillColor(notaryAccentRgb[0], notaryAccentRgb[1], notaryAccentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
-  const notRuleY = y + barH - 0.6;
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.line(LAYOUT.PAGE_MARGIN, notRuleY, LAYOUT.PAGE_MARGIN + cw, notRuleY);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + (barH + getCapHeight(FONT.SIZE_SECTION_TITLE)) / 2);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   let ny = y + barH + SPACING.LG + 2;
