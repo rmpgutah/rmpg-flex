@@ -16,6 +16,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
+import { log } from '../utils/logger';
 
 const statutes = new Hono<Env>();
 
@@ -227,7 +228,7 @@ statutes.get('/penalty/:citation', async (c) => {
       },
     });
   } catch (err) {
-    console.error('[statutes] penalty lookup error', err);
+    log.error('[statutes] penalty lookup error', {}, err);
     return c.json({ error: 'Penalty lookup failed', code: 'STATUTE_PENALTY_ERR' }, 500);
   }
 });
@@ -257,7 +258,7 @@ statutes.get('/analytics/top-charged', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
-    console.error('[statutes] top-charged error', err);
+    log.error('[statutes] top-charged error', {}, err);
     return c.json({ error: 'Top-charged lookup failed', code: 'STATUTE_TOP_CHARGED_ERR' }, 500);
   }
 });
@@ -299,7 +300,7 @@ statutes.post('/calculate-enhancement', async (c) => {
       },
     });
   } catch (err) {
-    console.error('[statutes] enhancement calculation error', err);
+    log.error('[statutes] enhancement calculation error', {}, err);
     return c.json({ error: 'Enhancement calculation failed', code: 'STATUTE_ENHANCEMENT_ERR' }, 500);
   }
 });
@@ -326,7 +327,7 @@ statutes.post('/compare', async (c) => {
       })),
     });
   } catch (err) {
-    console.error('[statutes] compare error', err);
+    log.error('[statutes] compare error', {}, err);
     return c.json({ error: 'Statute comparison failed', code: 'STATUTE_COMPARE_ERR' }, 500);
   }
 });
