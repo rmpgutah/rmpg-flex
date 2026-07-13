@@ -1196,19 +1196,28 @@ calls.post('/:id/resume', async (c) => {
 // reconcileSchema()/columnExists() before inserting; this route lives in a
 // different module, so it repeats the same runtime guard rather than
 // assuming 0158 has landed on every environment that reaches this handler.
-async function ensureReportIssueColumns(db: Awaited<ReturnType<typeof getDb>>): Promise<void> {
-  for (const [name, type] of [
-    ['priority', "TEXT NOT NULL DEFAULT 'normal'"],
-    ['call_id', 'INTEGER'],
-    ['unit_id', 'INTEGER'],
-    ['reported_by_user_id', 'INTEGER'],
-  ] as const) {
-    try {
-      if (!(await columnExists(db, 'work_orders', name))) {
-        await execute(db, `ALTER TABLE work_orders ADD COLUMN ${name} ${type}`);
+// Latched to a single worker-lifetime Promise (mirrors workOrders.ts's
+// schemaReconciled flag) so the 4 columnExists pragma round-trips only run
+// once per isolate instead of on every report-issue request.
+let reportIssueColsReady: Promise<void> | null = null;
+function ensureReportIssueColumns(db: Awaited<ReturnType<typeof getDb>>): Promise<void> {
+  if (!reportIssueColsReady) {
+    reportIssueColsReady = (async () => {
+      for (const [name, type] of [
+        ['priority', "TEXT NOT NULL DEFAULT 'normal'"],
+        ['call_id', 'INTEGER'],
+        ['unit_id', 'INTEGER'],
+        ['reported_by_user_id', 'INTEGER'],
+      ] as const) {
+        try {
+          if (!(await columnExists(db, 'work_orders', name))) {
+            await execute(db, `ALTER TABLE work_orders ADD COLUMN ${name} ${type}`);
+          }
+        } catch (err) { log.warn('[calls] report-issue reconcile column', { column: name, error: (err as Error)?.message }); }
       }
-    } catch (err) { log.warn('[calls] report-issue reconcile column', { column: name, error: (err as Error)?.message }); }
+    })();
   }
+  return reportIssueColsReady;
 }
 
 // POST /dispatch/calls/:id/report-issue — create a mechanical work order
