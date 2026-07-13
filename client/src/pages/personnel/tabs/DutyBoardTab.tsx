@@ -18,9 +18,13 @@ interface Props {
   timeEntries: TimeEntry[];
   credentials: Credential[];
   onOfficerClick: (officer: OfficerWithStatus) => void;
+  onClockIn: (officerId: string) => void;
+  onClockOut: (officerId: string) => void;
+  onStartBreak: (officerId: string) => void;
+  onEndBreak: (officerId: string) => void;
 }
 
-export default function DutyBoardTab({ officers, timeEntries, credentials, onOfficerClick }: Props) {
+export default function DutyBoardTab({ officers, timeEntries, credentials, onOfficerClick, onClockIn, onClockOut, onStartBreak, onEndBreak }: Props) {
   const [dutyFilter, setDutyFilter] = useState<DutyFilter>('all');
 
   const filtered = useMemo(() => {
@@ -121,21 +125,25 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
           {filtered.map((officer) => {
             const isOnDuty = officer.status === 'on_duty';
             const activeEntry = activeEntryMap.get(officer.id);
+            const onBreak = activeEntry?.status === 'on_break';
             const alertCount = credAlertMap.get(officer.id) || 0;
 
             return (
-              <button type="button"
+              <div
                 key={officer.id}
                 role="listitem"
-                onClick={() => onOfficerClick(officer)}
                 onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
-                className={`panel-beveled p-3 text-left transition-all duration-200 hover:brightness-110 hover:shadow-lg border-l-2 border-t-2 focus:outline-none focus:ring-1 focus:ring-brand-500/50 ${
+                className={`panel-beveled p-3 text-left transition-all duration-200 hover:brightness-110 hover:shadow-lg border-l-2 border-t-2 ${
                   isOnDuty
                     ? 'border-l-green-500 border-t-green-500 bg-green-950/30'
                     : 'border-l-rmpg-600 border-t-rmpg-600 bg-surface-base'
                 }`}
-                aria-label={`${officer.last_name}, ${officer.first_name} — ${isOnDuty ? 'On Duty' : 'Off Duty'}`}
               >
+                <button type="button"
+                  onClick={() => onOfficerClick(officer)}
+                  className="block w-full text-left focus:outline-none focus:ring-1 focus:ring-brand-500/50"
+                  aria-label={`${officer.last_name}, ${officer.first_name} — ${isOnDuty ? 'On Duty' : 'Off Duty'}`}
+                >
                 <div className="flex items-start gap-2.5">
                   <OfficerAvatar officer={officer} size="sm" />
                   <div className="flex-1 min-w-0">
@@ -178,7 +186,36 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
                     </span>
                   )}
                 </div>
-              </button>
+                </button>
+
+                {/* Clock in/out + break controls — separate from the card's
+                    open-officer button above (nested <button> is invalid HTML). */}
+                <div className="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-border-default/30">
+                  {!activeEntry ? (
+                    <button type="button"
+                      onClick={(e) => { e.stopPropagation(); onClockIn(officer.id); }}
+                      className="toolbar-btn flex-1 text-[9px] px-2 py-1 text-green-400 border-green-700/50 hover:bg-green-900/30"
+                    >
+                      Clock In
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button"
+                        onClick={(e) => { e.stopPropagation(); onBreak ? onEndBreak(officer.id) : onStartBreak(officer.id); }}
+                        className="toolbar-btn flex-1 text-[9px] px-2 py-1"
+                      >
+                        {onBreak ? 'End Break' : 'Start Break'}
+                      </button>
+                      <button type="button"
+                        onClick={(e) => { e.stopPropagation(); onClockOut(officer.id); }}
+                        className="toolbar-btn flex-1 text-[9px] px-2 py-1 text-red-400 border-red-700/50 hover:bg-red-900/30"
+                      >
+                        Clock Out
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
