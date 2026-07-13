@@ -620,11 +620,12 @@ export default function DlSearchPage() {
       );
       let rows = Array.isArray(data?.data) ? data.data : [];
       // Client-side refine across the supplied fields.
-      const f = firstName.trim().toLowerCase(), l = lastName.trim().toLowerCase(), st = state;
+      const f = firstName.trim().toLowerCase(), l = lastName.trim().toLowerCase(), st = state, d = dob.trim();
       rows = rows.filter(r =>
         (!f || (r.first_name || '').toLowerCase().includes(f)) &&
         (!l || (r.last_name || '').toLowerCase().includes(l)) &&
-        (!st || r.dl_state === st));
+        (!st || r.dl_state === st) &&
+        (!d || String(r.date_of_birth || '').slice(0, 10) === d));
       setResults(rows);
       setSource('LOCAL');
       if (rows.length === 0 && fromDeepLinkRef.current) {
