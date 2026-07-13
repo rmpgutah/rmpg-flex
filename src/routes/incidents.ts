@@ -90,7 +90,7 @@ incidents.get('/:id', requireRole(...READ_ROLES), async (c) => {
          LEFT JOIN persons op ON v.owner_person_id = op.id
          WHERE cv.call_id = ? ORDER BY cv.added_at DESC LIMIT 500`, callId) : [],
       query<Record<string, unknown>>(db,
-        'SELECT * FROM evidence WHERE incident_id = ? ORDER BY created_at DESC', id),
+        'SELECT * FROM evidence WHERE incident_id = ? ORDER BY created_at DESC LIMIT 500', id),
       callId ? queryFirst<{ incident_type: string; created_at: string }>(db,
         'SELECT incident_type, created_at FROM calls_for_service WHERE id = ?', callId) : null,
     ]);
