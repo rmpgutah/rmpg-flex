@@ -2612,8 +2612,6 @@ fleet.delete('/damage/:id', async (c) => {
 
 // ═══════════════════════════════════════════════════════════════
 // RECALLS CRUD (Features 130-139)
-// Note: literal routes (/recalls, /recalls/:id) registered BEFORE
-// parameterized /:id/recalls so Hono matches exact paths first.
 // ═══════════════════════════════════════════════════════════════
 
 fleet.get('/recalls', async (c) => {
