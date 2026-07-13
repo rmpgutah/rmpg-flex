@@ -14,11 +14,15 @@ name: "CodeQL"
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     - cron: "17 8 * * 1" # weekly, Monday 08:17 UTC
   workflow_dispatch:
+  # Intentionally NOT on pull_request — the 3-language matrix (javascript-
+  # typescript/python/actions, 30min timeout each) was running on every PR
+  # in addition to push:main + the weekly schedule. Findings now surface
+  # post-merge (push:main) and weekly instead of pre-merge, trading a little
+  # shift-left signal for a lot less per-PR CI noise. Re-add pull_request
+  # here if you want pre-merge CodeQL gating back.
 
 # Least-privilege default; the analyze job opts into security-events: write.
 permissions:

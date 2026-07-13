@@ -3,11 +3,13 @@ name: "Security & Quality"
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     - cron: "17 8 * * 1"  # Weekly Monday 8:17am UTC
   workflow_dispatch:
+  # Intentionally NOT on pull_request — this duplicated pr-tests.yml's
+  # client-build job on every PR. npm audit + build canary now run
+  # post-merge (push:main) and weekly instead; pr-tests.yml already gates
+  # every PR on a real client build via vite.
 
 # Least-privilege GITHUB_TOKEN (CWE-275). This job only runs `npm audit` and a
 # client build canary — it reads the repo and uploads nothing back to GitHub.
