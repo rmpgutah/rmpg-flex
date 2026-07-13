@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FleetVehicleDetail } from '../routes/VehicleDetailRoute';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
@@ -25,7 +25,7 @@ export function OverviewTab({ vehicle }: { vehicle: FleetVehicleDetail }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+    apiFetchV2<{ conflicts: Record<string, unknown>[] }>(
       `/fleetio/conflicts?table=fleet_vehicles&id=${vehicle.id}`,
     )
       .then((r) => {

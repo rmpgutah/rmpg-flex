@@ -5,7 +5,7 @@ import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { useFleetWideFanOut, vehicleLabel } from '../shell/useFleetWideFanOut';
 import { safeDateStr } from '../../../../utils/dateUtils';
-import { apiFetch } from '../../../../hooks/useApi';
+import { apiFetchV2 } from '../hooks/apiFetchV2';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
@@ -31,7 +31,7 @@ export function ServiceRoute() {
     const key = ids.join(',');
     if (!ids.length || key === fetchedIds.current) return;
     fetchedIds.current = key;
-    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+    apiFetchV2<{ conflicts: Record<string, unknown>[] }>(
       `/fleetio/conflicts?table=fleet_maintenance&ids=${ids.join(',')}`,
     )
       .then((r) => {
