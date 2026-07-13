@@ -35,9 +35,16 @@ export function DashboardRoute() {
 
   useEffect(() => {
     let cancelled = false;
+    // directWorker: true — the rmpgutah.us proxy dispatcher (rmpg-api-proxy)
+    // has served stale/empty payloads for this endpoint (verified live: proxy
+    // GET returned {fleet_summary:{total_vehicles:0}} with no fuel_summary/
+    // cost_per_mile_ranking, while api.rmpgutah.us directly returned the real
+    // data), so every card here silently read as empty. Same workaround
+    // pattern as the POST /records/businesses dispatcher bug documented in
+    // useApi.ts.
     Promise.allSettled([
-      apiFetchV2<AnalyticsResp>('/fleet/analytics?period=90d'),
-      apiFetchV2<OverdueAlert[]>('/fleet/overdue-inspections'),
+      apiFetchV2<AnalyticsResp>('/fleet/analytics?period=90d', { directWorker: true }),
+      apiFetchV2<OverdueAlert[]>('/fleet/overdue-inspections', { directWorker: true }),
     ]).then(([a, o]) => {
       if (cancelled) return;
       if (a.status === 'fulfilled') setAnalytics(a.value);
