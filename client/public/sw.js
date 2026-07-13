@@ -194,9 +194,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Third-party telemetry/analytics beacons that some operator networks (DNS
+// sinkhole / ad blocker / corporate proxy) block outright. mapboxLoader.ts
+// previously tried to redirect these via `mapboxgl.config.EVENTS_URL = ...`,
+// but in mapbox-gl v3 EVENTS_URL is a read-only *getter* derived from
+// API_URL — the assignment silently no-ops (threw in the try/catch, which
+// swallowed it as if config were unwritable). Squelch the noise here
+// instead: short-circuit these requests with an empty 204 before they ever
+// hit the network, so a blocked beacon can't spam the console with
+// `net::ERR_CONNECTION_REFUSED`. Purely cosmetic — neither beacon affects
+// app functionality.
+const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn', 'static.cloudflareinsights.com'];
+
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  if (TELEMETRY_HOSTS.includes(url.hostname)) {
+    event.respondWith(new Response(null, { status: 204 }));
+    return;
+  }
 
   // Never cache API calls, WebSocket, POST requests, or external map tiles
   if (
