@@ -41,7 +41,7 @@
     "@types/uuid": "^10.0.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
-    "wrangler": "^4.107.0"
+    "wrangler": "^4.110.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"
