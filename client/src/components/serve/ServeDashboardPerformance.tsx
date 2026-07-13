@@ -40,10 +40,11 @@ export default function ServeDashboardPerformance() {
   const [deadlines, setDeadlines] = useState<DeadlineJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduleAnalytics, setScheduleAnalytics] = useState<{ summary: { total_attempts: number; success_rate: number }; by_day_of_week: Record<string, { total: number; served: number }>; by_hour: Record<string, { total: number; served: number }> } | null>(null);
+  const hasData = useRef(false);
 
   const refetch = useCallback(async () => {
     try {
-      if (!summary) setLoading(true);
+      if (!hasData.current) setLoading(true);
       // Each call fails independently — one broken endpoint must not blank
       // the whole widget (previously schedule-analytics 400ing rejected the
       // shared Promise.all and wiped summary/officers/deadlines too).
@@ -53,7 +54,7 @@ export default function ServeDashboardPerformance() {
         apiFetch<DeadlineJob[]>('/serve/deadlines?days=7').catch(() => null),
         apiFetch<any>('/serve/schedule-analytics?start_date=' + new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).catch(() => null),
       ]);
-      if (sum) setSummary(sum);
+      if (sum) { setSummary(sum); hasData.current = true; }
       if (rates) setOfficers(rates.officers ?? []);
       if (dl) setDeadlines(dl);
       // Only accept a well-formed payload — an error-shaped or empty response
@@ -64,7 +65,7 @@ export default function ServeDashboardPerformance() {
     } finally {
       setLoading(false);
     }
-  }, [summary]);
+  }, []);
 
   useEffect(() => { refetch(); }, [refetch]);
 

@@ -5549,7 +5549,12 @@ a:focus-visible {
 }
 
 /* --- 13. FORM INPUT GLOBAL CONSISTENCY ---
-   Force ALL form controls to Spillman CAD input style. */
+   Force ALL form controls to Spillman CAD input style.
+   Wrapped in :where() (zero specificity) so this blanket reset never outranks
+   a component/utility class like .pl-7 — without it, the plain type-selector's
+   specificity beat icon-padding utilities and clobbered every search-icon
+   input's left padding app-wide (icon overlapped the placeholder text). */
+:where(
 input[type="text"],
 input[type="number"],
 input[type="email"],
@@ -5561,7 +5566,8 @@ input[type="date"],
 input[type="datetime-local"],
 input[type="time"],
 textarea,
-select {
+select
+) {
   border-radius: 2px !important;
   font-size: 12px;
   background: var(--surface-sunken) !important;
