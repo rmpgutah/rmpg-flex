@@ -84,6 +84,20 @@ export default function MobilePsoCfsPage() {
   const [psoServedTo, setPsoServedTo] = useState<string>('');
   const [psoNotes, setPsoNotes] = useState<string>('');
   const [psoSaved, setPsoSaved] = useState(false);
+  const [psoFieldsSeeded, setPsoFieldsSeeded] = useState(false);
+
+  // Seed the PSO form from the loaded call exactly once, so a re-opened
+  // page (or a status update elsewhere resetting `call`) shows the
+  // attempt #/result/served-to that were already saved server-side,
+  // instead of always starting blank. Guarded to run once so it doesn't
+  // clobber the officer's in-progress edits on a later refresh.
+  useEffect(() => {
+    if (!call || psoFieldsSeeded) return;
+    if (call.pso_attempt_number != null) setPsoAttempt(String(call.pso_attempt_number));
+    if (call.process_service_result) setPsoResult(call.process_service_result);
+    if (call.process_served_to) setPsoServedTo(call.process_served_to);
+    setPsoFieldsSeeded(true);
+  }, [call, psoFieldsSeeded]);
 
   // Step 1: challenge the QR token
   useEffect(() => {
@@ -198,6 +212,8 @@ export default function MobilePsoCfsPage() {
           body: JSON.stringify(body),
         });
         if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'PSO save failed'); }
+        const data = await r.json();
+        setCall(data.call);
       }
       // PSO service notes go through the narrative-append endpoint so we don't
       // clobber the shared `notes` column. Prefix with a tag so it's clear in

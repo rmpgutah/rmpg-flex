@@ -23,20 +23,18 @@ if (mapboxgl.accessToken.startsWith('sk.')) {
   mapboxgl.accessToken = '';
 }
 
-// Redirect Mapbox SDK telemetry POSTs (turnstile/map.load/style.load/etc.) away
-// from events.mapbox.com to a same-origin sink that returns 204. Some operator
-// networks block events.mapbox.com (DNS sinkhole / ad blocker / corporate
-// proxy), and the SDK's retry-on-frame logic then spammed the dispatch console
-// with massive `net::ERR_CONNECTION_REFUSED` stack traces. Pages proxies
-// /api/* to the Worker, so a relative URL works for both web SPAs and the
-// Electron desktop wrapper.
-// Wrapped in try/catch because some unit-test mocks expose `config` as a
-// getter-only descriptor; the redirect is a cosmetic console-noise fix, not
-// load-bearing, so failing silently in tests is safe.
-try {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (mapboxgl as any).config.EVENTS_URL = '/api/mapbox/events/v2';
-} catch { /* mock object without writable config — ignore */ }
+// NOTE: an earlier version of this file tried to redirect Mapbox SDK
+// telemetry POSTs (turnstile/map.load/style.load/etc.) away from
+// events.mapbox.com via `mapboxgl.config.EVENTS_URL = '/api/mapbox/events/v2'`.
+// That never worked — in mapbox-gl v3, EVENTS_URL is a read-only *getter*
+// derived from API_URL, so the assignment threw and was silently absorbed by
+// a try/catch (added on the mistaken assumption unit-test mocks were the only
+// thing that could reject it). Some operator networks block events.mapbox.com
+// (DNS sinkhole / ad blocker / corporate proxy) and the SDK's retry-on-frame
+// logic then spams the console with `net::ERR_CONNECTION_REFUSED` stack
+// traces. Since there's no supported client-side way to redirect the events
+// endpoint, the beacon is squelched at the network layer instead — see the
+// TELEMETRY_HOSTS short-circuit in public/sw.js.
 
 // NOTE: PMTiles is NOT read client-side via addProtocol — Mapbox GL JS (unlike
 // MapLibre) has no addProtocol. The statewide overlays are served as native

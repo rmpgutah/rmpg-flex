@@ -347,8 +347,8 @@ export default function EvidencePropertyPage() {
       setChainModalOpen(false);
       setChainNotes('');
       fetchItems({ silent: true });
-      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
-      setSelected(updated.data);
+      const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
+      if (updated) setSelected(updated.data || updated);
     } catch (err: any) {
       addToast(err?.message || 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
@@ -395,8 +395,8 @@ export default function EvidencePropertyPage() {
       setReleaseTo('');
       setReleaseReason('');
       fetchItems({ silent: true });
-      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
-      setSelected(updated.data);
+      const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
+      if (updated) setSelected(updated.data || updated);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setReleaseSubmitting(false); }
   };
@@ -418,8 +418,8 @@ export default function EvidencePropertyPage() {
       });
       addToast(action === 'approve' ? 'Release approved' : 'Release denied', 'success');
       fetchItems({ silent: true });
-      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
-      setSelected(updated.data);
+      const updated = await apiFetch<any>(`/records/evidence/${selected.id}`);
+      if (updated) setSelected(updated.data || updated);
     } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
     finally { setReleaseSubmitting(false); }
   };
