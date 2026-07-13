@@ -625,7 +625,7 @@ export default function DlSearchPage() {
         (!f || (r.first_name || '').toLowerCase().includes(f)) &&
         (!l || (r.last_name || '').toLowerCase().includes(l)) &&
         (!st || r.dl_state === st) &&
-        (!d || r.date_of_birth === d));
+        (!d || String(r.date_of_birth || '').slice(0, 10) === d));
       setResults(rows);
       setSource('LOCAL');
       if (rows.length === 0 && fromDeepLinkRef.current) {
