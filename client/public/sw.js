@@ -194,17 +194,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Third-party telemetry/analytics beacons that some operator networks (DNS
-// sinkhole / ad blocker / corporate proxy) block outright. mapboxLoader.ts
-// previously tried to redirect these via `mapboxgl.config.EVENTS_URL = ...`,
-// but in mapbox-gl v3 EVENTS_URL is a read-only *getter* derived from
-// API_URL — the assignment silently no-ops (threw in the try/catch, which
-// swallowed it as if config were unwritable). Squelch the noise here
-// instead: short-circuit these requests with an empty 204 before they ever
-// hit the network, so a blocked beacon can't spam the console with
-// `net::ERR_CONNECTION_REFUSED`. Purely cosmetic — neither beacon affects
-// app functionality.
-const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn', 'static.cloudflareinsights.com'];
+// Third-party telemetry beacons that some operator networks (DNS sinkhole /
+// ad blocker / corporate proxy) block outright. mapboxLoader.ts previously
+// tried to redirect these via `mapboxgl.config.EVENTS_URL = ...`, but in
+// mapbox-gl v3 EVENTS_URL is a read-only *getter* derived from API_URL — the
+// assignment silently no-ops (threw in the try/catch, which swallowed it as
+// if config were unwritable). Squelch the noise here instead: short-circuit
+// these requests with an empty 204 before they ever hit the network, so a
+// blocked beacon can't spam the console with `net::ERR_CONNECTION_REFUSED`.
+// Purely cosmetic — these are fetch()/XHR POSTs with no Subresource
+// Integrity check, so an empty synthetic body is safe.
+//
+// static.cloudflareinsights.com/beacon.min.js is deliberately NOT here —
+// Cloudflare auto-injects that <script> tag with an `integrity="sha512-…"`
+// attribute. A script load DOES enforce SRI, so answering it with an empty
+// body doesn't silence the console — it swaps ERR_CONNECTION_REFUSED for a
+// more confusing "Failed to find a valid digest in the integrity attribute"
+// block (confirmed: the browser's reported hash is the SHA-512 of an empty
+// string, i.e. our synthetic response). Net effect is identical either way
+// (script never loads), so just let it fail its normal, less confusing way.
+const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
 
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
