@@ -2326,7 +2326,7 @@ export default function ForensicLabPage() {
             <span className="text-rmpg-400 font-bold uppercase tracking-wider">Workload</span>
             <div className="flex items-center gap-1">
               <span className="text-rmpg-500">Cases/Examiner:</span>
-              <span className="text-rmpg-100 font-bold font-mono">{stats.total > 0 ? Math.ceil(stats.total / Math.max(1, Object.keys(stats.by_type).length || 1)) : 0}</span>
+              <span className="text-rmpg-100 font-bold font-mono">{stats.total > 0 ? Math.ceil(stats.total / Math.max(1, Object.keys(stats.by_type || {}).length || 1)) : 0}</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-rmpg-500">Queue Depth:</span>
