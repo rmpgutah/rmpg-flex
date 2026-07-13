@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
@@ -138,7 +139,15 @@ export default function DocumentViewer({
 
   if (!isOpen) return null;
 
-  return (
+  // Portaled to document.body — this is a page-level modal that must cover
+  // the full viewport regardless of ancestors. Rendered inline (as it was
+  // before), any ancestor with an active CSS transform (e.g. .spm-page's
+  // page-enter animation, which non-none transforms even at rest per a few
+  // browsers' timing quirks) becomes position:fixed's containing block
+  // instead of the viewport, trapping this modal inside that ancestor's box
+  // — it then renders squeezed into the content area instead of full-screen,
+  // interleaved with whatever's underneath instead of covering it.
+  return createPortal(
     <div className="fixed inset-0 z-[9998] flex flex-col bg-black/95" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }}>
       {/* Toolbar — z-index above iframe to ensure clicks register */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0 relative z-10">
@@ -287,6 +296,7 @@ export default function DocumentViewer({
             : `Zoom: ${zoom}%`}
         </span>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
