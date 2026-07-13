@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 import { log } from '../../utils/logger';
 import { recordAudit } from '../../utils/auditLog';
+import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const calls = new Hono<Env>();
@@ -1190,13 +1191,36 @@ calls.post('/:id/resume', async (c) => {
   catch (err) { return c.json({ error: 'Resume failed' }, 500); }
 });
 
+// Columns work_orders gained in migration 0158_work_orders_scheduling.sql.
+// workOrders.ts's own create path guards these via its module-private
+// reconcileSchema()/columnExists() before inserting; this route lives in a
+// different module, so it repeats the same runtime guard rather than
+// assuming 0158 has landed on every environment that reaches this handler.
+async function ensureReportIssueColumns(db: Awaited<ReturnType<typeof getDb>>): Promise<void> {
+  for (const [name, type] of [
+    ['priority', "TEXT NOT NULL DEFAULT 'normal'"],
+    ['call_id', 'INTEGER'],
+    ['unit_id', 'INTEGER'],
+    ['reported_by_user_id', 'INTEGER'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'work_orders', name))) {
+        await execute(db, `ALTER TABLE work_orders ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { log.warn('[calls] report-issue reconcile column', { column: name, error: (err as Error)?.message }); }
+  }
+}
+
 // POST /dispatch/calls/:id/report-issue — create a mechanical work order
 // for the vehicle assigned to this call. DispatchPage.tsx's "Report Issue"
 // toolbar button posts here; the call's first assigned unit resolves to a
 // fleet vehicle via units.vehicle_id (a vehicle_number string, not the
 // fleet_vehicles.id the work_orders table wants — same lookup units.ts's
-// GET / does for the reverse join).
-calls.post('/:id/report-issue', async (c) => {
+// GET / does for the reverse join). Role-gated to match sibling call
+// mutations (assign-unit, dispatch, redispatch); emits the same Fleet.io
+// outbound event workOrders.ts's canonical create path does, so work orders
+// created from this shortcut still sync instead of silently diverging.
+calls.post('/:id/report-issue', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1223,13 +1247,28 @@ calls.post('/:id/report-issue', async (c) => {
       return c.json({ error: 'Assigned vehicle not found in fleet records', code: 'NO_VEHICLE' }, 400);
     }
 
+    await ensureReportIssueColumns(db);
+
     const summary = body.summary || `Mechanical issue reported from Call #${call.call_number ?? id}`;
     const result = await execute(db,
       `INSERT INTO work_orders (vehicle_id, status, summary, priority, call_id, unit_id, reported_by_user_id, created_by)
        VALUES (?, 'open', ?, 'normal', ?, ?, ?, ?)`,
       vehicle.id, summary, Number(id), unitId, userId, userId);
 
-    return c.json({ data: { id: result.meta.last_row_id } }, 201);
+    const workOrderId = Number(result.meta.last_row_id);
+    const created = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM work_orders WHERE id = ?', workOrderId);
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'work_order.create', created, {
+          rmpgTable: 'work_orders',
+          rmpgId: workOrderId,
+          versionToken: `work_order.create:${workOrderId}:${Date.now()}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
+    return c.json({ data: { id: workOrderId } }, 201);
   } catch (err) {
     log.error('POST /dispatch/calls/:id/report-issue failed', { id: c.req.param('id') }, err as Error);
     return dbErrorResponse(c, err, 'Failed to report issue');
