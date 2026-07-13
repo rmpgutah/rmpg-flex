@@ -4,4 +4,12 @@
 -- so POST /inmates silently dropped it — no classification was ever
 -- persisted, and the Stats tab's "By Classification" breakdown had
 -- nothing to group by.
+--
+-- NOT idempotent with the runtime latch: src/routes/jail.ts's
+-- ensureClassificationColumn() also ADD COLUMNs this at runtime on the
+-- first POST/PUT /inmates if this migration hasn't landed yet. SQLite
+-- ALTER has no IF NOT EXISTS, so if the runtime latch fires first,
+-- applying this migration afterward errors with "duplicate column name"
+-- — expected and safe to skip (scripts/apply-migration.sh should treat
+-- that error as a no-op, not a failure needing investigation).
 ALTER TABLE inmates ADD COLUMN classification TEXT;
