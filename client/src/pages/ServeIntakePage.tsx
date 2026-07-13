@@ -48,6 +48,13 @@ interface UploadedFile {
   size?: number;          // bytes (File.size)
   pages?: number;         // PDF page count (pdfjs numPages); undefined for images
   lastModified?: number;  // File.lastModified epoch ms
+  // Set when the server-side field-extraction call for this PDF (scanPdfOcr)
+  // failed or timed out. `status` alone can't signal this: it's set to
+  // 'extracted' at upload time purely from whether pdfjs found a text layer
+  // client-side, before scanPdfOcr's async server round-trip even starts, so
+  // a later server-side failure previously left the checkmark showing green
+  // with zero indication the fields were never actually extracted.
+  ocrScanFailed?: boolean;
 }
 
 // A PDF whose pdfjs text layer yields fewer than this many characters is
@@ -565,14 +572,21 @@ export default function ServeIntakePage() {
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
+        return;
+      }
       const scanResult: OcrScanResult = await resp.json();
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
         ));
       }
-    } catch { /* best-effort pre-fill — silent on error */ }
+    } catch {
+      // Network/timeout failure — still surface it rather than silently
+      // leaving a false-positive "extracted" checkmark (see ocrScanFailed doc).
+      setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
+    }
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
@@ -1038,7 +1052,11 @@ export default function ServeIntakePage() {
                   {(f.ocrResult.confidence * 100).toFixed(0)}%
                 </span>
               )}
-              {f.status === 'extracted' ? (
+              {f.ocrScanFailed ? (
+                <span title="Server-side field extraction failed or timed out — verify/enter this document's fields manually">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                </span>
+              ) : f.status === 'extracted' ? (
                 <CheckCircle className="w-3.5 h-3.5 text-green-500" />
               ) : (
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
