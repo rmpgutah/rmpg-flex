@@ -591,6 +591,18 @@ sv.put('/bulk-status', async (c) => {
      WHERE id IN (${placeholders})`
   ).bind(status, ...ids).run();
 
+  // Bill served jobs — every other path to status='served' (single-attempt
+  // logAttempt, the substitute-service shortcut) calls generateServeCharges;
+  // this bulk path updated status directly and skipped it, so batch "Mark
+  // Served" silently never billed. Best-effort like the other call sites —
+  // generateServeCharges swallows its own errors so a billing hiccup can't
+  // break the status update that already committed.
+  if (status === 'served') {
+    for (const id of ids) {
+      await generateServeCharges(db, id).catch(() => {});
+    }
+  }
+
   // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
   if (status === 'served' || status === 'failed') {
     const affected = await query<{ id: number }>(

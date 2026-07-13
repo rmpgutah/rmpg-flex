@@ -112,6 +112,7 @@ export default function ServeSkipTracePanel({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SkipTraceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // Reset state when panel opens or job changes
@@ -124,23 +125,37 @@ export default function ServeSkipTracePanel({
     );
     setResult(null);
     setError(null);
+    setNotice(null);
     setHistoryOpen(false);
   }, [isOpen, job.id]);
 
   const runLookup = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setNotice(null);
     setResult(null);
     try {
-      const data = await apiFetch<SkipTraceResult>(
-        `/api/process-server/${job.id}/skip-trace`,
+      // /api/process-server is the same router as /api/serve — neither
+      // defines a skip-trace route. The real handler lives at
+      // /api/serve-intake/:id/skip-trace, but it only logs the search
+      // (serve_skip_traces audit row) — there's no automated third-party
+      // vendor lookup wired up yet (still listed as deferred in
+      // src/routes/serve.ts's header comment), so it never returns
+      // persons/phones/addresses/employment. Log the search instead of
+      // pretending a lookup ran, rather than 404ing outright.
+      const data = await apiFetch<{ success: boolean; id: number }>(
+        `/api/serve-intake/${job.id}/skip-trace`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: searchName, address: searchAddress }),
+          body: JSON.stringify({ search_type: 'manual', search_query: `${searchName} ${searchAddress}`.trim() }),
         },
       );
-      setResult(data);
+      if (data?.success) {
+        setNotice('Search logged. Automated skip-trace lookup isn’t available yet — use manual research methods and add any found addresses below.');
+      } else {
+        setError('Skip trace lookup failed');
+      }
       onLookupComplete?.();
     } catch (err: any) {
       setError(err?.message || 'Skip trace lookup failed');
@@ -223,7 +238,7 @@ export default function ServeSkipTracePanel({
               {loading ? 'Running Lookup...' : 'Run Lookup'}
             </button>
             <p className="text-[10px] text-rmpg-500 text-center">
-              Skip trace lookups may incur charges
+              Logs a manual search attempt — no automated vendor lookup is wired up yet
             </p>
           </div>
 
@@ -232,6 +247,14 @@ export default function ServeSkipTracePanel({
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-sm">
               <AlertTriangle size={14} />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* Notice (search logged, no automated vendor lookup available) */}
+          {notice && (
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-[#d4a017] bg-[#d4a017]/10 border border-[#d4a017]/30 rounded-sm">
+              <CheckCircle2 size={14} />
+              <span>{notice}</span>
             </div>
           )}
 
