@@ -56,7 +56,7 @@ function readVar(varName: string): string {
  *  `rgb(r,g,b)`/`rgba(r,g,b,a)` syntax — the modern space-separated CSS4 form
  *  (`rgb(r g b)`, which Tailwind's `rgb(var(--x)/<alpha-value>)` tokens use)
  *  fails with "color expected" and blanks the map. */
-function getThemeColorRgb(varName: string, alpha?: number): string {
+export function getThemeColorRgb(varName: string, alpha?: number): string {
   const triplet = readVar(varName) || FALLBACK_RGB[varName] || '0 0 0';
   const parts = triplet.split(/\s+/).join(', ');
   return alpha != null ? `rgba(${parts}, ${alpha})` : `rgb(${parts})`;

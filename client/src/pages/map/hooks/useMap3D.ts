@@ -26,6 +26,7 @@ import type mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
 import { devWarn } from '../../../utils/devLog';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import { getThemeColorRgb } from '../../../utils/mapboxBasemap';
 
 const DEM_SOURCE = 'mapbox-dem';
 const SKY_LAYER = 'rmpg-sky';
@@ -91,7 +92,7 @@ export function buildingColorRamp(isLight: boolean): mapboxgl.ExpressionSpecific
   if (isLight) {
     return [
       'interpolate', ['linear'], ['get', 'height'],
-      0, 'var(--rmpg-300)',
+      0, getThemeColorRgb('--rmpg-300-rgb'),
       40, '#bdbdbd',
       120, '#a6a6a6',
       280, '#9a958a',

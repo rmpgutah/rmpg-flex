@@ -47,7 +47,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
-import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { applyRmpgBasemap, getThemeColorRgb } from '../utils/mapboxBasemap';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -1205,7 +1205,7 @@ export default function ServePage() {
           type: 'line',
           source: sourceId,
           paint: {
-            'line-color': 'rgb(var(--rmpg-500-rgb))',
+            'line-color': getThemeColorRgb('--rmpg-500-rgb'),
             'line-opacity': 0.8,
             'line-width': 3,
           },
