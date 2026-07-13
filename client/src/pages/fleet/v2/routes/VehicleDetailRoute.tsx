@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
+import { toDisplayLabel } from '../../../../utils/formatters';
 import { OverviewTab } from '../vehicleDetail/OverviewTab';
 import { ServiceTab } from '../vehicleDetail/ServiceTab';
 import { InspectionsTab } from '../vehicleDetail/InspectionsTab';
@@ -133,7 +134,7 @@ export function VehicleDetailRoute() {
             </div>
           </div>
           <div className="px-2 py-1 text-[10px] rounded-sm bg-rmpg-700 text-rmpg-50">
-            {(vehicle.status ?? 'unknown').replace(/_/g, ' ').toUpperCase()}
+            {toDisplayLabel(vehicle.status ?? 'unknown').toUpperCase()}
           </div>
         </div>
         <div role="tablist" aria-label="Vehicle tabs" className="mt-3 flex gap-1 overflow-x-auto">
