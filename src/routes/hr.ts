@@ -125,6 +125,7 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user') as { id: number; role: string };
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -140,6 +141,10 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
     if (status && LEAVE_STATUSES.has(status)) {
       where.push('lr.status = ?');
       params.push(status);
+    }
+    if (type && LEAVE_TYPES.has(type)) {
+      where.push('lr.type = ?');
+      params.push(type);
     }
 
     const sql = `
@@ -620,6 +625,7 @@ hr.get('/reviews', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user') as { id: number; role: string };
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -633,6 +639,10 @@ hr.get('/reviews', requireRole(...ALL_ROLES), async (c) => {
     if (status && REVIEW_STATUSES.has(status)) {
       where.push('pr.status = ?');
       params.push(status);
+    }
+    if (type && REVIEW_TYPES.has(type)) {
+      where.push('pr.type = ?');
+      params.push(type);
     }
 
     const sql = `

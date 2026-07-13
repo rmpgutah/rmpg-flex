@@ -302,8 +302,12 @@ const AuditLogPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchLogs, fetchStats]);
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters change — skip the mount-time firing (the
+  // Initial load effect above already fetches once; without this guard
+  // page===1 on mount made this effect fetch a second time immediately).
+  const filtersEffectMountedRef = useRef(false);
   useEffect(() => {
+    if (!filtersEffectMountedRef.current) { filtersEffectMountedRef.current = true; return; }
     if (page !== 1) {
       setPage(1);
     } else {
