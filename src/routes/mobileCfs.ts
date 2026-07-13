@@ -135,7 +135,8 @@ mobileCfs.get('/cfs/:id/challenge', async (c) => {
     }
     const call = await queryFirst<Record<string, unknown>>(getDb(c.env),
       `SELECT c.id, c.call_number, c.incident_type, c.location_address AS location,
-              e.pso_service_type, c.contract_id, c.status, c.priority, c.created_at
+              e.pso_service_type, c.contract_id, c.status, c.priority, c.created_at,
+              e.pso_attempt_number, e.process_service_result, e.process_served_to
          FROM calls_for_service c
          LEFT JOIN calls_for_service_ext e ON e.id = c.id
         WHERE c.id = ?`, callId);
