@@ -2564,25 +2564,6 @@ fleet.delete('/tires/:id', async (c) => {
 // DAMAGE RECORDS CRUD (Features 120-129)
 // ═══════════════════════════════════════════════════════════════
 
-fleet.get('/:id/damage', async (c) => {
-  try {
-    const vehicleId = Number(c.req.param('id'));
-    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_damage WHERE vehicle_id = ? ORDER BY reported_date DESC', vehicleId);
-    return c.json(rows);
-  } catch (err) { console.error('GET /fleet/:id/damage failed:', err); return c.json([]); }
-});
-
-fleet.post('/:id/damage', async (c) => {
-  try {
-    const vehicleId = Number(c.req.param('id'));
-    const db = getDb(c.env);
-    const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
-    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
-    return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/damage failed:', err); return dbErrorResponse(c, err, 'Failed'); }
-});
-
 fleet.put('/damage/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'));
@@ -2672,24 +2653,6 @@ fleet.put('/recalls/:id', async (c) => {
 fleet.delete('/recalls/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_recalls WHERE id = ?', id); return c.json({ success: true }); }
   catch (err) { console.error('DELETE /fleet/recalls/:id failed:', err); return dbErrorResponse(c, err, 'Failed'); }
-});
-
-fleet.get('/:id/recalls', async (c) => {
-  try {
-    const vehicleId = Number(c.req.param('id'));
-    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_recalls WHERE vehicle_id = ? ORDER BY issue_date DESC', vehicleId);
-    return c.json(rows);
-  } catch (err) { console.error('GET /fleet/:id/recalls failed:', err); return c.json([]); }
-});
-
-fleet.post('/:id/recalls', async (c) => {
-  try {
-    const vehicleId = Number(c.req.param('id'));
-    const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
-    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
-    return c.json(created, 201);
-  } catch (err) { console.error('POST /fleet/:id/recalls failed:', err); return dbErrorResponse(c, err, 'Failed'); }
 });
 
 // ═══════════════════════════════════════════════════════════════
