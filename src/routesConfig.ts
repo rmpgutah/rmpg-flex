@@ -238,7 +238,6 @@ import mapbox from './routes/mapbox';
 // Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
-import mapboxTelemetry from './routes/mapboxTelemetry';
 // Driving events — powers the Dashcam AI Console. Was never mounted, causing
 // every /api/driving-events/* call to 404 (ForensicDashcamPlayer, etc.).
 import drivingEvents from './routes/drivingEvents';
@@ -619,13 +618,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // table (migration 0078). Ported from legacy Express handler.
   { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
     note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
-
-  // ── Mapbox telemetry sink (public; longer prefix wins) ─────
-  // Registered BEFORE /api/mapbox so the trie matches this prefix first.
-  // mapboxLoader points mapboxgl.config.EVENTS_URL here so SDK POSTs land
-  // on a 204 instead of events.mapbox.com (which some operator networks block).
-  { prefix: '/api/mapbox/events', router: mapboxTelemetry, auth: 'public',
-    note: 'Mapbox SDK telemetry sink — POST /v2 returns 204, swallows the payload' },
 
   // ── Mapbox server-side proxy ───────────────────────────────
   // Backs client/src/utils/mapboxServices.ts (geocode/directions/isochrone/
