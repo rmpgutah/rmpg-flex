@@ -9,6 +9,7 @@ export function CostsTab({ vehicleId }: { vehicleId: number }) {
   const [accessories, setAccessories] = useState<CostRow[]>([]);
   const [other, setOther] = useState<CostRow[]>([]);
   const [costPerMile, setCostPerMile] = useState<number | null>(null);
+  const [failedCategories, setFailedCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +31,13 @@ export function CostsTab({ vehicleId }: { vehicleId: number }) {
       if (cpm.status === 'fulfilled' && cpm.value && typeof cpm.value.cost_per_mile === 'number') {
         setCostPerMile(cpm.value.cost_per_mile);
       }
+      const failed: string[] = [];
+      if (i.status === 'rejected') failed.push('Insurance');
+      if (l.status === 'rejected') failed.push('Loans');
+      if (a.status === 'rejected') failed.push('Accessories');
+      if (o.status === 'rejected') failed.push('Other costs');
+      if (cpm.status === 'rejected') failed.push('Cost per mile');
+      setFailedCategories(failed);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -44,10 +52,17 @@ export function CostsTab({ vehicleId }: { vehicleId: number }) {
     { title: 'Other costs', rows: other },
   ];
   const allEmpty = sections.every((s) => s.rows.length === 0) && costPerMile == null;
-  if (allEmpty) return <div className="p-4 text-sm text-rmpg-400">No costs recorded for this vehicle.</div>;
+  if (allEmpty && failedCategories.length === 0) {
+    return <div className="p-4 text-sm text-rmpg-400">No costs recorded for this vehicle.</div>;
+  }
 
   return (
     <div className="p-4 space-y-4">
+      {failedCategories.length > 0 ? (
+        <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-300">
+          Couldn't load: {failedCategories.join(', ')}. Other sections below may be incomplete.
+        </div>
+      ) : null}
       {costPerMile != null ? (
         <div className="rounded-sm border border-rmpg-700 bg-surface-raised px-3 py-2 text-[11px]">
           <span className="text-rmpg-400">Cost / mile · </span>
