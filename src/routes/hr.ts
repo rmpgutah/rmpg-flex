@@ -246,7 +246,7 @@ hr.get('/leave/balances', requireRole(...ALL_ROLES), async (c) => {
 
     const officers = await query<{ id: number; full_name: string }>(
       db,
-      `SELECT id, full_name FROM users WHERE ${officerWhere} ORDER BY full_name`,
+      `SELECT id, full_name FROM users u WHERE ${officerWhere} ORDER BY full_name`,
       ...officerParams
     );
 
