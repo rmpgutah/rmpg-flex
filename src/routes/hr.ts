@@ -446,6 +446,8 @@ hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user');
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
+    const severity = c.req.query('severity');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -457,6 +459,8 @@ hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
       where.push('dr.officer_id = ?'); params.push(Number(officerId));
     }
     if (status && DISC_STATUSES.has(status)) { where.push('dr.status = ?'); params.push(status); }
+    if (type && DISC_TYPES.has(type)) { where.push('dr.type = ?'); params.push(type); }
+    if (severity && DISC_SEVERITIES.has(severity)) { where.push('dr.severity = ?'); params.push(severity); }
 
     const sql = `
       SELECT dr.*, o.full_name AS officer_name, i.full_name AS issuer_name
