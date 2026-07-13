@@ -720,12 +720,6 @@ export default function AdminPage() {
       ],
     },
     {
-      category: 'AI & Intelligence',
-      tabs: [
-        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
-      ],
-    },
-    {
       category: 'Communications',
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
