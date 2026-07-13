@@ -316,6 +316,14 @@ function generateBlankPersonForm(doc: jsPDF) {
 
   // Flags
   { const sec = openAutoSection(doc, 'Flags & Status', y); y = sec.contentY;
+    // addCheckboxField draws its box 1.8mm ABOVE the y it's given, but
+    // SECTION_CONTENT_PAD (the gap contentY already includes below the
+    // header bar) is only 1.2mm — without extra clearance the checkbox top
+    // edge lands 0.6mm INTO the section header bar, worse now that the bar
+    // is a filled gray fill (2026-07-13 header-color fix) rather than
+    // plain text. Matches the +2/+2.5 offset convention used at the other
+    // checkbox-right-after-a-header call sites in this file family.
+    y += 2;
     const lx = getLeftX();
     const colW = getFullFieldWidth(doc) / 4;
     addCheckboxField(doc, 'Sex Offender', false, lx, y);
@@ -386,6 +394,12 @@ function generateBlankVehicleForm(doc: jsPDF) {
     y = row3(doc, 'Registration Expiry', 'Insurance Company', 'Policy Number', y);
     const lx = getLeftX();
     const colW = getFullFieldWidth(doc) / 4;
+    // addCheckboxField draws its box 1.8mm ABOVE the y it's given, but
+    // row3()/addFieldPair's returned y sits only 0.4mm below its own
+    // underline rule — with zero gap here the checkbox box overlapped that
+    // underline outright (same bug class fixed on citation's Appearance
+    // Required checkbox, 2026-07-13). SPACING.XL clears it.
+    y += SPACING.XL;
     addCheckboxField(doc, 'Commercial Vehicle', false, lx, y);
     addCheckboxField(doc, 'HAZMAT', false, lx + colW, y);
     y += 6;

@@ -323,7 +323,13 @@ export const SPACING = {
   FIELD_ROW_HEIGHT:   2.0,   // Value area height (condensed 2026-05-31: 2.8 → 2.0)
   FIELD_ROW_ADVANCE:  2.0,   // Y-advance after field row (condensed 2026-05-31: 2.8 → 2.0)
 
-  SIGNATURE_BOX_H:    20,    // Signature block total height
+  // Signature block total height. Must match addSignatureBlock()'s real
+  // default total (roleBarH 4 + sigRowH 12 + infoRowH 8 = 24) when no
+  // override row heights are passed — was declared 20, 4mm short, so the
+  // three checkPageBreak() reservations in servePdfGenerator.ts let a
+  // signature block spill into the footer/barcode clearance zone on long
+  // officer names or notary text (2026-07-13 fix).
+  SIGNATURE_BOX_H:    24,    // Signature block total height
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
   SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
