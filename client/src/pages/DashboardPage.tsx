@@ -2993,18 +2993,18 @@ export default function DashboardPage() {
           onSubmit={async (callData: any) => {
             try {
               const body = {
-                call_type: callData.call_type || 'other',
-                priority: callData.priority || 'routine',
-                location: callData.location || '',
+                incident_type: callData.incident_type || 'other',
+                priority: callData.priority || 'P3',
+                location_address: callData.location || '',
                 latitude: callData.latitude ?? null,
                 longitude: callData.longitude ?? null,
                 description: callData.description || '',
                 caller_name: callData.caller_name || '',
                 caller_phone: callData.caller_phone || '',
-                nature_of_call: callData.nature_of_call || '',
+                source: callData.source || 'phone',
                 contract_id: callData.contract_id || null,
                 zone_beat: callData.zone_beat || null,
-                section_id: callData.section_id ?? null,
+                sector_id: callData.sector_id ?? null,
                 zone_id: callData.zone_id ?? null,
                 beat_id: callData.beat_id ?? null,
                 weapons_involved: callData.weapons_involved || null,
