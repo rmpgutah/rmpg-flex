@@ -635,9 +635,17 @@ body.fx-noise::after {
   body.fx-bloom * { text-shadow: none; }
 }
 
-/* Table row entrance animation (staggered) */
+/* Table row entrance animation (staggered). No `both` — same
+   transform-containing-block trap as page-fade-in/stagger-* (see notes
+   above), and here it's worse: it would apply to nearly every data-table
+   row app-wide, many of which render a "..." row-action menu as a
+   position:fixed dropdown. `<tr>` can't use margin (table rows ignore it
+   per the CSS box model), so instead of substituting a margin-based
+   translate, just drop the fill-mode — the row's resting style is already
+   opacity:1 without it, so this is visually identical once the animation
+   ends. */
 .table-dark tbody tr {
-  animation: fade-in 0.2s ease-out both;
+  animation: fade-in 0.2s ease-out;
 }
 
 /* Smooth hover glow for interactive panels */
