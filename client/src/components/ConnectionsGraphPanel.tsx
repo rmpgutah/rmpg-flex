@@ -4,6 +4,7 @@ import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';
 import { humanizeRelationship, linkSentence } from '../utils/recordLinks';
 import { recordTypeLabel } from '../utils/recordTypeLabel';
+import { NODE_COLORS, NODE_RADIUS } from '../utils/connectionsGraphStyle';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -30,46 +31,6 @@ interface GraphEdge {
   /** Humanized relationship ("Owner") for the edge tooltip sentence. */
   relationship?: string;
 }
-
-// ── Color map per node type ──────────────────────────────────
-
-const NODE_COLORS: Record<string, string> = {
-  person: '#d4a017',
-  incident: '#f59e0b',
-  vehicle: '#10b981',
-  property: '#8b5cf6',
-  business: '#f59e0b',
-  evidence: '#ef4444',
-  case: '#d4a017',
-  warrant: '#dc2626',
-  citation: '#fbbf24',
-  arrest: '#ef4444',
-  field_interview: '#64748b',
-  trespass_order: '#a855f7',
-  serve_job: '#14b8a6',
-  call: '#22d3ee',
-  report: '#ec4899',
-  intel_report: '#e879f9',
-};
-
-const NODE_RADIUS: Record<string, number> = {
-  person: 28,
-  incident: 18,
-  vehicle: 16,
-  property: 16,
-  business: 16,
-  evidence: 16,
-  case: 16,
-  warrant: 18,
-  citation: 16,
-  arrest: 18,
-  field_interview: 14,
-  trespass_order: 16,
-  serve_job: 16,
-  call: 18,
-  report: 14,
-  intel_report: 18,
-};
 
 // ── Force simulation (simple spring + repulsion) ─────────────
 
