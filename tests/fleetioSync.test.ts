@@ -612,13 +612,20 @@ describe('applyOutbound', () => {
     const adapterOk = {
       async createVehicle() { throw new Error('nu'); }, async updateVehicle() { throw new Error('nu'); },
       async archiveVehicle() { throw new Error('nu'); },
-      async createFuelEntry(args: { payload: Record<string, unknown> }) { sent = args.payload; return { id: 1 } as never; },
+      async createFuelEntry(args: { payload: Record<string, unknown> }) { sent = args.payload; return { id: 55555 } as never; },
       async createWorkOrder() { throw new Error('nu'); },
     };
-    const r1 = await applyOutbound({ db: makeDb(stateLinked).db, adapter: adapterOk as never, config: stubConfig });
+    const linkedHarness = makeDb(stateLinked);
+    const r1 = await applyOutbound({ db: linkedHarness.db, adapter: adapterOk as never, config: stubConfig });
     expect(r1.completed).toBe(1);
     expect(sent!.vehicle_id).toBe(99999);
     expect(sent!.gallons).toBe(12.4);
+    // Regression: fuel_entry/create must record a fleetio_links row so a
+    // subsequent /fleetio/pull dedup query sees this entry and doesn't
+    // insert a duplicate local row for the same remote fill-up.
+    expect(stateLinked.links).toContainEqual({
+      rmpg_table: 'fleet_fuel_log', rmpg_id: 100, fleetio_id: 55555,
+    });
 
     // Orphan case
     const stateOrphan: FleetTables = {

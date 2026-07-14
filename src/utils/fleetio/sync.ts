@@ -266,7 +266,9 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
   if (row.resource === 'fuel_entry' && row.action === 'create') {
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
     if (translated == null) return null;       // parent vehicle not linked yet
-    return deps.adapter.createFuelEntry({ payload: translated });
+    const created = await deps.adapter.createFuelEntry({ payload: translated });
+    await recordLink(deps.db, 'fleet_fuel_log', row.resource_id, 'fuel_entries', created.id, now(deps));
+    return created;
   }
   if (row.resource === 'work_order' && row.action === 'create') {
     const existing = await lookupFleetioId(deps.db, 'work_orders', row.resource_id);
@@ -278,11 +280,12 @@ async function dispatchOutbound(row: FleetioEventRow, deps: ApplyOutboundDeps): 
     return created;
   }
   if (row.resource === 'fuel_entry' && row.action === 'update') {
-    // No fleetio_links row for `fuel_entries` today — fuel rows are emit-create,
-    // not bidirectionally seeded. Until a future PR adds explicit linking, we
-    // can't PATCH a remote row we never recorded. No-op so the queue doesn't
-    // pile up; the original create already pushed the row to Fleet.io with the
-    // accurate values.
+    // Fuel entries created after this fix have a `fleetio_links` row (recorded
+    // by the create branch above), and pulled-in entries get one too via
+    // /fleetio/pull's own INSERT OR IGNORE — so this guard is mainly defensive
+    // for rows that predate the fix or otherwise never got linked. No-op so
+    // the queue doesn't pile up in that edge case; the original create (or
+    // pull) already reflects the accurate values.
     const fleetioId = await lookupFleetioId(deps.db, 'fleet_fuel_log', row.resource_id);
     if (!fleetioId) return null;
     const translated = await translateOutboundFks(deps.db, 'fuel_entry', filteredPayload);
