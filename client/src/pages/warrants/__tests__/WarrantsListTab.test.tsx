@@ -65,6 +65,7 @@ function renderTab(props: Partial<typeof baseProps> = {}) {
 describe('WarrantsListTab', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.spyOn(useApiModule, 'apiFetch').mockResolvedValue({ warrants: [], total: 0 });
   });
 
