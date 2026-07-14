@@ -652,6 +652,14 @@ bodycamVideosRouter.post('/:id/transcribe', async (c) => {
     if (!audio || typeof audio === 'string' || !(audio instanceof Blob)) {
       return c.json({ error: 'audio file is required' }, 400);
     }
+    // ~50MB — generous for even a long clip's audio-only track (bodycam clips
+    // can run many minutes, unlike the short radio PTT bursts this helper was
+    // originally built for); guards against buffering an oversized blob into
+    // memory and hitting the isolate's memory ceiling (OOM).
+    const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
+    if (audio.size > MAX_AUDIO_BYTES) {
+      return c.json({ error: 'Audio file too large for transcription', maxBytes: MAX_AUDIO_BYTES }, 413);
+    }
 
     const db = getDb(c.env);
     await ensureBodycamArtifactColumns(db);
