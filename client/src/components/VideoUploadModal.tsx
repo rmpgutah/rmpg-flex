@@ -9,6 +9,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 import { captureVideoThumbnail } from '../utils/videoThumbnail';
+import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
 interface Props {
@@ -225,7 +226,7 @@ export default function VideoUploadModal({
       formData.append('officer_id', String(resolvedOfficerId));
       formData.append('classification', classification);
       if (duration != null) formData.append('duration_seconds', String(duration));
-      if (recordedAt) formData.append('recorded_at', recordedAt);
+      if (recordedAt) formData.append('recorded_at', mtDatetimeLocalToUtc(recordedAt));
       if (caseNumber) formData.append('case_number', caseNumber);
       if (notes) formData.append('notes', notes);
 
@@ -343,7 +344,7 @@ export default function VideoUploadModal({
           officer_id: resolvedOfficerId,
           title,
           duration_seconds: duration,
-          recorded_at: recordedAt || undefined,
+          recorded_at: recordedAt ? mtDatetimeLocalToUtc(recordedAt) : undefined,
           case_number: caseNumber || undefined,
           classification,
           notes: notes || undefined,

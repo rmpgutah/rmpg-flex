@@ -4,7 +4,7 @@
  * Every date/time display in the Fleet module should use these functions
  * to ensure a consistent 24-hour format with seconds.
  */
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, toDatetimeLocalValue } from '../../../utils/dateUtils';
 
 /**
  * Format an ISO date string as military time: "YYYY-MM-DD HH:MM:SS"
@@ -43,34 +43,24 @@ export function formatMilitaryDate(isoString: string | undefined | null): string
 }
 
 /**
- * Get current local datetime in the format expected by `<input type="datetime-local">`.
- * Returns "YYYY-MM-DDTHH:MM:SS" (the 'T' separator is required by the input).
+ * Get the current Mountain-Time wall clock in the format expected by
+ * `<input type="datetime-local">` ("YYYY-MM-DDTHH:MM"). Uses the same
+ * MT-display convention as the rest of the app (see dateUtils.ts) rather
+ * than the raw device timezone.
  */
 export function nowLocalISO(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const MM = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${yyyy}-${MM}-${dd}T${hh}:${mm}:${ss}`;
+  return toDatetimeLocalValue(new Date().toISOString());
 }
 
 /**
- * Normalise a stored date string into the format datetime-local inputs expect.
- * Handles "YYYY-MM-DD" (date-only) by appending "T00:00:00", and
- * "YYYY-MM-DD HH:MM:SS" (space-separated) by replacing the space with 'T'.
+ * Convert a stored (UTC) date string into a Mountain-Time datetime-local
+ * input value. Thin re-export of the app's canonical helper — kept as a
+ * named Fleet-module function so existing call sites don't need to change
+ * their import path. On save, convert back with mtDatetimeLocalToUtc()
+ * (imported directly from dateUtils.ts at the call site).
  */
 export function toDatetimeLocal(d: string | undefined | null): string {
-  if (!d) return '';
-  // Already has 'T' separator — good for datetime-local
-  if (d.includes('T')) return d;
-  // Space-separated ISO (from SQLite) → replace with T
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(d)) return d.replace(' ', 'T');
-  // Date-only → append midnight
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return `${d}T00:00:00`;
-  return d;
+  return toDatetimeLocalValue(d);
 }
 
 /**

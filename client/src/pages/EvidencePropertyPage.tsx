@@ -29,7 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Constants ─────────────────────────────────────────
@@ -365,6 +365,7 @@ export default function EvidencePropertyPage() {
         method: 'POST',
         body: JSON.stringify({
           ...newEvidence,
+          collected_date: newEvidence.collected_date ? mtDatetimeLocalToUtc(newEvidence.collected_date) : newEvidence.collected_date,
           incident_id: newEvidence.incident_id || undefined,
           estimated_value: newEvidence.estimated_value || undefined,
         }),

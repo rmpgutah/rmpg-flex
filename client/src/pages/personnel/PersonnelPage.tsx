@@ -37,7 +37,7 @@ import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
 import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
-import { parseTimestamp } from '../../utils/dateUtils';
+import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
 import PersonnelDashboard from './PersonnelDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
@@ -875,7 +875,10 @@ export default function PersonnelPage() {
       const original = editingVideo;
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          recorded_at: data.recorded_at ? mtDatetimeLocalToUtc(data.recorded_at) : data.recorded_at,
+        }),
       });
       await refreshBodyCameras();
       setEditingVideo(null);
@@ -885,7 +888,7 @@ export default function PersonnelPage() {
         const overlayChanged =
           original.classification !== data.classification ||
           (original.case_number || '') !== data.case_number ||
-          (original.recorded_at ? original.recorded_at.slice(0, 16) : '') !== data.recorded_at;
+          toDatetimeLocalValue(original.recorded_at) !== data.recorded_at;
         if (overlayChanged) {
           try {
             await apiFetch(`/personnel/bodycam-videos/${videoId}/reprocess`, { method: 'POST' });
