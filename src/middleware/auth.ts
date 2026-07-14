@@ -47,7 +47,8 @@ function isMediaPath(pathname: string): boolean {
     || pathname.includes('/alpr/image/')
     || pathname.includes('/full-drive/clip/')  // dashcam clip streaming (<video> can't send header)
     || pathname.endsWith('/stream')
-    || pathname.endsWith('/audio');
+    || pathname.endsWith('/audio')
+    || pathname.endsWith('/thumbnail');  // bodycam-video <img> tags (Task 4, storage-architecture phase)
 }
 
 export async function authMiddleware(c: Context, next: Next) {
