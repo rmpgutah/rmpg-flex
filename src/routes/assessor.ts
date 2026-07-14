@@ -30,20 +30,20 @@ import {
   cacheKeyParcel, cacheKeyParcels, durableKeyParcels, durableKeyParcel,
   getCached, putCached, invalidate,
 } from '../utils/sl-assessor/cache';
-import { getParcel } from '../utils/sl-assessor/client';
 import { applyParcelToRecord } from '../utils/sl-assessor/autofill';
 import {
   AssessorConfigError, AssessorHttpError, AssessorParseError, AssessorTimeoutError,
 } from '../utils/sl-assessor/types';
 import type { Parcel, ParcelSummary } from '../utils/sl-assessor/types';
 import { lookupParcelsWithFallback, lookupParcelWithFallback } from '../utils/sl-assessor/lookup';
+import { dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress } from '../utils/parcel-lookup/lookup';
 
 const app = new Hono<Env>();
 
 function handleError(c: any, e: unknown) {
-  // POST /apply still uses the legacy client.getParcel() (so it can raise
-  // typed errors that the caller might want to act on). The lookup-route
-  // handlers below NEVER throw — they always return a structured 200.
+  // POST /apply still goes through dispatchGetParcel (which can raise typed
+  // errors the caller might want to act on). The lookup-route handlers below
+  // NEVER throw — they always return a structured 200.
   if (e instanceof AssessorConfigError)
     return c.json({ ok: false, code: 'not_configured', message: e.message });
   if (e instanceof AssessorTimeoutError)
@@ -69,24 +69,70 @@ const LOOKUP_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
 app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   const address = c.req.query('address')?.trim();
   if (!address) return c.json({ ok: false, code: 'missing_address' }, 400);
-  // ?fresh=1 busts the KV cache so the next call hits the live assessor POST.
-  if (c.req.query('fresh') === '1') {
-    await Promise.all([
-      invalidate(c.env, cacheKeyParcels(address)),
-      invalidate(c.env, durableKeyParcels(address)),
-    ]);
+
+  const county = resolveCountyFromAddress(address);
+
+  // SL Co keeps its dedicated fresh/stale KV fallback chain (lookupParcelsWithFallback).
+  // The three newer counties dispatch straight to their client — no fallback-chain
+  // wrapper yet (see design doc "kept per-county-duplicated" note); revisit only if
+  // a real caching need shows up.
+  if (county === 'salt_lake') {
+    // ?fresh=1 busts the KV cache so the next call hits the live assessor POST.
+    if (c.req.query('fresh') === '1') {
+      await Promise.all([
+        invalidate(c.env, cacheKeyParcels(address)),
+        invalidate(c.env, durableKeyParcels(address)),
+      ]);
+    }
+    const r = await lookupParcelsWithFallback(c.env, address);
+    return c.json({
+      ok: r.code === 'ok',
+      parcels: r.parcels,
+      cached: r.source === 'cache' || r.source === 'stale_cache',
+      source: r.source,
+      code: r.code,
+      degraded: r.degraded,
+      manual_url: r.manual_url,
+      diagnostic: r.diagnostic,
+    });
   }
-  const r = await lookupParcelsWithFallback(c.env, address);
-  return c.json({
-    ok: r.code === 'ok',
-    parcels: r.parcels,
-    cached: r.source === 'cache' || r.source === 'stale_cache',
-    source: r.source,
-    code: r.code,
-    degraded: r.degraded,
-    manual_url: r.manual_url,
-    diagnostic: r.diagnostic,
-  });
+
+  if (county === 'unsupported') {
+    return c.json({
+      ok: false,
+      parcels: [],
+      cached: false,
+      source: 'none',
+      code: 'no_match',
+      degraded: false,
+      manual_url: '',
+      diagnostic: 'no assessor/recorder integration for this county yet',
+    });
+  }
+
+  try {
+    const parcels = await dispatchSearchByAddress(c.env, address);
+    return c.json({
+      ok: parcels.length > 0,
+      parcels,
+      cached: false,
+      source: 'direct',
+      code: parcels.length > 0 ? 'ok' : 'no_match',
+      degraded: false,
+      manual_url: '',
+    });
+  } catch (e: any) {
+    return c.json({
+      ok: false,
+      parcels: [],
+      cached: false,
+      source: 'none',
+      code: 'upstream_error',
+      degraded: false,
+      manual_url: '',
+      diagnostic: e?.message ?? 'unknown',
+    });
+  }
 });
 
 app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
@@ -139,7 +185,8 @@ app.post('/apply', async (c) => {
   let parcel: Parcel;
   try {
     const cached = await getCached<Parcel>(c.env, cacheKeyParcel(body.parcel_number));
-    parcel = cached ?? await getParcel(c.env, body.parcel_number);
+    const county = resolveCountyFromAddress((record as { address?: string }).address ?? '');
+    parcel = cached ?? await dispatchGetParcel(c.env, body.parcel_number, county);
     if (!cached) await putCached(c.env, cacheKeyParcel(body.parcel_number), parcel);
   } catch (e) { return handleError(c, e); }
 
