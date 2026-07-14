@@ -51,4 +51,14 @@ describe('aggregateAnalysis', () => {
       { flag: 'weapon_draw', timestamp: 12 },
     ]);
   });
+
+  it('handles a fully empty frames array without throwing', () => {
+    const result = aggregateAnalysis([]);
+    expect(result.frame_count).toBe(0);
+    expect(result.weapon).toBeNull();
+    expect(result.force_indicators).toBeNull();
+    expect(result.vehicles).toEqual([]);
+    expect(result.scene_types).toEqual([]);
+    expect(result.officer_safety_flags).toEqual([]);
+  });
 });

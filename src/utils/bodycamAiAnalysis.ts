@@ -41,14 +41,14 @@ export function aggregateAnalysis(frames: FrameAnalysis[], analyzedAt = ''): Ana
   const weaponFrames = frames.filter(f => f.weapon_present);
   const weapon = weaponFrames.length === 0 ? null : {
     detected: true,
-    max_confidence: Math.max(...weaponFrames.map(f => f.weapon_confidence)),
+    max_confidence: weaponFrames.reduce((m, f) => Math.max(m, f.weapon_confidence), 0),
     timestamps: weaponFrames.map(f => f.timestamp),
   };
 
   const forceFrames = frames.filter(f => f.force_indicators);
   const force_indicators = forceFrames.length === 0 ? null : {
     timestamps: forceFrames.map(f => f.timestamp),
-    max_confidence: Math.max(...forceFrames.map(f => f.force_confidence)),
+    max_confidence: forceFrames.reduce((m, f) => Math.max(m, f.force_confidence), 0),
   };
 
   const vehiclesByDescription = new Map<string, number[]>();
