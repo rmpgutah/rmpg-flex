@@ -471,6 +471,39 @@ async function markClearedWarrants(
 }
 
 /**
+ * On-demand single-person check ("Run Check Now" in the WarrantsPage person
+ * drawer). Deliberately does NOT call markClearedWarrants() — that sweep
+ * clears every utah_warrants row whose last_seen_at predates the run, which
+ * is only valid for a full-population run_id; scoping it to a run that only
+ * ever touched one person would incorrectly mass-clear everyone else's
+ * active warrants. Also doesn't write a warrant_watch_runs row — that table
+ * represents scheduled/full population runs, not per-person spot-checks.
+ */
+export async function runUtahWarrantCheckForPerson(
+  db: D1Database, personId: number,
+): Promise<{ found: number; errors: number }> {
+  const person = await queryFirst<PersonRow>(
+    db, 'SELECT id, first_name, middle_name, last_name, dob FROM persons WHERE id = ?', personId,
+  );
+  if (!person) return { found: 0, errors: 0 };
+
+  const confirmed = !!(person.dob && person.dob.trim() !== '');
+  try {
+    const fetched = await fetchWarrantsForPerson(person);
+    for (const w of fetched) {
+      await recordWarrant(db, w, person.id);
+      if (confirmed) await syncLocalWarrantRecord(db, w, person.id);
+    }
+    return { found: fetched.length, errors: 0 };
+  } catch (err) {
+    console.warn(
+      `[Utah Warrants] on-demand check for person ${personId} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { found: 0, errors: 1 };
+  }
+}
+
+/**
  * Per-person Utah warrant scan. Reads persons from D1, queries each against
  * warrants.utah.gov, records summary in warrant_watch_runs.
  *

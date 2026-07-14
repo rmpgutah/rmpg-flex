@@ -10,7 +10,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { log } from '../utils/logger';
-import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson } from '../utils/utahWarrantPoller';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
@@ -1030,6 +1030,208 @@ warrants.delete('/:id', async (c) => {
   } catch (err) {
     console.error('[warrants] delete error', err);
     return c.json({ error: 'Failed to delete warrant' }, 500);
+  }
+});
+
+// PUT /warrants/batch-update { ids: number[], status: string }
+// WarrantsPage's batch status toolbar — the route never existed, so
+// "Apply" always silently no-op'd (the button just showed a generic error).
+warrants.put('/batch-update', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids?: number[]; status?: string }>();
+    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    const status = (body.status || '').trim();
+    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
+    const placeholders = ids.map(() => '?').join(',');
+    await execute(
+      db,
+      `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+      status, ...ids,
+    );
+    return c.json({ success: true, updated: ids.length });
+  } catch (err) {
+    console.error('[warrants] batch-update error', err);
+    return c.json({ error: 'Batch update failed' }, 500);
+  }
+});
+
+// POST /warrants/bulk-archive { warrant_ids: number[] }
+// Same "never existed" gap as batch-update — reuses the archived_at column
+// the single-warrant /:id/archive route already writes.
+warrants.post('/bulk-archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrant_ids?: number[] }>();
+    const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await query<{ id: number; archived_at: string | null }>(
+      db, `SELECT id, archived_at FROM warrants WHERE id IN (${placeholders})`, ...ids,
+    );
+    const toArchive = rows.filter((r) => !r.archived_at).map((r) => r.id);
+    const skipped = rows.length - toArchive.length;
+    if (toArchive.length) {
+      const archivePlaceholders = toArchive.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${archivePlaceholders})`,
+        ...toArchive,
+      );
+    }
+    return c.json({ archived: toArchive.length, skipped });
+  } catch (err) {
+    console.error('[warrants] bulk-archive error', err);
+    return c.json({ error: 'Bulk archive failed' }, 500);
+  }
+});
+
+// POST /warrants/bulk-review { warrant_ids: number[] }
+// Stamps reviewed_at/reviewed_by (migration 0186) — same "never existed" gap.
+warrants.post('/bulk-review', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrant_ids?: number[] }>();
+    const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
+    const user = c.get('user') as { id: number } | undefined;
+    const placeholders = ids.map(() => '?').join(',');
+    await execute(
+      db,
+      `UPDATE warrants SET reviewed_at = datetime('now'), reviewed_by = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+      user?.id ?? null, ...ids,
+    );
+    return c.json({ reviewed: ids.length });
+  } catch (err) {
+    console.error('[warrants] bulk-review error', err);
+    return c.json({ error: 'Bulk review failed' }, 500);
+  }
+});
+
+// POST /warrants/ingest-utah { warrants: [{ utah_warrant_id, charges, court_name,
+//   first_name, last_name, bail_amount, offense_level, case_id, issue_date }] }
+// "Add to Local Records" from the Utah-source hit detail drawer — promotes a
+// hit the operator is looking at into the canonical warrants records table.
+// Idempotent on warrant_number so re-clicking doesn't create duplicates.
+warrants.post('/ingest-utah', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrants?: any[] }>();
+    const rows = Array.isArray(body.warrants) ? body.warrants : [];
+    if (!rows.length) return c.json({ error: 'warrants required' }, 400);
+    let inserted = 0;
+    for (const w of rows) {
+      const warrantNumber = w.utah_warrant_id || w.case_id || null;
+      const subjectName = [w.first_name, w.last_name].filter(Boolean).join(' ').trim() || null;
+      const existing = warrantNumber
+        ? await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber)
+        : null;
+      if (existing) continue; // already ingested — idempotent no-op
+      await execute(
+        db,
+        `INSERT INTO warrants (warrant_number, type, status, subject_name, offense, court, bond_amount, issued_date)
+         VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?)`,
+        warrantNumber, subjectName,
+        Array.isArray(w.charges) ? w.charges.filter(Boolean).join('; ') : (w.charges || null),
+        w.court_name ?? null, w.bail_amount ?? null, w.issue_date ?? null,
+      );
+      inserted++;
+    }
+    return c.json({ success: true, inserted, skipped: rows.length - inserted });
+  } catch (err) {
+    console.error('[warrants] ingest-utah error', err);
+    return c.json({ error: 'Failed to ingest warrant' }, 500);
+  }
+});
+
+// POST /warrants/check/:personId — "Run Check Now" in the person drawer.
+// On-demand single-person Utah warrant check (see
+// runUtahWarrantCheckForPerson's doc comment for why this can't just call
+// the population-wide runUtahWarrantScan with a filter).
+warrants.post('/check/:personId', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const personId = parseInt(c.req.param('personId'), 10);
+    if (!Number.isFinite(personId) || personId <= 0) return c.json({ error: 'Invalid person id' }, 400);
+    const result = await runUtahWarrantCheckForPerson(db, personId);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[warrants] check person error', err);
+    return c.json({ error: 'Warrant check failed' }, 500);
+  }
+});
+
+// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Feeds WarrantSummaryData for the client-side PDF generator
+// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
+// is built in the browser. bySeverity/bySource are scoped to what the local
+// `warrants` records table actually carries (no severity column exists on
+// it, and only ingested/local records count toward source counts — hits
+// still living only in utah_warrants/scraped_warrants aren't "local" yet).
+warrants.get('/summary-report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const from = c.req.query('from') || null;
+    const to = c.req.query('to') || null;
+    const dateCol = 'issued_date';
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
+    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const topCourtsWhere = where.length
+      ? `WHERE ${where.join(' AND ')} AND court IS NOT NULL`
+      : 'WHERE court IS NOT NULL';
+
+    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
+      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
+      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
+      query<{ issuing_court: string; count: number }>(
+        db,
+        `SELECT court AS issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY court ORDER BY count DESC LIMIT 10`,
+        ...params,
+      ).catch(() => []),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
+      queryFirst<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
+        ...(from ? [from] : []), ...(to ? [to] : []),
+      ),
+      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
+        db,
+        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
+          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
+        from, to,
+      ).catch(() => []),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of byStatusRows) byStatus[r.status] = r.n;
+    const byType: Record<string, number> = {};
+    for (const r of byTypeRows) byType[r.type] = r.n;
+    const scanActivity = latestRun.reduce(
+      (acc, r) => ({
+        totalScans: acc.totalScans + 1,
+        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
+        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
+      }),
+      { totalScans: 0, totalFound: 0, totalCleared: 0 },
+    );
+
+    return c.json({
+      period: { from, to },
+      byStatus,
+      byType,
+      bySeverity: {},
+      bySource: { local: newCountRow?.n ?? 0 },
+      topCourts: topCourtsRows,
+      newThisPeriod: newCountRow?.n ?? null,
+      clearedThisPeriod: clearedCountRow?.n ?? null,
+      scanActivity,
+    });
+  } catch (err) {
+    console.error('[warrants] summary-report error', err);
+    return c.json({ error: 'Failed to build summary report' }, 500);
   }
 });
 
