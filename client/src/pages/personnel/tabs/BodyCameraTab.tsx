@@ -751,6 +751,7 @@ export default function BodyCameraTab({
                             <span
                               className="flex items-center gap-0.5 text-[9px] font-mono text-amber-400 flex-shrink-0"
                               title={`${vid.detected_plate_count || 0} plate(s), ${vid.detected_face_count || 0} face(s) detected`}
+                              aria-label={`${vid.detected_plate_count || 0} plate(s), ${vid.detected_face_count || 0} face(s) detected`}
                             >
                               <ShieldOff className="w-2.5 h-2.5" aria-hidden="true" />
                               {(vid.detected_plate_count || 0) + (vid.detected_face_count || 0)}
