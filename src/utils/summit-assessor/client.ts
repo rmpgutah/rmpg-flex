@@ -38,7 +38,10 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
 }
 
 export async function searchByAddress(_env: SummitAssessorEnv, address: string): Promise<ParcelSummary[]> {
-  const url = `${SEARCH_URL}?type=address&q=${encodeURIComponent(address)}`;
+  // Callers may pass a full "street, city, state zip" address (needed for
+  // county resolution upstream) — the county site only wants the street.
+  const streetOnly = address.split(',')[0];
+  const url = `${SEARCH_URL}?type=address&q=${encodeURIComponent(streetOnly)}`;
   const res = await fetchWithTimeout(url);
   const html = await res.text();
   if (html.includes('Account Number:')) {

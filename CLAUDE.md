@@ -313,6 +313,7 @@ The app's default theme is now **Blue & Silver** (`html.theme-blue-silver`) — 
 - Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
 - ⚠️ Phase 2/3 tail: ~12k raw-hex values still live in individual components (`docs/theme-hex-audit-baseline.txt` sizes it). Shared surfaces re-theme; per-page hardcoded hex does not. When you touch a page, prefer migrating its hex to tokens.
 - Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
+  - **Exception: Warrants page** (`WarrantsPage.tsx` and its extracted tab components, see `docs/superpowers/specs/2026-07-14-warrants-page-rebuild-design.md`) — deliberately uses looser row padding and pill-shaped status badges as part of its 2026-07-14 rebuild. Don't "fix" this back to the dense rule; it's an intentional, approved exception scoped to that page.
 
 ## Testing & CI
 
