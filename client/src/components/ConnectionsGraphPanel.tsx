@@ -136,13 +136,18 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const svgRef = useRef<SVGSVGElement>(null);
 
   const fetchGraph = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({ type: 'person', id: String(personId), depth: '1' });
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
       const data = await apiFetch<{ nodes: any[]; edges: any[] }>(
-        `/connections/graph?type=person&id=${personId}&depth=1`
+        `/connections/graph?${params}`
       );
       const centerX = 300, centerY = 200;
       const newNodes: GraphNode[] = (data?.nodes || []).map((n, i) => {
@@ -192,7 +197,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [personId, personName]);
+  }, [personId, personName, dateFrom, dateTo]);
 
   useEffect(() => { fetchGraph(); }, [fetchGraph]);
 
@@ -208,6 +213,23 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
       defaultOpen={false}
     >
       <div className="relative">
+        <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
+            aria-label="Filter from date"
+          />
+          <span className="text-rmpg-500 text-xs">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
+            aria-label="Filter to date"
+          />
+        </div>
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}

@@ -543,6 +543,8 @@ async function buildGraph(
   seedType: string,
   seedId: number,
   maxDepth = 2,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<{ nodes: GNode[]; edges: GEdge[] }> {
   const nodeMap = new Map<string, GNode>();
   const edgeSet = new Set<string>();
@@ -599,7 +601,47 @@ async function buildGraph(
     }
   }
 
-  return { nodes: Array.from(nodeMap.values()), edges };
+  let nodes = Array.from(nodeMap.values());
+  if (dateFrom || dateTo) {
+    nodes = await filterNodesByDateRange(db, nodes, dateFrom, dateTo);
+    const keptKeys = new Set(nodes.map((n) => n.id));
+    const filteredEdges = edges.filter((e) => keptKeys.has(e.source) && keptKeys.has(e.target));
+    return { nodes, edges: filteredEdges };
+  }
+  return { nodes, edges };
+}
+
+// Batches by type (one query per type present in the node set, using an
+// IN(...) clause) rather than one query per node — avoids the N+1 pattern
+// a prior code review flagged in similar per-row hash-lookup code.
+// Nodes whose type has no DATE_FIELD entry (person/vehicle/property/...)
+// always pass through unfiltered.
+async function filterNodesByDateRange(
+  db: D1Database, nodes: GNode[], dateFrom?: string, dateTo?: string,
+): Promise<GNode[]> {
+  const byType = new Map<string, number[]>();
+  for (const n of nodes) {
+    if (!DATE_FIELD[n.type]) continue;
+    byType.set(n.type, [...(byType.get(n.type) || []), n.entityId]);
+  }
+  const inRange = new Set<string>();
+  for (const [type, ids] of byType) {
+    const table = TIMELINE_TABLE[type];
+    const col = DATE_FIELD[type];
+    if (!table) continue;
+    try {
+      const ph = ids.map(() => '?').join(',');
+      const conditions: string[] = [`id IN (${ph})`];
+      const params: unknown[] = [...ids];
+      if (dateFrom) { conditions.push(`${col} >= ?`); params.push(dateFrom); }
+      if (dateTo) { conditions.push(`${col} <= ?`); params.push(dateTo); }
+      const rows = await query<{ id: number }>(db, `SELECT id FROM ${table} WHERE ${conditions.join(' AND ')}`, ...params);
+      for (const r of rows) inRange.add(`${type}-${r.id}`);
+    } catch (err) {
+      console.error(`[Connections] date-filter ${type} error:`, (err as Error)?.message);
+    }
+  }
+  return nodes.filter((n) => !DATE_FIELD[n.type] || inRange.has(n.id));
 }
 
 // ── Shortest-path BFS ────────────────────────────────────────
@@ -687,7 +729,9 @@ connections.get('/graph', operational, async (c) => {
   }
 
   const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
-  const graph = await buildGraph(getDb(c.env), type, Number(id), maxDepth);
+  const dateFrom = c.req.query('date_from') || undefined;
+  const dateTo = c.req.query('date_to') || undefined;
+  const graph = await buildGraph(getDb(c.env), type, Number(id), maxDepth, dateFrom, dateTo);
   await audit(c, 'SEARCH', 'record_link', Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
   return c.json(graph);
 });
@@ -799,7 +843,19 @@ const TIMELINE_QUERY: Record<string, string> = {
 const TIMELINE_TABLE: Record<string, string> = {
   incident: 'incidents', call: 'calls_for_service', citation: 'citations', warrant: 'warrants',
   arrest: 'arrest_records', field_interview: 'field_interviews', trespass_order: 'trespass_orders',
-  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports',
+  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports', alpr_sighting: 'alpr_captures',
+};
+
+// Canonical "when did this happen" column per node type, for date-range
+// filtering. Deliberately a SUBSET of VALID_TYPES — person/vehicle/
+// property/business/etc. have no single occurrence date, so they're
+// never filtered by range (an investigator shouldn't lose a person from
+// the graph just because they're time-filtering incidents).
+const DATE_FIELD: Record<string, string> = {
+  incident: 'occurred_date', call: 'created_at', citation: 'violation_date',
+  warrant: 'issued_date', arrest: 'booking_date', field_interview: 'created_at',
+  trespass_order: 'effective_date', case: 'created_at', evidence: 'created_at',
+  intel_report: 'disseminated_at', alpr_sighting: 'created_at',
 };
 
 connections.get('/timeline', operational, async (c) => {
