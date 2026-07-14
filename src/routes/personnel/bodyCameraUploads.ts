@@ -18,8 +18,12 @@
 //                                      (auth via ?token=<JWT>)
 //
 // Storage layout in R2 (bucket: env.UPLOADS):
-//   bodycam-videos/<uuid>             finished video (referenced by
-//                                     bodycam_videos.file_path)
+//   bodycam-videos/<uuid>/original.<ext>   finished video (referenced by
+//                                           bodycam_videos.file_path)
+//   bodycam-videos/<uuid>/thumbnail.jpg    client-captured frame (see
+//                                           POST /:id/thumbnail below)
+//   bodycam-videos/<uuid>/redacted.mp4     optional redaction export
+//                                           (see src/routes/redactions.ts)
 //
 // KV session layout (24-h TTL):
 //   bodycam-upload:<r2-multipart-uploadId> → JSON UploadSession
@@ -38,6 +42,18 @@ import { dbErrorResponse } from '../../utils/dbErrors';
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
 const UPLOAD_SESSION_PREFIX = 'bodycam-upload:';
 const UPLOAD_SESSION_TTL = 86400; // 24 h
+
+// Best-effort file extension from a mime type or filename, defaulting to
+// mp4 (the overwhelming majority of BWC hardware exports H.264/mp4).
+function extFromMime(mimeType: string, fileName?: string): string {
+  const fromName = fileName?.match(/\.([a-zA-Z0-9]+)$/)?.[1];
+  if (fromName) return fromName.toLowerCase();
+  const map: Record<string, string> = {
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+    'video/x-matroska': 'mkv', 'video/3gpp': '3gp',
+  };
+  return map[mimeType.toLowerCase()] || 'mp4';
+}
 
 interface UploadSession {
   r2Key: string;
@@ -86,8 +102,9 @@ bodycamVideosRouter.post('/', async (c) => {
       return c.json({ error: 'Cannot upload for another officer' }, 403);
     }
 
-    const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
     const mimeType = file.type || 'video/mp4';
+    const videoUuid = crypto.randomUUID();
+    const r2Key = `${UPLOAD_KEY_PREFIX}${videoUuid}/original.${extFromMime(mimeType, (file as File).name)}`;
 
     await c.env.UPLOADS.put(r2Key, file.stream(), {
       httpMetadata: { contentType: mimeType },
@@ -162,7 +179,8 @@ bodycamVideosRouter.post('/upload-init', async (c) => {
       return c.json({ error: 'totalChunks must be a positive integer' }, 400);
     }
 
-    const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
+    const videoUuid = crypto.randomUUID();
+    const r2Key = `${UPLOAD_KEY_PREFIX}${videoUuid}/original.${extFromMime(mimeType, fileName)}`;
     const mp = await c.env.UPLOADS.createMultipartUpload(r2Key, {
       httpMetadata: { contentType: mimeType },
     });
