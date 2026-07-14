@@ -38,6 +38,7 @@ import {
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
 import { verifySignedResource } from '../../utils/signedAccess';
+import { transcribeTransmission } from '../../utils/aiDispatcher';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
@@ -619,6 +620,55 @@ bodycamVideosRouter.post('/:id/detections', async (c) => {
     return c.json({ success: true, detected_plate_count: plateCount, detected_face_count: faceCount, flagged: shouldFlag });
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/:id/detections failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/transcribe — client-extracted audio track, transcribed via
+// the SAME Whisper helper the AI radio dispatcher uses
+// (transcribeTransmission(), @cf/openai/whisper-large-v3-turbo). The
+// client extracts audio client-side (captureStream + MediaRecorder,
+// audio-only) after upload completes and posts it here, fire-and-forget.
+// Best-effort: a transcription failure (null result) simply leaves
+// `transcript` unset — no retry, matches the existing radio-transcription
+// failure contract.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/transcribe', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const audio = form.get('audio') as unknown as File | string | null;
+    if (!audio || typeof audio === 'string' || !(audio instanceof Blob)) {
+      return c.json({ error: 'audio file is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const audioBytes = new Uint8Array(await audio.arrayBuffer());
+    const transcript = await transcribeTransmission(c.env.AI, audioBytes);
+    if (!transcript) {
+      return c.json({ success: true, transcribed: false });
+    }
+
+    await execute(db, "UPDATE bodycam_videos SET transcript = ?, updated_at = datetime('now') WHERE id = ?", transcript, id);
+    return c.json({ success: true, transcribed: true, transcript });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/transcribe failed:', err);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
