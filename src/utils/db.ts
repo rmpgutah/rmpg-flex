@@ -137,6 +137,8 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
       plat TEXT,
       lot TEXT,
       block TEXT,
+      recorded_document_url TEXT,
+      recorded_document_type TEXT,
       raw_data_json TEXT,
       fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
       refreshed_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -178,6 +180,21 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
     try {
       if (!(await columnExists(db, table, col))) {
         await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+
+  // ── parcel_records-only columns (multi-county additions, mig 0188) ──
+  const PARCEL_RECORD_COLUMNS: Array<[string, string]> = [
+    ['recorded_document_url', 'TEXT'],
+    ['recorded_document_type', 'TEXT'],
+  ];
+  for (const [col, type] of PARCEL_RECORD_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'parcel_records', col))) {
+        await db.prepare(`ALTER TABLE parcel_records ADD COLUMN ${col} ${type}`).run();
       }
     } catch {
       // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
