@@ -61,17 +61,13 @@ table styling:
 A live mockup comparing current vs. proposed table styling was reviewed and
 approved during brainstorming (Option B — "moderate polish").
 
-**Open question to resolve during the Warrants-list-tab implementation:**
-CLAUDE.md's global style rule states table rows should be `11px`/`py-[2px]`
-dense with no pill badges ("Tables: header font-semibold 9px, py-[3px]; rows
-11px, py-[2px]. No pill badges."). The approved visual direction above
-conflicts with that rule on two points (padding, pill badges). Resolve by
-checking with the user whether this rebuild is meant to establish a new,
-looser density standard for Warrants specifically, or whether the mockup's
-spacing should be tightened to match the existing table-density rule while
-keeping the pill badges / hierarchy improvements. Do not silently deviate
-from a documented project-wide rule — surface this explicitly before or
-during the first tab's implementation.
+**Resolved:** CLAUDE.md's global style rule states table rows should be
+`11px`/`py-[2px]` dense with no pill badges. The approved visual direction
+above conflicts with that rule on two points (padding, pill badges). Decision
+(2026-07-14): Warrants is a deliberate, scoped exception — ship the mockup's
+looser padding and pill badges as-is. CLAUDE.md has been updated with an
+explicit exception note under the Tables rule so this isn't mistaken for
+drift in a future audit.
 
 ## Architecture
 
