@@ -54,6 +54,7 @@ import {
 import { buildWarrantPacketPdf } from '../../utils/warrantPacket';
 import { downloadRecordPdf } from '../../utils/recordPdfGenerator';
 import { displayUserName } from '../../utils/userDisplay';
+import type { User as UserType } from '../../types';
 import type { Warrant, UnifiedWarrant } from '../WarrantsPage';
 
 export interface WarrantsListTabHandle {
@@ -70,7 +71,7 @@ export interface WarrantsListTabHandle {
 export interface WarrantsListTabProps {
   /** Controls visibility without unmounting — see the shell-wiring task (Task 5). */
   isVisible: boolean;
-  user: { role?: string; full_name?: string; badge_number?: string } | null;
+  user: UserType | null;
   isAdminOrManager: boolean;
   isGodMode: boolean;
   canManageWarrants: boolean;
@@ -363,7 +364,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       const res = await apiFetch<any>(`/warrants/${id}`);
       const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
 
-      const printedByName = displayUserName(props.user as any);
+      const printedByName = displayUserName(props.user);
 
       const data: any = {
         ...raw,
