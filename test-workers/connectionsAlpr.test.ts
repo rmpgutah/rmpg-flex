@@ -109,6 +109,13 @@ beforeAll(async () => {
 
   await execute(db, `INSERT INTO incidents (id, incident_number, incident_type, status) VALUES (1, 'INC-1', 'burglary', 'open')`);
   await execute(db, `INSERT INTO alpr_captures (id, plate, state, lat, lng, location_text, incident_id, vehicle_record_ids) VALUES (4, '8JAR3', 'UT', 40.76, -111.89, 'Main St', 1, '[]')`);
+
+  // Collision fixture: alpr_captures and vehicle_sightings both independently
+  // AUTOINCREMENT from 1, so alpr_captures id=1 (already inserted above, for
+  // vehicle id=1 / plate 8JAR3) and a vehicle_sightings id=1 row for a
+  // COMPLETELY DIFFERENT vehicle must not be confused with each other.
+  await execute(db, `INSERT INTO vehicles_records (id, plate_number, make, model, year) VALUES (2, 'BBB222', 'Toyota', 'Camry', 2019)`);
+  await execute(db, `INSERT INTO vehicle_sightings (id, plate, state, vehicle_id, lat, lng, location_text) VALUES (1, 'BBB222', 'UT', 2, 40.71, -111.90, 'Side St')`);
 });
 
 describe('ALPR graph nodes', () => {
@@ -155,5 +162,32 @@ describe('ALPR graph nodes', () => {
     expect(alprNode).toBeTruthy();
     expect(alprNode?.label).toContain('8JAR3');
     expect(body.edges.some((e) => e.relationship === 'alpr_capture')).toBe(true);
+  });
+
+  it('does not confuse alpr_captures id=1 with vehicle_sightings id=1 for a different vehicle (id-collision regression)', async () => {
+    // vehicle id=1 → alpr_captures id=1 (plate 8JAR3). Its node id must be
+    // the POSITIVE entityId, and its label must reflect the alpr_captures
+    // row, not the colliding vehicle_sightings id=1 row (plate BBB222).
+    const res1 = await app.request('/api/connections/graph?type=vehicle&id=1&depth=1', {}, env as unknown as Record<string, unknown>);
+    expect(res1.status).toBe(200);
+    const body1 = await res1.json() as { nodes: Array<{ type: string; entityId: number; label: string }> };
+    const captureNode = body1.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 1);
+    expect(captureNode).toBeTruthy();
+    expect(captureNode?.label).toContain('8JAR3');
+    expect(captureNode?.label).not.toContain('BBB222');
+
+    // vehicle id=2 → vehicle_sightings id=1 (plate BBB222). Its node id must
+    // be the NEGATIVE entityId (-1), and its label must reflect the
+    // vehicle_sightings row, not the colliding alpr_captures id=1 row
+    // (plate 8JAR3) — this is the exact scenario that was previously
+    // broken (loadNode always checked alpr_captures first, unconditionally).
+    const res2 = await app.request('/api/connections/graph?type=vehicle&id=2&depth=1', {}, env as unknown as Record<string, unknown>);
+    expect(res2.status).toBe(200);
+    const body2 = await res2.json() as { nodes: Array<{ type: string; entityId: number; label: string; id: string }> };
+    const sightingNode = body2.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === -1);
+    expect(sightingNode).toBeTruthy();
+    expect(sightingNode?.id).toBe('alpr_sighting--1');
+    expect(sightingNode?.label).toContain('BBB222');
+    expect(sightingNode?.label).not.toContain('8JAR3');
   });
 });

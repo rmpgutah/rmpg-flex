@@ -178,20 +178,21 @@ async function loadNode(
         };
       }
       case 'alpr_sighting': {
-        // alpr_captures is the ALPR-specific record; vehicle_sightings is
-        // the older/plainer plate-log path every ALPR capture also writes
-        // to. Try alpr_captures first (richer metadata), fall back to
-        // vehicle_sightings for rows with no ALPR counterpart.
-        const cap = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM alpr_captures WHERE id = ?', id);
-        if (cap) {
+        // Positive id = alpr_captures row; negative id = vehicle_sightings
+        // row (negated to avoid colliding with alpr_captures' own
+        // independent, overlapping AUTOINCREMENT sequence — both tables
+        // start at 1, so without this encoding an alpr_sighting node could
+        // silently resolve to the WRONG table's row of the same id).
+        if (id > 0) {
+          const cap = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM alpr_captures WHERE id = ?', id);
           return {
-            label: `${cap.plate || '?'} (${cap.state || '?'}) — ${cap.location_text || 'unknown location'}`,
-            metadata: cap,
+            label: cap ? `${cap.plate || '?'} (${cap.state || '?'}) — ${cap.location_text || 'unknown location'}` : `ALPR Sighting #${id}`,
+            metadata: cap || {},
           };
         }
-        const sighting = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM vehicle_sightings WHERE id = ?', id);
+        const sighting = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM vehicle_sightings WHERE id = ?', -id);
         return {
-          label: sighting ? `${sighting.plate || '?'} (${sighting.state || '?'}) — ${sighting.location_text || 'unknown location'}` : `ALPR Sighting #${id}`,
+          label: sighting ? `${sighting.plate || '?'} (${sighting.state || '?'}) — ${sighting.location_text || 'unknown location'}` : `ALPR Sighting #${-id}`,
           metadata: sighting || {},
         };
       }
@@ -367,9 +368,11 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
         } catch (err: any) { console.error('[Connections] alpr_captures (vehicle) edges error:', err?.message); }
         try {
+          // Negate the id — see loadNode's case 'alpr_sighting' for why
+          // vehicle_sightings rows must not share the alpr_captures id space.
           for (const r of await query<any>(db,
             `SELECT id FROM vehicle_sightings WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20`, id,
-          )) add('alpr_sighting', r.id, 'alpr_capture', 'vehicle_sightings');
+          )) add('alpr_sighting', -r.id, 'alpr_capture', 'vehicle_sightings');
         } catch (err: any) { console.error('[Connections] vehicle_sightings edges error:', err?.message); }
         break;
       }
@@ -655,6 +658,11 @@ async function filterNodesByDateRange(
   const byType = new Map<string, number[]>();
   for (const n of nodes) {
     if (!DATE_FIELD[n.type]) continue;
+    // alpr_sighting nodes with a negative entityId are vehicle_sightings
+    // rows (negated to avoid colliding with alpr_captures' own id space —
+    // see loadNode's case 'alpr_sighting'). Route them to their own pass
+    // below instead of batching them against alpr_captures.
+    if (n.type === 'alpr_sighting' && n.entityId < 0) continue;
     byType.set(n.type, [...(byType.get(n.type) || []), n.entityId]);
   }
   const inRange = new Set<string>();
@@ -674,6 +682,27 @@ async function filterNodesByDateRange(
       console.error(`[Connections] date-filter ${type} error:`, (err as Error)?.message);
     }
   }
+
+  // Separate pass for vehicle_sightings-sourced alpr_sighting nodes
+  // (negative entityId). Query vehicle_sightings directly using the real
+  // (un-negated) id, but record the inRange key using the SAME nodeKey
+  // format (`${type}-${id}`) the graph builder used, i.e. with the
+  // negative id — GNode.id is literally `alpr_sighting--${realId}`.
+  const vsIds = nodes.filter((n) => n.type === 'alpr_sighting' && n.entityId < 0).map((n) => -n.entityId);
+  if (vsIds.length) {
+    try {
+      const ph = vsIds.map(() => '?').join(',');
+      const conditions: string[] = [`id IN (${ph})`];
+      const params: unknown[] = [...vsIds];
+      if (dateFrom) { conditions.push(`created_at >= ?`); params.push(dateFrom); }
+      if (dateTo) { conditions.push(`created_at <= ?`); params.push(dateTo); }
+      const rows = await query<{ id: number }>(db, `SELECT id FROM vehicle_sightings WHERE ${conditions.join(' AND ')}`, ...params);
+      for (const r of rows) inRange.add(`alpr_sighting-${-r.id}`);
+    } catch (err) {
+      console.error(`[Connections] date-filter alpr_sighting(vehicle_sightings) error:`, (err as Error)?.message);
+    }
+  }
+
   return nodes.filter((n) => !DATE_FIELD[n.type] || inRange.has(n.id));
 }
 
@@ -879,8 +908,11 @@ connections.get('/path', operational, async (c) => {
   }
   if (!VALID_TYPES.includes(fromType)) return c.json({ error: `Invalid fromType. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
   if (!VALID_TYPES.includes(toType)) return c.json({ error: `Invalid toType. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
-  if (isNaN(Number(fromId)) || Number(fromId) < 1 || isNaN(Number(toId)) || Number(toId) < 1) {
-    return c.json({ error: 'fromId and toId must be positive integers' }, 400);
+  // alpr_sighting ids may be negative — vehicle_sightings rows are encoded
+  // as -id to avoid colliding with alpr_captures' own id space (see
+  // loadNode's case 'alpr_sighting'). So only reject 0/NaN, not negatives.
+  if (!Number.isInteger(Number(fromId)) || Number(fromId) === 0 || !Number.isInteger(Number(toId)) || Number(toId) === 0) {
+    return c.json({ error: 'fromId and toId must be nonzero integers' }, 400);
   }
 
   const result = await findShortestPath(getDb(c.env), fromType, Number(fromId), toType, Number(toId));
