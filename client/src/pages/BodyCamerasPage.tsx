@@ -614,9 +614,7 @@ export default function BodyCamerasPage() {
             redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString() : '',
           ].filter(Boolean)}
           initialRegions={(() => {
-            // TODO(Task 9): switch to redactingVideo.detection_regions_json once
-            // BodyCamVideo's type gains the field — cast until then.
-            const raw = (redactingVideo as any).detection_regions_json;
+            const raw = redactingVideo.detection_regions_json;
             if (!raw) return undefined;
             try { return JSON.parse(raw); } catch { return undefined; }
           })()}

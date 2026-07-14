@@ -747,6 +747,15 @@ export default function BodyCameraTab({
                             <Video className="w-4 h-[18px] text-rmpg-600 flex-shrink-0" aria-hidden="true" />
                           )}
                           <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
+                          {((vid.detected_plate_count || 0) + (vid.detected_face_count || 0)) > 0 && (
+                            <span
+                              className="flex items-center gap-0.5 text-[9px] font-mono text-amber-400 flex-shrink-0"
+                              title={`${vid.detected_plate_count || 0} plate(s), ${vid.detected_face_count || 0} face(s) detected`}
+                            >
+                              <ShieldOff className="w-2.5 h-2.5" aria-hidden="true" />
+                              {(vid.detected_plate_count || 0) + (vid.detected_face_count || 0)}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td>
