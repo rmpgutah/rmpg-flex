@@ -10,6 +10,9 @@ import { formatPhoneInput } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import { useAssessorLookup } from '../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
+import { JurisdictionButton } from './JurisdictionButton';
+import { RecordPhotoGallery } from './RecordPhotoGallery';
+import { ParcelDetailDrawer } from './ParcelDetailDrawer';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
@@ -348,6 +351,11 @@ export default function PropertyFormModal({
               }}
               onResolveTyped={(v) => { assessor.lookup(v); }}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={form.address} recordType="property" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -823,6 +831,17 @@ export default function PropertyFormModal({
           </label>
         </div>
       </FormSection>
+
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="property" recordId={recordId} />
+          {(editingProperty as any)?.parcel_number && (
+            <div className="mt-2">
+              <ParcelDetailDrawer parcelNumber={(editingProperty as any).parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
     </FormModal>
   );
 }

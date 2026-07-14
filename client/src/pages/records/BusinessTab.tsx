@@ -24,6 +24,9 @@ import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
 import { useAssessorLookup } from '../../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from '../../components/AssessorSuggestionPanel';
+import { JurisdictionButton } from '../../components/JurisdictionButton';
+import { RecordPhotoGallery } from '../../components/RecordPhotoGallery';
+import { ParcelDetailDrawer } from '../../components/ParcelDetailDrawer';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -571,6 +574,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               onChange={e => set('address', e.target.value)}
               onBlur={e => assessor.lookup(e.target.value)}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={form.address} recordType="business" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -622,6 +630,17 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       <FormSection title="Notes" icon={FileText}>
         <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
       </FormSection>
+
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="business" recordId={recordId} />
+          {(initial as any)?.parcel_number && (
+            <div className="mt-2">
+              <ParcelDetailDrawer parcelNumber={(initial as any).parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
 
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
