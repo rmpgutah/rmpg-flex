@@ -14,6 +14,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { sha256Hex } from '../utils/apiKeys';
+import { requireApiKeyScope } from '../middleware/apiKeyAuth';
 
 const integrations = new Hono<Env>();
 
@@ -170,8 +172,7 @@ integrations.post('/keys', async (c) => {
     const raw = Array.from(rawBytes, (b) => b.toString(16).padStart(2, '0')).join('');
     const fullKey = `rmpg_ps_${raw}`;
     const keyPrefix = `rmpg_ps_${raw.slice(0, 8)}…`;
-    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fullKey));
-    const keyHash = Array.from(new Uint8Array(hashBuf), (b) => b.toString(16).padStart(2, '0')).join('');
+    const keyHash = await sha256Hex(fullKey);
 
     const scopeList = Array.isArray(body.scopes) ? JSON.stringify(body.scopes) : '["service_request"]';
     const r = await execute(
@@ -291,6 +292,142 @@ integrations.get('/keys/request-log', async (c) => {
   } catch (err) {
     console.error('[Integrations] Request log failed:', err);
     return c.json({ error: 'Failed to fetch request log' }, 500);
+  }
+});
+
+// ── Dial Connect → calls_for_service push ────────────────────
+// POST /api/integrations/calls-for-service
+//
+// Auth: NOT the JWT authMiddleware (Dial Connect is a separate service, no
+// human session) — gated by requireApiKeyScope('service_request') below,
+// over the integration_api_keys table (migration 0006). The exact path is
+// carved out of authMiddleware's isPublicAuthBypass() in src/middleware/auth.ts
+// so the JWT check never runs first (same pattern as the Fleet.io webhook).
+//
+// Field-mapping decisions (see also migrations/0184_cfs_ext_external_source_system.sql):
+//   - priority: 1|2|3 → 'P1'|'P2'|'P3'. Never emits 'P4' (that's a manual
+//     dispatcher downgrade path, not something an inbound intake call uses).
+//   - status: open→pending, dispatched→dispatched, on_scene→onscene,
+//     resolved→cleared, closed→closed (calls_for_service.status CHECK values).
+//   - incidentType passes straight through into the free-text incident_type
+//     column (no CHECK constraint on that column).
+//   - source: the calls_for_service.source CHECK constraint
+//     ('phone','radio','alarm','walk_in','email','patrol','online','dispatch',
+//     'panic','servemanager','intake','other') does NOT include 'dial_connect',
+//     and changing a CHECK requires the risky full-table rebuild that was
+//     reverted in migration 0040 (see that file's header). So we store
+//     source='other' on the base row and the real system name
+//     ('dial_connect') on calls_for_service_ext.external_source_system
+//     (migration 0184) instead — same "push overflow off the capped base
+//     table" pattern as every other _ext column.
+//   - dispatcher_id / case_id / client_id / contract_id / property_id: all
+//     nullable with no FK requirement on calls_for_service, so they're left
+//     NULL for an API-pushed call with no human dispatcher yet — no
+//     placeholder needed.
+//   - call_number: generated with the same CFS{YY}-{NNNNN} scheme
+//     src/routes/dispatch/calls.ts uses for manually-created calls, so
+//     Dial Connect calls sort into the same per-year sequence.
+//   - created_at / status default: left to the column defaults
+//     (datetime('now','localtime') / 'pending', respectively — though status
+//     is always explicit here since it's a required input).
+const VALID_INCIDENT_TYPES = new Set(['process_service', 'consultation', 'security', 'other']);
+const VALID_STATUSES = new Set(['open', 'dispatched', 'on_scene', 'resolved', 'closed']);
+const STATUS_MAP: Record<string, string> = {
+  open: 'pending',
+  dispatched: 'dispatched',
+  on_scene: 'onscene',
+  resolved: 'cleared',
+  closed: 'closed',
+};
+const PRIORITY_MAP: Record<number, string> = { 1: 'P1', 2: 'P2', 3: 'P3' };
+
+interface CallsForServiceRequestBody {
+  locationAddress?: unknown;
+  latitude?: unknown;
+  longitude?: unknown;
+  incidentType?: unknown;
+  priority?: unknown;
+  status?: unknown;
+  notes?: unknown;
+  callerName?: unknown;
+  callerPhone?: unknown;
+}
+
+integrations.post('/calls-for-service', requireApiKeyScope('service_request'), async (c) => {
+  try {
+    const body = await c.req.json<CallsForServiceRequestBody>().catch(() => ({}) as CallsForServiceRequestBody);
+
+    const locationAddress = typeof body.locationAddress === 'string' ? body.locationAddress.trim() : '';
+    if (!locationAddress) {
+      return c.json({ error: 'locationAddress is required' }, 400);
+    }
+
+    const incidentType = typeof body.incidentType === 'string' ? body.incidentType : '';
+    if (!VALID_INCIDENT_TYPES.has(incidentType)) {
+      return c.json({ error: `incidentType must be one of: ${[...VALID_INCIDENT_TYPES].join(', ')}` }, 400);
+    }
+
+    const priorityNum = typeof body.priority === 'number' ? body.priority : Number(body.priority);
+    if (!Number.isInteger(priorityNum) || !(priorityNum in PRIORITY_MAP)) {
+      return c.json({ error: 'priority must be one of: 1, 2, 3' }, 400);
+    }
+    const priority = PRIORITY_MAP[priorityNum];
+
+    const status = typeof body.status === 'string' ? body.status : '';
+    if (!VALID_STATUSES.has(status)) {
+      return c.json({ error: `status must be one of: ${[...VALID_STATUSES].join(', ')}` }, 400);
+    }
+    const mappedStatus = STATUS_MAP[status];
+
+    const latitude = body.latitude != null && body.latitude !== '' ? Number(body.latitude) : null;
+    if (latitude != null && !Number.isFinite(latitude)) {
+      return c.json({ error: 'latitude must be a number' }, 400);
+    }
+    const longitude = body.longitude != null && body.longitude !== '' ? Number(body.longitude) : null;
+    if (longitude != null && !Number.isFinite(longitude)) {
+      return c.json({ error: 'longitude must be a number' }, 400);
+    }
+
+    const notes = typeof body.notes === 'string' ? body.notes : null;
+    const callerName = typeof body.callerName === 'string' ? body.callerName : null;
+    const callerPhone = typeof body.callerPhone === 'string' ? body.callerPhone : null;
+
+    const db = getDb(c.env);
+
+    // Same CFS{YY}-{NNNNN} per-year sequence as src/routes/dispatch/calls.ts
+    // (see that file's `nextCallNumber` for the read-max-then-increment /
+    // non-atomic caveat — identical tradeoff applies here).
+    const year = new Date().getFullYear().toString().slice(-2);
+    const prefix = `CFS${year}-`;
+    const [{ max }] = await query<{ max: string | null }>(
+      db,
+      `SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?`,
+      `${prefix}%`,
+    );
+    const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+    const callNumber = `${prefix}${seq}`;
+
+    const result = await execute(
+      db,
+      `INSERT INTO calls_for_service
+         (call_number, incident_type, priority, status, caller_name, caller_phone,
+          location_address, latitude, longitude, notes, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'other')`,
+      callNumber, incidentType, priority, mappedStatus, callerName, callerPhone,
+      locationAddress, latitude, longitude, notes,
+    );
+    const id = Number(result.meta.last_row_id);
+
+    await execute(
+      db,
+      `INSERT INTO calls_for_service_ext (id, external_source_system) VALUES (?, 'dial_connect')`,
+      id,
+    );
+
+    return c.json({ id, call_number: callNumber }, 201);
+  } catch (err) {
+    console.error('[Integrations] Create calls-for-service failed:', err);
+    return c.json({ error: 'Failed to create call for service' }, 500);
   }
 });
 

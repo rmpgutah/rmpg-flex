@@ -13,15 +13,19 @@ import { activeRegionsAt, interpBox, type RedactionRegion, type RedactionKind, t
 
 const KIND_COLOR: Record<RedactionKind, string> = { plate: '#22d3ee', face: '#f472b6', person: '#a3e635', manual: '#d4a017' };
 
-export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose, source = 'dashcam' }: {
+export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose, source = 'dashcam', initialRegions }: {
   eventId: number; streamUrl: string; stampLines: string[]; onClose: () => void;
   /** Which custody-linkage field to populate: dashcam events (default) vs body-cam videos. */
   source?: 'dashcam' | 'bodycam';
+  /** Pre-scanned regions (e.g. from an automatic upload-time scan) to seed
+   *  the editor with, skipping the initial manual "Scan" click. The operator
+   *  can still click "Scan" to run a fresh pass, which replaces these. */
+  initialRegions?: RedactionRegion[];
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const [t, setT] = useState(0);
-  const [regions, setRegions] = useState<RedactionRegion[]>([]);
+  const [regions, setRegions] = useState<RedactionRegion[]>(initialRegions ?? []);
   const [scan, setScan] = useState<{ busy: boolean; frac: number }>({ busy: false, frac: 0 });
   const [render, setRender] = useState<{ busy: boolean; frac: number; phase: string } | null>(null);
   const [style, setStyle] = useState<RedactionStyle>('blur');
