@@ -272,7 +272,11 @@ export default function PropertyFormModal({
           zone_id: (editingProperty as any).zone_id || '',
           beat_id: (editingProperty as any).beat_id || '',
         };
-        setForm(initial);
+        // parcel_number isn't a declared PropertyFormData field (server-only,
+        // applied via the never-clobber assessor patch) — seed it here too so
+        // ParcelDetailDrawer shows for an already-applied record on open, not
+        // just immediately after a fresh Apply in this session.
+        setForm({ ...initial, parcel_number: (editingProperty as any).parcel_number || '' } as any);
         snapshot();
       } else {
         setForm(EMPTY_FORM);
@@ -848,9 +852,11 @@ export default function PropertyFormModal({
       {recordSaved && (
         <FormSection title="Photos & Assessor Detail" icon={FileText}>
           <RecordPhotoGallery recordType="property" recordId={recordId} />
-          {(editingProperty as any)?.parcel_number && (
+          {(form as any)?.parcel_number && (
             <div className="mt-2">
-              <ParcelDetailDrawer parcelNumber={(editingProperty as any).parcel_number} />
+              {/* form (not editingProperty) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={(form as any).parcel_number} />
             </div>
           )}
         </FormSection>

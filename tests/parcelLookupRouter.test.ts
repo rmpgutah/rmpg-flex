@@ -46,4 +46,17 @@ describe('resolveCountyFromAddress', () => {
     expect(resolveCountyFromAddress('1 Main St, PROVO, ut')).toBe('utah');
     expect(resolveCountyFromAddress('1 Main St, provo, UT')).toBe('utah');
   });
+
+  it('does not false-positive on a street name that contains a city word', () => {
+    // "Sandy Ridge Dr" must not match Salt Lake County's "sandy" via naive
+    // substring search when the actual city segment is Provo (Utah County).
+    expect(resolveCountyFromAddress('100 Sandy Ridge Dr, Provo, UT 84601')).toBe('utah');
+  });
+
+  it('returns unsupported for a city that straddles a county line (e.g. Draper)', () => {
+    // Draper spans both Salt Lake and Utah counties — silently picking one
+    // by list-priority would misroute the ~half of Draper actually in the
+    // other county, so an ambiguous city returns unsupported instead.
+    expect(resolveCountyFromAddress('1 Main St, Draper, UT 84020')).toBe('unsupported');
+  });
 });

@@ -12,6 +12,9 @@ import { processBackfillTick } from '../src/utils/sl-assessor/backfill';
 function makeFakeEnv(
   rows: Array<{ id: number; record_type: string; record_id: number; retry_count: number }>,
   jurisdictionOverride: string | null = null,
+  addressRow: { address: string; city: string | null } = {
+    address: '100 E Center St, American Fork, UT 84003', city: null,
+  },
 ) {
   const dbRows = rows;
   const db = {
@@ -33,7 +36,8 @@ function makeFakeEnv(
           if (sql.includes('FROM businesses') || sql.includes('FROM properties')) {
             return {
               id: args[0],
-              address: '100 E Center St, American Fork, UT 84003',
+              address: addressRow.address,
+              city: addressRow.city,
               jurisdiction_override: jurisdictionOverride,
             };
           }
@@ -63,5 +67,20 @@ describe('processBackfillTick — multi-county dispatch', () => {
     const env = makeFakeEnv([{ id: 1, record_type: 'business', record_id: 42, retry_count: 0 }], 'tooele');
     await processBackfillTick(env);
     expect(dispatchSearchByAddress).toHaveBeenCalledWith(env, '100 E Center St, American Fork, UT 84003', 'tooele');
+  });
+
+  it('appends the record city column to a bare street address before dispatching', async () => {
+    // County resolution needs a city to route correctly — a bare street
+    // substring-matches unreliably (see resolveCountyFromAddress). The
+    // stored `address` column often has no city baked in, unlike this
+    // test file's other fixtures.
+    (dispatchSearchByAddress as any).mockResolvedValue([]);
+    const env = makeFakeEnv(
+      [{ id: 1, record_type: 'business', record_id: 42, retry_count: 0 }],
+      null,
+      { address: '100 E Center St', city: 'American Fork' },
+    );
+    await processBackfillTick(env);
+    expect(dispatchSearchByAddress).toHaveBeenCalledWith(env, '100 E Center St, American Fork', null);
   });
 });
