@@ -4,10 +4,10 @@ import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
 import {
-  AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
-  Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
+  AlertTriangle, Plus, Search, CheckCircle, Clock,
+  Loader2, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
   PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
-  UserCheck, Eye, Pencil, ShieldAlert,
+  UserCheck, ShieldAlert,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
@@ -22,7 +22,6 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
 import JurisdictionLookup from '../components/JurisdictionLookup';
 import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
@@ -41,14 +40,8 @@ import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/r
 import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import EmailedDocuments from '../components/EmailedDocuments';
-import {
-  priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
-  stateFromSource,
-} from '../utils/warrantListHelpers';
 import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
-import { useMenuActions } from '../utils/contextMenuActions';
 import ScrapersTab from './warrants/ScrapersTab';
 import WarrantsListTab, { type WarrantsListTabHandle } from './warrants/WarrantsListTab';
 
@@ -471,26 +464,11 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
 // Component
 // ============================================================
 
-// Filter chip used in the Warrants tab list filter bar
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[var(--brand-gold)] text-black border-[var(--brand-gold)]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function WarrantsPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { openMenu } = useContextMenu();
-  const m = useMenuActions();
   const warrantFormTitleId = useId();
 
   const [searchParams, setSearchParams] = useSearchParams();
