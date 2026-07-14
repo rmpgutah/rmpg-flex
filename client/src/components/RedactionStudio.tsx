@@ -163,7 +163,10 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
           <div className="border-t border-border-default pt-2 max-h-40 overflow-auto space-y-1">
             {regions.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-2">
-                <span className="truncate" style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>
+                <span className="truncate flex items-center gap-1">
+                  <span style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>
+                  {r.source === 'deep-scan' && <span className="text-[8px] px-1 py-px border border-purple-500/60 text-purple-300 uppercase tracking-wide shrink-0">Deep</span>}
+                </span>
                 <button onClick={() => removeRegion(r.id)} aria-label="Delete region" className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}

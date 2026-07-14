@@ -17,7 +17,7 @@ export interface RedactionRegion {
   tEnd: number;
   style: RedactionStyle;
   strength: number;          // blur px radius / pixelate block size
-  source: 'auto' | 'manual';
+  source: 'auto' | 'manual' | 'deep-scan';
   enabled: boolean;
 }
 
