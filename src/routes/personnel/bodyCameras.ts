@@ -43,7 +43,12 @@ import { dbErrorResponse } from '../../utils/dbErrors';
 let _bodycamArtifactColumnsEnsured = false;
 async function ensureBodycamArtifactColumns(db: ReturnType<typeof getDb>): Promise<void> {
   if (_bodycamArtifactColumnsEnsured) return;
-  for (const [name, type] of [['thumbnail_path', 'TEXT'], ['redacted_path', 'TEXT']] as const) {
+  for (const [name, type] of [
+    ['thumbnail_path', 'TEXT'], ['redacted_path', 'TEXT'],
+    ['interaction_type', 'TEXT'], ['detected_plate_count', 'INTEGER'],
+    ['detected_face_count', 'INTEGER'], ['detection_regions_json', 'TEXT'],
+    ['transcript', 'TEXT'],
+  ] as const) {
     if (!(await columnExists(db, 'bodycam_videos', name))) {
       try { await execute(db, `ALTER TABLE bodycam_videos ADD COLUMN ${name} ${type}`); }
       catch { /* race / already present */ }
@@ -624,10 +629,11 @@ bodycamVideosRouter.put('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Video not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at'];
+    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at', 'interaction_type'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of editable) {
       if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }

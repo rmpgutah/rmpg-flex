@@ -38,6 +38,7 @@ import {
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
 import { verifySignedResource } from '../../utils/signedAccess';
+import { transcribeTransmission } from '../../utils/aiDispatcher';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
@@ -566,6 +567,116 @@ bodycamVideosRouter.get('/:id/thumbnail', async (c) => {
     });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/detections — client-side auto face/plate scan results.
+// The client runs the SAME scanClip() engine RedactionStudio uses,
+// automatically after upload (fire-and-forget, non-blocking). This
+// route stores the region JSON + counts and, ONLY if the video is
+// still at its default 'routine' classification, bumps it to
+// 'flagged' as a redact-before-sharing signal. It never downgrades
+// an already-set classification.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/detections', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const body = await c.req.json<{ regions?: unknown[] }>().catch(() => null);
+    if (!body || !Array.isArray(body.regions)) {
+      return c.json({ error: 'regions array is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number; classification: string | null }>(
+      db, 'SELECT id, classification FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const plateCount = body.regions.filter((r: any) => r?.kind === 'plate').length;
+    const faceCount = body.regions.filter((r: any) => r?.kind === 'face').length;
+    const regionsJson = JSON.stringify(body.regions);
+
+    const shouldFlag = (plateCount > 0 || faceCount > 0) && row.classification === 'routine';
+    if (shouldFlag) {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, classification = 'flagged', updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    } else {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    }
+
+    return c.json({ success: true, detected_plate_count: plateCount, detected_face_count: faceCount, flagged: shouldFlag });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/detections failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/transcribe — client-extracted audio track, transcribed via
+// the SAME Whisper helper the AI radio dispatcher uses
+// (transcribeTransmission(), @cf/openai/whisper-large-v3-turbo). The
+// client extracts audio client-side (captureStream + MediaRecorder,
+// audio-only) after upload completes and posts it here, fire-and-forget.
+// Best-effort: a transcription failure (null result) simply leaves
+// `transcript` unset — no retry, matches the existing radio-transcription
+// failure contract.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/transcribe', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const audio = form.get('audio') as unknown as File | string | null;
+    if (!audio || typeof audio === 'string' || !(audio instanceof Blob)) {
+      return c.json({ error: 'audio file is required' }, 400);
+    }
+    // ~50MB — generous for even a long clip's audio-only track (bodycam clips
+    // can run many minutes, unlike the short radio PTT bursts this helper was
+    // originally built for); guards against buffering an oversized blob into
+    // memory and hitting the isolate's memory ceiling (OOM).
+    const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
+    if (audio.size > MAX_AUDIO_BYTES) {
+      return c.json({ error: 'Audio file too large for transcription', maxBytes: MAX_AUDIO_BYTES }, 413);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const audioBytes = new Uint8Array(await audio.arrayBuffer());
+    const transcript = await transcribeTransmission(c.env.AI, audioBytes);
+    if (!transcript) {
+      return c.json({ success: true, transcribed: false });
+    }
+
+    await execute(db, "UPDATE bodycam_videos SET transcript = ?, updated_at = datetime('now') WHERE id = ?", transcript, id);
+    return c.json({ success: true, transcribed: true, transcript });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/transcribe failed:', err);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
