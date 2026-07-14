@@ -242,8 +242,8 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       if (requestedVideoId === video?.id) {
         setAnalyzing(false);
         setAnalyzeProgress(null);
+        analyzingRef.current = false;
       }
-      analyzingRef.current = false;
     }
   };
 
