@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FuelTab } from '../FuelTab';
 
 vi.mock('../../hooks/apiFetchV2', () => ({ apiFetchV2: vi.fn() }));
@@ -26,13 +26,11 @@ describe('<FuelTab>', () => {
     await screen.findByText('Maverik #5', {}, { timeout: 3000 });
     expect(screen.getByText('Sinclair')).toBeInTheDocument();
     expect(screen.getByText(/18.2/)).toBeInTheDocument();
-    cleanup();
   });
 
   it('shows average MPG header when entries have mpg values', async () => {
     render(<FuelTab vehicleId={42} />);
     await screen.findByText(/avg mpg/i, {}, { timeout: 3000 });
-    cleanup();
   });
 
   it('renders empty state', async () => {
@@ -43,7 +41,6 @@ describe('<FuelTab>', () => {
     });
     render(<FuelTab vehicleId={42} />);
     await screen.findByText(/no fuel entries/i, {}, { timeout: 3000 });
-    cleanup();
   });
 });
 
@@ -53,7 +50,6 @@ describe('FuelTab CRUD', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /new fuel entry/i })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /new fuel entry/i }));
     expect(screen.getByText(/new fuel entry/i, { selector: 'h2' })).toBeInTheDocument();
-    cleanup();
   });
 
   it('edit icon opens the modal pre-filled with the row', async () => {
@@ -61,7 +57,6 @@ describe('FuelTab CRUD', () => {
     await waitFor(() => expect(screen.getByLabelText(/edit fuel entry 1/i)).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/edit fuel entry 1/i));
     expect(screen.getByLabelText(/^date$/i)).toHaveValue('2026-06-20');
-    cleanup();
   });
 
   it('delete icon confirms then calls DELETE and refetches', async () => {
@@ -70,7 +65,6 @@ describe('FuelTab CRUD', () => {
     await waitFor(() => expect(screen.getByLabelText(/delete fuel entry 1/i)).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/delete fuel entry 1/i));
     await waitFor(() => expect(mocked).toHaveBeenCalledWith('/fleet/fuel/1', expect.objectContaining({ method: 'DELETE' })));
-    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -80,7 +74,6 @@ describe('FuelTab CRUD', () => {
     await waitFor(() => expect(screen.getByLabelText(/delete fuel entry 1/i)).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/delete fuel entry 1/i));
     expect(mocked).not.toHaveBeenCalledWith('/fleet/fuel/1', expect.objectContaining({ method: 'DELETE' }));
-    cleanup();
     vi.restoreAllMocks();
   });
 });

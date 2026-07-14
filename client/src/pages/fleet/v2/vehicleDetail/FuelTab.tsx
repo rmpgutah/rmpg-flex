@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
-import { FuelEntryModal, type FuelEntryRow } from './FuelEntryModal';
+import { FuelEntryModal } from './FuelEntryModal';
 
 interface FuelRow {
   id: number;
@@ -27,7 +27,7 @@ type ModalState = { mode: 'create' } | { mode: 'edit'; entry: FuelRow } | null;
 export function FuelTab({ vehicleId }: { vehicleId: number }) {
   const [rows, setRows] = useState<FuelRow[]>([]);
   const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [modal, setModal] = useState<ModalState>(null);
 
   const fetchConflicts = (ids: number[]) => {
@@ -56,7 +56,6 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
   };
 
   const fetchRows = useCallback(() => {
-    setLoading(true);
     apiFetchV2<FuelRow[] | { results: FuelRow[] }>(`/fleet/${vehicleId}/fuel`)
       .then((r) => {
         const arr = Array.isArray(r) ? r : (r as { results?: FuelRow[] })?.results ?? [];
@@ -64,7 +63,7 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
         fetchConflicts(arr.map((x) => x.id));
       })
       .catch(() => { setRows([]); })
-      .finally(() => { setLoading(false); });
+      .finally(() => { setInitialLoading(false); });
   }, [vehicleId]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
@@ -76,7 +75,7 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
       .catch(() => {});
   };
 
-  if (loading) return <div className="p-4 text-sm text-rmpg-400">Loading fuel history…</div>;
+  if (initialLoading) return <div className="p-4 text-sm text-rmpg-400">Loading fuel history…</div>;
 
   const avgMpg = computeAvgMpg(rows);
 
@@ -174,7 +173,7 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
         <FuelEntryModal
           vehicleId={vehicleId}
           mode="edit"
-          entry={modal.entry as FuelEntryRow}
+          entry={modal.entry}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); fetchRows(); }}
         />
