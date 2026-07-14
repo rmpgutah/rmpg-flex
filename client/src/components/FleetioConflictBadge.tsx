@@ -44,8 +44,13 @@ export default function FleetioConflictBadge({ conflict, compact, onResolved }: 
         setOpen(false);
       }
     };
+    const onScroll = () => setOpen(false);
     document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    window.addEventListener('scroll', onScroll, { capture: true });
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+    };
   }, [open]);
 
   if (effectiveResolution && effectiveResolution !== 'unresolved') {
