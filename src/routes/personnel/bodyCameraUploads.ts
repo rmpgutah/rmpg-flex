@@ -832,9 +832,22 @@ bodycamVideosRouter.post('/:id/analyze', async (c) => {
 // exactly like manually-drawn boxes today.
 // ────────────────────────────────────────────────────────────
 const DEEP_SCAN_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const DEEP_SCAN_MAX_FRAMES = 30;
+// Kept low relative to /:id/analyze's 20-frame cap: deep-scan's heavier
+// bounding-box prompt + double max_tokens (1024 vs 512) means each frame
+// costs more time, and both routes share the same 180s client timeout.
+const DEEP_SCAN_MAX_FRAMES = 18;
 // Mirrors ANALYSIS's MAX_FRAME_BYTES cap on the sibling /:id/analyze route.
 const DEEP_SCAN_MAX_FRAME_BYTES = 5 * 1024 * 1024;
+// Bounds a single frame's AI call so one anomalously slow frame can't
+// consume the whole 180s client-side request budget.
+const DEEP_SCAN_FRAME_AI_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
 
 const DEEP_SCAN_PROMPT = `You are assisting a human reviewer redacting body-worn camera footage for privacy. Look at this single video frame and identify every human FACE and every vehicle LICENSE PLATE visible, including partially visible or angled ones. Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 {
@@ -894,12 +907,16 @@ bodycamVideosRouter.post('/:id/deep-scan', async (c) => {
           continue;
         }
         const bytes = new Uint8Array(await frame.arrayBuffer());
-        const out: any = await c.env.AI.run(DEEP_SCAN_VISION_MODEL as any, {
-          image: Array.from(bytes),
-          prompt: DEEP_SCAN_PROMPT,
-          max_tokens: 1024,
-          temperature: 0.1,
-        } as any);
+        const out: any = await withTimeout(
+          c.env.AI.run(DEEP_SCAN_VISION_MODEL as any, {
+            image: Array.from(bytes),
+            prompt: DEEP_SCAN_PROMPT,
+            max_tokens: 1024,
+            temperature: 0.1,
+          } as any),
+          DEEP_SCAN_FRAME_AI_TIMEOUT_MS,
+          `deep-scan frame at ${timestamp}s`,
+        );
         const parsed = tryParseModelJson(out);
         const rawDetections: RawDeepScanDetection[] = Array.isArray(parsed?.detections) ? parsed.detections : [];
         samples.push(...parseDeepScanFrame(rawDetections, timestamp));
