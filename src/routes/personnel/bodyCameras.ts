@@ -653,9 +653,10 @@ bodycamVideosRouter.delete('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
-    const row = await queryFirst<{ id: number; file_path: string | null; retention_status: string | null; classification: string | null; case_number: string | null }>(
+    await ensureBodycamArtifactColumns(db);
+    const row = await queryFirst<{ id: number; file_path: string | null; thumbnail_path: string | null; redacted_path: string | null; retention_status: string | null; classification: string | null; case_number: string | null }>(
       db,
-      'SELECT id, file_path, retention_status, classification, case_number FROM bodycam_videos WHERE id = ?',
+      'SELECT id, file_path, thumbnail_path, redacted_path, retention_status, classification, case_number FROM bodycam_videos WHERE id = ?',
       id,
     );
     if (!row) return c.json({ error: 'Video not found' }, 404);
@@ -675,10 +676,15 @@ bodycamVideosRouter.delete('/:id', async (c) => {
       }, 409);
     }
 
-    // Storage failure must not block the metadata delete.
-    if (row.file_path && (c.env as { UPLOADS?: R2Bucket }).UPLOADS) {
-      try { await (c.env as { UPLOADS: R2Bucket }).UPLOADS.delete(row.file_path); }
-      catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
+    // Storage failure must not block the metadata delete. Remove every
+    // artifact under this video's prefix (original + thumbnail + redacted).
+    const uploads = (c.env as { UPLOADS?: R2Bucket }).UPLOADS;
+    if (uploads) {
+      for (const key of [row.file_path, row.thumbnail_path, row.redacted_path]) {
+        if (!key) continue;
+        try { await uploads.delete(key); }
+        catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
+      }
     }
     await execute(db, 'DELETE FROM bodycam_videos WHERE id = ?', id);
 
