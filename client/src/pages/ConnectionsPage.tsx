@@ -14,6 +14,7 @@ import { exportGraphToPdf } from '../utils/graphToPdf';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
+import ConnectionsMapPanel from '../components/ConnectionsMapPanel';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -58,6 +59,7 @@ interface SimEdge {
 // types — but the 3 hues that DO match sev (brand gold, sev-warn, sev-
 // critical) stay perceptually consistent with the rest of the app.
 const NODE_COLORS: Record<string, string> = {
+  alpr_sighting:   '#06b6d4', // cyan-500 (ALPR plate-camera sightings)
   person:          '#d4a017', // brand gold (mirrors --brand-gold)
   vehicle:         '#10b981', // emerald
   property:        '#8b5cf6', // violet
@@ -74,13 +76,16 @@ const NODE_COLORS: Record<string, string> = {
   call:            '#22d3ee', // cyan
   report:          '#ec4899', // pink
   intel_report:    '#e879f9', // fuchsia
+  forensic_case:   '#a3e635', // lime-400 (mirrors ConnectionsGraphPanel)
+  forensic_exhibit:'#b45309', // amber-700 (was #84cc16 — collided with `case`)
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28, vehicle: 18, property: 18, business: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
-  call: 20, report: 14, intel_report: 20,
+  call: 20, report: 14, intel_report: 20, alpr_sighting: 14,
+  forensic_case: 18, forensic_exhibit: 14,
 };
 
 // Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity
@@ -99,6 +104,7 @@ const TIMELINE_KIND_COLOR: Record<string, string> = {
   trespass_order:  '#a855f7',
   case:            '#84cc16', // was '#d4a017' — collided with person
   evidence:        '#ef4444',
+  alpr_sighting:   '#06b6d4', // matches NODE_COLORS.alpr_sighting
 };
 
 const VIEW_W = 1000;
@@ -136,6 +142,8 @@ export default function ConnectionsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [graphDepth, setGraphDepth] = useState(2);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [pathFrom, setPathFrom] = useState<{ type: string; id: number; label: string } | null>(null);
   const [pathNodes, setPathNodes] = useState<Set<string>>(new Set());
   const [pathEdges, setPathEdges] = useState<Set<string>>(new Set());
@@ -271,8 +279,11 @@ export default function ConnectionsPage() {
     setLoadingGraph(true);
     (async () => {
       try {
+        const params = new URLSearchParams({ type: seed.type, id: String(seed.id), depth: String(graphDepth) });
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
         const data = await apiFetch<{ nodes: ServerNode[]; edges: ServerEdge[] }>(
-          `/connections/graph?type=${seed.type}&id=${seed.id}&depth=${graphDepth}`
+          `/connections/graph?${params}`
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
@@ -309,7 +320,7 @@ export default function ConnectionsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [seed, graphDepth]);
+  }, [seed, graphDepth, dateFrom, dateTo]);
 
   // Force simulation
   useEffect(() => {
@@ -568,6 +579,14 @@ export default function ConnectionsPage() {
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
 
+  // Map overlay target: the currently-selected graph node if one is picked,
+  // otherwise the seed entity itself. GPS breadcrumbs / ALPR sightings are
+  // never graphed as nodes (too high-volume — see connections.ts), so this
+  // is the only place they're geo-rendered for whatever's in focus.
+  const mapNode = selectedNode
+    ? { type: selectedNode.type, id: selectedNode.entityId }
+    : (seed ? { type: seed.type, id: seed.id } : null);
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -742,6 +761,25 @@ export default function ConnectionsPage() {
               aria-label="Graph depth"
             />
             <span className="text-brand-400 font-mono w-4 text-center text-xs">{graphDepth}</span>
+          </div>
+          <div className="flex items-center gap-1 border-l border-rmpg-700 pl-3">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+              aria-label="Filter from date"
+            />
+            <span className="text-rmpg-500 text-xs">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+              aria-label="Filter to date"
+            />
           </div>
           <button
             type="button"
@@ -1063,6 +1101,19 @@ export default function ConnectionsPage() {
         </div>
       )}
       </div>
+      )}
+
+      {seed && mapNode && (
+        <div>
+          <div className="text-brand-400 text-xs uppercase font-semibold mb-1">
+            Map — {selectedNode ? selectedNode.label : seed.label}
+          </div>
+          <ConnectionsMapPanel
+            key={`${mapNode.type}-${mapNode.id}`}
+            nodeType={mapNode.type}
+            nodeEntityId={mapNode.id}
+          />
+        </div>
       )}
 
       {/* Annotation edit modal */}
