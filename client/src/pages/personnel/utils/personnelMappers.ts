@@ -214,6 +214,7 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     classification: row.classification || 'routine',
     retention_status: row.retention_status || 'active',
     notes: row.notes || '',
+    interaction_type: row.interaction_type || undefined,
     uploaded_by: row.uploaded_by || '',
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',

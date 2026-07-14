@@ -629,10 +629,11 @@ bodycamVideosRouter.put('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Video not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at'];
+    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at', 'interaction_type'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of editable) {
       if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }
