@@ -228,9 +228,15 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       });
       formData.append('timestamps', JSON.stringify(frames.map((f) => f.timestamp)));
 
+      // Server analyzes frames sequentially against Workers AI's vision model
+      // (up to ANALYSIS_MAX_FRAMES = 20, deliberately not parallelized — see
+      // src/routes/personnel/bodyCameraUploads.ts). 20 sequential vision calls
+      // can comfortably exceed the default 60s fetch timeout, so this request
+      // gets a generous 3-minute allowance instead.
       const result = await apiPostForm<{ success: boolean; frames_analyzed: number; frames_requested: number; analysis: AnalysisResult }>(
         `/personnel/bodycam-videos/${requestedVideoId}/analyze`,
         formData,
+        { timeoutMs: 180_000 },
       );
       if (requestedVideoId !== video?.id) return; // stale result — video switched mid-request
       setLocalAnalysis(result.analysis);
