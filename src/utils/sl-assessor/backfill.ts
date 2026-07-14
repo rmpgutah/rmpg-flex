@@ -3,7 +3,7 @@
 // bounded by TICK_WALL_CLOCK_MS so the handler can't overrun. Called from
 // the existing per-minute scheduled() handler.
 
-import { searchByAddress, getParcel } from './client';
+import { dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress } from '../parcel-lookup/lookup';
 import { applyParcelToRecord } from './autofill';
 import { cacheKeyParcel, getCached, putCached } from './cache';
 import type { ParcelSummary } from './types';
@@ -78,7 +78,7 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
 
   let matches: ParcelSummary[];
   try {
-    matches = await searchByAddress(env, rec.address);
+    matches = await dispatchSearchByAddress(env, rec.address);
   } catch (e: any) {
     const retry = row.retry_count + 1;
     if (retry >= 3) {
@@ -95,7 +95,10 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
     const parcelNo = outcome.applied_parcel_number;
     let parcel = await getCached<any>({ KV: env.KV }, cacheKeyParcel(parcelNo));
     if (!parcel) {
-      try { parcel = await getParcel(env, parcelNo); }
+      try {
+        const county = resolveCountyFromAddress(rec.address);
+        parcel = await dispatchGetParcel(env, parcelNo, county);
+      }
       catch { /* detail fetch failed — still mark parcel_number to prevent requeue */ }
     }
     let fieldsSet: string[] = [];
