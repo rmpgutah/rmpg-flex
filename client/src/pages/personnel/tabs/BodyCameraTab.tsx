@@ -18,6 +18,7 @@ import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { authedImageUrl } from '../../../hooks/useApi';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
@@ -720,7 +721,18 @@ export default function BodyCameraTab({
                         </td>
                       )}
                       <td>
-                        <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
+                        <div className="flex items-center gap-2">
+                          {vid.thumbnail_path ? (
+                            <img
+                              src={authedImageUrl(`/api/personnel/bodycam-videos/${vid.id}/thumbnail`)}
+                              alt=""
+                              className="w-8 h-[18px] object-cover flex-shrink-0 border border-rmpg-700"
+                            />
+                          ) : (
+                            <Video className="w-4 h-[18px] text-rmpg-600 flex-shrink-0" aria-hidden="true" />
+                          )}
+                          <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
+                        </div>
                       </td>
                       <td>
                         <button type="button"
