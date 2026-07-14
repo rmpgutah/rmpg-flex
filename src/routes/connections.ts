@@ -322,9 +322,21 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         // frequently-scanned plate can't flood this node's edge count the
         // way MAX_NODES caps the graph overall.
         try {
+          // vehicle_record_ids is a JSON.stringify'd number array with no
+          // spaces (e.g. "[1,23]" — see src/routes/alpr.ts finalizeCapture).
+          // A bare substring match on the id would also hit "[15]"/"[21]"/
+          // "[123]" for id=1, so anchor to element boundaries: the id must
+          // be the whole array ("[1]"), the first element ("[1,%"), the
+          // last element ("%,1]"), or a middle element ("%,1,%").
+          const idStr = String(id);
           for (const r of await query<any>(db,
-            `SELECT id FROM alpr_captures WHERE vehicle_record_ids LIKE '%' || ? || '%' ORDER BY created_at DESC LIMIT 20`,
-            String(id),
+            `SELECT id FROM alpr_captures WHERE (
+               vehicle_record_ids = '[' || ? || ']'
+               OR vehicle_record_ids LIKE '[' || ? || ',%'
+               OR vehicle_record_ids LIKE '%,' || ? || ']'
+               OR vehicle_record_ids LIKE '%,' || ? || ',%'
+             ) ORDER BY created_at DESC LIMIT 20`,
+            idStr, idStr, idStr, idStr,
           )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
         } catch (err: any) { console.error('[Connections] alpr_captures (vehicle) edges error:', err?.message); }
         try {

@@ -57,9 +57,58 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, plate TEXT, state TEXT, vehicle_id INTEGER,
     location_text TEXT, lat REAL, lng REAL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
+  // Tables findConnections()'s call/incident cases join against before
+  // reaching the ALPR queries — same shared-outer-try-per-case caveat as
+  // the vehicle case above.
+  await execute(db, `CREATE TABLE IF NOT EXISTS calls_for_service (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, call_number TEXT, incident_type TEXT, priority TEXT,
+    status TEXT, location_address TEXT, property_id INTEGER, case_id INTEGER, created_at TEXT
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS call_persons (
+    call_id INTEGER, person_id INTEGER, role TEXT
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS trespass_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER, property_id INTEGER,
+    originating_call_id INTEGER, originating_incident_id INTEGER
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS serve_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, recipient_person_id INTEGER, property_id INTEGER, call_id INTEGER
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS call_businesses (
+    call_id INTEGER, business_id INTEGER, role TEXT
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, incident_number TEXT, incident_type TEXT, status TEXT,
+    priority TEXT, location_address TEXT, call_id INTEGER, property_id INTEGER
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS incident_persons (
+    incident_id INTEGER, person_id INTEGER, role TEXT
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS case_incident_links (
+    case_id INTEGER, incident_id INTEGER
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS supplemental_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER, report_type TEXT
+  )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS incident_links (
+    incident_id INTEGER, linked_type TEXT, linked_id TEXT
+  )`);
   await execute(db, `INSERT INTO users (id, full_name, role) VALUES (1, 'Test Analyst', 'admin')`);
   await execute(db, `INSERT INTO vehicles_records (id, plate_number, make, model, year) VALUES (1, '8JAR3', 'Dodge', 'RAM', 2022)`);
+  // Deliberately id=15 too — a superset-id capture that must NOT match a
+  // substring search for vehicle id=1 (see false-positive test below).
+  await execute(db, `INSERT INTO vehicles_records (id, plate_number, make, model, year) VALUES (15, 'ZZZ111', 'Ford', 'F150', 2020)`);
   await execute(db, `INSERT INTO alpr_captures (id, plate, state, lat, lng, location_text, vehicle_record_ids) VALUES (1, '8JAR3', 'UT', 40.76, -111.89, 'Main St', '[1]')`);
+  await execute(db, `INSERT INTO alpr_captures (id, plate, state, lat, lng, location_text, vehicle_record_ids) VALUES (2, 'ZZZ111', 'UT', 40.70, -111.85, 'Elsewhere', '[15]')`);
+
+  await execute(db, `INSERT INTO calls_for_service (id, call_number, incident_type, status, created_at) VALUES (1, 'CFS-1', 'traffic_stop', 'closed', datetime('now'))`);
+  await execute(db, `INSERT INTO alpr_captures (id, plate, state, lat, lng, location_text, call_id, vehicle_record_ids) VALUES (3, '8JAR3', 'UT', 40.76, -111.89, 'Main St', 1, '[]')`);
+
+  await execute(db, `INSERT INTO incidents (id, incident_number, incident_type, status) VALUES (1, 'INC-1', 'burglary', 'open')`);
+  await execute(db, `INSERT INTO alpr_captures (id, plate, state, lat, lng, location_text, incident_id, vehicle_record_ids) VALUES (4, '8JAR3', 'UT', 40.76, -111.89, 'Main St', 1, '[]')`);
 });
 
 describe('ALPR graph nodes', () => {
@@ -68,6 +117,41 @@ describe('ALPR graph nodes', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { nodes: Array<{ type: string; entityId: number; label: string }>; edges: Array<{ relationship: string }> };
     const alprNode = body.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 1);
+    expect(alprNode).toBeTruthy();
+    expect(alprNode?.label).toContain('8JAR3');
+    expect(body.edges.some((e) => e.relationship === 'alpr_capture')).toBe(true);
+  });
+
+  it('does NOT match vehicle id=1 against an alpr_captures row whose vehicle_record_ids is [15] (substring false positive)', async () => {
+    const res = await app.request('/api/connections/graph?type=vehicle&id=1&depth=1', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { nodes: Array<{ type: string; entityId: number }> };
+    // capture id=2 (vehicle_record_ids='[15]') must not surface as a node
+    // when traversing from vehicle id=1 — a naive '%1%' substring match
+    // would incorrectly include it.
+    const falsePositive = body.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 2);
+    expect(falsePositive).toBeUndefined();
+    // sanity: vehicle id=15 itself DOES pick up capture id=2.
+    const res15 = await app.request('/api/connections/graph?type=vehicle&id=15&depth=1', {}, env as unknown as Record<string, unknown>);
+    const body15 = await res15.json() as { nodes: Array<{ type: string; entityId: number }> };
+    expect(body15.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 2)).toBeTruthy();
+  });
+
+  it('GET /connections/graph?type=call&id=1 includes the ALPR sighting node', async () => {
+    const res = await app.request('/api/connections/graph?type=call&id=1&depth=1', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { nodes: Array<{ type: string; entityId: number; label: string }>; edges: Array<{ relationship: string }> };
+    const alprNode = body.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 3);
+    expect(alprNode).toBeTruthy();
+    expect(alprNode?.label).toContain('8JAR3');
+    expect(body.edges.some((e) => e.relationship === 'alpr_capture')).toBe(true);
+  });
+
+  it('GET /connections/graph?type=incident&id=1 includes the ALPR sighting node', async () => {
+    const res = await app.request('/api/connections/graph?type=incident&id=1&depth=1', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { nodes: Array<{ type: string; entityId: number; label: string }>; edges: Array<{ relationship: string }> };
+    const alprNode = body.nodes.find((n) => n.type === 'alpr_sighting' && n.entityId === 4);
     expect(alprNode).toBeTruthy();
     expect(alprNode?.label).toContain('8JAR3');
     expect(body.edges.some((e) => e.relationship === 'alpr_capture')).toBe(true);
