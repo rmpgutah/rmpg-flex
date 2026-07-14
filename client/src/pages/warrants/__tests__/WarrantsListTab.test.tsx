@@ -36,6 +36,9 @@ const testUser: User = {
   full_name: 'Test Officer',
   role: 'admin',
   badge_number: '1A',
+  is_active: true,
+  created_at: '2026-01-01T00:00:00.000Z',
+  updated_at: '2026-01-01T00:00:00.000Z',
 };
 
 const baseProps = {
