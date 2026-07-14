@@ -34,6 +34,7 @@ import {
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns, getCapHeight,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
@@ -673,13 +674,25 @@ export function serveResultLabel(result: string): string {
   }
 }
 
-export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promise<jsPDF> {
+export interface NoticeOfAttemptOptions {
+  /** 'mobile' (default) renders for the Brother PJ-700/800 in-vehicle thermal
+   *  printer: adds a 6mm top safe-zone so the leading-edge dead zone doesn't
+   *  clip the NIBRS header. Notice of Attempt is generated and printed in the
+   *  field by process servers, never from a desk laser printer, so this
+   *  document always defaults to mobile — pass 'office' explicitly to
+   *  override for the rare desk-print case. See RecordPdfOptions in
+   *  recordPdfGenerator.ts for the same pattern used elsewhere. */
+  printTarget?: PrintTarget;
+}
+
+export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  applyPrintTarget(doc, options.printTarget ?? 'mobile');
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     timeZone: 'America/Denver',
@@ -827,6 +840,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     }
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    // Extra clearance before the next section's header bar — the table's own
+    // last-row separator line sits right on top of closeAutoSection's gold
+    // border (SECTION_BOTTOM_PAD + SECTION_GAP is only ~1.1mm), so without
+    // this the two lines read as a doubled rule crammed against the
+    // "IMPORTANT NOTICE" header bar below (2026-07-13 visual fix).
+    y += SPACING.SM;
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
