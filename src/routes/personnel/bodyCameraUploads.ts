@@ -34,6 +34,7 @@ import {
   READ_ALL_ROLES,
   WRITE_ROLES,
   getActor,
+  ensureBodycamArtifactColumns,
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
 import { verifySignedResource } from '../../utils/signedAccess';
@@ -473,6 +474,98 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
     return new Response(obj.body, { status: 200, headers });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id/stream failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/thumbnail — client-captured JPEG frame for a video.
+// The client canvas-captures a frame after upload completes (no
+// server-side transcoding — Workers can't run ffmpeg) and posts it
+// here as multipart. Non-blocking on the upload flow: a failure here
+// leaves the video usable with no thumbnail (client falls back to a
+// generic icon).
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/thumbnail', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const image = form.get('thumbnail') as unknown as File | string | null;
+    if (!image || typeof image === 'string' || !(image instanceof Blob)) {
+      return c.json({ error: 'thumbnail file is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number; file_path: string | null }>(
+      db, 'SELECT id, file_path FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!row.file_path) return c.json({ error: 'Video has no source file' }, 400);
+
+    // Derive the artifact prefix from the original's key: "<prefix><uuid>/original.<ext>".
+    const prefix = row.file_path.replace(/\/original\.[a-zA-Z0-9]+$/, '');
+    const thumbKey = `${prefix}/thumbnail.jpg`;
+
+    await c.env.UPLOADS.put(thumbKey, image.stream(), {
+      httpMetadata: { contentType: 'image/jpeg' },
+    });
+    await execute(db, "UPDATE bodycam_videos SET thumbnail_path = ?, updated_at = datetime('now') WHERE id = ?", thumbKey, id);
+
+    return c.json({ success: true, thumbnail_path: thumbKey });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /:id/thumbnail — serve the stored JPEG. Same auth pattern as
+// GET /:id/stream (signed-URL OR bearer/query-token + officer scope).
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.get('/:id/thumbnail', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'bodycam-thumb', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    const actor = getActor(c);
+    if (!signedOk && !actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number; thumbnail_path: string | null }>(
+      db, 'SELECT officer_id, thumbnail_path FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!signedOk && actor && !READ_ALL_ROLES.has(actor.role) && row.officer_id !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    if (!row.thumbnail_path) return c.json({ error: 'No thumbnail' }, 404);
+
+    const obj = await c.env.UPLOADS.get(row.thumbnail_path);
+    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=3600',
+      },
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id/thumbnail failed:', err);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
