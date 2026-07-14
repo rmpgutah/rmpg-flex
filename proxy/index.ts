@@ -70,47 +70,14 @@ const STUBS: StubRule[] = [
   // /api/arrests/recent stubs — real handlers exist (personnel.ts
   // .get('/equipment'), hr.ts .get('/benefits'), arrests.ts .get('/recent'))
   // and were being shadowed. Routed to env.API below.
-  // ── Body camera surfaces ──────────────────────────────────────
-  // None of these are implemented on the new worker, but the proxy
-  // routes /api/personnel/body-cameras + /api/personnel/bodycam-videos
-  // to env.API (lines 197-198). BodyCamerasPage fires four parallel
-  // GETs on mount and each 404 produces a [BodyCameras] ... console
-  // warning. The /upload-*, POST, PUT, DELETE, and /:id sub-paths are
-  // user-triggered (not background polling), so they stay 404 until
-  // a real implementation lands. GETs only.
-  {
-    match: /^\/api\/personnel\/body-cameras$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no body_cameras table; UI tolerates empty list',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no bodycam_videos table; UI tolerates empty list',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/reviews\/pending$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no reviews surface yet',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/redaction-requests$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no redaction queue yet',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/retention\/report$/,
-    methods: ['GET'],
-    // BodyCamerasPage reads this via apiFetch<any>(...).catch(null), so any
-    // empty-shape object is fine. Mirror what the UI actually reads on the
-    // retention card: counts default to 0.
-    body: { total_videos: 0, retained: 0, eligible_for_purge: 0, purged_this_month: 0 },
-    reason: 'no retention engine yet',
-  },
+  // (removed 2026-07-14) /api/personnel/body-cameras, /api/personnel/bodycam-videos,
+  // /bodycam-videos/reviews/pending, /bodycam-videos/redaction-requests,
+  // /bodycam-videos/retention/report stubs — real handlers exist
+  // (src/routes/personnel/bodyCameras.ts, bodyCameraUploads.ts) with real
+  // body_cameras/bodycam_videos tables and were being shadowed, causing the
+  // Body Cameras page to always render empty regardless of actual data.
+  // Routed to env.API below (already unconditional, no GET-only restriction
+  // needed since real POST/PUT/DELETE/:id handlers exist too).
   // ── Audit log surfaces ────────────────────────────────────────
   // AuditLogPage opens on /audit/logs?page=1&limit=100 (paginated list) +
   // /audit/stats (totals + top users/actions) on mount, then optionally
