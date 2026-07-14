@@ -43,7 +43,12 @@ import { dbErrorResponse } from '../../utils/dbErrors';
 let _bodycamArtifactColumnsEnsured = false;
 async function ensureBodycamArtifactColumns(db: ReturnType<typeof getDb>): Promise<void> {
   if (_bodycamArtifactColumnsEnsured) return;
-  for (const [name, type] of [['thumbnail_path', 'TEXT'], ['redacted_path', 'TEXT']] as const) {
+  for (const [name, type] of [
+    ['thumbnail_path', 'TEXT'], ['redacted_path', 'TEXT'],
+    ['interaction_type', 'TEXT'], ['detected_plate_count', 'INTEGER'],
+    ['detected_face_count', 'INTEGER'], ['detection_regions_json', 'TEXT'],
+    ['transcript', 'TEXT'],
+  ] as const) {
     if (!(await columnExists(db, 'bodycam_videos', name))) {
       try { await execute(db, `ALTER TABLE bodycam_videos ADD COLUMN ${name} ${type}`); }
       catch { /* race / already present */ }
