@@ -40,15 +40,24 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
         const params = new URLSearchParams();
         if (dateFrom) params.set('date_from', dateFrom);
         if (dateTo) params.set('date_to', dateTo);
+        // Promise.resolve(...) guards against a test-mock (or any future
+        // apiFetch implementation) that returns a non-Promise value —
+        // calling .catch directly on apiFetch(...) throws synchronously
+        // if the return value isn't thenable, which previously produced
+        // an unhandled rejection instead of the graceful empty state.
         const [trackRes, geoRes] = await Promise.all([
-          apiFetch<{ data: Array<{ lat: number; lng: number }> }>(`/connections/${nodeType}/${nodeEntityId}/gps-track?${params}`).catch(() => ({ data: [] })),
-          apiFetch<{ data: Array<{ lat: number; lng: number; label?: string }> }>(`/connections/${nodeType}/${nodeEntityId}/geo-points?${params}`).catch(() => ({ data: [] })),
+          Promise.resolve(apiFetch<{ data: Array<{ lat: number; lng: number }> }>(`/connections/${nodeType}/${nodeEntityId}/gps-track?${params}`)).catch(() => ({ data: [] })),
+          Promise.resolve(apiFetch<{ data: Array<{ lat: number; lng: number; label?: string }> }>(`/connections/${nodeType}/${nodeEntityId}/geo-points?${params}`)).catch(() => ({ data: [] })),
         ]);
         if (cancelled) return;
-        const track = (trackRes.data || []).filter((p) => isValidLngLat(p.lng, p.lat));
-        const points = (geoRes.data || []).filter((p) => isValidLngLat(p.lng, p.lat));
+        const track = ((trackRes && trackRes.data) || []).filter((p) => isValidLngLat(p.lng, p.lat));
+        const points = ((geoRes && geoRes.data) || []).filter((p) => isValidLngLat(p.lng, p.lat));
         setPointCount(track.length + points.length);
 
+        // getMapboxAccessToken() THROWS (not rejects-to-empty-string) when
+        // no token is configured — e.g. every jsdom test environment. That
+        // must degrade to the "No geo data" empty state, not an unhandled
+        // rejection, so it's inside this same try/catch.
         const token = await getMapboxAccessToken();
         if (cancelled || !containerRef.current) return;
         initMapbox(token);
@@ -76,6 +85,12 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
             map.fitBounds(b, { padding: 32, maxZoom: 15, duration: 0 });
           }
         });
+      } catch (err) {
+        // Token missing/misconfigured, apiFetch throwing, or any other
+        // init failure — degrade to the existing empty state rather than
+        // an unhandled rejection.
+        console.error('[ConnectionsMapPanel] init error:', (err as Error)?.message);
+        if (!cancelled) setPointCount(0);
       } finally {
         if (!cancelled) setLoading(false);
       }

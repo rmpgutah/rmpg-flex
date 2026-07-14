@@ -15,6 +15,16 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
 }));
 
+// ConnectionsMapPanel fires its own apiFetch calls (gps-track/geo-points) on
+// mount and would otherwise consume entries from this file's queue-based
+// mockResolvedValueOnce() chains meant for /connections/search, /graph,
+// /path, and /investigations — desyncing every test after the graph loads.
+// Stubbed the same way IntelContextPanel.test.tsx stubs ConnectionsGraphPanel;
+// the map panel's own behavior belongs in a dedicated component test, not here.
+vi.mock('../../components/ConnectionsMapPanel', () => ({
+  default: () => <div data-testid="connections-map-panel-stub" />,
+}));
+
 describe('ConnectionsPage', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
