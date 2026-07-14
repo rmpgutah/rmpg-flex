@@ -1,14 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { ensureJurisdictionAndPhotoColumns, columnExists } from '../src/utils/db';
 
 describe('ensureJurisdictionAndPhotoColumns', () => {
-  it('adds jurisdiction_override to businesses and properties', async () => {
+  // Each test needs the base tables the reconciler ALTERs/creates against —
+  // shared setup so either test can run alone or in any order, not just
+  // when the first test happens to have created them already.
+  beforeEach(async () => {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS businesses (id INTEGER PRIMARY KEY)`).run();
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS properties (id INTEGER PRIMARY KEY)`).run();
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS parcel_records (id INTEGER PRIMARY KEY)`).run();
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS business_photos (id INTEGER PRIMARY KEY)`).run();
+  });
 
+  it('adds jurisdiction_override to businesses and properties', async () => {
     await ensureJurisdictionAndPhotoColumns(env.DB);
 
     expect(await columnExists(env.DB, 'businesses', 'jurisdiction_override')).toBe(true);

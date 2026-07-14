@@ -59,14 +59,44 @@ function containsCity(haystack: string, cities: string[]): boolean {
   return cities.some((c) => haystack.includes(c));
 }
 
+/** Every county list a given (already-lowercased) city name appears in. */
+function citiesMatching(city: string): County[] {
+  const out: County[] = [];
+  if (SALT_LAKE_CITIES.includes(city)) out.push('salt_lake');
+  if (UTAH_COUNTY_CITIES.includes(city)) out.push('utah');
+  if (SUMMIT_COUNTY_CITIES.includes(city)) out.push('summit');
+  if (TOOELE_COUNTY_CITIES.includes(city)) out.push('tooele');
+  return out;
+}
+
 export function resolveCountyFromAddress(address: string): County {
   const normalized = (address ?? '').toLowerCase().trim();
   if (!normalized) return 'unsupported';
 
-  if (containsCity(normalized, SALT_LAKE_CITIES)) return 'salt_lake';
-  if (containsCity(normalized, UTAH_COUNTY_CITIES)) return 'utah';
-  if (containsCity(normalized, SUMMIT_COUNTY_CITIES)) return 'summit';
-  if (containsCity(normalized, TOOELE_COUNTY_CITIES)) return 'tooele';
+  // Preferred path: address is "street, city, state zip" (all current
+  // callers build this shape — see JurisdictionButton/assessor.lookup
+  // wiring in BusinessTab.tsx/PropertyFormModal.tsx). Match the extracted
+  // city segment as a whole value, not a substring of the full address —
+  // a street literally named "Sandy Ridge Dr" in Provo must not match
+  // Salt Lake County's "sandy" via naive .includes(). Some cities (e.g.
+  // Draper) genuinely straddle a county line and appear in more than one
+  // list; rather than silently picking one by list-priority, that's
+  // reported as unsupported so a human sets an explicit override instead.
+  const segments = normalized.split(',').map((s) => s.trim()).filter(Boolean);
+  if (segments.length >= 2) {
+    const matches = citiesMatching(segments[1]);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return 'unsupported';
+  } else {
+    // No comma-delimited city segment (legacy/bare-street callers, e.g. a
+    // DB address column with no city appended) — fall back to substring
+    // search across the whole string. Same false-positive risk as before;
+    // callers should prefer passing "street, city, state zip" instead.
+    if (containsCity(normalized, SALT_LAKE_CITIES)) return 'salt_lake';
+    if (containsCity(normalized, UTAH_COUNTY_CITIES)) return 'utah';
+    if (containsCity(normalized, SUMMIT_COUNTY_CITIES)) return 'summit';
+    if (containsCity(normalized, TOOELE_COUNTY_CITIES)) return 'tooele';
+  }
 
   const zipMatch = normalized.match(/\b(\d{5})\b/);
   if (zipMatch && ZIP5_TO_COUNTY[zipMatch[1]]) return ZIP5_TO_COUNTY[zipMatch[1]];
