@@ -314,6 +314,13 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
           )}
         </div>
+
+        {video.transcript && (
+          <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
+            <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">Transcript</p>
+            <p className="text-[10px] text-rmpg-300 leading-relaxed max-h-24 overflow-y-auto scrollbar-dark">{video.transcript}</p>
+          </div>
+        )}
       </div>
     </div>
   );

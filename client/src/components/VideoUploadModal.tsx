@@ -10,6 +10,7 @@ import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lu
 import type { BodyCamera, VideoClassification } from '../types';
 import { captureVideoThumbnail } from '../utils/videoThumbnail';
 import { runAutoDetection } from '../utils/videoAutoDetect';
+import { extractAudioBlob } from '../utils/videoTranscribe';
 import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
@@ -79,6 +80,26 @@ async function uploadDetectionsBestEffort(
     });
   } catch (e) {
     console.warn('[VideoUploadModal] auto-detection scan/upload failed (non-fatal):', e);
+  }
+}
+
+// Fire-and-forget: extract the just-uploaded video's audio and post it for
+// transcription. Never blocks or fails the upload flow.
+async function uploadTranscriptBestEffort(
+  file: File, videoId: number, apiBase: string, getAuthHeaders: () => Record<string, string>,
+): Promise<void> {
+  try {
+    const blob = await extractAudioBlob(file);
+    if (!blob) return;
+    const fd = new FormData();
+    fd.append('audio', blob, 'audio.webm');
+    await fetch(`${apiBase}/personnel/bodycam-videos/${videoId}/transcribe`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: fd,
+    });
+  } catch (e) {
+    console.warn('[VideoUploadModal] audio extraction/transcription failed (non-fatal):', e);
   }
 }
 
@@ -268,6 +289,7 @@ export default function VideoUploadModal({
             if (created.id) {
               void uploadThumbnailBestEffort(file, created.id, apiBase, getAuthHeaders);
               void uploadDetectionsBestEffort(file, created.id, apiBase, getAuthHeaders);
+              void uploadTranscriptBestEffort(file, created.id, apiBase, getAuthHeaders);
             }
           } catch { /* thumbnail is best-effort; a parse failure here must not block the modal closing */ }
           setTimeout(() => { reset(); onUploaded(); onClose(); }, 500);
@@ -375,6 +397,7 @@ export default function VideoUploadModal({
       if (completed?.id) {
         void uploadThumbnailBestEffort(file, completed.id, apiBase, getAuthHeaders);
         void uploadDetectionsBestEffort(file, completed.id, apiBase, getAuthHeaders);
+        void uploadTranscriptBestEffort(file, completed.id, apiBase, getAuthHeaders);
       }
 
       setPhase('done');
