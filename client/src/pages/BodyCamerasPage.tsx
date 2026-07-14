@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import BodyCameraTab from './personnel/tabs/BodyCameraTab';
 import BodyCameraFormModal from './personnel/modals/BodyCameraFormModal';
+import RedactionStudio from '../components/RedactionStudio';
 import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal';
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
 import DeleteRecordModal from '../components/DeleteRecordModal';
@@ -60,6 +61,7 @@ export default function BodyCamerasPage() {
   const [editData, setEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [editMode, setEditMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [redactingVideo, setRedactingVideo] = useState<BodyCamVideo | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
   // Officer list for the form modal dropdown
@@ -501,6 +503,7 @@ export default function BodyCamerasPage() {
             onEditCamera={openEdit}
             onDeleteCamera={handleDelete}
             onPlayVideo={setPlayingVideo}
+            onRedactVideo={canManage ? setRedactingVideo : undefined}
             onDeleteVideo={handleVideoDelete}
             onUploadVideo={() => setModal('upload_video')}
             canManage={canManage}
@@ -569,6 +572,20 @@ export default function BodyCamerasPage() {
           }
         } : undefined}
       />
+
+      {redactingVideo && (
+        <RedactionStudio
+          eventId={redactingVideo.id}
+          source="bodycam"
+          streamUrl={`${window.location.origin}/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
+          stampLines={[
+            redactingVideo.title,
+            redactingVideo.officer_name || '',
+            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString() : '',
+          ].filter(Boolean)}
+          onClose={() => { setRedactingVideo(null); refreshBodyCameras(); }}
+        />
+      )}
 
       <DeleteRecordModal
         isOpen={cameraToDelete !== null}

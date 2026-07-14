@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search, Play, HardDrive,
-  Film, Shield, Clock, CheckSquare, Square, Upload, Loader2,
+  Film, Shield, ShieldOff, Clock, CheckSquare, Square, Upload, Loader2,
 } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, CameraStatus, VideoClassification } from '../../../types';
 import {
@@ -55,6 +55,7 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onSelectOfficer?: (officerId: string) => void;
   onPlayVideo?: (video: BodyCamVideo) => void;
+  onRedactVideo?: (video: BodyCamVideo) => void;
   onDeleteVideo?: (videoId: number) => void;
   onUploadVideo?: () => void;
   /** Role-gating: only admin/manager can add/edit/delete */
@@ -82,7 +83,7 @@ interface Props {
 export default function BodyCameraTab({
   cameras, videos,
   onAddCamera, onEditCamera, onDeleteCamera,
-  onSelectOfficer, onPlayVideo, onDeleteVideo,
+  onSelectOfficer, onPlayVideo, onRedactVideo, onDeleteVideo,
   onUploadVideo, canManage = true,
   onBulkDeleteVideos, onBulkClassifyVideos, onBulkDeleteCameras,
   bulkLoading = false,
@@ -285,6 +286,7 @@ export default function BodyCameraTab({
 
   const buildVideoMenu = (vid: BodyCamVideo): ContextMenuItem[] => [
     ...(onPlayVideo ? [m.action('Play video', () => onPlayVideo(vid), { icon: <Play size={12} /> })] : []),
+    ...(canManage && onRedactVideo ? [m.action('Redact video', () => onRedactVideo(vid), { icon: <ShieldOff size={12} /> })] : []),
     ...(onSelectOfficer ? [m.action('Open officer', () => onSelectOfficer(String(vid.officer_id)), { icon: <Camera size={12} /> })] : []),
     m.separator(),
     m.copy('Copy title', vid.title),
