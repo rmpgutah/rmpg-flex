@@ -552,6 +552,14 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     }
   }, [recordId, assessor]);
 
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = (address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
+
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
@@ -572,11 +580,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={e => set('address', e.target.value)}
-              onBlur={e => assessor.lookup(e.target.value)}
+              onBlur={e => assessor.lookup(fullAddress(e.target.value))}
             />
             {form.address.trim() && (
               <div className="mt-1">
-                <JurisdictionButton address={form.address} recordType="business" recordId={recordId} />
+                <JurisdictionButton address={fullAddress(form.address)} recordType="business" recordId={recordId} />
               </div>
             )}
             <AssessorSuggestionPanel

@@ -37,7 +37,10 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
 }
 
 export async function searchByAddress(_env: TooeleRecorderEnv, address: string): Promise<ParcelSummary[]> {
-  const url = `${BASE}/search?address=${encodeURIComponent(address)}`;
+  // Callers may pass a full "street, city, state zip" address (needed for
+  // county resolution upstream) — the county site only wants the street.
+  const streetOnly = address.split(',')[0];
+  const url = `${BASE}/search?address=${encodeURIComponent(streetOnly)}`;
   const res = await fetchWithTimeout(url);
   const html = await res.text();
   if (html.includes('Parcel Number:')) {
