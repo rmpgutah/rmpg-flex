@@ -56,7 +56,7 @@ import ScrapersTab from './warrants/ScrapersTab';
 // Types
 // ============================================================
 
-interface Warrant {
+export interface Warrant {
   id: number;
   warrant_number: string;
   type: 'arrest' | 'search' | 'bench' | 'civil' | 'other';
@@ -179,7 +179,7 @@ interface PersonProfile {
 }
 
 // Unified warrants list
-interface UnifiedWarrant extends Warrant {
+export interface UnifiedWarrant extends Warrant {
   source?: string | null;
 }
 
