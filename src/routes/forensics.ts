@@ -715,6 +715,7 @@ forensics.get('/:caseId/hashes', async (c) => {
     const hashes: Record<string, unknown>[] = [];
     let flagged = 0;
     let matched = 0;
+    // TODO: batch into a single IN(...) query against forensic_hash_entries if per-case hash volume grows significantly.
     for (const row of rows) {
       const hashValue = row.hash_value as string;
       const hashType = row.algorithm as string;
