@@ -1280,4 +1280,43 @@ forensics.get('/capacity/planning', async (c) => {
   } catch { return c.json({ data: { active_cases: 0, avg_new_per_week: 0 } }); }
 });
 
+// POST /:caseId/apply-template — copies a report template's `sections`
+// onto forensic_cases.report_sections. generateForensicCasePdf()
+// (client-side, forensicCasePdf.ts) reads this to render a structured
+// report layout instead of its hardcoded default.
+forensics.post('/:caseId/apply-template', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const b = await c.req.json<Record<string, unknown>>();
+    const templateId = Number(b.template_id);
+    if (!Number.isFinite(templateId)) return c.json({ error: 'template_id required', code: 'TEMPLATE_ID_REQUIRED' }, 400);
+
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM forensic_cases WHERE id = ?', caseId);
+    if (!existing) return c.json({ error: 'Forensics case not found', code: 'NOT_FOUND' }, 404);
+
+    const template = await queryFirst<{ sections: string; name: string }>(
+      db, 'SELECT sections, name FROM forensic_report_templates WHERE id = ? AND active = 1', templateId,
+    );
+    if (!template) return c.json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }, 404);
+
+    await execute(
+      db, `UPDATE forensic_cases SET report_sections = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      template.sections, caseId,
+    );
+
+    const userId = c.get('userId') as number;
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    await logActivity(db, caseId, 'template_applied', `Applied report template "${template.name}"`, userId, user?.full_name ?? '');
+
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', caseId);
+    return c.json({ data: updated });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to apply template', 'APPLY_TEMPLATE_ERROR');
+  }
+});
+
 export default forensics;
