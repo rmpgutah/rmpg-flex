@@ -26,6 +26,17 @@ describe('utah-assessor parser', () => {
     expect(parcel.sales).toHaveLength(1);
     expect(parcel.sales[0].sale_date).toBe('2021-03-14');
     expect(parcel.sales[0].sale_price).toBe(389000);
+    expect(parcel.photo_url).toBe('https://www.utahcounty.gov/LandRecords/photos/12-345-0067.jpg');
+    expect(parcel.layout_url).toBe('https://www.utahcounty.gov/LandRecords/sketches/12-345-0067.png');
+  });
+
+  it('leaves photo_url/layout_url null when the detail page has no image rows', () => {
+    const html = detailHtml
+      .replace(/<tr><td>Photo:<\/td>.*?<\/tr>\n?/s, '')
+      .replace(/<tr><td>Sketch:<\/td>.*?<\/tr>\n?/s, '');
+    const parcel = parseParcelDetail(html);
+    expect(parcel.photo_url).toBeNull();
+    expect(parcel.layout_url).toBeNull();
   });
 
   it('infers entity owner type from LLC/INC/TRUST suffixes', () => {

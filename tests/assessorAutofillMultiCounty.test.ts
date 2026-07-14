@@ -20,6 +20,7 @@ function makeTooeleParcel(overrides: Partial<Parcel> = {}): Parcel {
     legal_description: 'LOT 3 BLOCK 2 TOOELE TOWNSITE', plat: null, lot: null, block: null,
     recorded_document_url: 'https://erecording.tooeleco.gov/eaglesoftware/web/document/2021-004521',
     recorded_document_type: 'WARRANTY DEED',
+    photo_url: null, layout_url: null,
     sales: [], raw_data_json: {},
     ...overrides,
   };

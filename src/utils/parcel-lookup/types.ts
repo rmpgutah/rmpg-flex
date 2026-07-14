@@ -76,6 +76,9 @@ export interface Parcel {
   /** Recorder-only counties (Tooele) populate this; assessor counties leave it null. */
   recorded_document_url: string | null;
   recorded_document_type: string | null;
+  /** Best-effort scraped image links — most county pages don't expose either. */
+  photo_url: string | null;
+  layout_url: string | null;
   sales: ParcelSale[];
   raw_data_json: Record<string, string>;
 }

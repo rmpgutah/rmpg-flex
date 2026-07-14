@@ -25,6 +25,8 @@ describe('summit-assessor parser', () => {
     expect(parcel.sales).toHaveLength(1);
     expect(parcel.sales[0].sale_date).toBe('2019-07-02');
     expect(parcel.sales[0].sale_price).toBe(1100000);
+    expect(parcel.photo_url).toBe('https://property.summitcounty.org/eaglesoftware/taxweb/photos/SC-00417-A.jpg');
+    expect(parcel.layout_url).toBeNull();
   });
 
   it('infers individual owner type when no entity marker is present', () => {

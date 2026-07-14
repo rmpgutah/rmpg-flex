@@ -26,6 +26,21 @@ function extractRows(html: string): Record<string, string> {
   return rows;
 }
 
+/**
+ * Best-effort: find an `<img src="...">` inside the value cell of a
+ * `<td>Label:</td><td><img src="X"></td>` row. Most county detail pages
+ * don't expose a photo/sketch at all — this returns null in that case
+ * rather than guessing, matching the raw_data_json catch-all philosophy.
+ */
+function extractImageByLabel(html: string, labelRegex: RegExp): string | null {
+  const re = new RegExp(
+    `<td>\\s*(?:${labelRegex.source})\\s*:?\\s*<\\/td>\\s*<td[^>]*>[^<]*<img[^>]+src="([^"]+)"`,
+    'i',
+  );
+  const m = html.match(re);
+  return m ? m[1] : null;
+}
+
 function toNumber(v: string | undefined): number | null {
   if (!v) return null;
   const cleaned = v.replace(/[$,]/g, '').trim();
@@ -95,6 +110,8 @@ export function parseParcelDetail(html: string): Parcel {
     block: null,
     recorded_document_url: null,
     recorded_document_type: null,
+    photo_url: extractImageByLabel(html, /Photo|Property\s*Photo/i),
+    layout_url: extractImageByLabel(html, /Sketch|Floor\s*Plan|Layout/i),
     sales: saleDate || salePrice ? [{
       sale_date: saleDate,
       sale_price: salePrice,

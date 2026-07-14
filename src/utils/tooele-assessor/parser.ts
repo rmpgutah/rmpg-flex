@@ -68,6 +68,8 @@ export function parseParcelDetail(html: string): Parcel {
     block: null,
     recorded_document_url: rows['Document Link'] ?? null,
     recorded_document_type: rows['Document Type'] ?? null,
+    photo_url: null,
+    layout_url: null,
     sales: [],
     raw_data_json: rows,
   };

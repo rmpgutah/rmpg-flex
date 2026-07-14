@@ -21,6 +21,7 @@ const parcel: Parcel = {
   legal_description: 'LOT 5 BLK 3 ACME SUB',
   plat: null, lot: '5', block: '3',
   recorded_document_url: null, recorded_document_type: null,
+  photo_url: null, layout_url: null,
   sales: [], raw_data_json: {},
 };
 
