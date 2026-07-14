@@ -36,7 +36,11 @@ function isPublicAuthBypass(pathname: string): boolean {
   // before queueing the inbound event (see src/routes/fleetioWebhook.ts).
   return pathname === '/api/email/oauth/callback'
     || pathname.endsWith('/oauth/callback')
-    || pathname === '/api/fleetio/webhook';
+    || pathname === '/api/fleetio/webhook'
+    // Dial Connect → calls_for_service push. External service, no human
+    // JWT session — gated instead by requireApiKeyScope('service_request')
+    // in src/routes/integrations.ts (integration_api_keys, migration 0006).
+    || pathname === '/api/integrations/calls-for-service';
 }
 
 // Media endpoints that browser tags fetch without headers. Auth for these
