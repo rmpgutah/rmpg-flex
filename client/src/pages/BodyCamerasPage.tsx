@@ -607,7 +607,7 @@ export default function BodyCamerasPage() {
         <RedactionStudio
           eventId={redactingVideo.id}
           source="bodycam"
-          streamUrl={`${window.location.origin}/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
+          streamUrl={`/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
           stampLines={[
             redactingVideo.title,
             redactingVideo.officer_name || '',
