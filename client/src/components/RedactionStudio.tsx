@@ -13,8 +13,10 @@ import { activeRegionsAt, interpBox, type RedactionRegion, type RedactionKind, t
 
 const KIND_COLOR: Record<RedactionKind, string> = { plate: '#22d3ee', face: '#f472b6', person: '#a3e635', manual: '#d4a017' };
 
-export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose }: {
+export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose, source = 'dashcam' }: {
   eventId: number; streamUrl: string; stampLines: string[]; onClose: () => void;
+  /** Which custody-linkage field to populate: dashcam events (default) vs body-cam videos. */
+  source?: 'dashcam' | 'bodycam';
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
@@ -74,7 +76,8 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const kinds = Array.from(new Set(regions.filter((r) => r.enabled).map((r) => (r.kind === 'plate' ? 'license_plate' : r.kind))));
       const fd = new FormData();
       fd.append('video', blob, fileName);
-      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
+      const sourceField = source === 'bodycam' ? { source_bodycam_video_id: eventId } : { event_id: eventId };
+      fd.append('metadata', JSON.stringify({ ...sourceField, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
       await apiPostForm('/redactions', fd).catch((e) => {
         console.warn('[redaction] custody upload failed:', e);
         setErr('Exported & downloaded OK — but the custody copy upload failed. Re-export to retry.');
@@ -98,7 +101,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
     <div className="fixed inset-0 z-[70] bg-black/95 flex flex-col tactical-dark" role="dialog" aria-label="Redaction studio">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default shrink-0">
         <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-[#d4a017]">
-          <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — EVENT #{eventId}
+          <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — {source === 'bodycam' ? 'BODYCAM VIDEO' : 'EVENT'} #{eventId}
         </span>
         <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
       </div>

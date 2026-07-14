@@ -634,7 +634,7 @@ auth.get('/session-timeout', (c) => {
 // verify. Read scope is enforced HERE, at sign time — a signature carries
 // no session, so it must never be issuable for a resource the caller
 // can't already read.
-const SIGNABLE_TYPES = new Set(['bodycam', 'radio', 'panic']);
+const SIGNABLE_TYPES = new Set(['bodycam', 'bodycam-thumb', 'radio', 'panic']);
 const MEDIA_READ_ALL_ROLES = new Set(['admin', 'manager', 'supervisor']); // mirrors bodyCameras.ts READ_ALL_ROLES
 
 auth.post('/sign-urls', authMiddleware, async (c) => {
@@ -649,9 +649,10 @@ auth.post('/sign-urls', authMiddleware, async (c) => {
       const type = String(r?.type ?? '');
       const id = String(r?.id ?? '');
       if (!SIGNABLE_TYPES.has(type) || !/^\d{1,12}$/.test(id)) continue;
-      if (type === 'bodycam' && !MEDIA_READ_ALL_ROLES.has(user.role)) {
-        // Officers may only sign their own footage — same scope rule as
-        // the stream handler itself.
+      if ((type === 'bodycam' || type === 'bodycam-thumb') && !MEDIA_READ_ALL_ROLES.has(user.role)) {
+        // Officers may only sign their own footage (and its thumbnail) —
+        // same scope rule as the stream handler itself. Thumbnails are
+        // rows in bodycam_videos too, not a separate table.
         const row = await queryFirst<{ officer_id: number }>(db, 'SELECT officer_id FROM bodycam_videos WHERE id = ?', id);
         if (!row || row.officer_id !== user.id) continue;
       }

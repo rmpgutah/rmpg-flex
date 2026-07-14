@@ -1022,6 +1022,8 @@ export interface BodyCamVideo {
   officer_id: number;
   title: string;
   file_path: string;
+  thumbnail_path?: string;
+  redacted_path?: string;
   file_size: number;
   duration_seconds: number;
   mime_type: string;
