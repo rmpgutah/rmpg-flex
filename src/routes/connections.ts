@@ -712,6 +712,104 @@ async function findShortestPath(
 
 const operational = requireRole(...OPERATIONAL_ROLES);
 
+// ═══════════════════════════════════════════════════════════════
+// MAP OVERLAY — read-only detail views, NOT graph nodes (see design
+// spec non-goals: GPS breadcrumbs are too high-volume to graph 1:1).
+// Registered before /graph, /path, /search, /timeline, /investigations
+// (none of which match a 3-segment /:type/:id/<suffix> path), so there
+// is no shadowing risk in either direction.
+// ═══════════════════════════════════════════════════════════════
+
+// GET /:type/:id/gps-track?date_from=&date_to= — for a person node,
+// resolves their assigned units (units.officer_id) and returns
+// gps_breadcrumbs for those units. For a call node, returns breadcrumbs
+// where current_call_id matches. Any other type returns an empty array
+// rather than an error, keeping the map panel silent for node types
+// with no GPS relevance.
+connections.get('/:type/:id/gps-track', operational, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const type = c.req.param('type');
+    const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const dateFrom = c.req.query('date_from');
+    const dateTo = c.req.query('date_to');
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (type === 'person') {
+      conditions.push('officer_id = ?');
+      params.push(id);
+    } else if (type === 'call') {
+      conditions.push('current_call_id = ?');
+      params.push(id);
+    } else {
+      return c.json({ data: [] });
+    }
+    if (dateFrom) { conditions.push('recorded_at >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('recorded_at <= ?'); params.push(dateTo); }
+
+    const rows = await query<{ latitude: number; longitude: number; recorded_at: string }>(
+      db,
+      `SELECT latitude, longitude, recorded_at FROM gps_breadcrumbs WHERE ${conditions.join(' AND ')} ORDER BY recorded_at ASC LIMIT 2000`,
+      ...params,
+    );
+    return c.json({ data: rows.map((r) => ({ lat: r.latitude, lng: r.longitude, recorded_at: r.recorded_at })) });
+  } catch (err) {
+    console.error('[Connections] gps-track error:', (err as Error)?.message);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /:type/:id/geo-points?date_from=&date_to= — for vehicle/call/
+// incident nodes, returns ALPR capture lat/lng as pins (source: 'alpr').
+connections.get('/:type/:id/geo-points', operational, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const type = c.req.param('type');
+    const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const dateFrom = c.req.query('date_from');
+    const dateTo = c.req.query('date_to');
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (type === 'vehicle') {
+      // Boundary-anchored match against the JSON.stringify'd array in
+      // vehicle_record_ids (same pattern already used for alpr_captures
+      // in findConnections' vehicle branch — an unanchored LIKE would
+      // also match "[15]"/"[21]" for id=1).
+      conditions.push(`(
+        vehicle_record_ids = '[' || ? || ']'
+        OR vehicle_record_ids LIKE '[' || ? || ',%'
+        OR vehicle_record_ids LIKE '%,' || ? || ']'
+        OR vehicle_record_ids LIKE '%,' || ? || ',%'
+      )`);
+      params.push(String(id), String(id), String(id), String(id));
+    } else if (type === 'call') {
+      conditions.push('call_id = ?');
+      params.push(id);
+    } else if (type === 'incident') {
+      conditions.push('incident_id = ?');
+      params.push(id);
+    } else {
+      return c.json({ data: [] });
+    }
+    if (dateFrom) { conditions.push('created_at >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('created_at <= ?'); params.push(dateTo); }
+
+    const rows = await query<{ lat: number; lng: number; created_at: string; plate: string }>(
+      db,
+      `SELECT lat, lng, created_at, plate FROM alpr_captures WHERE ${conditions.join(' AND ')} AND lat IS NOT NULL ORDER BY created_at DESC LIMIT 500`,
+      ...params,
+    );
+    return c.json({ data: rows.map((r) => ({ lat: r.lat, lng: r.lng, source: 'alpr', label: r.plate, recorded_at: r.created_at })) });
+  } catch (err) {
+    console.error('[Connections] geo-points error:', (err as Error)?.message);
+    return c.json({ data: [] });
+  }
+});
+
 // GET /graph?type=person&id=123&depth=2
 connections.get('/graph', operational, async (c) => {
   const type = c.req.query('type');

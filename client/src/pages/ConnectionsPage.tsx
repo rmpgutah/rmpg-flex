@@ -14,6 +14,7 @@ import { exportGraphToPdf } from '../utils/graphToPdf';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
+import ConnectionsMapPanel from '../components/ConnectionsMapPanel';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -568,6 +569,14 @@ export default function ConnectionsPage() {
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
 
+  // Map overlay target: the currently-selected graph node if one is picked,
+  // otherwise the seed entity itself. GPS breadcrumbs / ALPR sightings are
+  // never graphed as nodes (too high-volume — see connections.ts), so this
+  // is the only place they're geo-rendered for whatever's in focus.
+  const mapNode = selectedNode
+    ? { type: selectedNode.type, id: selectedNode.entityId }
+    : (seed ? { type: seed.type, id: seed.id } : null);
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -1063,6 +1072,19 @@ export default function ConnectionsPage() {
         </div>
       )}
       </div>
+      )}
+
+      {seed && mapNode && (
+        <div>
+          <div className="text-brand-400 text-xs uppercase font-semibold mb-1">
+            Map — {selectedNode ? selectedNode.label : seed.label}
+          </div>
+          <ConnectionsMapPanel
+            key={`${mapNode.type}-${mapNode.id}`}
+            nodeType={mapNode.type}
+            nodeEntityId={mapNode.id}
+          />
+        </div>
       )}
 
       {/* Annotation edit modal */}
