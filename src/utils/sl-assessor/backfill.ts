@@ -3,12 +3,12 @@
 // bounded by TICK_WALL_CLOCK_MS so the handler can't overrun. Called from
 // the existing per-minute scheduled() handler.
 
-import { searchByAddress, getParcel } from './client';
+import { dispatchSearchByAddress, dispatchGetParcel, resolveEffectiveCounty } from '../parcel-lookup/lookup';
 import { applyParcelToRecord } from './autofill';
 import { cacheKeyParcel, getCached, putCached } from './cache';
 import type { ParcelSummary } from './types';
 import type { Env } from '../../types';
-import { ensureAssessorColumns } from '../db';
+import { ensureAssessorColumns, ensureJurisdictionAndPhotoColumns } from '../db';
 import { recordAuditCore } from '../auditLog';
 
 export const BACKFILL_RATE_PER_MIN = 30;
@@ -46,6 +46,7 @@ export async function processBackfillTick(env: Env['Bindings']): Promise<number>
   // applies migrations with continue-on-error: true). The flag is self-caching
   // so subsequent ticks in the same isolate short-circuit.
   await ensureAssessorColumns(env.DB);
+  await ensureJurisdictionAndPhotoColumns(env.DB);
   const started = Date.now();
   let processed = 0;
   while (processed < PER_TICK_BUDGET && Date.now() - started < TICK_WALL_CLOCK_MS) {
@@ -70,7 +71,7 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
     .bind(row.id).run();
 
   const table = row.record_type === 'business' ? 'businesses' : 'properties';
-  const rec = await db.prepare(`SELECT id, address FROM ${table} WHERE id = ?`).bind(row.record_id).first<{ id: number; address: string }>();
+  const rec = await db.prepare(`SELECT id, address, jurisdiction_override FROM ${table} WHERE id = ?`).bind(row.record_id).first<{ id: number; address: string; jurisdiction_override: string | null }>();
   if (!rec || !rec.address || !/\d/.test(rec.address)) {
     await db.prepare(`UPDATE assessor_backfill_jobs SET status = 'unfetchable', completed_at = datetime('now') WHERE id = ?`).bind(row.id).run();
     return true;
@@ -78,7 +79,7 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
 
   let matches: ParcelSummary[];
   try {
-    matches = await searchByAddress(env, rec.address);
+    matches = await dispatchSearchByAddress(env, rec.address, rec.jurisdiction_override);
   } catch (e: any) {
     const retry = row.retry_count + 1;
     if (retry >= 3) {
@@ -95,7 +96,10 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
     const parcelNo = outcome.applied_parcel_number;
     let parcel = await getCached<any>({ KV: env.KV }, cacheKeyParcel(parcelNo));
     if (!parcel) {
-      try { parcel = await getParcel(env, parcelNo); }
+      try {
+        const county = resolveEffectiveCounty(rec.address, rec.jurisdiction_override);
+        parcel = await dispatchGetParcel(env, parcelNo, county);
+      }
       catch { /* detail fetch failed — still mark parcel_number to prevent requeue */ }
     }
     let fieldsSet: string[] = [];
