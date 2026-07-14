@@ -569,3 +569,56 @@ bodycamVideosRouter.get('/:id/thumbnail', async (c) => {
     return dbErrorResponse(c, err, 'Failed');
   }
 });
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/detections — client-side auto face/plate scan results.
+// The client runs the SAME scanClip() engine RedactionStudio uses,
+// automatically after upload (fire-and-forget, non-blocking). This
+// route stores the region JSON + counts and, ONLY if the video is
+// still at its default 'routine' classification, bumps it to
+// 'flagged' as a redact-before-sharing signal. It never downgrades
+// an already-set classification.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/detections', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const body = await c.req.json<{ regions?: unknown[] }>().catch(() => null);
+    if (!body || !Array.isArray(body.regions)) {
+      return c.json({ error: 'regions array is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number; classification: string | null }>(
+      db, 'SELECT id, classification FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const plateCount = body.regions.filter((r: any) => r?.kind === 'plate').length;
+    const faceCount = body.regions.filter((r: any) => r?.kind === 'face').length;
+    const regionsJson = JSON.stringify(body.regions);
+
+    const shouldFlag = (plateCount > 0 || faceCount > 0) && row.classification === 'routine';
+    if (shouldFlag) {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, classification = 'flagged', updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    } else {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    }
+
+    return c.json({ success: true, detected_plate_count: plateCount, detected_face_count: faceCount, flagged: shouldFlag });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/detections failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
