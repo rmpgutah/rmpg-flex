@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { FleetListShell } from '../shell/FleetListShell';
-import { LegacyActionLink } from '../shell/LegacyActionLink';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 import { useFleetWideFanOut, vehicleLabel } from '../shell/useFleetWideFanOut';
 import { safeDateStr } from '../../../../utils/dateUtils';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
 import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
+import { FuelEntryModal } from '../vehicleDetail/FuelEntryModal';
+import type { FuelEntryRow } from '../vehicleDetail/FuelEntryModal';
 
 interface FuelRow {
   id: number;
@@ -20,13 +22,23 @@ interface FuelRow {
   station?: string | null;
 }
 
+type ModalState = { mode: 'create' } | { mode: 'edit'; entry: FuelRow; vehicleId: number } | null;
+
 export function FuelEntriesRoute() {
   useFleetV2View('/fleet/v2/fuel');
   const pathFor = useCallback((id: number) => `/fleet/${id}/fuel`, []);
-  const { rows, loading, loadedVehicles, totalVehicles } = useFleetWideFanOut<FuelRow>(pathFor);
+  const { rows, loading, loadedVehicles, totalVehicles, vehicles, refetch } = useFleetWideFanOut<FuelRow>(pathFor);
   const [search, setSearch] = useState('');
   const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  const [modal, setModal] = useState<ModalState>(null);
   const fetchedIds = useRef<string>('');
+
+  const handleDelete = (id: number) => {
+    if (!window.confirm('Delete this fuel entry? This cannot be undone.')) return;
+    apiFetchV2(`/fleet/fuel/${id}`, { method: 'DELETE' })
+      .then(() => refetch())
+      .catch(() => {});
+  };
 
   useEffect(() => {
     const ids = rows.map((r) => r.row.id);
@@ -76,7 +88,15 @@ export function FuelEntriesRoute() {
       title="Fuel Entries"
       searchPlaceholder="Search by vehicle, station, or date…"
       onSearchChange={setSearch}
-      actions={<LegacyActionLink label="New Fuel Entry" legacyPath="/fleet" />}
+      actions={
+        <button
+          type="button"
+          onClick={() => setModal({ mode: 'create' })}
+          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+        >
+          <Plus className="w-3 h-3" /> New Fuel Entry
+        </button>
+      }
     >
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">
@@ -98,6 +118,7 @@ export function FuelEntriesRoute() {
               <th className="text-right px-3 py-1.5 font-semibold">Total</th>
               <th className="text-right px-3 py-1.5 font-semibold">MPG</th>
               <th className="text-center px-3 py-1.5 font-semibold">Sync</th>
+              <th className="text-center px-3 py-1.5 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -120,12 +141,32 @@ export function FuelEntriesRoute() {
                     {rowConflicts?.length ? (
                       <div className="inline-flex gap-0.5">
                         {rowConflicts.map((c) => (
-                          <FleetioConflictBadge key={c.id} conflict={c} compact />
+                          <FleetioConflictBadge key={c.id} conflict={c} compact onResolved={refetch} />
                         ))}
                       </div>
                     ) : (
                       <span className="text-rmpg-500">—</span>
                     )}
+                  </td>
+                  <td className="px-3 py-0.5 text-center">
+                    <div className="inline-flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setModal({ mode: 'edit', entry: row, vehicleId: vehicle.id })}
+                        className="text-rmpg-400 hover:text-rmpg-100 p-0.5"
+                        aria-label={`Edit fuel entry ${row.id}`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row.id)}
+                        className="text-rmpg-400 hover:text-red-400 p-0.5"
+                        aria-label={`Delete fuel entry ${row.id}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -133,6 +174,23 @@ export function FuelEntriesRoute() {
           </tbody>
         </table>
       )}
+      {modal?.mode === 'create' ? (
+        <FuelEntryModal
+          vehicleId={null}
+          vehicles={vehicles}
+          mode="create"
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); refetch(); }}
+        />
+      ) : modal?.mode === 'edit' ? (
+        <FuelEntryModal
+          vehicleId={modal.vehicleId}
+          mode="edit"
+          entry={modal.entry}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); refetch(); }}
+        />
+      ) : null}
     </FleetListShell>
   );
 }
