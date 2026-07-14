@@ -1,13 +1,31 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { searchByAddress, getParcel, buildQueryUrl }
+import { searchByAddress, getParcel, buildQueryUrl, parseAddressComponents }
   from '../src/utils/sl-assessor/client';
 import { AssessorConfigError, AssessorHttpError, AssessorParseError }
   from '../src/utils/sl-assessor/types';
 
 const fixture = (n: string) =>
   readFileSync(join(__dirname, 'fixtures/sl-assessor', n), 'utf8');
+
+describe('parseAddressComponents', () => {
+  // Regression test: verified live 2026-07-14 against parcel
+  // 27-18-451-077-0000 ("10846 S INDIGO SKY WY") — the real SLCo Assessor
+  // address-search form only recognizes the "WY" abbreviation for Way
+  // streets. Searching with the literal word "Way" (previously mapped to
+  // itself, unchanged) returned zero results for a parcel that genuinely
+  // exists, silently producing a false "no matching parcels" in the UI.
+  test('normalizes "Way" to the SLCo form\'s "WY" abbreviation', () => {
+    const comps = parseAddressComponents('10846 S Indigo Sky Way');
+    expect(comps.street_type).toBe('WY');
+  });
+
+  test('leaves an already-abbreviated "WY" token untouched', () => {
+    const comps = parseAddressComponents('10846 S Indigo Sky WY');
+    expect(comps.street_type).toBe('WY');
+  });
+});
 
 describe('buildQueryUrl', () => {
   test('encodes the address', () => {

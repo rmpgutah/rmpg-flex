@@ -37,13 +37,19 @@ const DIR_EXPAND: Record<string, string> = {
   NORTH: 'N', SOUTH: 'S', EAST: 'E', WEST: 'W',
 };
 const STREET_TYPES = new Set([
-  'ST', 'AVE', 'BLVD', 'DR', 'LN', 'RD', 'CT', 'CIR', 'PL', 'WAY',
+  'ST', 'AVE', 'BLVD', 'DR', 'LN', 'RD', 'CT', 'CIR', 'PL', 'WY',
   'TRL', 'HWY', 'PKWY', 'SQ', 'LOOP', 'PASS', 'PATH', 'XING', 'HTS',
 ]);
 const TYPE_EXPAND: Record<string, string> = {
   STREET: 'ST', AVENUE: 'AVE', BOULEVARD: 'BLVD', DRIVE: 'DR',
   LANE: 'LN', ROAD: 'RD', COURT: 'CT', CIRCLE: 'CIR', PLACE: 'PL',
   TRAIL: 'TRL', HIGHWAY: 'HWY', PARKWAY: 'PKWY', SQUARE: 'SQ', HEIGHTS: 'HTS',
+  // The SLCo Assessor form's own street-type abbreviation is "WY", not
+  // "WAY" — verified 2026-07-14 against a live parcel (27-18-451-077-0000,
+  // "10846 S INDIGO SKY WY"): searching with the literal "WAY" token
+  // returned zero results even though the parcel exists, while "WY"
+  // resolved it immediately via the single-match redirect.
+  WAY: 'WY',
 };
 
 export interface AddressComponents {
