@@ -111,6 +111,9 @@ export default function BodyCameraTab({
   const [selectedCameraIds, setSelectedCameraIds] = useState<Set<number>>(new Set());
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkClassification, setBulkClassification] = useState<VideoClassification>('routine');
+  // Video ids whose thumbnail image failed to load (e.g. R2 object missing/404
+  // despite thumbnail_path being set on the row) — fall back to the icon.
+  const [brokenThumbnailIds, setBrokenThumbnailIds] = useState<Set<number>>(new Set());
 
   // ── Bulk-confirm dialog state ─────────────────────────────
   // Page-25 audit caught: bulk delete buttons used `window.confirm()`,
@@ -722,11 +725,12 @@ export default function BodyCameraTab({
                       )}
                       <td>
                         <div className="flex items-center gap-2">
-                          {vid.thumbnail_path ? (
+                          {vid.thumbnail_path && !brokenThumbnailIds.has(vid.id) ? (
                             <img
                               src={authedImageUrl(`/api/personnel/bodycam-videos/${vid.id}/thumbnail`)}
                               alt=""
                               className="w-8 h-[18px] object-cover flex-shrink-0 border border-rmpg-700"
+                              onError={() => setBrokenThumbnailIds(prev => (prev.has(vid.id) ? prev : new Set(prev).add(vid.id)))}
                             />
                           ) : (
                             <Video className="w-4 h-[18px] text-rmpg-600 flex-shrink-0" aria-hidden="true" />
