@@ -19,12 +19,13 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, ensureJurisdictionAndPhotoColumns } from '../../utils/db';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const businessPhotos = new Hono<Env>();
 
 const VALID_CATEGORIES = ['storefront', 'interior', 'exterior', 'parking', 'other'] as const;
+const VALID_KINDS = ['photo', 'layout'] as const;
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -92,6 +93,7 @@ businessPhotos.get('/:businessId', async (c) => {
 businessPhotos.post('/', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureJurisdictionAndPhotoColumns(db);
     const userId = c.get('userId') as number | undefined;
 
     const formData = await c.req.formData();
@@ -99,6 +101,8 @@ businessPhotos.post('/', async (c) => {
     const businessIdRaw = formData.get('business_id');
     const category = formData.get('category') ? String(formData.get('category')) : '';
     const caption = formData.get('caption') ? String(formData.get('caption')) : null;
+    const kindRaw = formData.get('kind') ? String(formData.get('kind')) : 'photo';
+    const kind = (VALID_KINDS as readonly string[]).includes(kindRaw) ? kindRaw : 'photo';
 
     // FormDataEntryValue is string | File in workers-types, but the File
     // constructor isn't always in scope for `instanceof` narrowing
@@ -114,7 +118,11 @@ businessPhotos.post('/', async (c) => {
     if (!businessIdRaw) {
       return c.json({ error: 'business_id required', code: 'BUSINESS_ID_REQUIRED' }, 400);
     }
-    if (!category || !(VALID_CATEGORIES as readonly string[]).includes(category)) {
+    // Layout images (floor plans/site plans) don't fit the storefront/
+    // interior/exterior/parking taxonomy — category is only required for
+    // kind='photo' (the default, preserving prior behavior for existing
+    // callers that don't send `kind` at all).
+    if (kind === 'photo' && (!category || !(VALID_CATEGORIES as readonly string[]).includes(category))) {
       return c.json({
         error: 'Invalid category', code: 'INVALID_CATEGORY',
         allowed: [...VALID_CATEGORIES],
@@ -154,9 +162,9 @@ businessPhotos.post('/', async (c) => {
     const result = await execute(
       db,
       `INSERT INTO business_photos
-         (business_id, url, caption, category, uploaded_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      businessId, apiUrl, caption, category, userId ?? null,
+         (business_id, url, caption, category, kind, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      businessId, apiUrl, caption, category || null, kind, userId ?? null,
     );
 
     const row = await queryFirst<Record<string, unknown>>(

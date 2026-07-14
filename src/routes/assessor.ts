@@ -293,11 +293,11 @@ app.post('/apply', async (c) => {
       stories, bedrooms, bathrooms, construction_type, improvement_class, improvement_value,
       market_value_total, market_value_land, market_value_improvement,
       taxable_value, assessed_value, tax_year,
-      legal_description, plat, lot, block, raw_data_json,
+      legal_description, plat, lot, block, photo_url, layout_url, raw_data_json,
       fetched_at, refreshed_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       datetime('now'), datetime('now')
     )
     ON CONFLICT(parcel_number) DO UPDATE SET
@@ -308,6 +308,8 @@ app.post('/apply', async (c) => {
       market_value_total = excluded.market_value_total,
       year_built = excluded.year_built,
       legal_description = excluded.legal_description,
+      photo_url = excluded.photo_url,
+      layout_url = excluded.layout_url,
       raw_data_json = excluded.raw_data_json,
       refreshed_at = datetime('now')
   `).bind(
@@ -320,6 +322,7 @@ app.post('/apply', async (c) => {
     parcel.market_value_total, parcel.market_value_land, parcel.market_value_improvement,
     parcel.taxable_value, parcel.assessed_value, parcel.tax_year,
     parcel.legal_description, parcel.plat, parcel.lot, parcel.block,
+    parcel.photo_url, parcel.layout_url,
     JSON.stringify(parcel.raw_data_json),
   ).run();
 
@@ -335,6 +338,31 @@ app.post('/apply', async (c) => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).bind(pr.id, s.sale_date, s.sale_price, s.doc_number, s.buyer, s.seller, s.sale_type).run();
     }
+  }
+
+  // Scraped photo/layout images (when present) land in the same
+  // business_photos/property_photos gallery as manual uploads — as a
+  // 'scraped' provenance-tagged row pointing at the external URL directly
+  // rather than re-hosting the bytes in R2. Idempotent on re-apply: skip if
+  // a row with this exact url already exists for the record.
+  const photosTable = body.record_type === 'business' ? 'business_photos' : 'property_photos';
+  const photosFk = body.record_type === 'business' ? 'business_id' : 'property_id';
+  const sourceCounty: Record<Parcel['source'], string> = {
+    sl_county_assessor: COUNTY_LABELS.salt_lake,
+    utah_county_assessor: COUNTY_LABELS.utah,
+    summit_county_assessor: COUNTY_LABELS.summit,
+    tooele_county_recorder: COUNTY_LABELS.tooele,
+  };
+  for (const [kind, url] of [['photo', parcel.photo_url], ['layout', parcel.layout_url]] as const) {
+    if (!url) continue;
+    const existing = await db.prepare(
+      `SELECT id FROM ${photosTable} WHERE ${photosFk} = ? AND url = ?`,
+    ).bind(body.record_id, url).first();
+    if (existing) continue;
+    await db.prepare(
+      `INSERT INTO ${photosTable} (${photosFk}, url, caption, kind, uploaded_by)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(body.record_id, url, `Scraped from ${sourceCounty[parcel.source]}`, kind, null).run();
   }
 
   // Audit AFTER the writes — a failed write must not log a success.
