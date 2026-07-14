@@ -77,7 +77,7 @@ const NODE_COLORS: Record<string, string> = {
   report:          '#ec4899', // pink
   intel_report:    '#e879f9', // fuchsia
   forensic_case:   '#a3e635', // lime-400 (mirrors ConnectionsGraphPanel)
-  forensic_exhibit:'#84cc16', // lime-500 (mirrors ConnectionsGraphPanel)
+  forensic_exhibit:'#b45309', // amber-700 (was #84cc16 — collided with `case`)
 };
 
 const NODE_RADIUS: Record<string, number> = {
