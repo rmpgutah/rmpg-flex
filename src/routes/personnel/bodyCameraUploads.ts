@@ -41,6 +41,7 @@ import { verifySignedResource } from '../../utils/signedAccess';
 import { transcribeTransmission } from '../../utils/aiDispatcher';
 import { tryParseModelJson } from '../../utils/serveIntakeExtract';
 import { aggregateAnalysis, type FrameAnalysis } from '../../utils/bodycamAiAnalysis';
+import { parseDeepScanFrame, type DetectorSample, type RawDeepScanDetection } from '../../utils/redactionDeepScan';
 import { log } from '../../utils/logger';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
@@ -816,6 +817,113 @@ bodycamVideosRouter.post('/:id/analyze', async (c) => {
     return c.json({ success: true, frames_analyzed: results.length, frames_requested: frames.length, analysis });
   } catch (err) {
     console.error('POST /personnel/bodycam-videos/:id/analyze failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/deep-scan — on-demand, higher-accuracy face/plate detection
+// for Redaction Studio, using the same vision model as /:id/analyze but
+// prompted for bounding boxes instead of scene findings. Opt-in per clip
+// (or per time range) — NOT automatic, since this calls a paid Workers AI
+// model per frame. Results are NOT persisted server-side; they flow
+// straight into the client's in-memory region list (same as the free
+// client-side scan) and only get saved when the operator exports/saves,
+// exactly like manually-drawn boxes today.
+// ────────────────────────────────────────────────────────────
+const DEEP_SCAN_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const DEEP_SCAN_MAX_FRAMES = 30;
+// Mirrors ANALYSIS's MAX_FRAME_BYTES cap on the sibling /:id/analyze route.
+const DEEP_SCAN_MAX_FRAME_BYTES = 5 * 1024 * 1024;
+
+const DEEP_SCAN_PROMPT = `You are assisting a human reviewer redacting body-worn camera footage for privacy. Look at this single video frame and identify every human FACE and every vehicle LICENSE PLATE visible, including partially visible or angled ones. Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
+{
+  "detections": [
+    { "kind": "face" | "plate", "box": [x, y, w, h], "confidence": number (0 to 1) }
+  ]
+}
+"box" is the bounding box in FRACTIONAL coordinates (0 to 1) relative to the frame — x,y is the top-left corner, w,h is width/height as a fraction of the frame's total width/height. Include every distinct face and plate you can see, even small or partially obscured ones — this is for privacy redaction, so err toward including a lower-confidence detection rather than omitting one. If nothing is visible, return {"detections": []}.`;
+
+bodycamVideosRouter.post('/:id/deep-scan', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const timestampsRaw = form.get('timestamps');
+    let timestamps: number[];
+    try {
+      timestamps = JSON.parse(String(timestampsRaw));
+      if (!Array.isArray(timestamps)) throw new Error('not an array');
+    } catch {
+      return c.json({ error: 'timestamps must be a JSON array' }, 400);
+    }
+
+    const frameEntries = form.getAll('frame') as unknown as (File | string)[];
+    const frames = frameEntries.filter((f): f is File => typeof f !== 'string' && f instanceof Blob);
+    if (frames.length === 0) return c.json({ error: 'at least one frame is required' }, 400);
+    if (frames.length !== timestamps.length) {
+      return c.json({ error: 'frame count must match timestamps count' }, 400);
+    }
+    if (frames.length > DEEP_SCAN_MAX_FRAMES) {
+      return c.json({ error: `too many frames (max ${DEEP_SCAN_MAX_FRAMES})` }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Sequential, not Promise.all — same Workers AI concurrency rationale
+    // as /:id/analyze.
+    const samples: DetectorSample[] = [];
+    let framesAnalyzed = 0;
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      const timestamp = Number(timestamps[i]) || 0;
+      try {
+        if (frame.size > DEEP_SCAN_MAX_FRAME_BYTES) {
+          console.warn(`bodycam deep-scan: frame at ${timestamp}s exceeds ${DEEP_SCAN_MAX_FRAME_BYTES} bytes, skipping`);
+          continue;
+        }
+        const bytes = new Uint8Array(await frame.arrayBuffer());
+        const out: any = await c.env.AI.run(DEEP_SCAN_VISION_MODEL as any, {
+          image: Array.from(bytes),
+          prompt: DEEP_SCAN_PROMPT,
+          max_tokens: 1024,
+          temperature: 0.1,
+        } as any);
+        const parsed = tryParseModelJson(out);
+        const rawDetections: RawDeepScanDetection[] = Array.isArray(parsed?.detections) ? parsed.detections : [];
+        samples.push(...parseDeepScanFrame(rawDetections, timestamp));
+        framesAnalyzed++;
+      } catch (frameErr) {
+        // Best-effort per frame — one bad frame doesn't fail the whole scan.
+        console.warn(`bodycam deep-scan: frame at ${timestamp}s failed:`, frameErr);
+      }
+    }
+
+    if (framesAnalyzed === 0 && frames.length > 0) {
+      console.warn(`bodycam deep-scan: all ${frames.length} frame(s) failed for video ${id}`);
+      return c.json({ error: 'Deep scan failed for all frames — try again' }, 502);
+    }
+
+    log.info('Bodycam deep scan completed', {
+      videoId: id, framesRequested: frames.length, framesAnalyzed,
+      faceDetections: samples.filter((s) => s.kind === 'face').length,
+      plateDetections: samples.filter((s) => s.kind === 'plate').length,
+    });
+
+    return c.json({ success: true, frames_analyzed: framesAnalyzed, frames_requested: frames.length, samples });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/deep-scan failed:', err);
     return dbErrorResponse(c, err, 'Failed');
   }
 });
