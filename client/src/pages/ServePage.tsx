@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
@@ -142,6 +142,7 @@ export default function ServePage() {
   // Honored once on mount; the param is stripped so a manual refresh does
   // not re-select. A miss raises a toast pointing at the current filter.
   const [searchParams, setSearchParams] = useSearchParams();
+  const routerNavigate = useNavigate();
   // ── Core state ──────────────────────────────────────────────────────
   const initialDateParam = searchParams.get('date');
   const initialTabParam = searchParams.get('tab') as Tab | null;
@@ -704,22 +705,27 @@ export default function ServePage() {
     }
   }, [refreshJobs]);
 
-  const handleNavigate = useCallback((jobId: number) => {
+  const handleNavigate = useCallback(async (jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
+    const label = encodeURIComponent(job.recipient_name || 'Serve stop');
     if (job.recipient_lat != null && job.recipient_lng != null) {
-      window.open(
-        `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${job.recipient_lat},${job.recipient_lng}`,
-        '_blank',
-        'noopener,noreferrer',
-      );
-    } else if (job.recipient_address) {
-      const addr = encodeURIComponent(
-        `${job.recipient_address} ${(job as any).recipient_address_2 || ''} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
-      );
-      window.open(`https://www.openstreetmap.org/search?query=${addr}`, '_blank', 'noopener,noreferrer');
+      routerNavigate(`/navigation?destination=${label}&lat=${job.recipient_lat}&lng=${job.recipient_lng}`);
+      return;
     }
-  }, [jobs]);
+    if (!job.recipient_address) return;
+    const addr = [
+      job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
+    ].filter(Boolean).join(', ');
+    try {
+      const geo = await apiFetch<{ results: Array<{ lat: string; lon: string }> }>(`/geocode/search?q=${encodeURIComponent(addr)}&limit=1`);
+      const hit = geo?.results?.[0];
+      if (!hit) { addToast('Could not locate that address to navigate', 'error'); return; }
+      routerNavigate(`/navigation?destination=${label}&lat=${hit.lat}&lng=${hit.lon}`);
+    } catch {
+      addToast('Could not locate that address to navigate', 'error');
+    }
+  }, [jobs, routerNavigate]);
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {

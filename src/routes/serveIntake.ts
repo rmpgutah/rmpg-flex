@@ -1833,6 +1833,64 @@ si.post('/', async (c) => {
   return c.json({ success: true, id: result.meta.last_row_id });
 });
 
+// ── POST /bulk — BulkDefendantTable (paste/type a table of defendants) ──
+// The client (client/src/components/serve/BulkDefendantTable.tsx) has posted
+// to this route from the start; it never existed on the worker, so every
+// bulk-intake submission 404'd. Creates one serve_queue row per valid row.
+// Duplicate/merge detection (the `merged` field in the response contract) is
+// NOT implemented — there's no existing name+address matching logic to reuse
+// safely here, so every valid row always lands in `created`, never `merged`.
+si.post('/bulk', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<any>().catch(() => ({}));
+  const rows: any[] = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length) return c.json({ error: 'rows required' }, 400);
+  const db = getDb(c.env);
+
+  const created: Array<{ rowIndex: number; call_id: number; call_number: string }> = [];
+  const errors: Array<{ rowIndex: number; message: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] ?? {};
+    try {
+      const isBusiness = r.kind === 'business';
+      const recipientName = isBusiness
+        ? String(r.businessName ?? '').trim()
+        : [r.firstName, r.middleName, r.lastName].filter(Boolean).map(String).join(' ').trim();
+      const address = String(r.address ?? '').trim();
+      if (!recipientName || !address) {
+        errors.push({ rowIndex: i, message: 'Missing recipient name or address' });
+        continue;
+      }
+      const contractId = r.contractId != null && r.contractId !== '' ? parseInt(r.contractId, 10) : null;
+      const parsedData = JSON.stringify({
+        recipient_type: isBusiness ? 'business' : 'individual',
+        recipient_dob: r.dob || null,
+        recipient_sex: r.sex || null,
+      });
+      const result = await execute(
+        db,
+        `INSERT INTO serve_queue (recipient_name, recipient_address, contract_id, priority, status, max_attempts, parsed_data)
+         VALUES (?, ?, ?, 'normal', 'pending', 3, ?)`,
+        recipientName, address, Number.isFinite(contractId) ? contractId : null, parsedData,
+      );
+      const newId = result.meta.last_row_id as number;
+      created.push({ rowIndex: i, call_id: newId, call_number: `PS-${newId}` });
+    } catch (err) {
+      errors.push({ rowIndex: i, message: err instanceof Error ? err.message : 'Insert failed' });
+    }
+  }
+
+  return c.json({
+    success: errors.length === 0,
+    created,
+    merged: [],
+    errors,
+    summary: { total: rows.length, created: created.length, merged: 0, failed: errors.length },
+  });
+});
+
 // ── PUT /:id ────────────────────────────────────────────────
 si.put('/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');

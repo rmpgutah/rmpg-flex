@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import {
   CheckCircle2,
   Clock,
@@ -73,27 +74,32 @@ async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Pr
 }
 
 // ─── Navigate helper ──────────────────────────────────────────────────────────
+// Routes to the app's own in-app Navigation page (NavigationPage.tsx honors
+// ?destination=&lat=&lng= as a deep link — see NavPage.tsx's favorite links)
+// instead of shelling out to an external map site. Keeps the officer's trip
+// logged against this serve stop rather than leaving the app entirely.
 
-function openNavigation(job: ServeJob): void {
+async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promise<void> {
+  const label = encodeURIComponent(job.recipient_name || 'Serve stop');
   if (job.recipient_lat != null && job.recipient_lng != null) {
-    window.open(
-      `https://www.google.com/maps/dir/?api=1&destination=${job.recipient_lat},${job.recipient_lng}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
-  } else if (job.recipient_address) {
-    const full = [
-      job.recipient_address,
-      (job as any).recipient_address_2,
-      job.recipient_city,
-      job.recipient_state,
-      job.recipient_zip,
-    ].filter(Boolean).join(', ');
-    window.open(
-      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(full)}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
+    navigate(`/navigation?destination=${label}&lat=${job.recipient_lat}&lng=${job.recipient_lng}`);
+    return;
+  }
+  if (!job.recipient_address) return;
+  const full = [
+    job.recipient_address,
+    (job as any).recipient_address_2,
+    job.recipient_city,
+    job.recipient_state,
+    job.recipient_zip,
+  ].filter(Boolean).join(', ');
+  try {
+    const geo = await apiFetch<{ results: Array<{ lat: string; lon: string }> }>(`/geocode/search?q=${encodeURIComponent(full)}&limit=1`);
+    const hit = geo?.results?.[0];
+    if (!hit) return;
+    navigate(`/navigation?destination=${label}&lat=${hit.lat}&lng=${hit.lon}`);
+  } catch {
+    // best-effort — no toast plumbing at this scope; button simply no-ops on failure
   }
 }
 
@@ -103,9 +109,10 @@ interface RunJobRowProps {
   job: ServeJob;
   isNext: boolean;
   onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
+  navigate: NavigateFunction;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -175,7 +182,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate }: RunJobRowProps) {
         {hasAddress && !isClosed && (
           <button
             type="button"
-            onClick={() => openNavigation(job)}
+            onClick={() => openNavigation(job, navigate)}
             className={`flex items-center gap-0.5 px-2 py-1 text-[10px] font-medium rounded-[2px] border transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-brand-400/40 ${
               isNext
                 ? 'text-rmpg-100 bg-brand-400/80 border-brand-400 hover:bg-brand-400 shadow-[0_0_6px_rgba(212,160,23,0.2)]'
@@ -226,7 +233,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate }: RunJobRowProps) {
 
 // ─── Next Job Card ─────────────────────────────────────────────────────────────
 
-function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void }) {
+function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
@@ -282,7 +289,7 @@ function NextJobCard({ job, onOptimisticUpdate }: { job: ServeJob; onOptimisticU
         {hasAddress && (
           <button
             type="button"
-            onClick={() => openNavigation(job)}
+            onClick={() => openNavigation(job, navigate)}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-100 bg-brand-400 hover:bg-brand-400/80 border border-brand-400 rounded-[2px] transition-all duration-150 shadow-[0_0_8px_rgba(212,160,23,0.2)] hover:shadow-[0_0_12px_rgba(212,160,23,0.35)] focus:outline-none focus:ring-2 focus:ring-brand-400/50"
             aria-label={`Navigate to ${job.recipient_name}`}
           >
@@ -390,6 +397,7 @@ export interface MyRunTabProps {
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
 export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunTabProps) {
+  const navigate = useNavigate();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
 
@@ -588,7 +596,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
 
           {/* ── Next Job card (shown when run is NOT complete) ──── */}
           {!runComplete && nextJob && (
-            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} />
+            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} />
           )}
 
           {/* ── Folder-grouped job list ─────────────────────────── */}
@@ -613,6 +621,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
                       job={job}
                       isNext={nextJob?.id === job.id && !runComplete}
                       onOptimisticUpdate={handleOptimisticUpdate}
+                      navigate={navigate}
                     />
                   ))}
                 </ServeStatusFolder>
