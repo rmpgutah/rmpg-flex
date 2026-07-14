@@ -466,10 +466,10 @@ export default function ForensicLabPage() {
       const raw = await apiFetch<{ data: ForensicCase } | ForensicCase>(`/forensic-lab/${id}`, { signal });
       const detail = (raw as { data?: ForensicCase })?.data ?? (raw as ForensicCase);
       setSelectedCase(detail);
-      // Fetch links and hashes in parallel — these endpoints currently 404 on
-      // live (not implemented in src/routes/forensics.ts as of this PR), so the
-      // .catch() coerces to empty + the panels show "No links / hashes" rather
-      // than spamming the toast queue. Re-enable once the server endpoints land.
+      // Fetch links and hashes in parallel. The .catch() stays as defensive
+      // handling for a transient network error, not a 404 workaround — both
+      // endpoints are implemented as of migration 0187 (see
+      // docs/superpowers/specs/2026-07-13-forensics-government-standard-design.md).
       apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(asArray(l))).catch(() => setCaseLinks([]));
       apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
         .then(d => { setHashes(asArray(d?.hashes)); setHashStats(d?.stats || null); })
@@ -1766,13 +1766,13 @@ export default function ForensicLabPage() {
                       {qcHistory.map((qc: any, i: number) => (
                         <div key={i} className="panel-beveled p-2 text-[10px]">
                           <div className="flex items-center gap-2">
-                            <span className={`font-bold ${qc.details?.includes('PASS') ? 'text-green-400' : 'text-red-400'}`}>
-                              {qc.details?.includes('PASS') ? 'PASS' : 'FAIL'}
+                            <span className={`font-bold ${qc.pass ? 'text-green-400' : 'text-red-400'}`}>
+                              {qc.pass ? 'PASS' : 'FAIL'}
                             </span>
-                            <span className="text-rmpg-400">{toDisplayLabel(qc.action)}</span>
+                            <span className="text-rmpg-400">{toDisplayLabel(qc.check_type)}</span>
                           </div>
-                          <div className="text-rmpg-500 mt-0.5">{qc.performed_by_name} — {qc.performed_at}</div>
-                          {qc.details && <div className="text-rmpg-300 mt-0.5 line-clamp-2">{qc.details}</div>}
+                          <div className="text-rmpg-500 mt-0.5">{qc.reviewer_name} — {qc.created_at}</div>
+                          {qc.reviewer_notes && <div className="text-rmpg-300 mt-0.5 line-clamp-2">{qc.reviewer_notes}</div>}
                         </div>
                       ))}
                     </div>
