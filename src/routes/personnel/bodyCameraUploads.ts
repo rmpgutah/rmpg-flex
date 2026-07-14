@@ -701,6 +701,12 @@ bodycamVideosRouter.post('/:id/transcribe', async (c) => {
 // ────────────────────────────────────────────────────────────
 const ANALYSIS_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const ANALYSIS_MAX_FRAMES = 20;
+// A single JPEG video frame should be well under this; guards against a
+// caller posting arbitrarily large blobs (each one is expanded via
+// Array.from(bytes), which is heavier than the raw bytes) — mirrors the
+// MAX_AUDIO_BYTES cap on the sibling /:id/transcribe route above.
+const MAX_FRAME_BYTES = 5 * 1024 * 1024;
+const VALID_SAFETY_FLAGS = new Set(['weapon_draw', 'running', 'struggle']);
 
 const ANALYSIS_PROMPT = `You are assisting a human reviewer of body-worn camera footage. Look at this single video frame and return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 {
@@ -762,6 +768,10 @@ bodycamVideosRouter.post('/:id/analyze', async (c) => {
       const frame = frames[i];
       const timestamp = Number(timestamps[i]) || 0;
       try {
+        if (frame.size > MAX_FRAME_BYTES) {
+          console.warn(`bodycam analyze: frame at ${timestamp}s exceeds ${MAX_FRAME_BYTES} bytes, skipping`);
+          continue;
+        }
         const bytes = new Uint8Array(await frame.arrayBuffer());
         const out: any = await c.env.AI.run(ANALYSIS_VISION_MODEL as any, {
           image: Array.from(bytes),
@@ -773,19 +783,26 @@ bodycamVideosRouter.post('/:id/analyze', async (c) => {
         results.push({
           timestamp,
           weapon_present: !!parsed.weapon_present,
-          weapon_confidence: Number(parsed.weapon_confidence) || 0,
+          weapon_confidence: Math.min(1, Math.max(0, Number(parsed.weapon_confidence) || 0)),
           weapon_type: typeof parsed.weapon_type === 'string' ? parsed.weapon_type : null,
           vehicle_present: !!parsed.vehicle_present,
           vehicle_description: typeof parsed.vehicle_description === 'string' ? parsed.vehicle_description : null,
           scene_type: typeof parsed.scene_type === 'string' ? parsed.scene_type : null,
           force_indicators: !!parsed.force_indicators,
-          force_confidence: Number(parsed.force_confidence) || 0,
-          officer_safety_flags: Array.isArray(parsed.officer_safety_flags) ? parsed.officer_safety_flags.filter((x: unknown) => typeof x === 'string') : [],
+          force_confidence: Math.min(1, Math.max(0, Number(parsed.force_confidence) || 0)),
+          officer_safety_flags: Array.isArray(parsed.officer_safety_flags)
+            ? parsed.officer_safety_flags.filter((x: unknown) => typeof x === 'string' && VALID_SAFETY_FLAGS.has(x))
+            : [],
         });
       } catch (frameErr) {
         // Best-effort per frame — one bad frame doesn't fail the whole analysis.
         console.warn(`bodycam analyze: frame at ${timestamp}s failed:`, frameErr);
       }
+    }
+
+    if (results.length === 0 && frames.length > 0) {
+      console.warn(`bodycam analyze: all ${frames.length} frame(s) failed for video ${id}`);
+      return c.json({ error: 'AI analysis failed for all frames — try again' }, 502);
     }
 
     const analysis = aggregateAnalysis(results, new Date().toISOString());
