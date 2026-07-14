@@ -43,8 +43,10 @@ function isValidBox(b: unknown): b is NormBox {
  *  since a model reporting e.g. 1.2 almost certainly means "very confident"
  *  rather than "invalid"). */
 export function parseDeepScanFrame(detections: RawDeepScanDetection[], t: number, minConfidence = 0.3): DetectorSample[] {
+  if (!Array.isArray(detections)) return [];
   const out: DetectorSample[] = [];
   for (const d of detections) {
+    if (typeof d !== 'object' || d === null) continue;
     if (d.kind !== 'face' && d.kind !== 'plate') continue;
     if (!isValidBox(d.box)) continue;
     const confidence = Math.min(1, Math.max(0, Number(d.confidence) || 0));

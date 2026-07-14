@@ -47,4 +47,17 @@ describe('parseDeepScanFrame', () => {
   it('returns [] for an empty input array', () => {
     expect(parseDeepScanFrame([], 1)).toEqual([]);
   });
+
+  it('skips malformed array elements (null, non-object) without throwing', () => {
+    const raw = [null, { kind: 'face', box: [0.1, 0.1, 0.1, 0.1], confidence: 0.9 }, 'garbage', 42] as unknown as RawDeepScanDetection[];
+    expect(() => parseDeepScanFrame(raw, 1)).not.toThrow();
+    expect(parseDeepScanFrame(raw, 1)).toEqual([{ kind: 'face', box: [0.1, 0.1, 0.1, 0.1], t: 1 }]);
+  });
+
+  it('returns [] instead of throwing when detections is not an array', () => {
+    expect(() => parseDeepScanFrame(null as any, 1)).not.toThrow();
+    expect(parseDeepScanFrame(null as any, 1)).toEqual([]);
+    expect(parseDeepScanFrame(undefined as any, 1)).toEqual([]);
+    expect(parseDeepScanFrame({} as any, 1)).toEqual([]);
+  });
 });
