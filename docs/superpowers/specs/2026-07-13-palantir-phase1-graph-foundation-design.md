@@ -3,7 +3,7 @@
 **Date:** 2026-07-13
 **Status:** Approved for planning
 **Depends on:** [2026-07-13-forensics-government-standard-design.md](2026-07-13-forensics-government-standard-design.md)
-  (specifically its `forensic_case_links` table)
+  (specifically its `forensic_case_entity_links` table)
 
 ## Context
 
@@ -39,7 +39,7 @@ Three gaps were confirmed by code inspection:
 - **Map/geo** has no presence in the connections UI at all (mapping
   lives entirely separately under `client/src/pages/map/*`).
 - **Forensics** cases/exhibits aren't graph nodes yet — deferred here
-  because they depend on the `forensic_case_links` table from the
+  because they depend on the `forensic_case_entity_links` table from the
   forensics spec (built in that spec's Phase 1, not this one).
 - **Intel** is already fully graphed via `intel_reports`/
   `intel_report_links` — confirmed, no work needed.
@@ -133,14 +133,14 @@ established in `loadNode()`/`findConnections()`.
 ### 4. Forensics tie-in
 
 - Add `'forensic_case'` and `'forensic_exhibit'` to `VALID_TYPES`.
-- Wired via the `forensic_case_links` table from the forensics spec —
+- Wired via the `forensic_case_entity_links` table from the forensics spec —
   once that table exists, `findConnections()` queries it exactly the way
   `record_links` is already queried (bidirectional `source`/`target`
   lookup), so this is a small addition once that table lands, not a new
   pattern.
 - **Sequencing note**: this piece is blocked on the forensics spec's
   Phase 1 (hash/links/QC/templates) shipping first, specifically the
-  `forensic_case_links` migration. If the forensics work and this Phase
+  `forensic_case_entity_links` migration. If the forensics work and this Phase
   1 graph work are built as separate PRs, this piece should be the last
   thing added here, after confirming that table exists on the target
   branch.
