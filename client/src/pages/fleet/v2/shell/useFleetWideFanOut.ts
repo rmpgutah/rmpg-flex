@@ -54,10 +54,15 @@ export function useFleetWideFanOut<T>(
   pathForRef.current = pathFor;
   const extractRef = useRef(extract);
   extractRef.current = extract;
+  // Tracks whether the fan-out has completed its first fetch. `loading`
+  // should only reflect the initial mount fetch — a later refetch() (e.g.
+  // after a create/edit/delete mutation) must not blank the whole panel
+  // back to a loading state, matching FuelTab.tsx's initialLoading behavior.
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     // /api/fleet returns { data, pagination } — unwrap.
     apiFetchV2<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
       .then((vlist) => {
@@ -68,7 +73,11 @@ export function useFleetWideFanOut<T>(
             ? (vlist as { data: VehicleStub[] }).data
             : [];
         setVehicles(list);
-        if (list.length === 0) { setLoading(false); return; }
+        if (list.length === 0) {
+          hasLoadedRef.current = true;
+          setLoading(false);
+          return;
+        }
         Promise.allSettled(list.map((v) => apiFetchV2<unknown>(pathForRef.current(v.id))))
           .then((results) => {
             if (cancelled) return;
@@ -82,10 +91,11 @@ export function useFleetWideFanOut<T>(
             }
             setRows(flat);
             setLoadedVehicles(list.length);
+            hasLoadedRef.current = true;
             setLoading(false);
           });
       })
-      .catch(() => { if (!cancelled) { setLoading(false); } });
+      .catch(() => { if (!cancelled) { hasLoadedRef.current = true; setLoading(false); } });
     return () => { cancelled = true; };
   }, [refreshToken]);
 
