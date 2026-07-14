@@ -204,6 +204,8 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     officer_id: Number(row.officer_id),
     title: row.title || '',
     file_path: row.file_path || '',
+    thumbnail_path: row.thumbnail_path || undefined,
+    redacted_path: row.redacted_path || undefined,
     file_size: Number(row.file_size) || 0,
     duration_seconds: row.duration_seconds != null ? Number(row.duration_seconds) : 0,
     mime_type: row.mime_type || 'video/mp4',
