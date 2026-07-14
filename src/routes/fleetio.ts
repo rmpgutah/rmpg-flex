@@ -25,10 +25,10 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { configFromEnv, createVehicle, listVehicles, createVendor, createPart, ping } from '../utils/fleetio/client';
+import { configFromEnv, createVehicle, listVehicles, listFuelEntries, createVendor, createPart, ping } from '../utils/fleetio/client';
 import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
-import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
+import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buildFuelLogInsertFromFleetio, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
@@ -619,6 +619,70 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     return c.json({ ok: false, error: message, outcomes }, 502);
   }
 
+  // ── Fuel entries: pull each linked vehicle's Fleet.io fuel history ──
+  // Per-vehicle failures don't abort the run — a bad response for one
+  // vehicle's fuel_entries shouldn't block importing the rest.
+  type FuelPullOutcome =
+    | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_created'; rmpg_id: number }
+    | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_linked_existing' }
+    | { fleetio_vehicle_id: number; status: 'fuel_pull_failed'; error: string };
+  const fuelOutcomes: FuelPullOutcome[] = [];
+  const linkedVehicles = await query<{ rmpg_id: number; fleetio_id: number }>(
+    db, `SELECT rmpg_id, fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
+  );
+  const existingFuelLinks = await query<{ fleetio_id: number }>(
+    db, `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_fuel_log' AND fleetio_resource='fuel_entries'`,
+  );
+  const alreadyLinkedFuelIds = new Set(existingFuelLinks.map((r) => r.fleetio_id));
+
+  for (const link of linkedVehicles) {
+    try {
+      let fuelPage = 1;
+      let fuelTotalPages = 1;
+      do {
+        const fuelResp = await listFuelEntries({ config, vehicleId: link.fleetio_id, page: fuelPage, perPage: 100 });
+        fuelTotalPages = fuelResp.pagination?.total_pages ?? 1;
+        for (const fioFuel of fuelResp.records) {
+          if (alreadyLinkedFuelIds.has(fioFuel.id)) {
+            fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: 'fuel_linked_existing' });
+            continue;
+          }
+          const insertRow = buildFuelLogInsertFromFleetio(fioFuel);
+          // Not wrapped in db.batch() — matches the vehicle-linking phase's
+          // pattern above; a crash between these two writes could leave an
+          // unlinked fuel row that re-imports as a duplicate on the next
+          // /pull. Acceptable for now since fleet_fuel_log has no natural
+          // dedup key to enforce this at the DB level either way.
+          const result = await execute(
+            db,
+            `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
+            link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
+          );
+          const newFuelId = Number(result.meta?.last_row_id);
+          await execute(
+            db,
+            `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pulled_at)
+             VALUES ('fleet_fuel_log', ?, 'fuel_entries', ?, datetime('now'))`,
+            newFuelId, fioFuel.id,
+          );
+          alreadyLinkedFuelIds.add(fioFuel.id);
+          fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: 'fuel_created', rmpg_id: newFuelId });
+        }
+        fuelPage++;
+      } while (fuelPage <= fuelTotalPages);
+    } catch (err) {
+      const message = err instanceof FleetioError ? `${err.name}: ${err.message}` : err instanceof Error ? err.message : String(err);
+      fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, status: 'fuel_pull_failed', error: message });
+    }
+  }
+
+  const fuelSummary = {
+    total: fuelOutcomes.length,
+    created: fuelOutcomes.filter((o) => o.status === 'fuel_created').length,
+    already_linked: fuelOutcomes.filter((o) => o.status === 'fuel_linked_existing').length,
+    failed: fuelOutcomes.filter((o) => o.status === 'fuel_pull_failed').length,
+  };
+
   const summary = {
     total: outcomes.length,
     created: outcomes.filter((o) => o.status === 'created').length,
@@ -636,7 +700,7 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     details: { ...summary, sample: outcomes.slice(0, 10) },
   });
 
-  return c.json({ ok: true, ...summary, outcomes });
+  return c.json({ ok: true, ...summary, outcomes, fuel: fuelSummary, fuel_outcomes: fuelOutcomes });
 });
 
 /** Shared seed implementation for vendors/parts — same shape as the vehicle

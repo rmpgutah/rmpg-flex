@@ -107,3 +107,39 @@ export type PullOutcome =
   // already linked from an earlier run) — inserting a second link for the
   // same rmpg_id would violate fleetio_links' UNIQUE(rmpg_table, rmpg_id).
   | { fleetio_id: number; status: 'skipped_conflict'; rmpg_id: number };
+
+export interface FleetioFuelEntryForPull {
+  id: number;
+  vehicle_id: number;
+  date: string;
+  liters: number | null;
+  us_gallons: number | null;
+  cost: number | null;
+}
+
+export interface LocalFuelLogInsert {
+  fuel_date: string;
+  gallons: number | null;
+  total_cost: number | null;
+  cost_per_gallon: number | null;
+}
+
+/** Maps a Fleet.io fuel_entries record into an insertable fleet_fuel_log
+ *  row. Fleet.io doesn't carry RMPG-only fields (driver_name,
+ *  payment_method, location, is_full_tank) — those stay null on a pulled
+ *  row until a local edit fills them in. cost_per_gallon is derived (Fleet.io
+ *  doesn't expose it directly) when both gallons and cost are present and
+ *  gallons is nonzero. */
+export function buildFuelLogInsertFromFleetio(entry: FleetioFuelEntryForPull): LocalFuelLogInsert {
+  const gallons = entry.us_gallons ?? null;
+  const totalCost = entry.cost ?? null;
+  const costPerGallon = gallons != null && gallons > 0 && totalCost != null
+    ? Math.round((totalCost / gallons) * 1000) / 1000
+    : null;
+  return {
+    fuel_date: entry.date,
+    gallons,
+    total_cost: totalCost,
+    cost_per_gallon: costPerGallon,
+  };
+}

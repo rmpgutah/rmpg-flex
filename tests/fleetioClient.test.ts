@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildFleetioRequest, fleetioFetch, ping, listVehicles, createVehicle, archiveVehicle, createWorkOrder, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
+import { buildFleetioRequest, fleetioFetch, ping, listVehicles, listFuelEntries, createVehicle, archiveVehicle, createWorkOrder, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
 import { FleetioConfigError } from '../src/utils/fleetio/errors';
 
 describe('buildFleetioRequest', () => {
@@ -234,6 +234,17 @@ describe('typed resource methods', () => {
     const r = await listVehicles({ config: cfg, page: 2, perPage: 25, fetchImpl: stub });
     expect(r.records).toHaveLength(1);
     expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?page=2&per_page=25');
+  });
+
+  it('listFuelEntries — passes vehicle_id/page/per_page; returns parsed records', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({
+      records: [{ id: 900, vehicle_id: 501, date: '2026-07-01', liters: null, us_gallons: 12.5, cost: 43.75 }],
+      pagination: { current_page: 1, total_pages: 1, total_entries: 1, per_page: 100 },
+    }));
+    const r = await listFuelEntries({ config: cfg, vehicleId: 501, page: 1, perPage: 100, fetchImpl: stub });
+    expect(r.records).toHaveLength(1);
+    expect(r.records[0].us_gallons).toBe(12.5);
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/fuel_entries?vehicle_id=501&page=1&per_page=100');
   });
 
   it('createVehicle — POSTs JSON body, returns the created record', async () => {
