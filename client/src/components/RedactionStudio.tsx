@@ -101,7 +101,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
     <div className="fixed inset-0 z-[70] bg-black/95 flex flex-col tactical-dark" role="dialog" aria-label="Redaction studio">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default shrink-0">
         <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-[#d4a017]">
-          <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — EVENT #{eventId}
+          <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — {source === 'bodycam' ? 'BODYCAM VIDEO' : 'EVENT'} #{eventId}
         </span>
         <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
       </div>
