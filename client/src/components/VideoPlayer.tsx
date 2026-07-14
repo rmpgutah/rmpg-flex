@@ -108,10 +108,15 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  // KB = bytes/1024 (binary), then MB/GB step decimally (/1000) — matches
+  // BodyCameraTab.tsx's formatFileSize (kept in sync 2026-07-14 audit).
   const formatSize = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    const kb = bytes / 1024;
+    if (kb < 1000) return `${kb.toFixed(0)} KB`;
+    const mb = kb / 1000;
+    if (mb < 1000) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1000;
+    return `${gb.toFixed(2)} GB`;
   };
 
   const formatDate = (d?: string) => {

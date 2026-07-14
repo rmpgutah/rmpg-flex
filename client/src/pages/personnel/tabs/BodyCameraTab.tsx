@@ -200,11 +200,20 @@ export default function BodyCameraTab({
     }
   }
 
+  // KB = bytes/1024 (binary), then MB/GB step decimally (/1000) from there —
+  // matches how file managers commonly report size (e.g. a 293,601,280-byte
+  // file reads as 286,720 KB, then 286.72 MB — not 280.00 MB from a fully
+  // binary chain). Audit caught (2026-07-14): the old fully-binary chain
+  // under-reported MB/GB relative to what officers see in their editing
+  // software's KB reading.
   function formatFileSize(bytes: number): string {
     if (!bytes) return '-';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    const kb = bytes / 1024;
+    if (kb < 1000) return `${kb.toFixed(2)} KB`;
+    const mb = kb / 1000;
+    if (mb < 1000) return `${mb.toFixed(2)} MB`;
+    const gb = mb / 1000;
+    return `${gb.toFixed(2)} GB`;
   }
 
   function formatDuration(seconds?: number): string {
