@@ -76,6 +76,8 @@ const NODE_COLORS: Record<string, string> = {
   call:            '#22d3ee', // cyan
   report:          '#ec4899', // pink
   intel_report:    '#e879f9', // fuchsia
+  forensic_case:   '#a3e635', // lime-400 (mirrors ConnectionsGraphPanel)
+  forensic_exhibit:'#84cc16', // lime-500 (mirrors ConnectionsGraphPanel)
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -83,6 +85,7 @@ const NODE_RADIUS: Record<string, number> = {
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
   call: 20, report: 14, intel_report: 20, alpr_sighting: 14,
+  forensic_case: 18, forensic_exhibit: 14,
 };
 
 // Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity

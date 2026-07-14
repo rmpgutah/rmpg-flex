@@ -51,6 +51,8 @@ const NODE_COLORS: Record<string, string> = {
   report: '#ec4899',
   intel_report: '#e879f9',
   alpr_sighting: '#06b6d4',
+  forensic_case: '#a3e635',
+  forensic_exhibit: '#84cc16',
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -71,6 +73,8 @@ const NODE_RADIUS: Record<string, number> = {
   report: 14,
   intel_report: 18,
   alpr_sighting: 14,
+  forensic_case: 18,
+  forensic_exhibit: 14,
 };
 
 // ── Force simulation (simple spring + repulsion) ─────────────

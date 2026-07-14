@@ -67,6 +67,7 @@ const VALID_TYPES = [
   'person', 'vehicle', 'property', 'business', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
   'serve_job', 'call', 'report', 'intel_report', 'alpr_sighting',
+  'forensic_case', 'forensic_exhibit',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -194,6 +195,14 @@ async function loadNode(
           metadata: sighting || {},
         };
       }
+      case 'forensic_case': {
+        const fc = await queryFirst<any>(db, 'SELECT lab_number, title, status, received_date FROM forensic_cases WHERE id = ?', id);
+        return { label: fc ? `${fc.lab_number || ''} — ${fc.title || ''}`.trim() || `Forensic Case #${id}` : `Forensic Case #${id}`, metadata: fc || {} };
+      }
+      case 'forensic_exhibit': {
+        const fe = await queryFirst<any>(db, 'SELECT exhibit_number, description, disposition FROM forensic_exhibits WHERE id = ?', id);
+        return { label: fe ? `${fe.exhibit_number || ''} — ${fe.description || ''}`.trim() || `Exhibit #${id}` : `Exhibit #${id}`, metadata: fe || {} };
+      }
       default:
         return { label: `${type} #${id}`, metadata: {} };
     }
@@ -237,6 +246,24 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
     }
   } catch (err: any) {
     console.error('[Connections] record_links query error:', err?.message);
+  }
+
+  // forensic_case_entity_links — same bidirectional pattern as record_links
+  // above, but a separate table (shipped in the forensics government-
+  // standard PR) rather than the generic cross-link table.
+  try {
+    for (const r of await query<any>(db,
+      `SELECT forensic_case_id, entity_type, entity_id, relationship FROM forensic_case_entity_links
+       WHERE (entity_type = ? AND entity_id = ?)`, type, id,
+    )) add('forensic_case', r.forensic_case_id, r.relationship || 'linked', 'forensic_case_entity_links');
+
+    if (type === 'forensic_case') {
+      for (const r of await query<any>(db,
+        `SELECT entity_type, entity_id, relationship FROM forensic_case_entity_links WHERE forensic_case_id = ?`, id,
+      )) add(r.entity_type, r.entity_id, r.relationship || 'linked', 'forensic_case_entity_links');
+    }
+  } catch (err: any) {
+    console.error('[Connections] forensic_case_entity_links error:', (err as Error)?.message);
   }
 
   // 2. Type-specific junction / FK traversal
@@ -511,6 +538,12 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
             `SELECT entity_type, entity_id, role FROM intel_report_links WHERE report_id = ? LIMIT 200`, id))
             add(r.entity_type, r.entity_id, r.role || 'mentioned', 'intel_report_links');
         }
+        break;
+      }
+
+      case 'forensic_case': {
+        for (const r of await query<any>(db, 'SELECT id FROM forensic_exhibits WHERE forensic_case_id = ?', id))
+          add('forensic_exhibit', r.id, 'exhibit_of', 'forensic_exhibits');
         break;
       }
     }
