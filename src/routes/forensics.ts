@@ -748,7 +748,7 @@ forensics.get('/:caseId/hashes', async (c) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// LINKS — cross-references to other RMS entities (forensic_case_links)
+// LINKS — cross-references to other RMS entities (forensic_case_entity_links)
 // ═══════════════════════════════════════════════════════════════
 
 const LINK_ENTITY_TYPES = new Set(['person', 'vehicle', 'case', 'incident', 'evidence', 'warrant']);
@@ -823,7 +823,7 @@ forensics.get('/:caseId/links', async (c) => {
     const caseId = parseInt(c.req.param('caseId'), 10);
     if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(
-      db, 'SELECT * FROM forensic_case_links WHERE forensic_case_id = ? ORDER BY linked_at DESC', caseId,
+      db, 'SELECT * FROM forensic_case_entity_links WHERE forensic_case_id = ? ORDER BY linked_at DESC', caseId,
     );
     return c.json(rows);
   } catch (err) {
@@ -867,7 +867,7 @@ forensics.post('/:caseId/links', async (c) => {
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     const result = await execute(
       db,
-      `INSERT INTO forensic_case_links (forensic_case_id, entity_type, entity_id, entity_label, relationship, linked_by, linked_by_name)
+      `INSERT INTO forensic_case_entity_links (forensic_case_id, entity_type, entity_id, entity_label, relationship, linked_by, linked_by_name)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       caseId, b.entity_type, entityId, entityLabel, relationship, userId, user?.full_name ?? '',
     );
@@ -875,7 +875,7 @@ forensics.post('/:caseId/links', async (c) => {
 
     await logActivity(db, caseId, 'link_added', `Linked ${b.entity_type} "${entityLabel}" (${relationship})`, userId, user?.full_name ?? '');
 
-    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_case_links WHERE id = ?', newId);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_case_entity_links WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
     return dbErrorResponse(c, err, 'Failed to link entity', 'LINK_POST_ERROR');
@@ -891,10 +891,10 @@ forensics.delete('/:caseId/links/:linkId', async (c) => {
     const linkId = parseInt(c.req.param('linkId'), 10);
     if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ entity_type: string; entity_label: string }>(
-      db, 'SELECT entity_type, entity_label FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?', linkId, caseId,
+      db, 'SELECT entity_type, entity_label FROM forensic_case_entity_links WHERE id = ? AND forensic_case_id = ?', linkId, caseId,
     );
     if (!existing) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
-    await execute(db, 'DELETE FROM forensic_case_links WHERE id = ?', linkId);
+    await execute(db, 'DELETE FROM forensic_case_entity_links WHERE id = ?', linkId);
     const userId = c.get('userId') as number;
     const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
     await logActivity(db, caseId, 'link_removed', `Unlinked ${existing.entity_type} "${existing.entity_label}"`, userId, user?.full_name ?? '');

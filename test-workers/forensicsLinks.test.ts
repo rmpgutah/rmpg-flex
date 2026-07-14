@@ -25,7 +25,7 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, lab_number TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'received', created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
-  await execute(db, `CREATE TABLE IF NOT EXISTS forensic_case_links (
+  await execute(db, `CREATE TABLE IF NOT EXISTS forensic_case_entity_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT, forensic_case_id INTEGER NOT NULL,
     entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, entity_label TEXT,
     relationship TEXT NOT NULL DEFAULT 'related', linked_by INTEGER, linked_by_name TEXT,

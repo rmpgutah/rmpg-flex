@@ -30,11 +30,18 @@ CREATE TABLE IF NOT EXISTS forensic_exhibit_hashes (
 CREATE INDEX IF NOT EXISTS idx_forensic_exhibit_hashes_exhibit ON forensic_exhibit_hashes(exhibit_id);
 CREATE INDEX IF NOT EXISTS idx_forensic_exhibit_hashes_case ON forensic_exhibit_hashes(forensic_case_id);
 
--- ── forensic_case_links — cross-references to other RMS entities ──
+-- ── forensic_case_entity_links — cross-references to other RMS entities ──
 -- Same shape/spirit as the app-wide `record_links` table, scoped to
 -- forensic cases so it can be queried the same way `record_links` is
 -- queried in src/routes/connections.ts.
-CREATE TABLE IF NOT EXISTS forensic_case_links (
+-- Named forensic_case_entity_links, not forensic_case_links, because that
+-- name is already used by an out-of-band table on live D1 with an
+-- incompatible schema — see migrations/baseline/schema.sql:923.
+-- CREATE TABLE IF NOT EXISTS silently no-ops against a same-named-but-
+-- different-schema table, which would otherwise abort this entire migration
+-- file at the first CREATE INDEX referencing a column that doesn't exist on
+-- the old table.
+CREATE TABLE IF NOT EXISTS forensic_case_entity_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
   entity_type TEXT NOT NULL,
@@ -46,7 +53,7 @@ CREATE TABLE IF NOT EXISTS forensic_case_links (
   linked_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   UNIQUE(forensic_case_id, entity_type, entity_id)
 );
-CREATE INDEX IF NOT EXISTS idx_forensic_case_links_case ON forensic_case_links(forensic_case_id);
+CREATE INDEX IF NOT EXISTS idx_forensic_case_entity_links_case ON forensic_case_entity_links(forensic_case_id);
 
 -- ── forensic_qc_checks — formal QC record (ISO-17025/ANAB-style) ──
 -- Previously QC checks were written into the generic `activity_log`
