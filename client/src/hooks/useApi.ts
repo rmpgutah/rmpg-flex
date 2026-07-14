@@ -169,7 +169,7 @@ async function fetchWithRetry(
   const promise = doFetch();
   if (isMutation) {
     inflightMutations.set(dedupKey, { promise, ts: Date.now() });
-    promise.finally(() => inflightMutations.delete(dedupKey));
+    promise.finally(() => inflightMutations.delete(dedupKey)).catch(() => {});
   }
   return promise;
 }
@@ -438,18 +438,23 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
  * would break server-side multipart parsing). Use for image/file uploads to
  * an arbitrary endpoint (e.g. /alpr/capture).
  */
-export async function apiPostForm<T>(endpoint: string, formData: FormData): Promise<T> {
+export async function apiPostForm<T>(
+  endpoint: string,
+  formData: FormData,
+  options?: { timeoutMs?: number }
+): Promise<T> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const timeoutMs = options?.timeoutMs;
 
-  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData, timeoutMs });
   if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData, timeoutMs });
     }
     if (res.status === 401) throw new Error('Session expired. Please log in again.');
   }
