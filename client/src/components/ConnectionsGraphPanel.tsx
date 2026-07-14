@@ -11,7 +11,7 @@ interface GraphNode {
   id: string;
   type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence' | 'case' | 'incident'
       | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job'
-      | 'call' | 'report' | 'intel_report';
+      | 'call' | 'report' | 'intel_report' | 'alpr_sighting';
   label: string;
   /** Original-case label for prose (label itself is uppercased for the node). */
   rawLabel?: string;
@@ -50,6 +50,7 @@ const NODE_COLORS: Record<string, string> = {
   call: '#22d3ee',
   report: '#ec4899',
   intel_report: '#e879f9',
+  alpr_sighting: '#06b6d4',
 };
 
 const NODE_RADIUS: Record<string, number> = {
@@ -69,6 +70,7 @@ const NODE_RADIUS: Record<string, number> = {
   call: 18,
   report: 14,
   intel_report: 18,
+  alpr_sighting: 14,
 };
 
 // ── Force simulation (simple spring + repulsion) ─────────────

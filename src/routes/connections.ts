@@ -66,7 +66,7 @@ const OPERATIONAL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatc
 const VALID_TYPES = [
   'person', 'vehicle', 'property', 'business', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
-  'serve_job', 'call', 'report', 'intel_report',
+  'serve_job', 'call', 'report', 'intel_report', 'alpr_sighting',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -174,6 +174,24 @@ async function loadNode(
         return {
           label: `${r.report_number || `INT-${id}`} — ${r.title || ''}`.trim(),
           metadata: { grade, threat_level: r.threat_level || 'low', handling_code: r.handling_code || '', intel: true },
+        };
+      }
+      case 'alpr_sighting': {
+        // alpr_captures is the ALPR-specific record; vehicle_sightings is
+        // the older/plainer plate-log path every ALPR capture also writes
+        // to. Try alpr_captures first (richer metadata), fall back to
+        // vehicle_sightings for rows with no ALPR counterpart.
+        const cap = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM alpr_captures WHERE id = ?', id);
+        if (cap) {
+          return {
+            label: `${cap.plate || '?'} (${cap.state || '?'}) — ${cap.location_text || 'unknown location'}`,
+            metadata: cap,
+          };
+        }
+        const sighting = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM vehicle_sightings WHERE id = ?', id);
+        return {
+          label: sighting ? `${sighting.plate || '?'} (${sighting.state || '?'}) — ${sighting.location_text || 'unknown location'}` : `ALPR Sighting #${id}`,
+          metadata: sighting || {},
         };
       }
       default:
@@ -300,6 +318,20 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
         for (const r of await query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id))
           add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
+        // ALPR sightings for this vehicle — capped at 20 most recent so a
+        // frequently-scanned plate can't flood this node's edge count the
+        // way MAX_NODES caps the graph overall.
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE vehicle_record_ids LIKE '%' || ? || '%' ORDER BY created_at DESC LIMIT 20`,
+            String(id),
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (vehicle) edges error:', err?.message); }
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM vehicle_sightings WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'vehicle_sightings');
+        } catch (err: any) { console.error('[Connections] vehicle_sightings edges error:', err?.message); }
         break;
       }
 
@@ -322,6 +354,11 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         // incident_links: manual cross-references added via IncidentsPage "Link Record" form
         for (const r of await query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id))
           if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE incident_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (incident) edges error:', err?.message); }
         break;
       }
 
@@ -345,6 +382,11 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('serve_job', r.id, 'serve_from_call', 'serve_queue');
         for (const r of await query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id))
           add('business', r.business_id, r.role || 'involved', 'call_businesses');
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (call) edges error:', err?.message); }
         break;
       }
 
