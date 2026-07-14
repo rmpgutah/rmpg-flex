@@ -13,8 +13,10 @@ import { activeRegionsAt, interpBox, type RedactionRegion, type RedactionKind, t
 
 const KIND_COLOR: Record<RedactionKind, string> = { plate: '#22d3ee', face: '#f472b6', person: '#a3e635', manual: '#d4a017' };
 
-export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose }: {
+export default function RedactionStudio({ eventId, streamUrl, stampLines, onClose, source = 'dashcam' }: {
   eventId: number; streamUrl: string; stampLines: string[]; onClose: () => void;
+  /** Which custody-linkage field to populate: dashcam events (default) vs body-cam videos. */
+  source?: 'dashcam' | 'bodycam';
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
@@ -74,7 +76,8 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       const kinds = Array.from(new Set(regions.filter((r) => r.enabled).map((r) => (r.kind === 'plate' ? 'license_plate' : r.kind))));
       const fd = new FormData();
       fd.append('video', blob, fileName);
-      fd.append('metadata', JSON.stringify({ event_id: eventId, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
+      const sourceField = source === 'bodycam' ? { source_bodycam_video_id: eventId } : { event_id: eventId };
+      fd.append('metadata', JSON.stringify({ ...sourceField, kinds, region_count: regions.filter((r) => r.enabled).length, style, format: ext, regions: regions }));
       await apiPostForm('/redactions', fd).catch((e) => {
         console.warn('[redaction] custody upload failed:', e);
         setErr('Exported & downloaded OK — but the custody copy upload failed. Re-export to retry.');
