@@ -24,8 +24,14 @@ export async function captureVideoThumbnail(file: File): Promise<Blob | null> {
     const url = URL.createObjectURL(file);
     video.src = url;
 
-    const cleanup = () => { URL.revokeObjectURL(url); };
+    const cleanup = () => { URL.revokeObjectURL(url); clearTimeout(timeoutId); };
     const fail = () => { cleanup(); resolve(null); };
+
+    // Guard against a capture that never resolves (corrupt file that neither
+    // errors nor fires loadedmetadata, or a seek that stalls indefinitely for
+    // some codec/browser combo). 8s is generous for local metadata load + seek
+    // but short enough not to block a caller waiting on this as a best-effort step.
+    const timeoutId = setTimeout(fail, 8000);
 
     video.onloadedmetadata = () => {
       const seekTo = Math.min(1, Math.max(0.1, video.duration * 0.1));
