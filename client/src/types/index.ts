@@ -1028,6 +1028,7 @@ export interface BodyCamVideo {
   detected_face_count?: number;
   detection_regions_json?: string;
   transcript?: string;
+  ai_analysis_json?: string;
   file_size: number;
   duration_seconds: number;
   mime_type: string;

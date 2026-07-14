@@ -210,6 +210,7 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     detected_face_count: row.detected_face_count != null ? Number(row.detected_face_count) : undefined,
     detection_regions_json: row.detection_regions_json || undefined,
     transcript: row.transcript || undefined,
+    ai_analysis_json: row.ai_analysis_json || undefined,
     file_size: Number(row.file_size) || 0,
     duration_seconds: row.duration_seconds != null ? Number(row.duration_seconds) : 0,
     mime_type: row.mime_type || 'video/mp4',

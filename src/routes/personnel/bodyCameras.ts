@@ -47,7 +47,7 @@ async function ensureBodycamArtifactColumns(db: ReturnType<typeof getDb>): Promi
     ['thumbnail_path', 'TEXT'], ['redacted_path', 'TEXT'],
     ['interaction_type', 'TEXT'], ['detected_plate_count', 'INTEGER'],
     ['detected_face_count', 'INTEGER'], ['detection_regions_json', 'TEXT'],
-    ['transcript', 'TEXT'],
+    ['transcript', 'TEXT'], ['ai_analysis_json', 'TEXT'],
   ] as const) {
     if (!(await columnExists(db, 'bodycam_videos', name))) {
       try { await execute(db, `ALTER TABLE bodycam_videos ADD COLUMN ${name} ${type}`); }
