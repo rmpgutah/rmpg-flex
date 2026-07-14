@@ -7,7 +7,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
-import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -474,8 +474,8 @@ export default function FleetPage() {
         status: vehicleForm.status,
         current_mileage: vehicleForm.current_mileage ? parseInt(vehicleForm.current_mileage, 10) : null,
         next_service_mileage: vehicleForm.next_service_mileage ? parseInt(vehicleForm.next_service_mileage, 10) : null,
-        insurance_expiry: vehicleForm.insurance_expiry || null,
-        registration_expiry: vehicleForm.registration_expiry || null,
+        insurance_expiry: vehicleForm.insurance_expiry ? mtDatetimeLocalToUtc(vehicleForm.insurance_expiry) : null,
+        registration_expiry: vehicleForm.registration_expiry ? mtDatetimeLocalToUtc(vehicleForm.registration_expiry) : null,
         equipment: equipArr,
         notes: vehicleForm.notes.trim() || null,
       };
@@ -508,8 +508,8 @@ export default function FleetPage() {
         labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
-        performed_at: maintForm.performed_at || nowLocalISO(),
-        next_due_date: maintForm.next_due_date || null,
+        performed_at: mtDatetimeLocalToUtc(maintForm.performed_at || nowLocalISO()),
+        next_due_date: maintForm.next_due_date ? mtDatetimeLocalToUtc(maintForm.next_due_date) : null,
         next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
         service_tasks: maintForm.service_tasks.trim() || null,
         notes: maintForm.notes.trim() || null,
@@ -536,7 +536,7 @@ export default function FleetPage() {
     setSaving(true);
     try {
       const payload = {
-        fuel_date: fuelForm.fuel_date,
+        fuel_date: mtDatetimeLocalToUtc(fuelForm.fuel_date),
         gallons: parseFloat(fuelForm.gallons),
         cost_per_gallon: fuelForm.cost_per_gallon ? parseFloat(fuelForm.cost_per_gallon) : null,
         total_cost: fuelForm.total_cost ? parseFloat(fuelForm.total_cost) : null,
@@ -574,7 +574,7 @@ export default function FleetPage() {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
         inspector_name: (inspectionForm.inspector_name || '').trim(),
-        inspection_date: inspectionForm.inspection_date,
+        inspection_date: mtDatetimeLocalToUtc(inspectionForm.inspection_date),
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
         items: inspectionForm.items,

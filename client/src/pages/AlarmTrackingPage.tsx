@@ -10,7 +10,7 @@ import StatsCard from '../components/StatsCard';
 import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
-import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -90,7 +90,7 @@ const EMPTY_PERMIT_FORM = {
 
 const EMPTY_ACTIVATION_FORM = {
   permit_id: '',
-  activation_date: new Date().toISOString().slice(0, 16),
+  activation_date: toDatetimeLocalValue(new Date().toISOString()),
   alarm_type: 'Burglary',
   is_false_alarm: false,
   cause: '',
@@ -266,6 +266,7 @@ export default function AlarmTrackingPage() {
     try {
       const payload = {
         ...activationForm,
+        activation_date: activationForm.activation_date ? mtDatetimeLocalToUtc(activationForm.activation_date) : activationForm.activation_date,
         permit_id: parseInt(String(activationForm.permit_id), 10),
         response_time_minutes: activationForm.response_time_minutes ? parseInt(String(activationForm.response_time_minutes), 10) : null,
         billed_amount: activationForm.billed_amount ? parseFloat(String(activationForm.billed_amount)) : null,

@@ -8,14 +8,14 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useAuth } from '../context/AuthContext';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Swords, Shield, Wrench, AlertTriangle, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 
 interface Callout { id: number; date: string; call_type: string; location: string; resolution: string; duration_minutes: number; team_size: number; notes: string; }
 interface Equipment { id: number; equipment_type: string; serial_number: string; condition: string; assigned_to: string; notes: string; }
 interface Stats { totalCallouts: number; totalEquipment: number; readyEquipment: number; }
 
-const EMPTY_CALLOUT = { date: new Date().toISOString().slice(0, 16), call_type: '', location: '', resolution: '', duration_minutes: 0, team_size: 0, notes: '' };
+const EMPTY_CALLOUT = { date: toDatetimeLocalValue(new Date().toISOString()), call_type: '', location: '', resolution: '', duration_minutes: 0, team_size: 0, notes: '' };
 const EMPTY_EQUIPMENT = { equipment_type: '', serial_number: '', condition: 'ready', assigned_to: '', notes: '' };
 
 /** Roles that may create / delete records */
@@ -104,7 +104,7 @@ export default function SpecialOpsPage() {
       if (calloutRec) setTab('callouts');
       else setTab('equipment');
       setEditingRecord(rec);
-      setFormData({ ...rec });
+      setFormData(calloutRec ? { ...calloutRec, date: toDatetimeLocalValue(calloutRec.date) } : { ...rec });
       setFormError(null);
       setFormOpen(true);
     } else {
@@ -153,7 +153,7 @@ export default function SpecialOpsPage() {
 
   const openEdit = (rec: Callout | Equipment) => {
     setEditingRecord(rec);
-    setFormData({ ...rec });
+    setFormData('date' in rec ? { ...rec, date: toDatetimeLocalValue(rec.date) } : { ...rec });
     setFormError(null);
     setFormOpen(true);
   };
@@ -163,12 +163,15 @@ export default function SpecialOpsPage() {
     setFormError(null);
     const isCallout = editingRecord ? 'call_type' in editingRecord : tab === 'callouts';
     const endpoint = isCallout ? '/special-ops/callouts' : '/special-ops/equipment';
+    const payload = isCallout && 'date' in formData && formData.date
+      ? { ...formData, date: mtDatetimeLocalToUtc(String(formData.date)) }
+      : formData;
     try {
       if (editingRecord) {
-        await apiFetch(`${endpoint}/${editingRecord.id}`, { method: 'PUT', body: JSON.stringify(formData) });
+        await apiFetch(`${endpoint}/${editingRecord.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         addToast('Record updated', 'success');
       } else {
-        await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(formData) });
+        await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Record created', 'success');
       }
       setFormOpen(false);
