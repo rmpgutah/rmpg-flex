@@ -138,27 +138,74 @@ app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   }
 });
 
+// Maps a stored parcel_records.source back to the County the dispatch
+// layer expects. Used below to route a bare parcel_number (no address in
+// hand) to the right county's client once we already know its source.
+const SOURCE_TO_COUNTY: Record<string, 'salt_lake' | 'utah' | 'summit' | 'tooele'> = {
+  sl_county_assessor: 'salt_lake',
+  utah_county_assessor: 'utah',
+  summit_county_assessor: 'summit',
+  tooele_county_recorder: 'tooele',
+};
+
 app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
   const parcelNo = c.req.param('parcel_no');
   if (!parcelNo) return c.json({ ok: false, code: 'missing_parcel_no' }, 400);
-  if (c.req.query('fresh') === '1') {
-    await Promise.all([
-      invalidate(c.env, cacheKeyParcel(parcelNo)),
-      invalidate(c.env, durableKeyParcel(parcelNo)),
-    ]);
+
+  const db = getDb(c.env);
+  await ensureAssessorColumns(db);
+  const existing = await db.prepare('SELECT source FROM parcel_records WHERE parcel_number = ?')
+    .bind(parcelNo).first<{ source: string }>();
+  const county = existing ? SOURCE_TO_COUNTY[existing.source] : undefined;
+
+  // Salt Lake County (or unknown/never-applied parcels, preserving prior
+  // behavior) keeps the dedicated fresh/stale KV fallback chain.
+  if (!county || county === 'salt_lake') {
+    if (c.req.query('fresh') === '1') {
+      await Promise.all([
+        invalidate(c.env, cacheKeyParcel(parcelNo)),
+        invalidate(c.env, durableKeyParcel(parcelNo)),
+      ]);
+    }
+    const r = await lookupParcelWithFallback(c.env, parcelNo);
+    return c.json({
+      ok: r.code === 'ok' && r.parcel !== null,
+      parcel: r.parcel,
+      sales: r.parcel?.sales ?? [],
+      cached: r.source === 'cache' || r.source === 'stale_cache',
+      source: r.source,
+      code: r.code,
+      degraded: r.degraded,
+      manual_url: r.manual_url,
+      diagnostic: r.diagnostic,
+    });
   }
-  const r = await lookupParcelWithFallback(c.env, parcelNo);
-  return c.json({
-    ok: r.code === 'ok' && r.parcel !== null,
-    parcel: r.parcel,
-    sales: r.parcel?.sales ?? [],
-    cached: r.source === 'cache' || r.source === 'stale_cache',
-    source: r.source,
-    code: r.code,
-    degraded: r.degraded,
-    manual_url: r.manual_url,
-    diagnostic: r.diagnostic,
-  });
+
+  try {
+    const parcel = await dispatchGetParcel(c.env, parcelNo, county);
+    return c.json({
+      ok: true,
+      parcel,
+      sales: parcel.sales,
+      cached: false,
+      source: 'direct',
+      code: 'ok',
+      degraded: false,
+      manual_url: '',
+    });
+  } catch (e: any) {
+    return c.json({
+      ok: false,
+      parcel: null,
+      sales: [],
+      cached: false,
+      source: 'none',
+      code: 'upstream_error',
+      degraded: false,
+      manual_url: '',
+      diagnostic: e?.message ?? 'unknown',
+    });
+  }
 });
 
 /**
