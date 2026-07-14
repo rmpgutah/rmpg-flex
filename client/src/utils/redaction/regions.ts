@@ -53,7 +53,7 @@ export function activeRegionsAt(regions: RedactionRegion[], t: number): Redactio
 let _seq = 0;
 const nextId = () => `auto_${Date.now().toString(36)}_${_seq++}`;
 
-export interface MergeOpts { scanInterval?: number; iouThresh?: number; defaultStyle?: RedactionStyle; strength?: number }
+export interface MergeOpts { scanInterval?: number; iouThresh?: number; defaultStyle?: RedactionStyle; strength?: number; minNoiseDuration?: number }
 
 /** Group temporally-consecutive, spatially-overlapping same-kind samples into
  *  keyframed regions. A lone sample is padded by ±scanInterval/2. */
@@ -87,9 +87,18 @@ export function mergeSamples(samples: DetectorSample[], opts: MergeOpts = {}): R
       open.push({ region, lastT: s.t, lastBox: s.box });
     }
   }
+  // A genuine plate/vehicle/face persists across multiple samples; a single-
+  // sample region below this duration is very likely a one-frame detector
+  // misfire (e.g. a shaking phone briefly misclassified as a vehicle) rather
+  // than a real, sustained detection — drop it instead of surfacing noise
+  // for the reviewer to manually clean up. Multi-keyframe regions are never
+  // dropped, regardless of duration, since they represent a tracked object
+  // across more than one sample, not a blip.
+  const minNoiseDuration = opts.minNoiseDuration ?? 0.4;
   for (const o of open) {
     const r = o.region;
     if (r.keyframes.length === 1) { r.tStart = r.tStart - scanInterval / 2; r.tEnd = r.tEnd + scanInterval / 2; }
+    if (r.keyframes.length === 1 && (r.tEnd - r.tStart) < minNoiseDuration) continue;
     done.push(r);
   }
   return done;
