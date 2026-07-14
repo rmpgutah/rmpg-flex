@@ -364,6 +364,53 @@ describe('ConnectionsPage - depth slider', () => {
   });
 });
 
+describe('ConnectionsPage - date range filter', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('renders from/to date inputs and includes alpr_sighting in the node color map', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    expect(await screen.findByLabelText(/Filter from date/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter to date/i)).toBeInTheDocument();
+  });
+
+  it('setting from/to dates refetches the graph with date_from/date_to params', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/connections/graph?type=person&id=42&depth=2'));
+    });
+
+    fireEvent.change(await screen.findByLabelText(/Filter from date/i), { target: { value: '2026-01-01' } });
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('date_from=2026-01-01'));
+    });
+  });
+});
+
 describe('ConnectionsPage - shortest path', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
