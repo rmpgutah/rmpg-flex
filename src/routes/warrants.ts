@@ -16,6 +16,17 @@ import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } 
 
 const warrants = new Hono<Env>();
 
+// D1 caps bound parameters at ~100 per prepared statement. Bulk warrant
+// actions (batch-update/bulk-archive/bulk-review) build one `?` per selected
+// id — split into safely-sized chunks so a selection over the cap doesn't
+// throw and 500 the whole batch.
+const ID_CHUNK_SIZE = 90;
+function chunkIds(ids: number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK_SIZE) chunks.push(ids.slice(i, i + ID_CHUNK_SIZE));
+  return chunks;
+}
+
 // Warrant data (active warrants, per-person profiles) is sworn-side law
 // enforcement data — not everyone with a valid session should see it.
 // client_viewer is this system's external/business-facing role (see
@@ -1043,13 +1054,19 @@ warrants.put('/batch-update', async (c) => {
     const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
     const status = (body.status || '').trim();
     if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
-    const placeholders = ids.map(() => '?').join(',');
-    await execute(
-      db,
-      `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-      status, ...ids,
-    );
-    return c.json({ success: true, updated: ids.length });
+    // D1 caps bound parameters at ~100/query — chunk so a selection over the
+    // cap doesn't blow up the prepared statement and 500 the whole batch.
+    let updated = 0;
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        status, ...chunk,
+      );
+      updated += chunk.length;
+    }
+    return c.json({ success: true, updated });
   } catch (err) {
     console.error('[warrants] batch-update error', err);
     return c.json({ error: 'Batch update failed' }, 500);
@@ -1065,18 +1082,21 @@ warrants.post('/bulk-archive', async (c) => {
     const body = await c.req.json<{ warrant_ids?: number[] }>();
     const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
     if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = await query<{ id: number; archived_at: string | null }>(
-      db, `SELECT id, archived_at FROM warrants WHERE id IN (${placeholders})`, ...ids,
-    );
+    const rows: { id: number; archived_at: string | null }[] = [];
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      rows.push(...await query<{ id: number; archived_at: string | null }>(
+        db, `SELECT id, archived_at FROM warrants WHERE id IN (${placeholders})`, ...chunk,
+      ));
+    }
     const toArchive = rows.filter((r) => !r.archived_at).map((r) => r.id);
     const skipped = rows.length - toArchive.length;
-    if (toArchive.length) {
-      const archivePlaceholders = toArchive.map(() => '?').join(',');
+    for (const chunk of chunkIds(toArchive)) {
+      const placeholders = chunk.map(() => '?').join(',');
       await execute(
         db,
-        `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${archivePlaceholders})`,
-        ...toArchive,
+        `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        ...chunk,
       );
     }
     return c.json({ archived: toArchive.length, skipped });
@@ -1095,12 +1115,14 @@ warrants.post('/bulk-review', async (c) => {
     const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
     if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
     const user = c.get('user') as { id: number } | undefined;
-    const placeholders = ids.map(() => '?').join(',');
-    await execute(
-      db,
-      `UPDATE warrants SET reviewed_at = datetime('now'), reviewed_by = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-      user?.id ?? null, ...ids,
-    );
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET reviewed_at = datetime('now'), reviewed_by = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        user?.id ?? null, ...chunk,
+      );
+    }
     return c.json({ reviewed: ids.length });
   } catch (err) {
     console.error('[warrants] bulk-review error', err);
@@ -1123,8 +1145,16 @@ warrants.post('/ingest-utah', async (c) => {
     for (const w of rows) {
       const warrantNumber = w.utah_warrant_id || w.case_id || null;
       const subjectName = [w.first_name, w.last_name].filter(Boolean).join(' ').trim() || null;
+      // SQLite's UNIQUE constraint permits multiple NULLs, so a warrant_number
+      // lookup alone would let every re-click of a row with no identifier
+      // insert a fresh duplicate. Fall back to subject_name + issue_date.
       const existing = warrantNumber
         ? await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber)
+        : subjectName
+        ? await queryFirst<{ id: number }>(
+            db, 'SELECT id FROM warrants WHERE warrant_number IS NULL AND subject_name = ? AND issued_date IS ?',
+            subjectName, w.issue_date ?? null,
+          )
         : null;
       if (existing) continue; // already ingested — idempotent no-op
       await execute(
