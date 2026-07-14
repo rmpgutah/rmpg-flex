@@ -648,12 +648,17 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
             continue;
           }
           const insertRow = buildFuelLogInsertFromFleetio(fioFuel);
+          // Not wrapped in db.batch() — matches the vehicle-linking phase's
+          // pattern above; a crash between these two writes could leave an
+          // unlinked fuel row that re-imports as a duplicate on the next
+          // /pull. Acceptable for now since fleet_fuel_log has no natural
+          // dedup key to enforce this at the DB level either way.
           const result = await execute(
             db,
             `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
             link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
           );
-          const newFuelId = Number(result.meta.last_row_id);
+          const newFuelId = Number(result.meta?.last_row_id);
           await execute(
             db,
             `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pulled_at)
