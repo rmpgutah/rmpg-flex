@@ -50,6 +50,8 @@ export async function searchByAddress(_env: TooeleRecorderEnv, address: string):
       land_sqft: null,
       total_market_value: null,
       detail_url: res.url,
+      recorded_document_url: parcel.recorded_document_url,
+      recorded_document_type: parcel.recorded_document_type,
     }];
   }
   return parseParcelList(html);

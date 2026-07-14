@@ -18,6 +18,10 @@ export interface ParcelSummary {
   land_sqft: number | null;
   total_market_value: number | null;
   detail_url: string;
+  /** Recorder-only counties (Tooele) populate these on the summary too, so
+   *  the picker list can link out without a full detail fetch. */
+  recorded_document_url?: string | null;
+  recorded_document_type?: string | null;
 }
 
 export interface ParcelSale {
