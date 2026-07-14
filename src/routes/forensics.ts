@@ -322,6 +322,12 @@ const CASE_UPDATABLE = new Set([
   'requesting_agency', 'requesting_officer', 'lead_examiner_id',
   'linked_incident_id', 'linked_case_id', 'linked_incident_number',
   'linked_case_number', 'due_date', 'completed_date', 'released_date', 'notes',
+  // metadata: generic per-case JSON bag (imaging workflow, etc.) — client
+  // already sends this via saveMetadata() in ForensicLabPage.tsx, but the
+  // column/field didn't exist until migration 0187, so every save 400'd
+  // on "No fields to update". report_sections: JSON layout from an
+  // applied report template (see POST /:caseId/apply-template).
+  'metadata', 'report_sections',
 ]);
 
 forensics.put('/:id', async (c) => {
@@ -608,6 +614,135 @@ forensics.post('/:caseId/exhibits/:exhibitId/custody', async (c) => {
     return c.json({ data: { exhibit_id: exhibitId, chain_length: chain.length, latest: chain[chain.length - 1] } }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to record custody transfer', code: 'CUSTODY_ERROR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// HASHES — tamper-evident file integrity (forensic_exhibit_hashes)
+// ═══════════════════════════════════════════════════════════════
+
+const HASH_ALGORITHMS = new Set(['md5', 'sha1', 'sha256']);
+const HASH_PURPOSES = new Set(['intake', 'reverify']);
+
+// POST /:caseId/exhibits/:exhibitId/hashes — append-only. Compares the new
+// value against the most recent row for the same algorithm on this
+// exhibit; a differing value is flagged as a possible tamper event and
+// logged to the case activity timeline (not just the Hashes tab), since
+// a hash mismatch is chain-of-custody-critical, not merely informational.
+forensics.post('/:caseId/exhibits/:exhibitId/hashes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    const exhibitId = parseInt(c.req.param('exhibitId'), 10);
+    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number;
+    const b = await c.req.json<Record<string, unknown>>();
+
+    if (typeof b.algorithm !== 'string' || !HASH_ALGORITHMS.has(b.algorithm)) {
+      return c.json({ error: 'algorithm must be one of md5, sha1, sha256', code: 'ALGORITHM_REQUIRED' }, 400);
+    }
+    if (typeof b.hash_value !== 'string' || !b.hash_value.trim()) {
+      return c.json({ error: 'hash_value required', code: 'HASH_VALUE_REQUIRED' }, 400);
+    }
+    const purpose = typeof b.purpose === 'string' && HASH_PURPOSES.has(b.purpose) ? b.purpose : 'intake';
+    const hashValue = b.hash_value.trim().toLowerCase();
+
+    const exhibit = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?', exhibitId, caseId,
+    );
+    if (!exhibit) return c.json({ error: 'Exhibit not found', code: 'NOT_FOUND' }, 404);
+
+    const prior = await queryFirst<{ hash_value: string }>(
+      db,
+      `SELECT hash_value FROM forensic_exhibit_hashes
+       WHERE exhibit_id = ? AND algorithm = ? ORDER BY computed_at DESC, id DESC LIMIT 1`,
+      exhibitId, b.algorithm,
+    );
+    const mismatch = prior ? prior.hash_value.toLowerCase() !== hashValue : false;
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_exhibit_hashes
+         (forensic_case_id, exhibit_id, algorithm, hash_value, purpose, file_name, mismatch, computed_by, computed_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      caseId, exhibitId, b.algorithm, hashValue, purpose, b.file_name ?? null, mismatch ? 1 : 0, userId, user?.full_name ?? '',
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    if (mismatch) {
+      await logActivity(db, caseId, 'hash_mismatch',
+        `${b.algorithm.toUpperCase()} mismatch on exhibit ${exhibitId} (${purpose})`,
+        userId, user?.full_name ?? '', exhibitId);
+    } else {
+      await logActivity(db, caseId, 'hash_recorded',
+        `${b.algorithm.toUpperCase()} ${purpose} hash recorded for exhibit ${exhibitId}`,
+        userId, user?.full_name ?? '', exhibitId);
+    }
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_exhibit_hashes WHERE id = ?', newId);
+    return c.json({ data: created, mismatch }, 201);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to record hash', 'HASH_POST_ERROR');
+  }
+});
+
+// GET /:caseId/hashes — flat list across every exhibit in the case, plus
+// the {total, flagged, matched} stats ForensicLabPage.tsx's Hashes tab
+// reads directly. `matched`/`flagged` cross-reference forensic_hash_entries
+// (populated by the existing IPED import pipeline, src/routes/iped.ts) —
+// a match against a 'known_bad' set folds into `flagged` alongside
+// mismatches; a match against any other set type (nsrl/known_good/etc.)
+// counts as `matched` only.
+forensics.get('/:caseId/hashes', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT h.*, e.exhibit_number, e.description AS exhibit_description
+       FROM forensic_exhibit_hashes h
+       JOIN forensic_exhibits e ON h.exhibit_id = e.id
+       WHERE h.forensic_case_id = ?
+       ORDER BY h.computed_at DESC, h.id DESC`,
+      caseId,
+    );
+
+    const hashes: Record<string, unknown>[] = [];
+    let flagged = 0;
+    let matched = 0;
+    for (const row of rows) {
+      const hashValue = row.hash_value as string;
+      const hashType = row.algorithm as string;
+      const setMatch = await queryFirst<{ set_type: string }>(
+        db,
+        `SELECT hs.set_type FROM forensic_hash_entries fe
+         JOIN forensic_hash_sets hs ON fe.hash_set_id = hs.id
+         WHERE fe.hash_value = ? AND fe.hash_type = ? LIMIT 1`,
+        hashValue, hashType,
+      );
+      const hashSetMatch = !!setMatch;
+      const isMismatch = row.mismatch === 1;
+      const isKnownBad = setMatch?.set_type === 'known_bad';
+      if (isMismatch || isKnownBad) flagged++;
+      if (hashSetMatch && !isKnownBad) matched++;
+      hashes.push({
+        ...row,
+        file_name: row.file_name ?? row.exhibit_description,
+        sha256: hashType === 'sha256' ? hashValue : undefined,
+        flagged: isMismatch || isKnownBad,
+        hash_set_match: hashSetMatch,
+        hash_set_type: setMatch?.set_type ?? null,
+      });
+    }
+
+    return c.json({ hashes, stats: { total: hashes.length, flagged, matched } });
+  } catch (err) {
+    return c.json({ error: 'Failed to get hashes', code: 'HASHES_GET_ERROR' }, 500);
   }
 });
 
