@@ -28,22 +28,31 @@ export interface FuelEntryRow {
 // but not the reverse.
 interface VehicleOption { id: number; vehicle_number?: string | null; vehicle_name?: string | null; }
 
-interface FuelEntryModalProps {
-  /** Fixed vehicle (per-vehicle screens). Pass `null` for a fleet-wide
-   *  create flow where the user must pick a vehicle — in that case also
-   *  pass `vehicles`. */
-  vehicleId: number | null;
-  vehicles?: VehicleOption[];
-  mode: 'create' | 'edit';
-  /** Required when mode is 'edit'. */
-  entry?: FuelEntryRow;
-  onClose: () => void;
-  onSaved: () => void;
-}
+type FuelEntryModalProps =
+  | {
+      /** Fixed vehicle (per-vehicle screens). Pass `null` for a fleet-wide
+       *  create flow where the user must pick a vehicle — in that case also
+       *  pass `vehicles`. */
+      vehicleId: number | null;
+      vehicles?: VehicleOption[];
+      mode: 'create';
+      onClose: () => void;
+      onSaved: () => void;
+    }
+  | {
+      vehicleId: number | null;
+      vehicles?: VehicleOption[];
+      mode: 'edit';
+      entry: FuelEntryRow;
+      onClose: () => void;
+      onSaved: () => void;
+    };
 
-export function FuelEntryModal({ vehicleId, vehicles, mode, entry, onClose, onSaved }: FuelEntryModalProps) {
+export function FuelEntryModal(props: FuelEntryModalProps) {
+  const { vehicleId, vehicles, mode, onClose, onSaved } = props;
+  const entry = props.mode === 'edit' ? props.entry : undefined;
   const [pickedVehicleId, setPickedVehicleId] = useState(vehicleId != null ? String(vehicleId) : '');
-  const [fuelDate, setFuelDate] = useState(entry?.fuel_date ?? '');
+  const [fuelDate, setFuelDate] = useState(entry?.fuel_date?.slice(0, 10) ?? '');
   const [gallons, setGallons] = useState(entry?.gallons != null ? String(entry.gallons) : '');
   const [costPerGallon, setCostPerGallon] = useState(entry?.cost_per_gallon != null ? String(entry.cost_per_gallon) : '');
   const [totalCost, setTotalCost] = useState(entry?.total_cost != null ? String(entry.total_cost) : '');
@@ -95,9 +104,9 @@ export function FuelEntryModal({ vehicleId, vehicles, mode, entry, onClose, onSa
       location: location.trim() || null,
     });
     const targetVehicleId = vehicleId ?? parseInt(pickedVehicleId, 10);
-    const req = mode === 'create'
+    const req = props.mode === 'create'
       ? apiFetchV2(`/fleet/${targetVehicleId}/fuel`, { method: 'POST', body })
-      : apiFetchV2(`/fleet/fuel/${entry!.id}`, { method: 'PUT', body });
+      : apiFetchV2(`/fleet/fuel/${props.entry.id}`, { method: 'PUT', body });
     req
       .then(() => { setSaving(false); onSaved(); })
       .catch((e) => {
