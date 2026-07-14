@@ -80,6 +80,8 @@ export default function ActiveCallsCard() {
       );
       const rows: CallRow[] = Array.isArray(res)
         ? res
+        : Array.isArray(res?.data)
+        ? res.data
         : Array.isArray(res?.calls)
         ? res.calls
         : Array.isArray(res?.rows)

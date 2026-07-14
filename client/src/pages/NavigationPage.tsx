@@ -1349,6 +1349,15 @@ export default function NavigationPage() {
   useEffect(() => {
     if (!mapReady) return;
     if (!latParam || !lngParam) return;
+    // Wait for a GPS fix before consuming the deep link — routeToDestination
+    // needs a current position to build the route. Returning early here
+    // (without marking the key consumed or stripping the params) lets this
+    // effect retry once `gps.latitude`/`gps.longitude` populate; previously
+    // the params were stripped and the key marked consumed unconditionally,
+    // so a deep link arriving before the first geolocation callback (a cold
+    // boot, or a fresh page load from a Dispatch "Navigate" link) silently
+    // dropped the destination with no way to recover short of re-searching it.
+    if (gps.latitude == null || gps.longitude == null) return;
     const key = `${latParam}|${lngParam}|${destParam ?? ''}`;
     if (deepLinkConsumedKeyRef.current === key) return;
     const lat = Number(latParam);
@@ -1359,12 +1368,10 @@ export default function NavigationPage() {
       const next = new URLSearchParams(searchParams);
       next.delete('lat'); next.delete('lng'); next.delete('destination');
       setSearchParams(next, { replace: true });
-      if (gps.latitude != null && gps.longitude != null) {
-        routeToDestination(lat, lng, label).catch(() => {});
-      }
+      routeToDestination(lat, lng, label).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, latParam, lngParam, destParam]);
+  }, [mapReady, latParam, lngParam, destParam, gps.latitude, gps.longitude]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   useEffect(() => {

@@ -286,7 +286,11 @@ export default function MdtPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
-  const gps = useGpsTracking();
+  // Layout.tsx already mounts the single upload-enabled GPS tracker for every
+  // authenticated route. Without `upload: false` here, this page ran a SECOND
+  // independent tracker with its own queue/interval, double-POSTing breadcrumbs
+  // to /dispatch/gps (same defect NavTripContext.tsx already guards against).
+  const gps = useGpsTracking({ upload: false });
 
   // Role gates — destructive duty/call actions gated to admin/manager/supervisor
   const canManage = MANAGE_ROLES.has(user?.role ?? '');

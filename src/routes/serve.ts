@@ -49,6 +49,7 @@ import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
+import { autoAssignAllUnassigned } from '../utils/serveAutoAssign';
 
 const sv = new Hono<Env>();
 
@@ -226,12 +227,13 @@ sv.get('/success-rates', async (c) => {
   // ?days=N, but this query never read it and always aggregated all-time
   // data, so every period selection showed the identical lifetime rate.
   const days = parseInt(c.req.query('days') || '90', 10);
-  const rows = await query<{ officer_id: number; full_name: string; total: number; served: number; failed: number }>(
+  const rows = await query<{ officer_id: number; officer_name: string; total: number; served: number; failed: number; attempts: number }>(
     getDb(c.env),
-    `SELECT u.id AS officer_id, u.full_name,
+    `SELECT u.id AS officer_id, u.full_name AS officer_name,
             COUNT(q.id) AS total,
             SUM(CASE WHEN q.status='served' THEN 1 ELSE 0 END) AS served,
-            SUM(CASE WHEN q.status='failed' THEN 1 ELSE 0 END) AS failed
+            SUM(CASE WHEN q.status='failed' THEN 1 ELSE 0 END) AS failed,
+            SUM(q.attempt_count) AS attempts
        FROM serve_queue q LEFT JOIN users u ON u.id = q.officer_id
        WHERE q.officer_id IS NOT NULL
          AND q.created_at >= datetime('now', '-' || ? || ' days')
@@ -239,10 +241,43 @@ sv.get('/success-rates', async (c) => {
        ORDER BY total DESC LIMIT 100`,
     days,
   );
+  // Three live consumers read this route with two incompatible shapes:
+  //   - ServeDashboardPerformance.tsx reads `{ officers: [{full_name,
+  //     success_pct, ...}] }` (the original shape).
+  //   - PerformanceTab.tsx and ServePage.tsx both read
+  //     `{ period_days, overall: {...}, by_officer: [{officer_name,
+  //     success_rate, ...}] }` — neither of which this route ever returned,
+  //     so both silently rendered nothing but their headers.
+  // Return both shapes rather than picking one and re-breaking whichever
+  // consumer isn't updated in the same pass.
+  const overallTotal = rows.reduce((s, r) => s + r.total, 0);
+  const overallServed = rows.reduce((s, r) => s + r.served, 0);
+  const overallFailed = rows.reduce((s, r) => s + r.failed, 0);
+  const overallAttempts = rows.reduce((s, r) => s + (r.attempts ?? 0), 0);
   return c.json({
     officers: rows.map((r) => ({
-      ...r,
+      officer_id: r.officer_id,
+      full_name: r.officer_name,
+      total: r.total,
+      served: r.served,
+      failed: r.failed,
       success_pct: r.total ? Math.round((r.served / r.total) * 10000) / 100 : 0,
+    })),
+    period_days: days,
+    overall: {
+      total: overallTotal,
+      served: overallServed,
+      failed: overallFailed,
+      success_rate: overallTotal ? Math.round((overallServed / overallTotal) * 10000) / 100 : 0,
+      avg_attempts: overallTotal ? Math.round((overallAttempts / overallTotal) * 100) / 100 : 0,
+    },
+    by_officer: rows.map((r) => ({
+      officer_id: r.officer_id,
+      officer_name: r.officer_name,
+      total: r.total,
+      served: r.served,
+      failed: r.failed,
+      success_rate: r.total ? Math.round((r.served / r.total) * 10000) / 100 : 0,
     })),
   });
 });
@@ -405,6 +440,18 @@ sv.post('/assignments/assign', async (c) => {
     assigned.push(id);
   }
   return c.json({ success: true, assigned, skipped });
+});
+
+// POST /assignments/auto-assign-all — batch-assign every unassigned pending
+// job to the officer with the fewest open jobs. autoAssignAllUnassigned()
+// (utils/serveAutoAssign.ts) has existed since it was built for this exact
+// route — the route itself was never registered, so PerformanceTab.tsx's
+// "Auto-Assign All Unassigned" button always 404'd.
+sv.post('/assignments/auto-assign-all', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const assigned = await autoAssignAllUnassigned(getDb(c.env));
+  return c.json({ success: true, assigned });
 });
 
 sv.get('/assignments/needs-attention', async (c) => {
@@ -590,6 +637,18 @@ sv.put('/bulk-status', async (c) => {
     `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
      WHERE id IN (${placeholders})`
   ).bind(status, ...ids).run();
+
+  // Bill served jobs — every other path to status='served' (single-attempt
+  // logAttempt, the substitute-service shortcut) calls generateServeCharges;
+  // this bulk path updated status directly and skipped it, so batch "Mark
+  // Served" silently never billed. Best-effort like the other call sites —
+  // generateServeCharges swallows its own errors so a billing hiccup can't
+  // break the status update that already committed.
+  if (status === 'served') {
+    for (const id of ids) {
+      await generateServeCharges(db, id).catch(() => {});
+    }
+  }
 
   // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
   if (status === 'served' || status === 'failed') {

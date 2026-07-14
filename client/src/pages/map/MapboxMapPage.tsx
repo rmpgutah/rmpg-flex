@@ -499,7 +499,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [minimapOpen, setMinimapOpen] = useState(false);
   useScaleControl(mapLoaded ? mapRef.current : null, scaleEnabled);
   useFullscreenControl(mapLoaded ? mapRef.current : null, fullscreenEnabled);
-  const gps = useGpsTracking();
+  // Layout.tsx already mounts the single upload-enabled GPS tracker for every
+  // authenticated route. Without `upload: false` here, this page ran a SECOND
+  // independent tracker with its own queue/interval, double-POSTing breadcrumbs
+  // to /dispatch/gps (same defect NavTripContext.tsx already guards against).
+  const gps = useGpsTracking({ upload: false });
   const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────

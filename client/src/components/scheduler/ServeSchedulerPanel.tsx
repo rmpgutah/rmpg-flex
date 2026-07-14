@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ExternalLink, Navigation, RefreshCw, Sparkles } from 'lucide-react';
+import { CalendarDays, ExternalLink, Navigation, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
+import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { describeServeScheduleError } from '../../utils/serveScheduleErrors';
+import EditSlotModal from '../serve/EditSlotModal';
 import WeekTimeline from './WeekTimeline';
 import MonthGrid from './MonthGrid';
+import type { OfficerOption } from './OfficerLaneTimeline';
 import type { ScheduleSlot } from '../../utils/schedulerView';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface ScheduleResp {
   schedule: Array<{ date: string; weekday: string; slots: ScheduleSlot[] }>;
@@ -23,9 +29,15 @@ type ViewMode = 'week' | 'month';
 export default function ServeSchedulerPanel() {
   const [view, setView] = useState<ViewMode>('week');
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [officers, setOfficers] = useState<OfficerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backfilling, setBackfilling] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+  const { openMenu } = useContextMenu();
 
   const today = useMemo(todayDenver, []);
 
@@ -54,6 +66,12 @@ export default function ServeSchedulerPanel() {
   useEffect(() => { refetch(); }, [refetch]);
   useLiveSync('serve-schedule', refetch);
 
+  useEffect(() => {
+    apiFetch<Array<{ id: number; name: string }>>('/serve-intake/officers')
+      .then((rows) => setOfficers(rows.map((o) => ({ id: o.id, name: o.name }))))
+      .catch(() => { /* Edit modal still opens; officer select shows empty */ });
+  }, []);
+
   const handleSlotDrop = useCallback(async (
     slot: ScheduleSlot,
     target: { date: string; window_start: string; window_end: string },
@@ -65,9 +83,18 @@ export default function ServeSchedulerPanel() {
         : s,
     ));
     try {
+      // The PATCH endpoint reads `scheduled_date`, not `date` — sending the
+      // raw `target` object silently no-ops the date move (server falls back
+      // to the slot's current date) while still returning 200, so the chip
+      // appears to move until the next refetch snaps it back to where it
+      // started. Map the field name explicitly.
       await apiFetch(`/serve-intake/schedule/${slot.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(target),
+        body: JSON.stringify({
+          scheduled_date: target.date,
+          window_start: target.window_start,
+          window_end: target.window_end,
+        }),
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (e) {
@@ -78,6 +105,32 @@ export default function ServeSchedulerPanel() {
       alert(`Could not move attempt: ${describeServeScheduleError(e).message}`);
     }
   }, [refetch]);
+
+  // ── EditSlotModal: full manual edit (date, window, officer, label, notify) ─
+  const handleSlotSave = useCallback(async (edited: ScheduleSlot) => {
+    if (!editingSlot) return;
+    await apiFetch(`/serve-intake/schedule/${editingSlot.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scheduled_date: edited.scheduled_date,
+        window_start: edited.window_start,
+        window_end: edited.window_end,
+        officer_id: edited.officer_id,
+        window_label: edited.window_label,
+        notify_before_secs: edited.notify_before_secs,
+      }),
+    });
+    refetch();
+  }, [editingSlot, refetch]);
+
+  const handleSlotContextMenu = useCallback((slot: ScheduleSlot, e: React.MouseEvent) => {
+    if (!canManage) return;
+    const items: ContextMenuItem[] = [
+      { key: 'edit', label: 'Edit slot…', icon: <Pencil size={12} />, onClick: () => setEditingSlot(slot) },
+    ];
+    openMenu(e, items);
+  }, [canManage, openMenu]);
 
   const handleBackfill = useCallback(async () => {
     setBackfilling(true);
@@ -155,6 +208,7 @@ export default function ServeSchedulerPanel() {
             anchorYmd={today}
             slots={slots}
             todayYmd={today}
+            onSlotContextMenu={handleSlotContextMenu}
             onSlotDrop={handleSlotDrop}
           />
         )
@@ -183,6 +237,17 @@ export default function ServeSchedulerPanel() {
           <Navigation size={8} /> Plan Route
         </a>
       </div>
+
+      {editingSlot && (
+        <EditSlotModal
+          visible
+          slot={editingSlot}
+          officers={officers}
+          onSave={handleSlotSave}
+          onCancel={() => setEditingSlot(null)}
+          onClose={() => setEditingSlot(null)}
+        />
+      )}
     </div>
   );
 }

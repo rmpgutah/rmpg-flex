@@ -14,13 +14,14 @@ interface Props {
   slots: ScheduleSlot[];
   todayYmd: string;              // for highlighting the Today column
   onSlotClick?: (slot: ScheduleSlot) => void;
+  onSlotContextMenu?: (slot: ScheduleSlot, e: React.MouseEvent) => void;
   onSlotDrop?: (slot: ScheduleSlot, target: { date: string; window_start: string; window_end: string }) => void;
 }
 
 const HOUR_BANDS = ['06–08', '08–10', '10–12', '12–14', '14–16', '16–18', '18–20', '20–22', '22+'];
 
 export default function WeekTimeline({
-  anchorYmd, slots, todayYmd, onSlotClick, onSlotDrop,
+  anchorYmd, slots, todayYmd, onSlotClick, onSlotContextMenu, onSlotDrop,
 }: Props) {
   const days = useMemo(() => dayRangeFromAnchor(anchorYmd, 7), [anchorYmd]);
   const grouped = useMemo(() => groupByDay(slots), [slots]);
@@ -125,6 +126,12 @@ export default function WeekTimeline({
                   slot={slot}
                   onClick={() => onSlotClick?.(slot)}
                   onDragStart={handleDragStart(slot)}
+                  onContextMenu={(e) => {
+                    if (!onSlotContextMenu) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSlotContextMenu(slot, e);
+                  }}
                 />
               </div>
             );

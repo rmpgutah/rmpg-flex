@@ -334,7 +334,12 @@ export default function ServeIntakePage() {
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocrPreview, setOcrPreview] = useState<OcrScanResult | null>(null);
-  const [editingFields, setEditingFields] = useState<Record<string, string>>({});
+  // Tracks which field keys are currently showing an edit input in the OCR
+  // Extraction Review modal (true = editing). The actual value being typed
+  // lives in `editOverrides` (the same state that feeds `field_overrides` on
+  // submit) — this used to be its own disconnected Record<string,string>
+  // that nothing ever read back out, so edits made here silently vanished.
+  const [editingFields, setEditingFields] = useState<Record<string, boolean>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
   // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
@@ -1259,19 +1264,20 @@ export default function ServeIntakePage() {
                           {(field.confidence * 100).toFixed(0)}%
                         </span>
                       </div>
-                      {editingFields[key] !== undefined ? (
+                      {editingFields[key] ? (
                         <input id="ff-serveintakepage-2"
                           type="text"
-                          value={editingFields[key]}
-                          onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
+                          value={editOverrides[key] ?? field.value}
+                          onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                          onBlur={() => setEditingFields(prev => ({ ...prev, [key]: false }))}
                           className="w-full bg-surface-overlay border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-rmpg-100 truncate">{field.value}</span>
+                          <span className="text-xs text-rmpg-100 truncate">{editOverrides[key] ?? field.value}</span>
                           <IconButton
-                            onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
+                            onClick={() => setEditingFields(prev => ({ ...prev, [key]: true }))}
                             aria-label={`Edit ${key}`}
                             className="text-rmpg-500 hover:text-brand-400 flex-shrink-0"
                           >
