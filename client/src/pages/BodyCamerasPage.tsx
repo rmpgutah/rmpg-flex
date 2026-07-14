@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
-import type { BodyCamera, BodyCamVideo, VideoClassification } from '../types';
+import type { BodyCamera, BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -288,6 +288,12 @@ export default function BodyCamerasPage() {
       body: JSON.stringify(data),
     });
     await refreshBodyCameras();
+    // Keep the open player's video in sync with the edited fields
+    setPlayingVideo(prev =>
+      prev && prev.id === videoId
+        ? { ...prev, ...data, retention_status: data.retention_status as VideoRetention }
+        : prev
+    );
     addToast('Video details saved', 'success');
   };
 
