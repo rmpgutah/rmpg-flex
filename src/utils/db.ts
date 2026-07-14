@@ -303,3 +303,47 @@ export async function ensureDialerOidcColumns(db: D1Database): Promise<void> {
   }
   _dialerOidcColumnsEnsured = await columnExists(db, 'users', 'dialer_oidc_sub');
 }
+
+// ── Jurisdiction override + photo/layout reconciler ────────
+// Migration 0189_jurisdiction_photo_layout.sql adds jurisdiction_override to
+// businesses/properties, photo_url/layout_url to parcel_records, a `kind`
+// column to business_photos, and creates property_photos. Same self-heal
+// situation as above (CLAUDE.md rule #5).
+let _jurisdictionPhotoColumnsEnsured = false;
+
+export async function ensureJurisdictionAndPhotoColumns(db: D1Database): Promise<void> {
+  if (_jurisdictionPhotoColumnsEnsured) return;
+  const COLUMNS: Array<[string, string, string]> = [
+    ['businesses', 'jurisdiction_override', 'TEXT'],
+    ['properties', 'jurisdiction_override', 'TEXT'],
+    ['parcel_records', 'photo_url', 'TEXT'],
+    ['parcel_records', 'layout_url', 'TEXT'],
+    ['business_photos', 'kind', `TEXT NOT NULL DEFAULT 'photo'`],
+  ];
+  for (const [table, col, type] of COLUMNS) {
+    try {
+      if (!(await columnExists(db, table, col))) {
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS property_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      caption TEXT,
+      category TEXT,
+      kind TEXT NOT NULL DEFAULT 'photo',
+      uploaded_by INTEGER,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+    )`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_property_photos_property ON property_photos(property_id)`).run();
+  } catch {
+    // Race or pre-existing table — tolerated by design (CLAUDE.md rule #5).
+  }
+  _jurisdictionPhotoColumnsEnsured = await columnExists(db, 'businesses', 'jurisdiction_override');
+}
