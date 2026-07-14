@@ -1181,32 +1181,65 @@ forensics.get('/metrics/backlog', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
+// GET /:id/qc-history — reads the dedicated forensic_qc_checks table.
+// Previously read the generic activity_log table with a JSON-stringified
+// `details` blob the frontend couldn't reliably parse
+// (`qc.details?.includes('PASS')` never matched JSON — QC results always
+// rendered as FAIL). A dedicated table also satisfies ISO-17025/ANAB's
+// expectation that QC be its own auditable record.
 forensics.get('/:id/qc-history', async (c) => {
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM activity_log WHERE entity_type = 'forensic_case' AND entity_id = ? AND action LIKE '%qc%' ORDER BY created_at DESC LIMIT 50`, id);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT * FROM forensic_qc_checks WHERE forensic_case_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
+      id,
+    );
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
 });
 
 // /analysis-templates relocated to before /:id (see comment block near line 188).
 
+// POST /:id/qc-check — now role-gated (admin/manager/supervisor, matching
+// the reviewer-tier roles elsewhere in this file) since it wasn't gated
+// at all previously, an odd gap on a QC-record-critical endpoint.
 forensics.post('/:id/qc-check', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const body = await c.req.json<Record<string, unknown>>();
     const userId = c.get('userId') as number;
-    const fc = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', id);
-    if (!fc) return c.json({ error: 'Case not found' }, 404);
-    await execute(db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'qc_check', 'forensic_case', ?, ?, datetime('now'))`,
-      userId, id, JSON.stringify({ result: body.result || 'pass', notes: body.notes || '' }));
-    return c.json({ success: true });
-  } catch { return c.json({ error: 'QC check failed' }, 500); }
+    const fc = await queryFirst<{ id: number }>(db, 'SELECT id FROM forensic_cases WHERE id = ?', id);
+    if (!fc) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    const checkType = typeof body.check_type === 'string' && body.check_type.trim() ? body.check_type : 'peer_review';
+    const pass = body.pass !== false; // default true unless explicitly false
+    const reviewerNotes = typeof body.reviewer_notes === 'string'
+      ? body.reviewer_notes
+      : (typeof body.notes === 'string' ? body.notes : null);
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_qc_checks (forensic_case_id, exhibit_id, check_type, reviewer_id, reviewer_name, pass, reviewer_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, body.exhibit_id ?? null, checkType, userId, user?.full_name ?? '', pass ? 1 : 0, reviewerNotes,
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    await logActivity(db, id, 'qc_check', `${checkType}: ${pass ? 'PASS' : 'FAIL'}`, userId, user?.full_name ?? '');
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_qc_checks WHERE id = ?', newId);
+    return c.json({ data: created, success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'QC check failed', 'QC_CHECK_ERROR');
+  }
 });
 
 forensics.get('/queue/priority', async (c) => {
