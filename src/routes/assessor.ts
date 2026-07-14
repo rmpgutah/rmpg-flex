@@ -23,7 +23,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, columnExists, ensureAssessorColumns } from '../utils/db';
+import { getDb, columnExists, ensureAssessorColumns, ensureJurisdictionAndPhotoColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import {
@@ -36,7 +36,10 @@ import {
 } from '../utils/sl-assessor/types';
 import type { Parcel, ParcelSummary } from '../utils/sl-assessor/types';
 import { lookupParcelsWithFallback, lookupParcelWithFallback } from '../utils/sl-assessor/lookup';
-import { dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress } from '../utils/parcel-lookup/lookup';
+import {
+  dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress, resolveEffectiveCounty,
+  buildManualUrl, COUNTY_LABELS, isOverridableCounty,
+} from '../utils/parcel-lookup/lookup';
 
 const app = new Hono<Env>();
 
@@ -159,6 +162,77 @@ app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
 });
 
 /**
+ * GET /jurisdiction?address=&record_type=&record_id=
+ * Resolves which county an address falls under, and — when record_type +
+ * record_id are supplied — whether that record has a manual override on
+ * file. The override always wins over the router when set. Returns the
+ * effective county, a human label, and a link to that county's manual
+ * search page so an operator can sanity-check or work around a bad match.
+ */
+app.get('/jurisdiction', async (c) => {
+  const address = c.req.query('address')?.trim();
+  if (!address) return c.json({ code: 'missing_address' }, 400);
+
+  const recordType = c.req.query('record_type');
+  const recordIdRaw = c.req.query('record_id');
+  let override: string | null = null;
+
+  if (recordType && recordIdRaw) {
+    const table = recordType === 'business' ? 'businesses' : recordType === 'property' ? 'properties' : null;
+    const recordId = Number(recordIdRaw);
+    if (table && Number.isFinite(recordId)) {
+      const db = getDb(c.env);
+      await ensureJurisdictionAndPhotoColumns(db);
+      const row = await db.prepare(`SELECT jurisdiction_override FROM ${table} WHERE id = ?`)
+        .bind(recordId).first<{ jurisdiction_override: string | null }>();
+      override = row?.jurisdiction_override ?? null;
+    }
+  }
+
+  const resolved = resolveCountyFromAddress(address);
+  const effective = resolveEffectiveCounty(address, override);
+  return c.json({
+    resolved_county: resolved,
+    override,
+    effective_county: effective,
+    label: COUNTY_LABELS[effective],
+    manual_url: buildManualUrl(effective, address),
+  });
+});
+
+/**
+ * POST /jurisdiction  { record_type, record_id, county: County|null }
+ * Sets (or clears, when county is null) the manual jurisdiction override
+ * on a business/property record. `county` must be one of the four
+ * supported counties, or null to clear back to automatic resolution.
+ */
+app.post('/jurisdiction', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const body = await c.req.json().catch(() => null) as
+    { record_type?: string; record_id?: number; county?: string | null } | null;
+  if (!body?.record_type || !body.record_id) return c.json({ code: 'missing_fields' }, 400);
+  if (body.county !== null && !isOverridableCounty(body.county)) {
+    return c.json({ code: 'invalid_county' }, 400);
+  }
+  const table = body.record_type === 'business' ? 'businesses' : body.record_type === 'property' ? 'properties' : null;
+  if (!table) return c.json({ code: 'bad_record_type' }, 400);
+
+  const db = getDb(c.env);
+  await ensureJurisdictionAndPhotoColumns(db);
+  const res = await db.prepare(`UPDATE ${table} SET jurisdiction_override = ? WHERE id = ?`)
+    .bind(body.county ?? null, body.record_id).run();
+  if (!res.meta.changes) return c.json({ code: 'not_found' }, 404);
+
+  await recordAudit(c, {
+    action: 'ASSESSOR_JURISDICTION_OVERRIDE_SET',
+    entityType: body.record_type,
+    entityId: body.record_id,
+    details: { county: body.county ?? null },
+  });
+
+  return c.json({ ok: true, county: body.county ?? null });
+});
+
+/**
  * POST /apply  { record_type: 'business'|'property', record_id, parcel_number }
  * Looks up the parcel (cached or fetched), applies never-clobber autofill onto
  * the target record, upserts parcel_records, and replaces parcel_sales. Audits
@@ -177,6 +251,7 @@ app.post('/apply', async (c) => {
   // Self-heal: ensure the new columns + parcel_records/parcel_sales tables
   // exist before any read or write touches them.
   await ensureAssessorColumns(db);
+  await ensureJurisdictionAndPhotoColumns(db);
 
   const record = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`)
     .bind(body.record_id).first<Record<string, unknown>>();
@@ -185,7 +260,8 @@ app.post('/apply', async (c) => {
   let parcel: Parcel;
   try {
     const cached = await getCached<Parcel>(c.env, cacheKeyParcel(body.parcel_number));
-    const county = resolveCountyFromAddress((record as { address?: string }).address ?? '');
+    const recordForCounty = record as { address?: string; jurisdiction_override?: string | null };
+    const county = resolveEffectiveCounty(recordForCounty.address ?? '', recordForCounty.jurisdiction_override);
     parcel = cached ?? await dispatchGetParcel(c.env, body.parcel_number, county);
     if (!cached) await putCached(c.env, cacheKeyParcel(body.parcel_number), parcel);
   } catch (e) { return handleError(c, e); }

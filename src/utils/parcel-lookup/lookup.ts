@@ -25,11 +25,51 @@ function clientFor(county: County) {
   }
 }
 
+export const COUNTY_LABELS: Record<County, string> = {
+  salt_lake: 'Salt Lake County',
+  utah: 'Utah County',
+  summit: 'Summit County',
+  tooele: 'Tooele County',
+  unsupported: 'Unsupported',
+};
+
+/** The four counties a jurisdiction override may be set to (not 'unsupported'). */
+export const OVERRIDABLE_COUNTIES = ['salt_lake', 'utah', 'summit', 'tooele'] as const;
+export type OverridableCounty = (typeof OVERRIDABLE_COUNTIES)[number];
+
+export function isOverridableCounty(value: unknown): value is OverridableCounty {
+  return typeof value === 'string' && (OVERRIDABLE_COUNTIES as readonly string[]).includes(value);
+}
+
+/** Manual county-search page for a given address, or '' when unsupported. */
+export function buildManualUrl(county: County, address: string): string {
+  switch (county) {
+    case 'salt_lake': return slClient.buildQueryUrl(address);
+    case 'utah': return utahClient.buildQueryUrl(address);
+    case 'summit': return summitClient.buildQueryUrl(address);
+    case 'tooele': return tooeleClient.buildQueryUrl(address);
+    case 'unsupported': return '';
+  }
+}
+
+/**
+ * Resolve the county to use for an address, honoring a stored override
+ * (e.g. businesses.jurisdiction_override / properties.jurisdiction_override)
+ * over the automatic router. An override always wins when set, even if it
+ * disagrees with what the address would normally resolve to — that's the
+ * whole point of letting an operator correct a misrouted address.
+ */
+export function resolveEffectiveCounty(address: string, override?: string | null): County {
+  if (isOverridableCounty(override)) return override;
+  return resolveCountyFromAddress(address);
+}
+
 export async function dispatchSearchByAddress(
   env: DispatchEnv,
   address: string,
+  override?: string | null,
 ): Promise<ParcelSummary[]> {
-  const county = resolveCountyFromAddress(address);
+  const county = resolveEffectiveCounty(address, override);
   const client = clientFor(county);
   if (!client) return [];
   return client.searchByAddress(env, address);

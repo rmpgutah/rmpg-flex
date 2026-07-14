@@ -3,13 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/utils/parcel-lookup/lookup', () => ({
   dispatchSearchByAddress: vi.fn(),
   dispatchGetParcel: vi.fn(),
-  resolveCountyFromAddress: vi.fn(),
+  resolveEffectiveCounty: vi.fn(() => 'utah'),
 }));
 
 import { dispatchSearchByAddress } from '../src/utils/parcel-lookup/lookup';
 import { processBackfillTick } from '../src/utils/sl-assessor/backfill';
 
-function makeFakeEnv(rows: Array<{ id: number; record_type: string; record_id: number; retry_count: number }>) {
+function makeFakeEnv(
+  rows: Array<{ id: number; record_type: string; record_id: number; retry_count: number }>,
+  jurisdictionOverride: string | null = null,
+) {
   const dbRows = rows;
   const db = {
     prepare: (sql: string) => ({
@@ -28,7 +31,11 @@ function makeFakeEnv(rows: Array<{ id: number; record_type: string; record_id: n
             return dbRows.shift() ?? null;
           }
           if (sql.includes('FROM businesses') || sql.includes('FROM properties')) {
-            return { id: args[0], address: '100 E Center St, American Fork, UT 84003' };
+            return {
+              id: args[0],
+              address: '100 E Center St, American Fork, UT 84003',
+              jurisdiction_override: jurisdictionOverride,
+            };
           }
           if (sql.includes('pragma_table_info')) return { 1: 1 };
           return null;
@@ -48,6 +55,13 @@ describe('processBackfillTick — multi-county dispatch', () => {
     (dispatchSearchByAddress as any).mockResolvedValue([]);
     const env = makeFakeEnv([{ id: 1, record_type: 'business', record_id: 42, retry_count: 0 }]);
     await processBackfillTick(env);
-    expect(dispatchSearchByAddress).toHaveBeenCalledWith(env, '100 E Center St, American Fork, UT 84003');
+    expect(dispatchSearchByAddress).toHaveBeenCalledWith(env, '100 E Center St, American Fork, UT 84003', null);
+  });
+
+  it('passes the record jurisdiction_override through to dispatchSearchByAddress', async () => {
+    (dispatchSearchByAddress as any).mockResolvedValue([]);
+    const env = makeFakeEnv([{ id: 1, record_type: 'business', record_id: 42, retry_count: 0 }], 'tooele');
+    await processBackfillTick(env);
+    expect(dispatchSearchByAddress).toHaveBeenCalledWith(env, '100 E Center St, American Fork, UT 84003', 'tooele');
   });
 });
