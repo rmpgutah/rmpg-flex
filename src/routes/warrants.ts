@@ -312,6 +312,16 @@ warrants.post('/search-all', async (c) => {
       courtName?: string;
       charge?: string;
       caseNumber?: string;
+      // Advanced filters — WarrantsPage.tsx's Search-All "Advanced Filters"
+      // panel has always sent these; this route silently ignored all of
+      // them (never read from `body`), so every combination of source/
+      // status/type/offense-level/date-range was a no-op.
+      source?: 'local' | 'utah' | 'scraped';
+      status?: string;
+      type?: string;
+      offenseLevel?: string;
+      dateFrom?: string;
+      dateTo?: string;
     }>();
 
     const limit = 50;
@@ -319,7 +329,9 @@ warrants.post('/search-all', async (c) => {
     // Each source table has its own column names — there's no shared schema
     // to build one WHERE clause from. `warrants` only has a combined
     // subject_name (no first/last split) and no case_number column at all;
-    // `utah_warrants` has no dob/charge/case_number columns; only
+    // `utah_warrants` has no dob/status/type/offense_level columns at all
+    // (status there is the separate is_active flag, not comparable to the
+    // local/scraped status vocabulary) — only date-range applies to it;
     // `scraped_warrants` supports every filter (using date_of_birth, not dob).
     const localConditions: string[] = [];
     const localParams: unknown[] = [];
@@ -328,6 +340,11 @@ warrants.post('/search-all', async (c) => {
     if (body.dob) { localConditions.push('subject_dob = ?'); localParams.push(body.dob); }
     if (body.courtName) { localConditions.push('court LIKE ?'); localParams.push(`%${body.courtName}%`); }
     if (body.charge) { localConditions.push('offense LIKE ?'); localParams.push(`%${body.charge}%`); }
+    if (body.status) { localConditions.push('status = ?'); localParams.push(body.status); }
+    if (body.type) { localConditions.push('type = ?'); localParams.push(body.type); }
+    if (body.offenseLevel) { localConditions.push('offense_level = ?'); localParams.push(body.offenseLevel); }
+    if (body.dateFrom) { localConditions.push('issued_date >= ?'); localParams.push(body.dateFrom); }
+    if (body.dateTo) { localConditions.push('issued_date <= ?'); localParams.push(body.dateTo); }
     const localWhere = localConditions.length ? `WHERE ${localConditions.join(' AND ')}` : '';
 
     const utahConditions: string[] = [];
@@ -335,6 +352,8 @@ warrants.post('/search-all', async (c) => {
     if (body.lastName) { utahConditions.push('last_name LIKE ?'); utahParams.push(`%${body.lastName}%`); }
     if (body.firstName) { utahConditions.push('first_name LIKE ?'); utahParams.push(`%${body.firstName}%`); }
     if (body.courtName) { utahConditions.push('court_name LIKE ?'); utahParams.push(`%${body.courtName}%`); }
+    if (body.dateFrom) { utahConditions.push('issue_date >= ?'); utahParams.push(body.dateFrom); }
+    if (body.dateTo) { utahConditions.push('issue_date <= ?'); utahParams.push(body.dateTo); }
     const utahWhere = utahConditions.length ? `WHERE ${utahConditions.join(' AND ')}` : '';
 
     const scrapedConditions: string[] = [];
@@ -345,19 +364,35 @@ warrants.post('/search-all', async (c) => {
     if (body.courtName) { scrapedConditions.push('court_name LIKE ?'); scrapedParams.push(`%${body.courtName}%`); }
     if (body.charge) { scrapedConditions.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge}%`); }
     if (body.caseNumber) { scrapedConditions.push('case_number LIKE ?'); scrapedParams.push(`%${body.caseNumber}%`); }
+    if (body.status) { scrapedConditions.push('status = ?'); scrapedParams.push(body.status); }
+    if (body.type) { scrapedConditions.push('warrant_type = ?'); scrapedParams.push(body.type); }
+    if (body.offenseLevel) { scrapedConditions.push('offense_level = ?'); scrapedParams.push(body.offenseLevel); }
+    if (body.dateFrom) { scrapedConditions.push('issue_date >= ?'); scrapedParams.push(body.dateFrom); }
+    if (body.dateTo) { scrapedConditions.push('issue_date <= ?'); scrapedParams.push(body.dateTo); }
     const scrapedWhere = scrapedConditions.length ? `WHERE ${scrapedConditions.join(' AND ')}` : '';
 
+    // `source` restricts the search to a single bucket rather than filtering
+    // rows within all three — an empty selection means "all sources".
+    const wantLocal = !body.source || body.source === 'local';
+    const wantUtah = !body.source || body.source === 'utah';
+    const wantScraped = !body.source || body.source === 'scraped';
+
     const [local, utah] = await Promise.all([
-      query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, limit)
-        .catch((err) => { log.error('warrants/search-all: local query failed', { traceId }, err); return []; }),
-      query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, limit)
-        .catch((err) => { log.error('warrants/search-all: utah query failed', { traceId }, err); return []; }),
+      wantLocal
+        ? query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, limit)
+            .catch((err) => { log.error('warrants/search-all: local query failed', { traceId }, err); return []; })
+        : Promise.resolve([]),
+      wantUtah
+        ? query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, limit)
+            .catch((err) => { log.error('warrants/search-all: utah query failed', { traceId }, err); return []; })
+        : Promise.resolve([]),
     ]);
 
     // Only query scraped_warrants when there's a meaningful filter (not dob-only)
-    const hasScrapedFilter = body.lastName || body.firstName || body.courtName || body.charge || body.caseNumber;
+    const hasScrapedFilter = body.lastName || body.firstName || body.courtName || body.charge || body.caseNumber
+      || body.status || body.type || body.offenseLevel || body.dateFrom || body.dateTo;
     let scraped: Record<string, unknown>[] = [];
-    if (hasScrapedFilter) {
+    if (wantScraped && hasScrapedFilter) {
       scraped = await query<Record<string, unknown>>(db, `SELECT * FROM scraped_warrants ${scrapedWhere} LIMIT ?`, ...scrapedParams, limit)
         .catch((err) => { log.error('warrants/search-all: scraped query failed', { traceId }, err); return []; });
     }
@@ -519,12 +554,21 @@ warrants.post('/national-search', async (c) => {
   if (body.warrant_type) { localWhere.push("UPPER(COALESCE(warrant_type, type)) = ?"); localParams.push(body.warrant_type.toUpperCase()); }
   if (body.charge_keyword) { localWhere.push('COALESCE(charge_description, offense_description, offense) LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
 
-  const localSql = `SELECT * FROM warrants${localWhere.length ? ' WHERE ' + localWhere.join(' AND ') : ''}`;
-  const localRows = await query<Record<string, unknown>>(db, localSql, ...localParams);
-
-  const local = localRows
-    .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
-    .map(mapLocalWarrantRow);
+  // Local `warrants` has no state/jurisdiction column to filter on. A
+  // state-only search (the coverage-map "click a state" flow — the 400
+  // guard above only requires ONE of first_name/last_name/state) used to
+  // fall through to zero WHERE clauses, i.e. `SELECT * FROM warrants` with
+  // no filter at all — every local warrant, regardless of relevance, got
+  // dumped into the results for whatever state was clicked. With nothing
+  // to scope local rows to a state, skip the local table entirely rather
+  // than return unrelated records.
+  const local = localWhere.length
+    ? (await query<Record<string, unknown>>(
+        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')}`, ...localParams,
+      ))
+        .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
+        .map(mapLocalWarrantRow)
+    : [];
 
   const total = Object.values(by_state).reduce((a, arr) => a + arr.length, 0) + local.length;
 

@@ -855,6 +855,7 @@ export default function WarrantsPage() {
   const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanRunning, setScanRunning] = useState(false);
+  const [boloPrinting, setBoloPrinting] = useState(false);
 
   // ============================================================
   // DASHBOARD FETCHES
@@ -926,7 +927,7 @@ export default function WarrantsPage() {
       if (filterCourt) params.set('court', filterCourt);
       if (filterSeverity) params.set('severity', filterSeverity);
       if (filterPersonId) params.set('person_id', filterPersonId);
-      if (searchQuery) params.set('subject_name', searchQuery);
+      if (debouncedSearch) params.set('subject_name', debouncedSearch);
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
@@ -962,7 +963,7 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, debouncedSearch, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
@@ -3176,10 +3177,11 @@ export default function WarrantsPage() {
                   </button>
                   <button
                     type="button"
-                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30"
-                    disabled={!autoPollStatus?.flaggedPersons?.length}
+                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30 disabled:opacity-50"
+                    disabled={!autoPollStatus?.flaggedPersons?.length || boloPrinting}
                     onClick={async () => {
                       if (!autoPollStatus?.flaggedPersons?.length) return;
+                      setBoloPrinting(true);
                       try {
                         const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
                         const branding = await fetchPdfBranding();
@@ -3275,10 +3277,13 @@ export default function WarrantsPage() {
                         setTimeout(() => URL.revokeObjectURL(url), 1000);
                       } catch (err) {
                         console.error('BOLO PDF generation failed:', err);
+                        setError(err instanceof Error ? `BOLO generation failed: ${err.message}` : 'BOLO generation failed');
+                      } finally {
+                        setBoloPrinting(false);
                       }
                     }}
                   >
-                    <Printer className="w-3 h-3" /> Print BOLO
+                    {boloPrinting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />} Print BOLO
                   </button>
                   <div className="flex items-center gap-1 ml-2 border-l border-surface-border pl-2">
                     <span className="text-[9px] text-rmpg-500 uppercase tracking-wider mr-1">Sort:</span>
@@ -3700,6 +3705,8 @@ export default function WarrantsPage() {
                         <thead className="sticky top-0 z-10 bg-surface-deep">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
+                            <th className="text-left px-2 py-1">State</th>
+                            <th className="text-left px-2 py-1">County</th>
                             <th className="text-center px-2 py-1">Status</th>
                             <th className="text-right px-2 py-1">Active</th>
                             <th className="text-right px-2 py-1">Total</th>
