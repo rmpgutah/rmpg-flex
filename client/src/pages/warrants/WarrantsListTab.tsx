@@ -66,6 +66,8 @@ export interface WarrantsListTabHandle {
   refetchIfSelected: (id: number) => void;
   /** Surface an error in this tab's error banner (used by the shell's Form modal). */
   setListError: (message: string | null) => void;
+  /** Seed the search box with a query (used by the Dashboard tab's quick search). */
+  setSearchQuery: (query: string) => void;
 }
 
 export interface WarrantsListTabProps {
@@ -692,6 +694,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       if (selectedWarrant?.id === id) fetchWarrantDetail(id);
     },
     setListError: (message) => setError(message),
+    setSearchQuery: (query: string) => setSearchQuery(query),
   }), [fetchWarrants, selectedWarrant, fetchWarrantDetail]);
 
   return (

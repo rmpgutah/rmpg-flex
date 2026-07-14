@@ -1243,9 +1243,7 @@ export default function WarrantsPage() {
                 onChange={(e) => setDashSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && dashSearch.trim()) {
-                    // The warrants-tab search box now lives inside
-                    // WarrantsListTab, which owns its own searchQuery state —
-                    // just switch tabs; the operator re-types the query there.
+                    listTabRef.current?.setSearchQuery(dashSearch.trim());
                     setActiveTab('warrants');
                   }
                 }}
