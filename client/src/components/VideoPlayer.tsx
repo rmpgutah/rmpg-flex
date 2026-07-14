@@ -53,6 +53,24 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const [analyzeProgress, setAnalyzeProgress] = useState<{ done: number; total: number } | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [localAnalysis, setLocalAnalysis] = useState<AnalysisResult | null>(null);
+  // Synchronous re-entrancy guard for handleAnalyze — `analyzing` state is
+  // only visible after React commits, so two rapid clicks before that commit
+  // can both pass an `if (analyzing) return` check. A ref is readable/settable
+  // synchronously within the same event-handler invocation, closing that race.
+  const analyzingRef = useRef(false);
+
+  // Reset all per-video AI-analysis state whenever the displayed video
+  // changes. VideoPlayer is a single reused instance (BodyCamerasPage renders
+  // it with no `key`), so without this reset a prior video's findings
+  // (weapon-detection banner, seek buttons, etc.) would stay visible against
+  // a newly opened, unrelated video — a misattribution risk for evidence.
+  useEffect(() => {
+    setLocalAnalysis(null);
+    setAnalyzeError(null);
+    setAnalyzing(false);
+    setAnalyzeProgress(null);
+    analyzingRef.current = false;
+  }, [video?.id]);
 
   // Fire a chain-of-custody "viewed" event on open so the audit_log
   // captures WHO opened the player and WHEN, even when no metadata
@@ -186,12 +204,20 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   // flags). Advisory only — a review aid, not a determination.
   const handleAnalyze = async () => {
     const vid = videoRef.current;
-    if (!vid || !video || analyzing) return;
+    if (!vid || !video || analyzing || analyzingRef.current) return;
+    analyzingRef.current = true;
+    // Capture the video this request belongs to so a late-resolving result
+    // can be discarded if the user has since switched to a different video.
+    const requestedVideoId = video.id;
     setAnalyzing(true);
     setAnalyzeError(null);
     setAnalyzeProgress(null);
     try {
-      const frames = await sampleFramesForAnalysis(vid, (done, total) => setAnalyzeProgress({ done, total }));
+      const frames = await sampleFramesForAnalysis(vid, (done, total) => {
+        if (requestedVideoId !== video?.id) return;
+        setAnalyzeProgress({ done, total });
+      });
+      if (requestedVideoId !== video?.id) return; // user navigated away — discard silently
       if (frames.length === 0) {
         setAnalyzeError('No frames could be captured for analysis.');
         return;
@@ -203,16 +229,21 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       formData.append('timestamps', JSON.stringify(frames.map((f) => f.timestamp)));
 
       const result = await apiPostForm<{ success: boolean; frames_analyzed: number; frames_requested: number; analysis: AnalysisResult }>(
-        `/personnel/bodycam-videos/${video.id}/analyze`,
+        `/personnel/bodycam-videos/${requestedVideoId}/analyze`,
         formData,
       );
+      if (requestedVideoId !== video?.id) return; // stale result — video switched mid-request
       setLocalAnalysis(result.analysis);
     } catch (err: any) {
+      if (requestedVideoId !== video?.id) return; // stale error — don't surface against the new video
       console.warn('[VideoPlayer] AI analysis failed:', err);
       setAnalyzeError(err?.message || 'AI analysis failed.');
     } finally {
-      setAnalyzing(false);
-      setAnalyzeProgress(null);
+      if (requestedVideoId === video?.id) {
+        setAnalyzing(false);
+        setAnalyzeProgress(null);
+      }
+      analyzingRef.current = false;
     }
   };
 
