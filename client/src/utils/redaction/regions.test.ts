@@ -41,7 +41,7 @@ describe('mergeSamples', () => {
       { kind: 'face', box: [0.12, 0.1, 0.1, 0.1], t: 0.25 },
       { kind: 'face', box: [0.8, 0.8, 0.1, 0.1], t: 0.25 },
     ];
-    const out = mergeSamples(s, { scanInterval: 1 });
+    const out = mergeSamples(s, { scanInterval: 0.25 });
     expect(out.length).toBe(2);
     const tracked = out.find((r) => r.keyframes.length === 2)!;
     expect(tracked.tStart).toBeCloseTo(0);
@@ -49,36 +49,54 @@ describe('mergeSamples', () => {
   });
 
   it('pads a lone sample by the scan interval', () => {
-    const out = mergeSamples([{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 1 }], { scanInterval: 1 });
-    expect(out[0].tStart).toBeCloseTo(0.5);
-    expect(out[0].tEnd).toBeCloseTo(1.5);
+    const out = mergeSamples([{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 1 }], { scanInterval: 0.25 });
+    expect(out[0].tStart).toBeCloseTo(0.875);
+    expect(out[0].tEnd).toBeCloseTo(1.125);
   });
 
-  it('drops a lone short-lived single-keyframe region as noise', () => {
+  it('drops a lone short-lived single-keyframe region as noise when the kind opts in', () => {
     // A single 0.25s-interval sample pads to tStart=-0.125/tEnd=0.375 (duration
-    // 0.25s) by the existing "pad a lone sample" behavior — below the default
-    // 0.4s noise threshold, so it should be dropped entirely.
-    const out = mergeSamples([{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 0.25 }], { scanInterval: 0.25 });
+    // 0.25s) by the existing "pad a lone sample" behavior — below the 0.4s
+    // noise threshold, so it should be dropped when the caller explicitly
+    // opts the `plate` kind into the noise filter.
+    const out = mergeSamples(
+      [{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 0.25 }],
+      { scanInterval: 0.25, minNoiseDuration: 0.4, noiseFilterKinds: ['plate'] },
+    );
     expect(out).toEqual([]);
   });
 
   it('keeps a multi-keyframe region even if its total duration is short', () => {
     // Two merged samples 0.25s apart — duration 0.25s, same as the dropped
     // case above, but this one has 2 keyframes (a real tracked detection,
-    // not a single blip) so it must NOT be dropped by the noise filter.
+    // not a single blip) so it must NOT be dropped by the noise filter, even
+    // with the filter opted in for its kind.
     const s: DetectorSample[] = [
       { kind: 'face', box: [0.1, 0.1, 0.1, 0.1], t: 0 },
       { kind: 'face', box: [0.12, 0.1, 0.1, 0.1], t: 0.25 },
     ];
-    const out = mergeSamples(s, { scanInterval: 0.25 });
+    const out = mergeSamples(s, { scanInterval: 0.25, minNoiseDuration: 0.4, noiseFilterKinds: ['face'] });
     expect(out.length).toBe(1);
     expect(out[0].keyframes.length).toBe(2);
   });
 
   it('keeps a lone single-keyframe region at or above the noise duration threshold', () => {
-    // A lone sample padded by a LARGER scanInterval clears the 0.4s default
+    // A lone sample padded by a LARGER scanInterval clears the 0.4s
     // threshold (pad is ±scanInterval/2, so scanInterval=1 → 1s duration).
-    const out = mergeSamples([{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 1 }], { scanInterval: 1 });
+    const out = mergeSamples(
+      [{ kind: 'plate', box: [0, 0, 0.2, 0.1], t: 1 }],
+      { scanInterval: 1, minNoiseDuration: 0.4, noiseFilterKinds: ['plate'] },
+    );
     expect(out.length).toBe(1);
+  });
+
+  it('never drops a short-lived single-keyframe face region by default (safe-by-default)', () => {
+    // This is the exact scenario flagged in code review: a lone face
+    // detection at the real 0.25s production scanInterval, with no explicit
+    // noiseFilterKinds/minNoiseDuration passed. It must survive, since
+    // dropping a face silently is a privacy/redaction false negative.
+    const out = mergeSamples([{ kind: 'face', box: [0.1, 0.1, 0.1, 0.1], t: 0.25 }], { scanInterval: 0.25 });
+    expect(out.length).toBe(1);
+    expect(out[0].keyframes.length).toBe(1);
   });
 });

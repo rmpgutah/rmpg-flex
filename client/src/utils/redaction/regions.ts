@@ -53,7 +53,7 @@ export function activeRegionsAt(regions: RedactionRegion[], t: number): Redactio
 let _seq = 0;
 const nextId = () => `auto_${Date.now().toString(36)}_${_seq++}`;
 
-export interface MergeOpts { scanInterval?: number; iouThresh?: number; defaultStyle?: RedactionStyle; strength?: number; minNoiseDuration?: number }
+export interface MergeOpts { scanInterval?: number; iouThresh?: number; defaultStyle?: RedactionStyle; strength?: number; minNoiseDuration?: number; noiseFilterKinds?: RedactionKind[] }
 
 /** Group temporally-consecutive, spatially-overlapping same-kind samples into
  *  keyframed regions. A lone sample is padded by ±scanInterval/2. */
@@ -87,18 +87,24 @@ export function mergeSamples(samples: DetectorSample[], opts: MergeOpts = {}): R
       open.push({ region, lastT: s.t, lastBox: s.box });
     }
   }
-  // A genuine plate/vehicle/face persists across multiple samples; a single-
-  // sample region below this duration is very likely a one-frame detector
-  // misfire (e.g. a shaking phone briefly misclassified as a vehicle) rather
-  // than a real, sustained detection — drop it instead of surfacing noise
-  // for the reviewer to manually clean up. Multi-keyframe regions are never
-  // dropped, regardless of duration, since they represent a tracked object
-  // across more than one sample, not a blip.
-  const minNoiseDuration = opts.minNoiseDuration ?? 0.4;
+  // Opt-in, kind-scoped noise filter. For SOME detector kinds, a single-sample
+  // region below minNoiseDuration is a one-frame misfire (e.g. a shaking phone
+  // briefly misclassified as a vehicle, which is where this filter was
+  // diagnosed for `plate`) rather than a real, sustained detection. That is
+  // NOT a general property of every kind — in particular there's no evidence
+  // face detection has the same single-frame-misfire problem, and a dropped
+  // face is a privacy/redaction false negative, not just review noise. So the
+  // filter defaults to fully off (minNoiseDuration 0, noiseFilterKinds empty)
+  // and only drops anything when a caller explicitly opts a kind in via
+  // `noiseFilterKinds` AND sets a nonzero `minNoiseDuration`. Multi-keyframe
+  // regions are never dropped, regardless of duration, since they represent a
+  // tracked object across more than one sample, not a blip.
+  const minNoiseDuration = opts.minNoiseDuration ?? 0;
+  const noiseFilterKinds = opts.noiseFilterKinds;
   for (const o of open) {
     const r = o.region;
     if (r.keyframes.length === 1) { r.tStart = r.tStart - scanInterval / 2; r.tEnd = r.tEnd + scanInterval / 2; }
-    if (r.keyframes.length === 1 && (r.tEnd - r.tStart) < minNoiseDuration) continue;
+    if (r.keyframes.length === 1 && (r.tEnd - r.tStart) < minNoiseDuration && noiseFilterKinds?.includes(r.kind)) continue;
     done.push(r);
   }
   return done;
