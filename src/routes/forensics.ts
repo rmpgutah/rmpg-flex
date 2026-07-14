@@ -748,6 +748,163 @@ forensics.get('/:caseId/hashes', async (c) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// LINKS — cross-references to other RMS entities (forensic_case_links)
+// ═══════════════════════════════════════════════════════════════
+
+const LINK_ENTITY_TYPES = new Set(['person', 'vehicle', 'case', 'incident', 'evidence', 'warrant']);
+
+// GET /:caseId/links/search?q=&type= — mirrors the request/response
+// contract of GET /records/search (src/routes/records.ts:2003): same
+// `type` param values, same label-synthesis-on-every-row convention,
+// same 50-row cap, same "unknown type → []" behavior, so the Links tab
+// search bar behaves identically to LinkRecordModal elsewhere in the app.
+forensics.get('/:caseId/links/search', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    const type = (c.req.query('type') || 'person').toLowerCase();
+    if (!q || q.length < 2) return c.json([]);
+    if (!LINK_ENTITY_TYPES.has(type)) return c.json([]);
+    const like = `%${q}%`;
+
+    if (type === 'person') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, first_name, last_name, phone FROM persons
+        WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
+        ORDER BY last_name, first_name LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'person', label: [r.last_name, r.first_name].filter(Boolean).join(', ') || `Person #${r.id}` })));
+    }
+    if (type === 'vehicle') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, plate_number, make, model, year FROM vehicles_records
+        WHERE plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ?
+        ORDER BY plate_number LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'vehicle', label: (r.plate_number as string) || `Vehicle #${r.id}` })));
+    }
+    if (type === 'case') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, case_number, title FROM cases
+        WHERE case_number LIKE ? OR title LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'case', label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}` })));
+    }
+    if (type === 'incident') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, incident_number, incident_type FROM incidents
+        WHERE incident_number LIKE ? OR incident_type LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'incident', label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}` })));
+    }
+    if (type === 'evidence') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, evidence_number, description FROM evidence
+        WHERE evidence_number LIKE ? OR description LIKE ? ORDER BY evidence_number LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'evidence', label: [r.evidence_number, r.description].filter(Boolean).join(' — ') || `Evidence #${r.id}` })));
+    }
+    if (type === 'warrant') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, warrant_number, subject_name FROM warrants
+        WHERE warrant_number LIKE ? OR subject_name LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'warrant', label: [r.warrant_number, r.subject_name].filter(Boolean).join(' — ') || `Warrant #${r.id}` })));
+    }
+    return c.json([]);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Link search failed', 'LINK_SEARCH_ERROR');
+  }
+});
+
+forensics.get('/:caseId/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db, 'SELECT * FROM forensic_case_links WHERE forensic_case_id = ? ORDER BY linked_at DESC', caseId,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to list links', code: 'LINKS_LIST_ERROR' }, 500);
+  }
+});
+
+// Label lookup table for POST /:caseId/links — server resolves the label
+// itself rather than trusting a client-supplied one, matching the
+// principle already used by GET /records/search.
+const LINK_LABEL_QUERIES: Record<string, string> = {
+  person: `SELECT (last_name || ', ' || first_name) AS label FROM persons WHERE id = ?`,
+  vehicle: `SELECT plate_number AS label FROM vehicles_records WHERE id = ?`,
+  case: `SELECT case_number AS label FROM cases WHERE id = ?`,
+  incident: `SELECT incident_number AS label FROM incidents WHERE id = ?`,
+  evidence: `SELECT evidence_number AS label FROM evidence WHERE id = ?`,
+  warrant: `SELECT warrant_number AS label FROM warrants WHERE id = ?`,
+};
+
+forensics.post('/:caseId/links', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number;
+    const b = await c.req.json<Record<string, unknown>>();
+
+    if (typeof b.entity_type !== 'string' || !LINK_ENTITY_TYPES.has(b.entity_type)) {
+      return c.json({ error: 'entity_type required and must be a supported type', code: 'ENTITY_TYPE_REQUIRED' }, 400);
+    }
+    const entityId = Number(b.entity_id);
+    if (!Number.isFinite(entityId)) return c.json({ error: 'entity_id required', code: 'ENTITY_ID_REQUIRED' }, 400);
+    const relationship = typeof b.relationship === 'string' && b.relationship.trim() ? b.relationship.trim() : 'related';
+
+    const found = await queryFirst<{ label: string | null }>(db, LINK_LABEL_QUERIES[b.entity_type], entityId);
+    if (!found) return c.json({ error: `${b.entity_type} #${entityId} not found`, code: 'ENTITY_NOT_FOUND' }, 400);
+    const entityLabel = found.label || `${b.entity_type} #${entityId}`;
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_case_links (forensic_case_id, entity_type, entity_id, entity_label, relationship, linked_by, linked_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      caseId, b.entity_type, entityId, entityLabel, relationship, userId, user?.full_name ?? '',
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    await logActivity(db, caseId, 'link_added', `Linked ${b.entity_type} "${entityLabel}" (${relationship})`, userId, user?.full_name ?? '');
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_case_links WHERE id = ?', newId);
+    return c.json({ data: created }, 201);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to link entity', 'LINK_POST_ERROR');
+  }
+});
+
+forensics.delete('/:caseId/links/:linkId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    const linkId = parseInt(c.req.param('linkId'), 10);
+    if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ entity_type: string; entity_label: string }>(
+      db, 'SELECT entity_type, entity_label FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?', linkId, caseId,
+    );
+    if (!existing) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, 'DELETE FROM forensic_case_links WHERE id = ?', linkId);
+    const userId = c.get('userId') as number;
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    await logActivity(db, caseId, 'link_removed', `Unlinked ${existing.entity_type} "${existing.entity_label}"`, userId, user?.full_name ?? '');
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to remove link', code: 'LINK_DELETE_ERROR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // ANALYSES
 // ═══════════════════════════════════════════════════════════════
 
