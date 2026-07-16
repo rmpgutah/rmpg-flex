@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Shield,
   ShieldCheck,
-  ShieldOff,
   RefreshCw,
   Camera,
   Trash2,
@@ -27,7 +26,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
-import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
@@ -153,22 +151,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [prefsMsg, setPrefsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // 2FA / Security
-  const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
-  const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
-  const [qrDataUrl, setQrDataUrl] = useState('');
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [setupCode, setSetupCode] = useState('');
-  const [disablePassword, setDisablePassword] = useState('');
-  const [securityBusy, setSecurityBusy] = useState(false);
-  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [securityView, setSecurityView] = useState<'main' | 'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('main');
+  const [securityView, setSecurityView] = useState<'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('overview');
 
   // WebAuthn / Security Keys
-  const [webauthnStatus, setWebauthnStatus] = useState<{
-    enabled: boolean;
-    credentialCount: number;
-    credentials: { id: number; device_name: string; created_at: string; device_type: string }[];
-  } | null>(null);
   const [webauthnBusy, setWebauthnBusy] = useState(false);
   const [webauthnMsg, setWebauthnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
@@ -381,17 +366,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         .catch(() => setSessions([]));
     }
     if (isOpen && activeTab === 'security') {
-      setSecurityMsg(null);
-      setSetupStep('idle');
-      setSetupCode('');
-      setDisablePassword('');
-      setSecurityView('main');
-      apiFetch<any>('/auth/totp/status')
-        .then(data => setTotpStatus(data))
-        .catch(() => setTotpStatus(null));
-      apiFetch<any>('/auth/webauthn/status')
-        .then(data => setWebauthnStatus(data))
-        .catch(() => setWebauthnStatus(null));
       apiFetch<any>('/auth/2fa/status')
         .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
         .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
@@ -479,71 +453,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       await apiFetch(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
     } catch { /* silent */ }
-  };
-
-  // ── 2FA Handlers ─────────────────────────────────
-  const handleStartSetup = async () => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      // The Worker returns otpauthUrl (it doesn't render images); generate
-      // the QR client-side with the bundled `qrcode` package.
-      let qr = data.qrCodeDataUrl as string | null;
-      if (!qr && data.otpauthUrl) {
-        const QRCode = (await import('qrcode')).default;
-        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
-      }
-      setQrDataUrl(qr || '');
-      setBackupCodes(data.backupCodes || []);
-      setSetupStep('qr');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to start 2FA setup' });
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleVerifySetup = async (code: string) => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
-        method: 'POST',
-        body: JSON.stringify({ code }),
-      });
-      // Backup codes are minted at VERIFY time (single reveal) — without
-      // capturing them here the "backups" step rendered an empty list.
-      if (Array.isArray(verifyRes?.backupCodes)) setBackupCodes(verifyRes.backupCodes);
-      setSetupStep('backups');
-      setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Invalid verification code' });
-      setSetupCode('');
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleDisable2FA = async () => {
-    if (!disablePassword) return;
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      await apiFetch<any>('/auth/totp/disable', {
-        method: 'POST',
-        body: JSON.stringify({ password: disablePassword }),
-      });
-      setTotpStatus(prev => prev ? { ...prev, enabled: false } : { enabled: false, required: false });
-      setSetupStep('idle');
-      setDisablePassword('');
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to disable 2FA' });
-    } finally {
-      setSecurityBusy(false);
-    }
   };
 
   const initials = `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase();
@@ -1197,212 +1106,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </>
           )}
 
-          {activeTab === 'security' && (
-            <>
-              {/* Security sub-view navigation */}
-              {securityView !== 'main' && (
-                <button type="button"
-                  onClick={() => setSecurityView('main')}
-                  className="text-[10px] mb-3 flex items-center gap-1"
-                  style={{ color: '#888888' }}
-                >
-                  &larr; Back to Security
-                </button>
-              )}
-
-              {securityView === 'devices' && <TrustedDevicesList />}
-              {securityView === 'history' && <LoginHistoryTable />}
-              {securityView === 'keys' && <SecurityKeyManager />}
-
-              {securityView === 'main' && (
-              <>
-              {/* Security overview card */}
-              <div className="mb-3">
-                <SecurityStatusCard />
-              </div>
-
-              {/* Status indicator */}
-              <div
-                className="flex items-center gap-3 p-3 mb-3"
-                style={{
-                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(220, 38, 38, 0.08)',
-                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#991b1b'}`,
-                }}
-              >
-                {totpStatus?.enabled ? (
-                  <ShieldCheck style={{ width: 20, height: 20, color: '#4ade80' }} />
-                ) : (
-                  <ShieldOff style={{ width: 20, height: 20, color: '#ef7a7a' }} />
-                )}
-                <div>
-                  <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
-                    {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
-                  </div>
-                  <div className="text-[9px] text-rmpg-500">
-                    {totpStatus?.enabled
-                      ? 'Your account is protected with authenticator app verification.'
-                      : totpStatus?.required
-                        ? 'Your role requires 2FA. Please enable it immediately.'
-                        : 'Add an extra layer of security to your account.'}
-                  </div>
-                </div>
-              </div>
-
-              {securityMsg && (
-                <div className={`flex items-center gap-2 px-3 py-2 text-xs mb-3 ${securityMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
-                  {securityMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
-                  {securityMsg.text}
-                </div>
-              )}
-
-              {/* ── Idle: Enable / Disable buttons ──────── */}
-              {setupStep === 'idle' && !totpStatus?.enabled && (
-                <button type="button"
-                  onClick={handleStartSetup}
-                  disabled={securityBusy}
-                  className="btn-primary w-full"
-                >
-                  <ShieldCheck style={{ width: 12, height: 12 }} />
-                  {securityBusy ? 'Setting up...' : 'Enable Two-Factor Authentication'}
-                </button>
-              )}
-
-              {setupStep === 'idle' && totpStatus?.enabled && (
-                <button type="button"
-                  onClick={() => { setSetupStep('disabling'); setSecurityMsg(null); }}
-                  className="btn-danger w-full"
-                >
-                  <ShieldOff style={{ width: 12, height: 12 }} />
-                  Disable Two-Factor Authentication
-                </button>
-              )}
-
-              {/* ── Step 1: Show QR Code ────────────────── */}
-              {setupStep === 'qr' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Step 1: Scan QR Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
-                  </p>
-                  <div className="flex justify-center py-2">
-                    {qrDataUrl && (
-                      <img
-                        src={qrDataUrl}
-                        alt="TOTP QR Code"
-                        style={{ width: 200, height: 200, imageRendering: 'pixelated' }}
-                        draggable={false}
-                      />
-                    )}
-                  </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
-                    Step 2: Enter Verification Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter the 6-digit code from your authenticator app to verify setup.
-                  </p>
-                  <TotpCodeInput
-                    value={setupCode}
-                    onChange={setSetupCode}
-                    onComplete={handleVerifySetup}
-                    disabled={securityBusy}
-                    error={securityMsg?.type === 'error'}
-                  />
-                  {securityBusy && (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                                        className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
-                    onMouseEnter={e => { e.currentTarget.style.color = '#aaaaaa'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                  >
-                    Cancel Setup
-                  </button>
-                </div>
-              )}
-
-              {/* ── Step 3: Show Backup Codes ──────────── */}
-              {setupStep === 'backups' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Recovery Codes
-                  </div>
-                  <BackupCodesDisplay
-                    codes={backupCodes}
-                    onAcknowledge={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                  />
-                </div>
-              )}
-
-              {/* ── Disable 2FA: Re-enter password ─────── */}
-              {setupStep === 'disabling' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Confirm Disable
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter your password to confirm disabling two-factor authentication.
-                  </p>
-                  <input id="ff-userprofilemodal-21"
-                    type="password" autoComplete="new-password"
-                    value={disablePassword}
-                    onChange={e => setDisablePassword(e.target.value)}
-                    className="input-dark"
-                    placeholder="Current password"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button type="button"
-                      onClick={() => { setSetupStep('idle'); setSecurityMsg(null); setDisablePassword(''); }}
-                      className="btn-secondary flex-1"
-                    >
-                      Cancel
-                    </button>
-                    <button type="button"
-                      onClick={handleDisable2FA}
-                      disabled={securityBusy || !disablePassword}
-                      className="btn-danger flex-1"
-                    >
-                      <ShieldOff style={{ width: 12, height: 12 }} />
-                      {securityBusy ? 'Disabling...' : 'Disable 2FA'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <button type="button"
-                  onClick={() => setSecurityView('keys')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                  style={{ color: '#d97706', borderColor: '#d97706' }}
-                >
-                  Security Keys
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('devices')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Trusted Devices
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('history')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Login History
-                </button>
-              </div>
-              </>
-              )}
-            </>
-          )}
-
           {activeTab === 'sessions' && (
             <>
               <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#888888' }}>
@@ -1489,7 +1192,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
 
                   {/* Quick links */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="button"
+                      onClick={() => setSecurityView('keys')}
+                      className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
+                    >
+                      Security Keys
+                    </button>
                     <button type="button"
                       onClick={() => setSecurityView('devices')}
                       className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1503,6 +1212,19 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       Login History
                     </button>
                   </div>
+                </div>
+              )}
+
+              {securityView === 'keys' && (
+                <div>
+                  <button type="button"
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#888888' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <SecurityKeyManager />
                 </div>
               )}
 
