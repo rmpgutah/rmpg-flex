@@ -117,7 +117,7 @@ export default function CommunityPortalPage() {
 
   const fetchOfficers = useCallback(async () => {
     try {
-      const data = await apiFetch<Officer[]>('/api/users?role=officer');
+      const data = await apiFetch<Officer[]>('/api/personnel?role=officer');
       setOfficers(asArray<Officer>(data));
     } catch { /* non-critical */ }
   }, []);
