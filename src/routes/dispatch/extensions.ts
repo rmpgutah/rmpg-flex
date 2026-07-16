@@ -1526,6 +1526,40 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
   }
 });
 
+// POST /:id/notes — append a note to the JSON notes array. Re-reads the current
+// notes immediately before writing so two dispatchers editing the same call
+// within each other's think-time don't clobber each other (client does
+// server-side append instead of PUTting the whole notes blob for this reason).
+callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { username?: string } | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const body = await c.req.json<{ text?: string; author?: string }>().catch(() => ({} as { text?: string; author?: string }));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length < 2 || text.length > 2000) {
+      return c.json({ error: 'text is required (2-2000 chars)', code: 'TEXT_INVALID' }, 400);
+    }
+
+    const call = await queryFirst<{ id: number; notes: string | null }>(db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const now = utcNow();
+    const notes = safeJson<any[]>(call.notes, []);
+    notes.push({ id: `n-${Date.now()}`, author: body.author || user?.username || 'Dispatch', text, timestamp: now });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] add note error', err);
+    return c.json({ error: 'Failed to add note', code: 'ADD_NOTE_ERROR' }, 500);
+  }
+});
+
 // PUT /:id/notes/:noteId — edit a note inside the JSON notes array (admin/manager).
 callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => {
   try {
