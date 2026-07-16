@@ -166,6 +166,15 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
   const [regenError, setRegenError] = useState('');
 
+  // Security questions ("Forgot password?" recovery setup)
+  const [sqConfigured, setSqConfigured] = useState<boolean | null>(null);
+  const [sqEditing, setSqEditing] = useState(false);
+  const [sqQuestions, setSqQuestions] = useState<string[]>(['', '', '']);
+  const [sqAnswers, setSqAnswers] = useState<string[]>(['', '', '']);
+  const [sqCurrentPassword, setSqCurrentPassword] = useState('');
+  const [sqBusy, setSqBusy] = useState(false);
+  const [sqMsg, setSqMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Body scroll lock — prevent background scrolling when modal is open.
   // Position/top/width + scroll-position preservation now live inside
   // lockBodyScroll/unlockBodyScroll (reference-counted, nesting-safe) — see
@@ -369,10 +378,18 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       apiFetch<any>('/auth/2fa/status')
         .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
         .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
+      apiFetch<any>('/auth/security-questions')
+        .then(data => setSqConfigured(!!data.configured))
+        .catch((err) => { console.warn('[UserProfileModal] fetch security questions status failed:', err); setSqConfigured(null); });
       setSecurityView('overview');
       setRegenCodes(null);
       setRegenPassword('');
       setRegenError('');
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg(null);
     }
     if (isOpen && activeTab === 'preferences' && !prefsLoaded) {
       apiFetch<UserPreferences>('/user/preferences')
@@ -481,6 +498,32 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setRegenError(err?.message || 'Failed to regenerate codes');
     }
     setRegenLoading(false);
+  };
+
+  const handleSaveSecurityQuestions = async () => {
+    if (!sqCurrentPassword) return;
+    if (sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())) return;
+    setSqBusy(true);
+    setSqMsg(null);
+    try {
+      await apiFetch<any>('/auth/security-questions', {
+        method: 'PUT',
+        body: JSON.stringify({
+          currentPassword: sqCurrentPassword,
+          questions: sqQuestions,
+          answers: sqAnswers,
+        }),
+      });
+      setSqConfigured(true);
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg({ type: 'success', text: 'Security questions saved. You can now use "Forgot password?" on the login screen.' });
+    } catch (err: any) {
+      setSqMsg({ type: 'error', text: err?.message || 'Failed to save security questions' });
+    }
+    setSqBusy(false);
   };
 
   return (
@@ -1187,6 +1230,97 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           <Shield className="w-3 h-3" />
                           Set Up 2FA Now
                         </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Security questions — "Forgot password?" recovery setup */}
+                  <div className="panel-beveled p-3" style={{ background: "var(--surface-sunken)" }}>
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
+                      Password Recovery Questions
+                    </h3>
+
+                    {sqMsg && (
+                      <div className={`flex items-center gap-2 px-3 py-2 text-[10px] mb-3 ${sqMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                        {sqMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                        {sqMsg.text}
+                      </div>
+                    )}
+
+                    {!sqEditing ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className={`led-dot ${sqConfigured ? 'led-green' : 'led-red'}`} />
+                          <span style={{ color: sqConfigured ? '#22c55e' : '#ef4444' }}>
+                            {sqConfigured ? 'Recovery questions are set up' : 'Recovery questions are not set up'}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-rmpg-500">
+                          {sqConfigured
+                            ? 'Answering these lets you reset your password from the login screen without an administrator.'
+                            : 'Without these, "Forgot password?" cannot recover your account — an administrator must reset it manually.'}
+                        </p>
+                        <button type="button"
+                          onClick={() => {
+                            setSqEditing(true);
+                            setSqMsg(null);
+                            setSqQuestions(['', '', '']);
+                            setSqAnswers(['', '', '']);
+                            setSqCurrentPassword('');
+                          }}
+                          className="toolbar-btn w-full h-7 text-[10px] uppercase tracking-wider"
+                        >
+                          {sqConfigured ? 'Update Recovery Questions' : 'Set Up Recovery Questions'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="space-y-1">
+                            <label htmlFor={`ff-userprofilemodal-sq-q${i}`} className="field-label">
+                              Question {i + 1}
+                            </label>
+                            <input id={`ff-userprofilemodal-sq-q${i}`}
+                              type="text"
+                              value={sqQuestions[i]}
+                              onChange={e => setSqQuestions(prev => prev.map((q, idx) => idx === i ? e.target.value : q))}
+                              className="input-dark"
+                              placeholder="e.g. What was your first pet's name?"
+                            />
+                            <input id={`ff-userprofilemodal-sq-a${i}`}
+                              type="text" autoComplete="off"
+                              value={sqAnswers[i]}
+                              onChange={e => setSqAnswers(prev => prev.map((a, idx) => idx === i ? e.target.value : a))}
+                              className="input-dark"
+                              placeholder="Answer"
+                            />
+                          </div>
+                        ))}
+                        <div className="space-y-1 pt-1">
+                          <label htmlFor="ff-userprofilemodal-sq-pw" className="field-label">Current Password</label>
+                          <input id="ff-userprofilemodal-sq-pw"
+                            type="password" autoComplete="new-password"
+                            value={sqCurrentPassword}
+                            onChange={e => setSqCurrentPassword(e.target.value)}
+                            className="input-dark"
+                            placeholder="Confirm it's you"
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button type="button"
+                            onClick={() => { setSqEditing(false); setSqMsg(null); }}
+                            className="btn-secondary flex-1"
+                          >
+                            Cancel
+                          </button>
+                          <button type="button"
+                            onClick={handleSaveSecurityQuestions}
+                            disabled={sqBusy || !sqCurrentPassword || sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())}
+                            className="btn-primary flex-1"
+                          >
+                            {sqBusy ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
