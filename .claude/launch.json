@@ -8,6 +8,12 @@
       "port": 8787
     },
     {
+      "name": "worker-dev-remote",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["wrangler", "dev", "--port", "8797", "--remote"],
+      "port": 8797
+    },
+    {
       "name": "client-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5183", "--strictPort"],

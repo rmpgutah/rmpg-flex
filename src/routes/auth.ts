@@ -679,8 +679,8 @@ auth.post('/forgot-password/verify', async (c) => {
     }
 
     const db = getDb(c.env);
-    const user = await queryFirst<{ id: number; status: string }>(
-      db, `SELECT id, status FROM users WHERE username = ?`, username);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE username = ?`, username);
     if (!user || user.status !== 'active') {
       return c.json({ error: 'One or more answers are incorrect.' }, 401);
     }
@@ -693,9 +693,16 @@ auth.post('/forgot-password/verify', async (c) => {
     const allMatch = hashes.every((h, i) => compareSync(String(answers[i] ?? '').trim().toLowerCase(), h));
     if (!allMatch) return c.json({ error: 'One or more answers are incorrect.' }, 401);
 
+    // Bind the token to the password_hash it was issued against — a JWT
+    // can't be revoked server-side, so /reset re-checks this hash matches
+    // what's currently on the row. A successful reset changes password_hash,
+    // which makes every other outstanding token for this user (including a
+    // captured/replayed copy of this one) fail that check. Without this, the
+    // 10-minute token was reusable to reset the password over and over.
+    const pwh = await sha256Hex(user.password_hash);
     const now = Math.floor(Date.now() / 1000);
     const tempToken = await sign(
-      { sub: String(user.id), userId: user.id, type: 'pwd_reset', iat: now, exp: now + FORGOT_PW_TOKEN_TTL_SECONDS },
+      { sub: String(user.id), userId: user.id, type: 'pwd_reset', pwh, iat: now, exp: now + FORGOT_PW_TOKEN_TTL_SECONDS },
       c.env.JWT_SECRET,
     );
     return c.json({ success: true, tempToken });
@@ -730,10 +737,16 @@ auth.post('/forgot-password/reset', async (c) => {
     }
 
     const db = getDb(c.env);
-    const user = await queryFirst<{ id: number; status: string }>(
-      db, `SELECT id, status FROM users WHERE id = ?`, payload.userId);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE id = ?`, payload.userId);
     if (!user || user.status !== 'active') {
       return c.json({ error: 'User not found or inactive' }, 401);
+    }
+    // Single-use enforcement: the token was minted against the password_hash
+    // at /verify time. If it's changed since (this token already used, or
+    // the password was changed some other way), reject the replay.
+    if (payload.pwh !== (await sha256Hex(user.password_hash))) {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
     }
 
     const newHash = hashSync(newPassword, 12);
