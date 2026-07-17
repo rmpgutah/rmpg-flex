@@ -62,7 +62,10 @@ export function DashboardRoute() {
     <div className="h-full flex flex-col">
       <SectionHeader title="Dashboard" />
       <KpiRibbon />
-      <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* content-start: without it, grid's default align-content:stretch expands
+          the single row of cards to fill the whole flex-1 scroll area, leaving
+          a huge empty void below each card's few lines of text. */}
+      <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 content-start">
         <Card title="Upcoming Service" viewAllTo="/fleet/v2/service">
           <Stat
             count={needsService}
