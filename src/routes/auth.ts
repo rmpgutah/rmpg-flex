@@ -51,6 +51,52 @@ async function sha256Hex(input: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Trusted devices ("remember this device for 30 days") ─────
+// The client (AuthContext.verify2FA/verifyWebAuthn + LoginPage's "Trust this
+// device" checkbox) has always sent deviceFingerprint/trustDevice on 2FA
+// verification and deviceFingerprint on every /login — but nothing ever read
+// them, so checking the box was a complete no-op: `trusted_devices` (schema
+// present, zero writers) never got a row, and /login never checked it, so
+// 2FA fired every single time regardless. Wired up here in three places:
+// trustDeviceIfRequested() (called after a 2FA/WebAuthn verify when the user
+// opted in) and the lookup in /login below (skips the 2FA branch entirely
+// when the presented fingerprint matches an unexpired trusted row).
+const TRUST_DEVICE_DURATION = '+30 days';
+
+function deviceNameFromUserAgent(ua: string): string {
+  if (/ipad/i.test(ua)) return 'iPad';
+  if (/iphone/i.test(ua)) return 'iPhone';
+  if (/android/i.test(ua)) return 'Android device';
+  if (/macintosh|mac os x/i.test(ua)) return 'Mac';
+  if (/windows/i.test(ua)) return 'Windows PC';
+  if (/linux/i.test(ua)) return 'Linux device';
+  return 'Unknown device';
+}
+
+async function trustDeviceIfRequested(
+  c: any, db: any, userId: number, deviceFingerprint: unknown, trustDevice: unknown,
+): Promise<void> {
+  if (!trustDevice || typeof deviceFingerprint !== 'string' || !deviceFingerprint) return;
+  try {
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || '';
+    const ua = c.req.header('user-agent') || '';
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?', userId, deviceFingerprint);
+    if (existing) {
+      await execute(db,
+        `UPDATE trusted_devices SET trusted_until = datetime('now', ?), last_used_at = datetime('now'), ip_address = ? WHERE id = ?`,
+        TRUST_DEVICE_DURATION, ip, existing.id);
+    } else {
+      await execute(db,
+        `INSERT INTO trusted_devices (user_id, device_fingerprint, device_name, ip_address, trusted_until, last_used_at)
+         VALUES (?, ?, ?, ?, datetime('now', ?), datetime('now'))`,
+        userId, deviceFingerprint, deviceNameFromUserAgent(ua), ip, TRUST_DEVICE_DURATION);
+    }
+  } catch (err) {
+    console.error('trustDeviceIfRequested failed:', err); // non-fatal — login already succeeded
+  }
+}
+
 // Claims carry BOTH userId (camelCase — legacy middleware REQUIRES it, see
 // legacy middleware/auth.ts:51 `if (!decoded.userId ...)`) and user_id (snake —
 // this Worker's middleware reads `user_id ?? userId`), so a token verifies on
@@ -203,7 +249,26 @@ auth.post('/login', async (c) => {
     // tokens after the second factor checks out.
     const exempt = await queryFirst<{ totp_exempt: number | null }>(
       db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
-    if (user.totp_enabled && !exempt?.totp_exempt) {
+
+    // A previously-trusted device (see trustDeviceIfRequested) skips the 2FA
+    // gate entirely for its 30-day window — refresh last_used_at so an
+    // actively-used device doesn't expire out from under someone.
+    let deviceTrusted = false;
+    if (typeof deviceFingerprint === 'string' && deviceFingerprint) {
+      try {
+        const trusted = await queryFirst<{ id: number }>(
+          db,
+          `SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > datetime('now')`,
+          user.id, deviceFingerprint,
+        );
+        if (trusted) {
+          deviceTrusted = true;
+          await execute(db, `UPDATE trusted_devices SET last_used_at = datetime('now') WHERE id = ?`, trusted.id).catch(() => undefined);
+        }
+      } catch { /* table absent on an unmigrated local DB — treat as not trusted */ }
+    }
+
+    if (user.totp_enabled && !exempt?.totp_exempt && !deviceTrusted) {
       const now = Math.floor(Date.now() / 1000);
       const tempToken = await sign(
         { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
@@ -332,7 +397,9 @@ auth.post('/login/verify-2fa', async (c) => {
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
     const { user } = resolved;
-    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+    const { code, deviceFingerprint, trustDevice } = await c.req.json<{
+      code?: string; deviceFingerprint?: string; trustDevice?: boolean;
+    }>().catch(() => ({} as any));
 
     if (!user.totp_secret_enc) {
       return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
@@ -346,6 +413,7 @@ auth.post('/login/verify-2fa', async (c) => {
     if (!(await verifyTotpCode(secretB32, code || ''))) {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
+    await trustDeviceIfRequested(c, db, user.id, deviceFingerprint, trustDevice);
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('verify-2fa failed:', err);
@@ -1045,6 +1113,37 @@ auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
   return c.json({ success: true });
 });
 
+// GET /auth/security/trusted-devices — devices that skip 2FA for 30 days
+// (see trustDeviceIfRequested near the top of this file). Backs
+// TrustedDevicesList.tsx, which has called this since it shipped — the
+// route never existed, so the panel always rendered "No trusted devices"
+// regardless of how many times someone checked "Trust this device."
+auth.get('/security/trusted-devices', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT id, device_name, ip_address, trusted_until, last_used_at, created_at
+       FROM trusted_devices
+      WHERE user_id = ? AND trusted_until > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/security/trusted-devices/:id — revoke trust; scoped to
+// user_id so a user can only revoke their own devices.
+auth.delete('/security/trusted-devices/:id', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  await execute(
+    db,
+    'DELETE FROM trusted_devices WHERE id = ? AND user_id = ?',
+    c.req.param('id'),
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
 // GET /auth/totp/status — TOTP enrollment state. No enroll/verify flow is wired
 // up on the Worker yet (legacy-era MFA was never ported), so this is a read-only
 // honest status sourced from users.totp_enabled. Shape: { enabled, required }.
@@ -1697,6 +1796,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
 
     const body = await c.req.json<{
       challengeId?: string; response?: AuthenticationResponseJSON;
+      deviceFingerprint?: string; trustDevice?: boolean;
     }>().catch(() => ({} as any));
     if (!body?.challengeId || !body.response) {
       return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
@@ -1740,6 +1840,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
     await execute(db,
       `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
+    await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {

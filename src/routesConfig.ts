@@ -112,6 +112,7 @@ import arrests from './routes/arrests';
 import assessor from './routes/assessor';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
+import accreditations from './routes/accreditations';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
 import analytics from './routes/analytics';
@@ -524,6 +525,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
   { prefix: '/api/accreditation', router: accreditation, auth: 'required',
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
+  { prefix: '/api/accreditations', router: accreditations, auth: 'required',
+    note: 'AccreditationsPage.tsx backend (officer certification tracking, distinct from /api/accreditation standards and /api/training certs) — the page 404d on every call since it shipped; never mounted before.' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
