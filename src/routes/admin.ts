@@ -1120,7 +1120,190 @@ admin.get('/users', async (c) => {
   }
 });
 
-admin.get('/sessions', (c) => c.json([]));
+// ── Admin user security management (AdminUsersTab "Security" sub-tab) ──────
+// handleReset2FA, handleForcePasswordChange, handleRevokeAllSessions, the
+// inline "Reset 2FA" toolbar shortcut (DELETE /totp), and the Security
+// Questions panel have all called these since they shipped — none of them
+// existed, so every button in the sub-tab 404'd, and GET /admin/sessions
+// below was a permanent-empty stub, so "Active Sessions" always showed 0
+// regardless of what was actually live.
+
+async function resetUserTotp(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
+  await execute(db,
+    `UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL,
+       totp_pending_secret = NULL, updated_at = datetime('now') WHERE id = ?`,
+    userId);
+  // Matches the client's own copy ("...delete the user's TOTP secret, backup
+  // codes, and trusted devices") — a reset device shouldn't still skip 2FA.
+  await execute(db, 'DELETE FROM trusted_devices WHERE user_id = ?', userId).catch(() => undefined);
+}
+
+// GET /admin/users/:id/security — status card data for the Security sub-tab.
+admin.get('/users/:id/security', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const user = await queryFirst<{ totp_enabled: number | null; must_change_password: number | null; password_changed_at: string | null }>(
+      db, 'SELECT totp_enabled, must_change_password, password_changed_at FROM users WHERE id = ?', id);
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const sq = await queryFirst<{ id: number }>(db, 'SELECT id FROM user_security_questions WHERE user_id = ?', id);
+
+    // 90-day policy mirrors GET /auth/password-policy's expiryDays — no
+    // enforcement exists yet (no login block on an expired password), this
+    // is purely the admin-facing status display.
+    let passwordExpiresAt: string | null = null;
+    let passwordExpiringSoon = false;
+    if (user.password_changed_at) {
+      const changed = new Date(user.password_changed_at.replace(' ', 'T'));
+      if (!isNaN(changed.getTime())) {
+        const expires = new Date(changed.getTime() + 90 * 24 * 60 * 60 * 1000);
+        passwordExpiresAt = expires.toISOString();
+        passwordExpiringSoon = expires.getTime() - Date.now() < 14 * 24 * 60 * 60 * 1000;
+      }
+    }
+
+    return c.json({
+      totpEnabled: !!user.totp_enabled,
+      totpSetupRequired: false,
+      passwordChangedAt: user.password_changed_at,
+      passwordExpiresAt,
+      passwordExpiringSoon,
+      forcePasswordChange: !!user.must_change_password,
+      securityQuestionsConfigured: !!sq,
+    });
+  } catch (err) {
+    console.error('[Admin] GET user security failed:', err);
+    return c.json({ error: 'Failed to load user security status' }, 500);
+  }
+});
+
+// POST /admin/users/:id/reset-2fa — same effect as the inline DELETE /totp
+// shortcut below; kept as two routes because the client calls both from
+// different buttons (the Security sub-tab's card vs. the header shortcut).
+admin.post('/users/:id/reset-2fa', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await resetUserTotp(db, id);
+    return c.json({ message: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
+  } catch (err) {
+    console.error('[Admin] reset-2fa failed:', err);
+    return c.json({ error: 'Failed to reset 2FA' }, 500);
+  }
+});
+
+admin.delete('/users/:id/totp', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await resetUserTotp(db, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE totp failed:', err);
+    return c.json({ error: 'Failed to reset 2FA' }, 500);
+  }
+});
+
+// POST /admin/users/:id/force-password-change
+admin.post('/users/:id/force-password-change', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, `UPDATE users SET must_change_password = 1, updated_at = datetime('now') WHERE id = ?`, id);
+    return c.json({ message: 'User will be required to change their password on next login.' });
+  } catch (err) {
+    console.error('[Admin] force-password-change failed:', err);
+    return c.json({ error: 'Failed to force password change' }, 500);
+  }
+});
+
+// POST /admin/users/:id/revoke-sessions — revoke every active session for a user.
+admin.post('/users/:id/revoke-sessions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db,
+      `UPDATE sessions SET is_active = 0 WHERE user_id = ? AND COALESCE(is_active, 1) = 1`, id);
+    const count = result.meta.changes ?? 0;
+    return c.json({ message: `${count} session${count === 1 ? '' : 's'} revoked.`, count });
+  } catch (err) {
+    console.error('[Admin] revoke-sessions failed:', err);
+    return c.json({ error: 'Failed to revoke sessions' }, 500);
+  }
+});
+
+// GET /admin/users/:id/security-questions — { configured, questions }. Never
+// returns answers (bcrypt-hashed, one-way) — an admin can see WHAT the
+// questions are and whether they're set up, not the answers themselves.
+admin.get('/users/:id/security-questions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, 'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?', id);
+    return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
+  } catch (err) {
+    console.error('[Admin] GET user security-questions failed:', err);
+    return c.json({ error: 'Failed to load security questions' }, 500);
+  }
+});
+
+// DELETE /admin/users/:id/security-questions — clears them so the user can
+// set up fresh ones (locked out and can't answer the old ones, or an admin
+// suspects they were compromised). Does NOT reset the password itself —
+// pair with Reset 2FA / Force Password Change as needed.
+admin.delete('/users/:id/security-questions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, 'DELETE FROM user_security_questions WHERE user_id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE user security-questions failed:', err);
+    return c.json({ error: 'Failed to clear security questions' }, 500);
+  }
+});
+
+// GET /admin/sessions — every currently-active session, joined for the
+// client's own user_id-based filter (AdminUsersTab's loadUserSessions).
+// Was a permanent `[]` stub, so "Active Sessions" always read 0.
+admin.get('/sessions', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query(db,
+      `SELECT session_id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
+              COALESCE(is_active, 1) AS is_active
+         FROM sessions
+        WHERE COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+        ORDER BY COALESCE(last_used_at, created_at) DESC
+        LIMIT 500`);
+    return c.json(rows || []);
+  } catch (err) {
+    console.error('[Admin] GET sessions failed:', err);
+    return c.json([]);
+  }
+});
 admin.get('/database/stats', (c) => c.json({ tables: 0, rows: 0, size_mb: 0 }));
 admin.get('/system-overview', (c) => c.json({ status: 'ok', uptime: 0, workers: 1 }));
 
