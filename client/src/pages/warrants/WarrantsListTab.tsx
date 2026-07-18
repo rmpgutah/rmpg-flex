@@ -34,8 +34,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ViewOnMapLink from '../../components/ViewOnMapLink';
 import JurisdictionLookup from '../../components/JurisdictionLookup';
 import PrintRecordButton from '../../components/PrintRecordButton';
-import WarrantNsopwStatus from '../../components/WarrantNsopwStatus';
 import LegalDataHunterValidateButton from '../../components/LegalDataHunterValidateButton';
+import WarrantScreeningStatus from '../../components/WarrantScreeningStatus';
 import LinkedEmailsSection from '../../components/LinkedEmailsSection';
 import EmailedDocuments from '../../components/EmailedDocuments';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -1281,12 +1281,16 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 </div>
               )}
 
-              {/* NSOPW Status — nationwide SOR cross-reference for the
-                  warrant subject. Auto-fired when the warrant was created;
-                  confirmed/possible hits flow through screening_hits and
-                  surface here as the primary SOR retention pane. */}
+              {/* Screening Status — unified cross-source (Interpol, OFAC,
+                  Utah SOR, NSOPW, UDC, etc.) status for the warrant subject.
+                  Auto-screened when the warrant's subject_person_id is set
+                  or changed (src/routes/warrants.ts); "Screen Now" re-runs
+                  on demand. Supersedes the NSOPW-only panel on this surface. */}
               {selectedWarrant.subject_person_id && (
-                <WarrantNsopwStatus personId={selectedWarrant.subject_person_id} />
+                <WarrantScreeningStatus
+                  personId={selectedWarrant.subject_person_id}
+                  subjectSurname={selectedWarrant.subject_last_name ?? undefined}
+                />
               )}
 
               {/* Court Info */}
