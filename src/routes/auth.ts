@@ -251,13 +251,26 @@ auth.post('/login', async (c) => {
     }
 
     if (!compareSync(password, user.password_hash)) {
-      const newCount = (user.failed_login_count ?? 0) + 1;
-      if (newCount >= FAILED_LOGIN_THRESHOLD) {
-        await execute(
-          db,
-          `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes') WHERE id = ?`,
-          newCount, user.id,
-        ).catch(() => undefined);
+      // Atomic increment (avoids a lost-update race under concurrent
+      // wrong-password requests for the same account). Reached here only
+      // when is_locked was already false, so any locked_until still on the
+      // row is a stale/expired lock — reset the counter to a fresh window
+      // rather than immediately re-locking on the very next typo.
+      const updated = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+        db,
+        `UPDATE users SET
+           failed_login_count = (CASE WHEN locked_until IS NOT NULL THEN 0 ELSE failed_login_count END) + 1,
+           locked_until = CASE
+             WHEN (CASE WHEN locked_until IS NOT NULL THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
+               THEN datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes')
+             ELSE NULL
+           END
+         WHERE id = ?
+         RETURNING failed_login_count, locked_until`,
+        user.id,
+      ).catch(() => null);
+
+      if (updated?.locked_until) {
         await recordLoginAttempt(db, username, ip, false, 'account_locked');
         return c.json({
           error: `Account locked due to repeated failed attempts. Try again in ${LOCKOUT_DURATION_MINUTES} minutes.`,
@@ -265,7 +278,6 @@ auth.post('/login', async (c) => {
           retry_after_seconds: LOCKOUT_DURATION_MINUTES * 60,
         }, 403);
       }
-      await execute(db, `UPDATE users SET failed_login_count = ? WHERE id = ?`, newCount, user.id).catch(() => undefined);
       await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
@@ -1920,6 +1932,11 @@ auth.get('/security/locked-accounts', async (c) => {
 });
 
 // ── Security: unlock account ────────────────────────────────
+// Break-glass note: if every admin/manager account is locked simultaneously
+// (e.g. an attacker deliberately trips 5 wrong passwords against each one),
+// this endpoint itself becomes unreachable until the 15-minute auto-expiry
+// lifts (self-healing). The out-of-band fallback is POST /auth/recover-all
+// (RECOVERY_KEY-gated, see that handler's comment) or a direct D1 write.
 auth.post('/security/unlock-account', authMiddleware, async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);

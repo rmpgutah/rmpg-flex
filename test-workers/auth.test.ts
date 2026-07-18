@@ -248,6 +248,22 @@ describe('POST /login — account lockout', () => {
     expect(row?.failed_login_count).toBe(0);
     expect(row?.locked_until).toBeNull();
   });
+
+  it('resets to a fresh window (not an immediate re-lock) after an expired lock', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const userId = await seedUser(db, 'lockout-user-5');
+    await execute(db,
+      `UPDATE users SET failed_login_count = 5, locked_until = datetime('now', '-1 minute') WHERE id = ?`,
+      userId);
+    const res = await post('lockout-user-5', 'wrong-password', '10.1.0.5');
+    expect(res.status).toBe(401);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('INVALID_USERNAME_OR_PASSWORD');
+    const row = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+      db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', userId);
+    expect(row?.failed_login_count).toBe(1);
+    expect(row?.locked_until).toBeNull();
+  });
 });
 
 async function mintAccessToken(secret: string, userId: number, role: string, username: string): Promise<string> {
