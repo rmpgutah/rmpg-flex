@@ -1107,7 +1107,11 @@ export default function WarrantsPage() {
   }, [formOpen, personProfileOpen, utahDetailWarrant, activeTab, isAdminOrManager]);
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
+    // h-full, not absolute inset-0: <main> in Layout.tsx isn't a positioned
+    // ancestor, so `absolute inset-0` escaped it entirely and painted over
+    // the whole viewport — hiding the top nav toolbar completely on this
+    // page. Every sibling page (RecordsPage, DispatchPage, ...) uses h-full.
+    <div className="h-full flex flex-col overflow-hidden bg-surface-deep">
       {/* ---- TITLE BAR ---- */}
       <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
