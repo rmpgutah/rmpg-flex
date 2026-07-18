@@ -5,6 +5,7 @@ import { requireRole } from '../middleware/auth';
 import { getAdapters, getAdapter } from '../utils/screening/registry';
 import { runScreeningScans } from '../utils/screening/runScreeningScans';
 import { confirmScreeningHit, dismissScreeningHit } from '../utils/screening/confirm';
+import { screenPersonAllSources } from '../utils/screening/screenPerson';
 
 const screening = new Hono<Env>();
 
@@ -105,6 +106,25 @@ screening.get('/hits', requireRole(...READ_ROLES), async (c) => {
       `SELECT * FROM screening_hits WHERE ${filters.join(' AND ')} ORDER BY match_score DESC, last_seen_at DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
+});
+
+// POST /api/screening/screen-person/:id — manual "Screen Now" button.
+// Runs every registered source for this person right now, independent of
+// the watchlist/cadence system. Awaited (not fire-and-forget) since this
+// is a user-initiated action expecting an immediate result.
+screening.post('/screen-person/:id', requireRole(...SCAN_ROLES), async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ success: false, error: 'Invalid person id' }, 400);
+  const user = c.get('user') as { id?: number } | undefined;
+  try {
+    const result = await screenPersonAllSources(c.env, id, {
+      triggeredBy: user?.id ? `manual:${user.id}` : 'manual',
+    });
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[screening/screen-person]', err);
+    return c.json({ success: false, error: 'screen failed' }, 500);
+  }
 });
 
 // POST /api/screening/hits/:id/confirm
