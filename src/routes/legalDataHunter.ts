@@ -24,6 +24,9 @@ import { checkAndReserveLdhCall, LDH_DAILY_BUDGET } from '../utils/legalDataHunt
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 
+// LDH hybrid search score below which a hit is not considered a confident match.
+const LDH_SEARCH_MATCH_THRESHOLD = 0.6;
+
 const legalDataHunter = new Hono<Env>();
 
 legalDataHunter.use('*', async (c, next) => {
@@ -49,12 +52,23 @@ async function tryLocalStatute(db: ReturnType<typeof getDb>, charge: string, sta
   if (state && state.toUpperCase() !== 'UT' && state.toUpperCase() !== 'UTAH') return null;
   const q = charge.trim();
   if (q.length < 3) return null;
+  // Real charge text (e.g. "THEFT BY RECEIVING STOLEN PROPERTY - 3RD DEGREE
+  // FELONY") is long/formatted while utah_statutes.short_title rows are short
+  // ("Theft, generally") — so a naive "does short_title contain the whole
+  // charge" query almost never matches. Flip the direction too: does the
+  // charge text CONTAIN the statute's short_title? SQLite supports string
+  // concatenation with `||`, so we can express both directions in one query
+  // (same pattern used by statutes.ts's `/search` endpoint's LIKE matching).
   const row = await queryFirst<{ citation: string; short_title: string; source_url: string | null }>(
     db,
     `SELECT citation, short_title, source_url FROM utah_statutes
-     WHERE is_active = 1 AND (short_title LIKE ? OR description LIKE ?)
-     ORDER BY LENGTH(short_title) ASC LIMIT 1`,
-    `%${q}%`, `%${q}%`,
+     WHERE is_active = 1
+       AND (
+         short_title LIKE ? OR description LIKE ?
+         OR (LENGTH(short_title) >= 4 AND ? LIKE '%' || short_title || '%')
+       )
+     ORDER BY LENGTH(short_title) DESC LIMIT 1`,
+    `%${q}%`, `%${q}%`, q,
   );
   return row;
 }
@@ -156,7 +170,7 @@ legalDataHunter.post('/validate', async (c) => {
       const searched = await searchLegislation({ config, query: charge, country: countryHint ? [countryHint] : undefined, topK: 3 });
       raw = searched;
       const hit = searched.hits[0];
-      if (hit && hit.score >= 0.6) {
+      if (hit && hit.score >= LDH_SEARCH_MATCH_THRESHOLD) {
         matchFound = true;
         matchedTitle = hit.title;
         matchedCitation = hit.source_id;

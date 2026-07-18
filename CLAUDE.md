@@ -241,6 +241,9 @@ never blocks any warrant workflow. Full design:
 - **Config**: secret `LEGAL_DATA_HUNTER_API_KEY` via `wrangler secret put` (prod) / `.dev.vars`
   (local, gitignored). Unset → `/api/legal-data-hunter/validate` returns
   `200 { ok: false, code: 'not_configured' }`.
+  ⚠️ If setting this up from the original integration session, the API key shared in that
+  chat was pasted into a non-secret channel and must be rotated before use — never reuse
+  a key that appeared in conversation text.
 
 ## Code Patterns
 

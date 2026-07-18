@@ -104,4 +104,38 @@ describe('POST /api/legal-data-hunter/validate', () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it('matches a realistic charge string against a local utah_statutes row (Fix 1)', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    // Realistic-shaped row: short citation/short_title, like the real seeded
+    // utah_statutes table — not the full charge text.
+    await execute(db,
+      `INSERT INTO utah_statutes (citation, short_title, description, source_url, is_active)
+       VALUES (?, ?, ?, ?, 1)`,
+      '76-6-404', 'Theft, generally', 'Theft of property or services.', 'https://le.utah.gov/xcode/Title76/Chapter6/76-6-S404.html',
+    );
+
+    const app = appWithUser({ id: 1, role: 'officer', username: 'test-officer' });
+    const res = await app.request(
+      '/api/legal-data-hunter/validate',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // Uses the same "charge text contains the statute's short_title"
+        // direction the Fix 1 matcher relies on (charge LIKE '%'||short_title||'%').
+        body: JSON.stringify({ charge: 'THEFT, GENERALLY - 3RD DEGREE FELONY', state: 'UT' }),
+      },
+      env as unknown as Record<string, unknown>,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      ok: true,
+      source: 'local_statute',
+      match_found: true,
+      matched_title: 'Theft, generally',
+      matched_citation: '76-6-404',
+      matched_source_url: 'https://le.utah.gov/xcode/Title76/Chapter6/76-6-S404.html',
+    });
+  });
 });
