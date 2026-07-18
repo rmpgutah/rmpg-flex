@@ -6,6 +6,8 @@
 // ============================================================
 
 import type { Bindings } from '../types';
+import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
+import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
 
 // An Ed25519 private key is a 32-byte seed inside a fixed PKCS8 DER envelope.
 // We derive a STABLE seed from a dedicated PDF_SIGNING_KEY when provisioned,
@@ -70,15 +72,23 @@ async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', material));
 }
 
-interface CachedEd25519Key {
+interface CachedSigningKeys {
   seedHash: string;
-  key: CryptoKey;
+  ed25519Key: CryptoKey;
   ed25519PublicKey: Uint8Array;
+  mlDsaPublicKey: Uint8Array;
+  mlDsaSecretKey: Uint8Array;
+  slhDsaPublicKey: Uint8Array;
+  slhDsaSecretKey: Uint8Array;
 }
 
-let cachedEd25519: CachedEd25519Key | null = null;
+let cachedKeys: CachedSigningKeys | null = null;
 
-async function getSigningKeys(env: Bindings): Promise<{ key: CryptoKey; keyId: string; ed25519PublicKey: Uint8Array }> {
+async function getSigningKeys(env: Bindings): Promise<{
+  ed25519Key: CryptoKey; keyId: string; ed25519PublicKey: Uint8Array;
+  mlDsaPublicKey: Uint8Array; mlDsaSecretKey: Uint8Array;
+  slhDsaPublicKey: Uint8Array; slhDsaSecretKey: Uint8Array;
+}> {
   const seed = await deriveEd25519Seed(env);
   const seedHashBuf = await crypto.subtle.digest('SHA-256', seed);
   const seedHashBytes = new Uint8Array(seedHashBuf);
@@ -87,8 +97,8 @@ async function getSigningKeys(env: Bindings): Promise<{ key: CryptoKey; keyId: s
   // signing key without exposing it.
   const keyId = Array.from(seedHashBytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-  if (cachedEd25519 && cachedEd25519.seedHash === seedHash) {
-    return { key: cachedEd25519.key, keyId, ed25519PublicKey: cachedEd25519.ed25519PublicKey };
+  if (cachedKeys && cachedKeys.seedHash === seedHash) {
+    return { ...cachedKeys, keyId };
   }
 
   const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + 32);
@@ -98,16 +108,25 @@ async function getSigningKeys(env: Bindings): Promise<{ key: CryptoKey; keyId: s
   // Safe: this is a server-held key derived from a secret we already
   // control; exporting the PUBLIC half leaks nothing the derivation
   // formula doesn't already make computable by anyone holding the secret.
-  const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
+  const ed25519Key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
   // @cloudflare/workers-types types exportKey() as Promise<ArrayBuffer | JsonWebKey> for
   // every format string (unlike lib.dom.d.ts, it doesn't overload on the 'jwk' literal),
   // so a cast is needed here — runtime shape is unaffected, format:'jwk' always returns JsonWebKey.
-  const jwk = (await crypto.subtle.exportKey('jwk', key)) as JsonWebKey;
+  const jwk = (await crypto.subtle.exportKey('jwk', ed25519Key)) as JsonWebKey;
   if (!jwk.x) throw new Error('Ed25519 JWK export missing public key (x)');
   const ed25519PublicKey = base64UrlToBytes(jwk.x);
 
-  cachedEd25519 = { seedHash, key, ed25519PublicKey };
-  return { key, keyId, ed25519PublicKey };
+  // ML-DSA-87 and SLH-DSA-256f keygen are the expensive part of this function
+  // (~15ms / ~18ms respectively) — deriving+caching them here alongside the
+  // Ed25519 key means keygen runs once per isolate, not once per request.
+  const mlDsaSeed = await deriveHkdfSeed(env, 'rmpg-pdf-ml-dsa87-v1', 32);
+  const { publicKey: mlDsaPublicKey, secretKey: mlDsaSecretKey } = ml_dsa87.keygen(mlDsaSeed);
+
+  const slhDsaSeed = await deriveHkdfSeed(env, 'rmpg-pdf-slh-dsa-256f-v1', 96);
+  const { publicKey: slhDsaPublicKey, secretKey: slhDsaSecretKey } = slh_dsa_sha2_256f.keygen(slhDsaSeed);
+
+  cachedKeys = { seedHash, ed25519Key, ed25519PublicKey, mlDsaPublicKey, mlDsaSecretKey, slhDsaPublicKey, slhDsaSecretKey };
+  return { ...cachedKeys, keyId };
 }
 
 // Test-only export — removed in Task 5 once signTriple()'s tests cover this.
@@ -118,8 +137,8 @@ export const getPdfSigningKeyForTest = getSigningKeys;
 export async function signTriple(
   env: Bindings, formKey: string, caseNumber: string, payloadHash: string,
 ): Promise<{ signature: string; signedAt: string; algorithm: 'Ed25519'; keyId: string }> {
-  const { key, keyId } = await getSigningKeys(env);
+  const { ed25519Key, keyId } = await getSigningKeys(env);
   const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
-  const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
+  const sigBuf = await crypto.subtle.sign('Ed25519', ed25519Key, message);
   return { signature: bytesToBase64(new Uint8Array(sigBuf)), signedAt: new Date().toISOString(), algorithm: 'Ed25519', keyId }; // new-date-ok
 }

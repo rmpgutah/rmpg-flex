@@ -82,10 +82,10 @@ describe('getPdfSigningKeyForTest — Ed25519', () => {
   const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
 
   it('exports a 32-byte Ed25519 public key that verifies a signature made with the private key', async () => {
-    const { key, ed25519PublicKey } = await getPdfSigningKeyForTest(env);
+    const { ed25519Key, ed25519PublicKey } = await getPdfSigningKeyForTest(env);
     expect(ed25519PublicKey.length).toBe(32);
     const msg = new TextEncoder().encode('hello');
-    const sigBuf = await crypto.subtle.sign('Ed25519', key, msg);
+    const sigBuf = await crypto.subtle.sign('Ed25519', ed25519Key, msg);
     const pubKey = await crypto.subtle.importKey('raw', ed25519PublicKey, { name: 'Ed25519' }, false, ['verify']);
     expect(await crypto.subtle.verify('Ed25519', pubKey, sigBuf, msg)).toBe(true);
   });
@@ -107,5 +107,32 @@ describe('getPdfSigningKeyForTest — Ed25519', () => {
     // test ever needs to change, something broke backward compatibility.
     const { keyId } = await getPdfSigningKeyForTest({ JWT_SECRET: 'golden-test-secret-do-not-change' } as unknown as Bindings);
     expect(keyId).toBe('867c4da05488c3a2');
+  });
+});
+
+describe('getPdfSigningKeyForTest — PQC keys', () => {
+  const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
+
+  it('derives ML-DSA-87 and SLH-DSA-256f keypairs with correct sizes', async () => {
+    const keys = await getPdfSigningKeyForTest(env);
+    expect(keys.mlDsaPublicKey.length).toBe(2592);
+    expect(keys.mlDsaSecretKey.length).toBe(4896);
+    expect(keys.slhDsaPublicKey.length).toBe(64);
+    expect(keys.slhDsaSecretKey.length).toBe(128);
+  });
+
+  it('is deterministic across separate calls', async () => {
+    const a = await getPdfSigningKeyForTest(env);
+    const b = await getPdfSigningKeyForTest(env);
+    expect(Array.from(a.mlDsaPublicKey)).toEqual(Array.from(b.mlDsaPublicKey));
+    expect(Array.from(a.slhDsaPublicKey)).toEqual(Array.from(b.slhDsaPublicKey));
+  });
+
+  it('produces different PQC keys for different root secrets', async () => {
+    const other = { JWT_SECRET: 'a-different-secret' } as unknown as Bindings;
+    const a = await getPdfSigningKeyForTest(env);
+    const b = await getPdfSigningKeyForTest(other);
+    expect(Array.from(a.mlDsaPublicKey)).not.toEqual(Array.from(b.mlDsaPublicKey));
+    expect(Array.from(a.slhDsaPublicKey)).not.toEqual(Array.from(b.slhDsaPublicKey));
   });
 });
