@@ -60,4 +60,22 @@ describe('field-photos upload/stream/delete — end-to-end with real R2/D1', () 
     const res = await app.request('/api/field-photos', { method: 'POST', body: form }, testEnv);
     expect(res.status).toBeGreaterThanOrEqual(500);
   });
+
+  it('serves a legacy pre-encryption object (R2 bytes with no file_encryption_keys row) via a raw fallback instead of 404ing', async () => {
+    const testEnv = envWithKek();
+
+    // Simulate one of production's 53 real field_photos rows uploaded before
+    // this feature existed: plaintext bytes written directly into R2 under
+    // field-photos/, with no corresponding file_encryption_keys row at all.
+    const legacyKey = 'field-photos/legacy-pre-encryption-object.jpg';
+    const legacyBytes = new Uint8Array([0xff, 0xd8, 0xff, 9, 8, 7, 6, 5, 4]);
+    await (testEnv as any).UPLOADS.put(legacyKey, legacyBytes, { httpMetadata: { contentType: 'image/jpeg' } });
+
+    // getDecrypted() must find no key row (returns null) and the route must
+    // fall back to serving the raw R2 object rather than 404ing.
+    const res = await app.request(`/api/field-photos/file/${legacyKey}`, {}, testEnv);
+    expect(res.status).toBe(200);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(bytes)).toEqual(Array.from(legacyBytes));
+  });
 });

@@ -25,7 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
-import { putEncrypted } from '../utils/encryptedR2';
+import { putEncrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
@@ -511,6 +511,7 @@ alpr.post('/capture', operational, async (c) => {
       await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
     }
   } catch (err: any) {
+    if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
     console.error('[alpr] R2 image put failed:', err?.message);
   }

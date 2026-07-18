@@ -135,10 +135,27 @@ fieldPhotos.get('/file/*', async (c) => {
     return c.json({ error: 'Invalid key' }, 400);
   }
   const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
-  if (!result) return c.json({ error: 'Not found' }, 404);
-  return new Response(result.bytes, {
+  if (result) {
+    return new Response(result.bytes, {
+      headers: {
+        'Content-Type': result.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=3600',
+      },
+    });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // genuinely crypto-shredded object with no key row -- neither is
+  // distinguishable here from a LEGACY object uploaded before this feature
+  // shipped (also "object exists, no key row"). Fall back to serving the
+  // raw R2 bytes as-is. Safe today because no code path does standalone
+  // crypto-shredding: this file's own DELETE handler (below) always removes
+  // the R2 object and its key row together, so "object present, row absent"
+  // can currently only mean "predates encryption," never "was shredded."
+  const legacy = await c.env.UPLOADS.get(key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  return new Response(legacy.body, {
     headers: {
-      'Content-Type': result.httpMetadata?.contentType || 'image/jpeg',
+      'Content-Type': legacy.httpMetadata?.contentType || 'image/jpeg',
       'Cache-Control': 'private, max-age=3600',
     },
   });
