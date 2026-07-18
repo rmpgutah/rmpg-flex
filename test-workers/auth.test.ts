@@ -8,6 +8,7 @@ import { authMiddleware, readOnlyRoleGuard, requireRole } from '../src/middlewar
 import { hashSync } from 'bcryptjs';
 import authRouter from '../src/routes/auth';
 import { getDb, execute, queryFirst, columnExists } from '../src/utils/db';
+import { sign } from 'hono/jwt';
 
 describe('auth middleware — unauthenticated access', () => {
   it('returns 401 when Authorization header is missing', async () => {
@@ -246,5 +247,75 @@ describe('POST /login — account lockout', () => {
       db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', userId);
     expect(row?.failed_login_count).toBe(0);
     expect(row?.locked_until).toBeNull();
+  });
+});
+
+async function mintAccessToken(secret: string, userId: number, role: string, username: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ sub: String(userId), user_id: userId, userId, username, role, iat: now, exp: now + 900, type: 'access' }, secret);
+}
+
+describe('POST /security/unlock-account', () => {
+  const SECRET = 'test-jwt-secret-do-not-use-in-prod';
+
+  it('clears failed_login_count and locked_until for admin callers', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status) VALUES ('admin-unlock-1', 'x', 'Admin One', 'admin', 'active')`);
+    const admin = await queryFirst<{ id: number }>(db, `SELECT id FROM users WHERE username = 'admin-unlock-1'`);
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status, failed_login_count, locked_until)
+       VALUES ('locked-target-1', 'x', 'Locked Target', 'officer', 'active', 5, datetime('now', '+15 minutes'))`);
+    const target = await queryFirst<{ id: number }>(db, `SELECT id FROM users WHERE username = 'locked-target-1'`);
+
+    const token = await mintAccessToken(SECRET, admin!.id, 'admin', 'admin-unlock-1');
+    const res = await authRouter.request('/security/unlock-account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ username: 'locked-target-1' }),
+    }, { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET });
+
+    expect(res.status).toBe(200);
+    const row = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+      db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', target!.id);
+    expect(row?.failed_login_count).toBe(0);
+    expect(row?.locked_until).toBeNull();
+  });
+
+  it('rejects non-admin/manager roles with 403', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status) VALUES ('officer-unlock-1', 'x', 'Officer One', 'officer', 'active')`);
+    const officer = await queryFirst<{ id: number }>(db, `SELECT id FROM users WHERE username = 'officer-unlock-1'`);
+    const token = await mintAccessToken(SECRET, officer!.id, 'officer', 'officer-unlock-1');
+    const res = await authRouter.request('/security/unlock-account', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ username: 'locked-target-1' }),
+    }, { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /security/locked-accounts', () => {
+  const SECRET = 'test-jwt-secret-do-not-use-in-prod';
+
+  it('lists currently-locked accounts for admin callers', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status) VALUES ('admin-list-1', 'x', 'Admin List', 'admin', 'active')`);
+    const admin = await queryFirst<{ id: number }>(db, `SELECT id FROM users WHERE username = 'admin-list-1'`);
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status, failed_login_count, locked_until)
+       VALUES ('locked-target-2', 'x', 'Locked Target Two', 'officer', 'active', 5, datetime('now', '+15 minutes'))`);
+
+    const token = await mintAccessToken(SECRET, admin!.id, 'admin', 'admin-list-1');
+    const res = await authRouter.request('/security/locked-accounts', {
+      headers: { authorization: `Bearer ${token}` },
+    }, { ...(env as unknown as Record<string, unknown>), JWT_SECRET: SECRET });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ username: string }> };
+    expect(body.data.some(a => a.username === 'locked-target-2')).toBe(true);
   });
 });

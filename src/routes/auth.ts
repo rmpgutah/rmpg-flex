@@ -1902,6 +1902,38 @@ auth.post('/security/unblock-ip', authMiddleware, async (c) => {
   } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
 });
 
+// GET /api/auth/security/locked-accounts — accounts currently locked out.
+auth.get('/security/locked-accounts', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT id, username, full_name, failed_login_count, locked_until
+       FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime('now')
+       ORDER BY locked_until DESC LIMIT 100`);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// ── Security: unlock account ────────────────────────────────
+auth.post('/security/unlock-account', authMiddleware, async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const { username } = await c.req.json<{ username: string }>();
+    if (!username) return c.json({ error: 'username required' }, 400);
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const r = await execute(db,
+      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE username = ?`, username);
+    return c.json({ success: true, cleared: r.meta.changes ?? 0 });
+  } catch { return c.json({ error: 'Failed to unlock account' }, 500); }
+});
+
 // ── Account recovery (no JWT required — secured by RECOVERY_KEY env secret) ──
 // POST /auth/recover-all — reset every active user's password to a known
 // temporary password. Use when login is broken for everyone. Authenticated via
