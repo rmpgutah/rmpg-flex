@@ -10,7 +10,8 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { log } from '../utils/logger';
-import { runUtahWarrantScan, runUtahWarrantCheckForPerson } from '../utils/utahWarrantPoller';
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant } from '../utils/utahWarrantPoller';
+import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
@@ -376,6 +377,32 @@ warrants.post('/search-all', async (c) => {
     const wantLocal = !body.source || body.source === 'local';
     const wantUtah = !body.source || body.source === 'utah';
     const wantScraped = !body.source || body.source === 'scraped';
+
+    // The `utah_warrants` table is only a CACHE, populated by the background
+    // cron poller for the ~50 persons/run it happens to check — it does NOT
+    // reflect a live call to warrants.utah.gov. A name typed into Search All
+    // that isn't already a local D1 person the cron polled would silently
+    // return zero Utah hits even when the live API has real data for that
+    // name. When both first and last name are given, run a live on-demand
+    // check first (same fetchWarrantsForPerson/recordWarrant path already
+    // used by POST /warrants/check/:personId) so freshly-found warrants are
+    // persisted into utah_warrants BEFORE the cache SELECT below runs —
+    // the subsequent query then naturally includes them via the upsert.
+    if (wantUtah && body.firstName && body.lastName) {
+      try {
+        const liveWarrants = await fetchWarrantsForPerson({
+          id: 0,
+          first_name: body.firstName,
+          middle_name: null,
+          last_name: body.lastName,
+          dob: body.dob ?? null,
+        });
+        for (const w of liveWarrants) await recordWarrant(db, w, null);
+      } catch (err) {
+        log.error('warrants/search-all: live utah fetch failed', { traceId },
+          err instanceof Error ? err : new Error(String(err)));
+      }
+    }
 
     const [local, utah] = await Promise.all([
       wantLocal
@@ -973,6 +1000,17 @@ warrants.post('/', async (c) => {
 
     const created = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM warrants WHERE id = ?', result.meta.last_row_id);
+
+    // Auto-screen the warrant's subject against all 7 screening sources
+    // (Interpol, OFAC, Utah SOR, NSOPW, UDC, etc.) — fire-and-forget so a
+    // screening failure never blocks warrant creation.
+    if (body.subject_person_id) {
+      c.executionCtx.waitUntil(
+        screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_create' })
+          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+      );
+    }
+
     return c.json(created, 201);
   } catch (err) {
     console.error('[warrants] create error', err);
@@ -988,7 +1026,8 @@ warrants.put('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; subject_person_id: number | null }>(
+      db, 'SELECT id, subject_person_id FROM warrants WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Warrant not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
@@ -1006,6 +1045,16 @@ warrants.put('/:id', async (c) => {
 
     await execute(db, `UPDATE warrants SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+
+    // Only re-screen when subject_person_id actually changed — an edit to
+    // status/bail/notes/etc. must not trigger a fresh 7-source scan.
+    if ('subject_person_id' in body && body.subject_person_id != null
+        && Number(body.subject_person_id) !== existing.subject_person_id) {
+      c.executionCtx.waitUntil(
+        screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_update' })
+          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+      );
+    }
     return c.json(updated);
   } catch (err) {
     console.error('[warrants] update error', err);

@@ -4,10 +4,11 @@
 > The Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
 > Express, better-sqlite3) is **dead and the host is decommissioned** (shut down
 > 2026-06-15 — there is no longer a server at `194.113.64.90` to ssh/rsync/systemctl
-> against). Its source has been moved to
-> [`legacy/server-vps/`](legacy/README.md) and is not built, tested, or deployed.
-> See [`LEGACY.md`](LEGACY.md) for a quick live-vs-dead map of every top-level
-> directory before assuming anything about the codebase.
+> against). Its source — the old `legacy/server-vps/` tree, the stale duplicate
+> top-level `server/` directory, and the dead `deploy/` rsync scripts — was
+> **deleted outright in the 2026-07-16 repo cleanup** rather than merely quarantined.
+> See [`LEGACY.md`](LEGACY.md) for a quick live-directory map before assuming
+> anything about the codebase.
 
 ## Project Overview
 
@@ -59,11 +60,13 @@ wrangler.toml       Worker bindings (DB, KV, MAP_DATA, WELFARE_WATCH), cron, var
 scripts/            Codegen + one-off ops scripts (D1 schema sync, geography seed)
 edge/               Python edge runner for Flex Dashcam AI (independent of Worker)
 
-legacy/             ⚠️  RETIRED VPS-era code (read-only, do not import) — see LEGACY.md
 desktop/            Electron wrapper — kept (in active use)
-                    NOTE: deploy/ (VPS-era deploy scripts) was DELETED in cleanup PR 2.
-                    If a comment or doc still references bash deploy/deploy.sh —
-                    that's the canonical "do not use" recipe; it never lived in CF era.
+                    NOTE: legacy/ (retired VPS-era server code), the stale duplicate
+                    top-level server/, and deploy/ (VPS-era deploy scripts) were all
+                    DELETED outright in the 2026-07-16 repo cleanup. If a comment or
+                    doc still references legacy/server-vps, server/, or
+                    bash deploy/deploy.sh — that's the canonical "do not use" recipe;
+                    none of it lived in the CF era and none of it exists anymore.
 ```
 
 ## Deploy
@@ -210,6 +213,38 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
   `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
   Set the two secrets, then hit `POST /api/fleetio/seed` once.
 
+### Legal Data Hunter (manual warrant-charge validation)
+
+Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data
+Hunter API (230+ jurisdictions). **Not** an auto-screen — never runs on warrant create/update,
+never blocks any warrant workflow. Full design:
+[`docs/superpowers/specs/2026-07-17-legal-data-hunter-integration-design.md`](docs/superpowers/specs/2026-07-17-legal-data-hunter-integration-design.md).
+
+- **Client**: [`src/utils/legalDataHunter/client.ts`](src/utils/legalDataHunter/client.ts) —
+  Worker-safe `fetch` wrapper for `POST /v1/resolve` and `POST /v1/search`
+  (`https://legaldatahunter.com`). Typed errors (`LdhConfigError|LdhTimeoutError|LdhHttpError|LdhRateLimitError`).
+  Unit-tested in [`tests/legalDataHunterClient.test.ts`](tests/legalDataHunterClient.test.ts).
+- **Rate limiting**: LDH's own limits are 10 req/min / 20 req/day / 600/period — far too low for
+  any automated pipeline. [`src/utils/legalDataHunter/rateLimit.ts`](src/utils/legalDataHunter/rateLimit.ts)
+  enforces a self-imposed buffer (8/min, 18/day) via KV counters before any live call is made.
+- **Route**: [`src/routes/legalDataHunter.ts`](src/routes/legalDataHunter.ts) at
+  `/api/legal-data-hunter` (auth required, `client_viewer` excluded). `POST /validate` tries, in
+  order: the local `utah_statutes` table (free, Utah-only) → the `legal_charge_validations` D1
+  cache → a live LDH call under the rate budget. `GET /usage` (admin/manager) reports today's
+  call count.
+- **Schema**: migration `0191_legal_data_hunter.sql` — `legal_charge_validations`
+  (charge text/state → cached match, unique per normalized charge+state). No new columns on
+  `warrants` (100-col cap).
+- **UI**: [`LegalDataHunterValidateButton`](client/src/components/LegalDataHunterValidateButton.tsx),
+  embedded on `WarrantsPage.tsx`'s warrant-detail "Offense / Charges" block. Click-to-validate
+  only — no polling, no background state.
+- **Config**: secret `LEGAL_DATA_HUNTER_API_KEY` via `wrangler secret put` (prod) / `.dev.vars`
+  (local, gitignored). Unset → `/api/legal-data-hunter/validate` returns
+  `200 { ok: false, code: 'not_configured' }`.
+  ⚠️ If setting this up from the original integration session, the API key shared in that
+  chat was pasted into a non-secret channel and must be rotated before use — never reuse
+  a key that appeared in conversation text.
+
 ## Code Patterns
 
 ### Logging & observability (2026-06-24: structured JSON logger)
@@ -330,7 +365,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 
 ## Common Gotchas (CF era)
 
-1. **`/server/` is dead** — it's been moved to `legacy/server-vps/`. If you see `import ... from 'server/...'` anywhere outside `legacy/`, that's a bug from before the rehoming and should be ported to `/src/`.
+1. **`/server/` is dead and no longer exists** — the old VPS-era Express server (and its stale duplicate at top-level `server/`) was deleted outright in the 2026-07-16 repo cleanup. If you see `import ... from 'server/...'` anywhere, that's a bug from before the rehoming and should be ported to `/src/`.
 2. **`/src/` and `/client/src/` both contain TypeScript** — `/src/` is the Worker, `/client/src/` is React. They share no build, no `tsconfig`, no `package.json`. Edits to one do not affect the other.
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
 4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
@@ -341,7 +376,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 9. **WebSocket route** (`src/routes/ws.ts`) uses Workers' `webSocketPair()` — the auth/upgrade dance differs subtly from Node `ws`. JWT is verified once at upgrade time; subsequent messages on that socket are trusted.
 10. **`WelfareWatchDO` is SQLite-backed (`new_sqlite_classes`)** — free-plan compatible. Same API surface for our use case but storage is per-DO, isolated from D1.
 11. **Megafiles still exist on the client** — `FirecrawlTab.tsx` (11k lines), `MapPage.tsx` / `DispatchPage.tsx` (~6k each), `WarrantsPage.tsx` (4k). Split opportunistically when you're already in them; don't schedule a "refactoring sprint."
-12. **Comments in `/src/` and `/client/src/` that say "mirrors server/..."** — those references now point at `legacy/server-vps/...`. Read them as historical reference only; the canonical implementation is whatever's in `/src/`.
+12. **Comments in `/src/` and `/client/src/` that say "mirrors server/..."** — that VPS-era source tree no longer exists in this repo (deleted 2026-07-16, previously at `legacy/server-vps/`). Read those comments as historical reference only; the canonical implementation is whatever's in `/src/`.
 13. **D1 100-column SELECT cap** — Cloudflare D1 caps SELECT result sets at ~100 columns. `calls_for_service` (100 cols) and `persons` (94 cols) are at or near the cap on live. **Never `ALTER TABLE … ADD COLUMN` against either of those** — new columns go to the `_ext` overflow table (1:1 pattern, see `calls_for_service_ext`). `scripts/check-column-cap.js` (run by `.github/workflows/column-cap-check.yml` on every PR touching `migrations/`) fails CI if a PR adds an ALTER against a watched table. Override with `ALLOW_ALTER_<TABLE>=1` env var on the workflow run if you genuinely have no other option, and document the reason in the PR body.
 
 ## Cross-reference: dead instructions to ignore

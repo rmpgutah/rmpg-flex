@@ -1093,6 +1093,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             msg = 'Location permission denied. You MUST enable location access to use RMPG Flex.';
             denied = true;
             permissionDeniedRef.current = true;
+            // startTracking() optimistically flips isTracking true as soon as the
+            // watch is armed, before any fix arrives — without resetting it here,
+            // the status bar shows "GPS: ON" at the same time this banner shows
+            // "Location disabled", which is a direct contradiction on screen.
+            setIsTracking(false);
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';

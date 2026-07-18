@@ -25,7 +25,7 @@ export interface DetectorSample {
 }
 
 const SAMPLE_INTERVAL_SEC = 2;
-const MAX_FRAMES = 30;
+const MAX_FRAMES = 18;
 const JPEG_QUALITY = 0.7;
 const MAX_LONG_EDGE = 960;
 

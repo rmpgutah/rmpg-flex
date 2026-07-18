@@ -171,7 +171,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
             <button
               onClick={runDeepScan}
               disabled={!!deepScan?.busy}
-              title="Higher-accuracy AI scan for faces/plates the fast pass may have missed — samples 2s intervals from the current playhead, up to 30 frames (~1 minute of footage)"
+              title="Higher-accuracy AI scan for faces/plates the fast pass may have missed — samples 2s intervals from the current playhead, up to 18 frames (~36 seconds of footage)"
               className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-purple-500/60 text-purple-300 hover:bg-purple-950/30 disabled:opacity-60"
             >
               {deepScan?.busy

@@ -80,6 +80,43 @@ async function configInt(env: Bindings, key: string, fallback: number): Promise<
   return Number.isFinite(n) ? n : fallback;
 }
 
+export async function scanPersonAgainstAdapter(
+  env: Bindings,
+  adapter: ScreeningAdapter,
+  person: PersonRow,
+  opts: { threshold: number },
+): Promise<{ checked: 1; newHits: number; errors: number }> {
+  const db = getDb(env);
+  let newHits = 0;
+  let errors = 0;
+  try {
+    const candidates = await adapter.fetchForPerson(env, person);
+    for (const cand of candidates) {
+      if (!cand.externalId) continue;
+      const m = adapter.scoreMatch(person, cand);
+      if (m.score < opts.threshold) continue;
+      const existing = await queryFirst<{ id: number; status: string }>(db,
+        'SELECT id, status FROM screening_hits WHERE source_key=? AND person_id=? AND external_id=?',
+        adapter.sourceKey, person.id, cand.externalId);
+      if (existing) {
+        await execute(db, "UPDATE screening_hits SET last_seen_at=datetime('now'), match_score=?, is_active=1 WHERE id=?", m.score, existing.id);
+      } else {
+        await execute(db, `INSERT INTO screening_hits
+            (source_key, person_id, external_id, match_score, matched_fields, status,
+             display_name, summary, photo_url, country, list_type, raw_json)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          adapter.sourceKey, person.id, cand.externalId, m.score, JSON.stringify(m.matchedFields), 'pending',
+          cand.displayName, cand.summary, cand.photoUrl ?? null, cand.country ?? null, cand.listType ?? null, JSON.stringify(cand.raw));
+        newHits++;
+      }
+    }
+  } catch (err) {
+    errors++;
+    console.warn(`[screening] ${adapter.sourceKey} person ${person.id} error:`, err);
+  }
+  return { checked: 1, newHits, errors };
+}
+
 async function runOne(env: Bindings, adapter: ScreeningAdapter, force = false): Promise<void> {
   if (!adapter.supportsWatch) return;            // Fix 3: cheap static check first
   const db = getDb(env);
@@ -103,29 +140,10 @@ async function runOne(env: Bindings, adapter: ScreeningAdapter, force = false): 
   const slice = adapter.kind === 'notice' ? persons.slice(0, max) : persons;
 
   for (const person of slice) {
-    try {
-      checked++;
-      const candidates = await adapter.fetchForPerson(env, person);
-      for (const cand of candidates) {
-        if (!cand.externalId) continue;
-        const m = adapter.scoreMatch(person, cand);
-        if (m.score < threshold) continue;
-        const existing = await queryFirst<{ id: number; status: string }>(db,
-          'SELECT id, status FROM screening_hits WHERE source_key=? AND person_id=? AND external_id=?',
-          adapter.sourceKey, person.id, cand.externalId);
-        if (existing) {
-          await execute(db, "UPDATE screening_hits SET last_seen_at=datetime('now'), match_score=?, is_active=1 WHERE id=?", m.score, existing.id);
-        } else {
-          await execute(db, `INSERT INTO screening_hits
-              (source_key, person_id, external_id, match_score, matched_fields, status,
-               display_name, summary, photo_url, country, list_type, raw_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-            adapter.sourceKey, person.id, cand.externalId, m.score, JSON.stringify(m.matchedFields), 'pending',
-            cand.displayName, cand.summary, cand.photoUrl ?? null, cand.country ?? null, cand.listType ?? null, JSON.stringify(cand.raw));
-          newHits++;
-        }
-      }
-    } catch (err) { errors++; console.warn(`[screening] ${adapter.sourceKey} person ${person.id} error:`, err); }
+    checked++;
+    const result = await scanPersonAgainstAdapter(env, adapter, person, { threshold });
+    newHits += result.newHits;
+    errors += result.errors;
   }
 
   await execute(db, "UPDATE screening_scan_runs SET finished_at=datetime('now'), persons_checked=?, new_hits=?, errors=? WHERE id=?",

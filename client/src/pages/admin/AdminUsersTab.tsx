@@ -21,6 +21,7 @@ import {
   Clock,
   Users,
   Eye,
+  HelpCircle,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -143,6 +144,12 @@ export default function AdminUsersTab({
   const [roleEditing, setRoleEditing] = useState(false);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
 
+  // Security Questions ("Forgot password?" recovery) — admin view of a
+  // selected user's setup. Never shows answers (bcrypt-hashed, one-way).
+  const [sqAdminConfigured, setSqAdminConfigured] = useState<boolean | null>(null);
+  const [sqAdminQuestions, setSqAdminQuestions] = useState<string[]>([]);
+  const [sqAdminLoading, setSqAdminLoading] = useState(false);
+
   // Centralized destructive-action ConfirmDialog state — replaces the four
   // window.confirm() prompts that scattered through Suspend / Reactivate /
   // Reset 2FA / Revoke Sessions. Each handler stores its title/message/
@@ -196,12 +203,40 @@ export default function AdminUsersTab({
     setLoadingSessions(false);
   }, []);
 
-  // Load sessions when security tab is opened
+  // Load the 2FA/password-status fields and security-questions setup for a
+  // user when the Security tab is shown — the users list this page starts
+  // from doesn't carry them, so selectedUser.totpEnabled etc. would
+  // otherwise always be undefined (always rendering "Not Configured").
+  const loadUserSecurity = useCallback(async (userId: string) => {
+    try {
+      const security = await apiFetch<Record<string, unknown>>(`/admin/users/${userId}/security`);
+      // Guard against a stale response landing after the admin has already
+      // switched to a different user (userId is captured per-call, not read
+      // from the possibly-changed `selectedUser` closure below).
+      if (selectedUser && String(selectedUser.id) === String(userId)) {
+        setSelectedUser({ ...selectedUser, ...security } as any);
+      }
+    } catch { /* leave selectedUser's fields as-is */ }
+
+    setSqAdminLoading(true);
+    try {
+      const sq = await apiFetch<{ configured: boolean; questions: string[] }>(`/admin/users/${userId}/security-questions`);
+      setSqAdminConfigured(sq.configured);
+      setSqAdminQuestions(sq.questions || []);
+    } catch {
+      setSqAdminConfigured(null);
+      setSqAdminQuestions([]);
+    }
+    setSqAdminLoading(false);
+  }, [selectedUser, setSelectedUser]);
+
+  // Load sessions + security status when security tab is opened
   useEffect(() => {
     if (selectedUser && userDetailTab === 'security') {
       loadUserSessions(selectedUser.id);
+      loadUserSecurity(selectedUser.id);
     }
-  }, [selectedUser?.id, userDetailTab, loadUserSessions]);
+  }, [selectedUser?.id, userDetailTab, loadUserSessions, loadUserSecurity]);
 
   const handleRevokeAllSessions = async (userId: string) => {
     setSecurityActionLoading('revoke-sessions');
@@ -222,8 +257,10 @@ export default function AdminUsersTab({
     setSecurityActionLoading('role-change');
     setSecurityMsg(null);
     try {
-      const result = await apiFetch<{ message: string }>(`/admin/users/${userId}/role`, {
-        method: 'PUT',
+      // The real endpoint is POST /personnel/:id/role (admin-only, self-change
+      // blocked server-side) — /admin/users/:id/role never existed.
+      const result = await apiFetch<{ message?: string; role: string }>(`/personnel/${userId}/role`, {
+        method: 'POST',
         body: JSON.stringify({ role: newRole }),
       });
       setSecurityMsg({ type: 'success', text: result.message || `Role changed to ${newRole}` });
@@ -251,6 +288,22 @@ export default function AdminUsersTab({
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to force password change' });
       addToast(err.message || 'Failed to force password change', 'error');
+    }
+    setSecurityActionLoading(null);
+  };
+
+  const handleClearSecurityQuestions = async (userId: string) => {
+    setSecurityActionLoading('clear-security-questions');
+    setSecurityMsg(null);
+    try {
+      await apiFetch(`/admin/users/${userId}/security-questions`, { method: 'DELETE' });
+      setSqAdminConfigured(false);
+      setSqAdminQuestions([]);
+      setSecurityMsg({ type: 'success', text: 'Security questions cleared. The user can set up new ones from their profile.' });
+      addToast('Security questions cleared', 'success');
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to clear security questions' });
+      addToast(err.message || 'Failed to clear security questions', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -791,6 +844,53 @@ export default function AdminUsersTab({
                     )}
                     Force Password Change
                   </button>
+                </div>
+
+                {/* Security Questions ("Forgot password?" recovery setup) */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Security Questions</h3>
+                  {sqAdminLoading ? (
+                    <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`led-dot ${sqAdminConfigured ? 'led-green' : 'led-red'}`} />
+                        <span className={`text-xs font-semibold ${sqAdminConfigured ? 'text-green-400' : 'text-red-400'}`}>
+                          {sqAdminConfigured ? 'Configured' : 'Not Configured'}
+                        </span>
+                      </div>
+                      {sqAdminConfigured && sqAdminQuestions.length > 0 && (
+                        <ul className="text-[10px] text-rmpg-400 mb-3 space-y-1 list-disc list-inside">
+                          {sqAdminQuestions.map((q, i) => <li key={i}>{q}</li>)}
+                        </ul>
+                      )}
+                      <p className="text-[9px] mb-3" style={{ color: 'var(--rmpg-500)' }}>
+                        Answers are hashed and never shown here. Clear them if the user is locked out
+                        of "Forgot password?" or the questions/answers may be compromised — the user
+                        will need to set up new ones from their profile's Security tab.
+                      </p>
+                      <button type="button"
+                        onClick={() => setConfirmDlg({
+                          title: 'Clear Security Questions',
+                          message: `Clear security questions for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up new ones before "Forgot password?" works again. This action is audited.`,
+                          confirmLabel: 'Clear Questions',
+                          confirmVariant: 'warning',
+                          onConfirm: () => handleClearSecurityQuestions(selectedUser.id),
+                        })}
+                        disabled={!sqAdminConfigured || securityActionLoading === 'clear-security-questions'}
+                        className="toolbar-btn text-[9px] flex items-center gap-1"
+                      >
+                        {securityActionLoading === 'clear-security-questions' ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <HelpCircle className="w-3 h-3" />
+                        )}
+                        Clear Security Questions
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Active Sessions */}

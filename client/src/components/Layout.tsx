@@ -1507,10 +1507,17 @@ export default function Layout() {
                         marginBottom: 1,
                       }}
                     />
-                    {/* Email unread badge on Comms toolbar button */}
+                    {/* Email unread badge on Comms toolbar button. Clicking this
+                        button navigates straight to /communications (the internal
+                        Comms Inbox), NOT /email — so without a label this count
+                        looks like it belongs to Comms Inbox and reads as a bug
+                        ("99+" badge, but the inbox says "No messages yet"). The
+                        title clarifies it's actually /email's unread count (Email
+                        is a Comms-dropdown child). */}
                     {item.path === '/communications' && emailUnreadCount > 0 && (
                       <span
                         className="absolute flex items-center justify-center font-bold animate-pulse"
+                        title={`${emailUnreadCount} unread email${emailUnreadCount === 1 ? '' : 's'}`}
                         style={{
                           top: 1, left: 30,
                           minWidth: 14, height: 14, padding: '0 3px',
