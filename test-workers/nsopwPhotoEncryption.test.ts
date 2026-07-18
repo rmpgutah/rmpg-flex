@@ -66,6 +66,42 @@ describe('GET /api/nsopw/photo/:offenderRowId — encrypted read + legacy fallba
     expect(Array.from(bytes)).toEqual(Array.from(original));
   });
 
+  it('propagates a genuine decrypt failure (malformed KEK) as a loud error instead of silently falling back to raw ciphertext', async () => {
+    const app = buildApp();
+    const testEnv = envWithKek(env as unknown as Record<string, unknown>);
+    const db = (env as unknown as { DB: D1Database }).DB;
+
+    const key = 'nsopw-photos/UT/enc-offender-bad-kek.jpg';
+    const original = new Uint8Array([0xff, 0xd8, 0xff, 99, 88, 77]);
+    await putEncrypted((testEnv as unknown as { UPLOADS: R2Bucket }).UPLOADS, db, TEST_KEK, key, original, {
+      httpMetadata: { contentType: 'image/jpeg' },
+    });
+
+    const insert = await execute(db,
+      `INSERT INTO national_sex_offenders (jurisdiction, local_photo_key, photo_content_type) VALUES ('UT', ?, 'image/jpeg')`,
+      key);
+    const id = insert.meta.last_row_id;
+
+    // This object genuinely has a file_encryption_keys row (it's not a
+    // legacy pre-encryption object), so getDecrypted() must reach
+    // importKek() and throw FileEncryptionError when the KEK is malformed
+    // -- mirroring tests/encryptedR2.test.ts's "throws FileEncryptionError
+    // when the KEK is the wrong length" case. Before the fix, the route's
+    // `.catch(() => null)` around getDecrypted() swallowed exactly this
+    // throw and treated it identically to the legitimate "legacy object,
+    // no key row" case above, silently serving raw AES-GCM ciphertext back
+    // as a 200 `image/jpeg` response instead of failing loudly.
+    const badKekEnv = { ...testEnv, FILE_ENCRYPTION_KEK: btoa('too-short') };
+    const res = await app.request(`/api/nsopw/photo/${id}`, {}, badKekEnv);
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.status).not.toBe(200);
+    // Must not be the (broken) legacy-fallback behavior: the ciphertext must
+    // never be handed back to the caller.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(bytes)).not.toEqual(Array.from(original));
+  });
+
   it('serves a legacy pre-encryption object (R2 bytes with no file_encryption_keys row) via a raw fallback instead of 404ing', async () => {
     const app = buildApp();
     const testEnv = envWithKek(env as unknown as Record<string, unknown>);
