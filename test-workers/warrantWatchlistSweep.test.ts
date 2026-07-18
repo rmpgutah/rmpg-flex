@@ -57,6 +57,17 @@ describe('sweepWatchlist — warrant branch', () => {
     expect(watch[0].last_known_status).toBe('served');
   });
 
+  it('uses a single # when the warrant has no warrant_number', async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await execute(db, `INSERT INTO warrants (id, warrant_number, status, subject_name) VALUES (6, NULL, 'served', 'Jane Roe')`);
+    await execute(db, `INSERT INTO intel_watchlist (entity_type, entity_id, added_by, last_known_status) VALUES ('warrant', 6, 7, 'active')`);
+
+    await sweepWatchlist(db);
+    const notifs = await query<any>(db, `SELECT * FROM notifications WHERE type = 'warrant_watch_hit'`);
+    expect(notifs.some(n => /warrant #6 status changed/i.test(n.message))).toBe(true);
+    expect(notifs.some(n => /##6/.test(n.message))).toBe(false);
+  });
+
   it('does not re-fire a status-change alert on the next sweep with no further change', async () => {
     const db = (env as unknown as { DB: D1Database }).DB;
     await execute(db, `INSERT INTO warrants (id, warrant_number, status, subject_name) VALUES (2, 'W-2', 'active', 'Jane Roe')`);

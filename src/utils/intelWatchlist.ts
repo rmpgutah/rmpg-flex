@@ -105,7 +105,7 @@ async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number>
     'SELECT status, warrant_number, subject_person_id, subject_name, expires_at, expiry_date FROM warrants WHERE id = ?',
     w.entity_id);
   if (!warrant) return 0; // warrant was deleted since the watch was created
-  const label = warrant.warrant_number || `#${w.entity_id}`;
+  const label = warrant.warrant_number || String(w.entity_id);
   let alerts = 0;
 
   // 1. Status change
