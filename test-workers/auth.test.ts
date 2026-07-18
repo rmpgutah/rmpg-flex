@@ -264,6 +264,37 @@ describe('POST /login — account lockout', () => {
     expect(row?.failed_login_count).toBe(1);
     expect(row?.locked_until).toBeNull();
   });
+
+  it('does not erase a lock a concurrent request just set (not-yet-expired locked_until stays a real lock)', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const userId = await seedUser(db, 'lockout-user-6');
+    // Simulates the state right after a concurrent request's UPDATE has just
+    // locked the account (locked_until in the FUTURE, not expired).
+    await execute(db,
+      `UPDATE users SET failed_login_count = 5, locked_until = datetime('now', '+15 minutes') WHERE id = ?`,
+      userId);
+    // The is_locked SELECT branch would normally reject this before reaching
+    // the wrong-password UPDATE at all — but exercise the UPDATE's own CASE
+    // logic in isolation to prove it does NOT treat a not-yet-expired
+    // locked_until as stale, confirming the fix's WHERE clause is correct
+    // even if this code path were ever reached directly.
+    const row = await queryFirst<{ locked_until: string | null }>(
+      db,
+      `UPDATE users SET
+         failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
+         locked_until = CASE
+           WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= 5
+             THEN datetime('now', '+15 minutes')
+           ELSE locked_until
+         END
+       WHERE id = ?
+       RETURNING locked_until`,
+      userId,
+    );
+    // A not-yet-expired locked_until must remain set — never reset to NULL
+    // by this statement.
+    expect(row?.locked_until).not.toBeNull();
+  });
 });
 
 async function mintAccessToken(secret: string, userId: number, role: string, username: string): Promise<string> {

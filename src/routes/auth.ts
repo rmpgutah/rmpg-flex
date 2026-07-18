@@ -259,9 +259,9 @@ auth.post('/login', async (c) => {
       const updated = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
         db,
         `UPDATE users SET
-           failed_login_count = (CASE WHEN locked_until IS NOT NULL THEN 0 ELSE failed_login_count END) + 1,
+           failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
            locked_until = CASE
-             WHEN (CASE WHEN locked_until IS NOT NULL THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
                THEN datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes')
              ELSE NULL
            END
