@@ -85,4 +85,22 @@ describe('apiUploadFiles auto-retry', () => {
     await expect(apiUploadFiles([file()], 'company_document')).rejects.toThrow(/Failed to fetch/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('routes a file over the direct-upload threshold through presign, not /api/uploads', async () => {
+    const bigFile = new File(['x'.repeat(21 * 1024 * 1024)], 'big.mp4', { type: 'video/mp4' });
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        file_id: 'big-1', upload_url: 'https://acct.r2.cloudflarestorage.com/bucket/key', key: 'attachments/big-1.mp4',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ file_id: 'big-1', original_name: 'big.mp4' }), {
+        status: 201, headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const putSpy = vi.spyOn(await import('../../utils/uploadWithProgress'), 'putFileDirect').mockResolvedValue(undefined);
+    const out = await apiUploadFiles([bigFile]);
+
+    expect(out).toEqual([{ file_id: 'big-1', original_name: 'big.mp4' }]);
+    expect(fetchMock.mock.calls.every(([u]) => !String(u).endsWith('/api/uploads') || String(u).includes('presign'))).toBe(true);
+    putSpy.mockRestore();
+  });
 });
