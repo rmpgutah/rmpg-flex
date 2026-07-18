@@ -35,3 +35,22 @@ export function parseQrngResponse(json, expectedLength) {
   if (!json.data.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) return null;
   return new Uint8Array(json.data);
 }
+
+/** Fetch `byteLength` quantum-random bytes from ANU QRNG. Never throws —
+ *  returns null on any failure (network, timeout, non-OK, malformed body)
+ *  so the caller can fall back to local CSPRNG bytes alone. */
+export async function fetchQrngBytes(byteLength) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), QRNG_TIMEOUT_MS);
+  try {
+    const url = `${QRNG_URL}?length=${byteLength}&type=uint8`;
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return parseQrngResponse(json, byteLength);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

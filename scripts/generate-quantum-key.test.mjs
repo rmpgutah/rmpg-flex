@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { parseQrngResponse } from './generate-quantum-key.mjs';
+import { describe, it, expect, afterEach } from 'vitest';
+import { parseQrngResponse, fetchQrngBytes } from './generate-quantum-key.mjs';
+import { vi } from 'vitest';
 
 describe('parseQrngResponse', () => {
   it('parses a valid response into a Uint8Array of the expected length', () => {
@@ -31,5 +32,41 @@ describe('parseQrngResponse', () => {
   it('returns null for null/undefined input', () => {
     expect(parseQrngResponse(null, 4)).toBeNull();
     expect(parseQrngResponse(undefined, 4)).toBeNull();
+  });
+});
+
+describe('fetchQrngBytes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns bytes on a successful response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      expect(url).toContain('length=4');
+      expect(url).toContain('type=uint8');
+      return new Response(JSON.stringify({ success: true, data: [10, 20, 30, 40], length: 4, type: 'uint8' }), { status: 200 });
+    }));
+    const result = await fetchQrngBytes(4);
+    expect(Array.from(result)).toEqual([10, 20, 30, 40]);
+  });
+
+  it('returns null on a non-OK HTTP status', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('rate limited', { status: 429 })));
+    expect(await fetchQrngBytes(4)).toBeNull();
+  });
+
+  it('returns null on a network error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    expect(await fetchQrngBytes(4)).toBeNull();
+  });
+
+  it('returns null on malformed JSON body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not json', { status: 200 })));
+    expect(await fetchQrngBytes(4)).toBeNull();
+  });
+
+  it('returns null when the response has success: false', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: false }), { status: 200 })));
+    expect(await fetchQrngBytes(4)).toBeNull();
   });
 });
