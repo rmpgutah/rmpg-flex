@@ -15,6 +15,7 @@ const PREF_DEFAULTS = {
   dispatch_show_cleared: 0, theme_preference: 'dark',
   desktop_layout_json: null, desktop_wallpaper: 'blue-silver-default',
   desktop_widgets_json: null,
+  desktop_accent: 'default', desktop_notes_json: null,
 } as const;
 
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
