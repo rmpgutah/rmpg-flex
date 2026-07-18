@@ -22,6 +22,8 @@
 // warns on stderr — never blocks, never produces a weaker result.
 // ============================================================
 
+import { webcrypto } from 'node:crypto';
+
 const QRNG_URL = 'https://qrng.anu.edu.au/API/jsonI.php';
 const QRNG_TIMEOUT_MS = 5000;
 const HKDF_INFO = 'rmpg-quantum-key-v1';
@@ -53,4 +55,21 @@ export async function fetchQrngBytes(byteLength) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** HKDF-combine local CSPRNG bytes with QRNG bytes (RFC 5869) — one
+ *  `deriveBits` call performs the full Extract-then-Expand. `qrngBytes`
+ *  becomes the extract-phase salt; when null (QRNG unreachable), an empty
+ *  salt is used instead — still a fully valid HKDF derivation from
+ *  `localBytes` alone, matching src/utils/pdfSign.ts's existing pattern. */
+export async function combineEntropy(localBytes, qrngBytes, byteLength) {
+  const { subtle } = webcrypto;
+  const ikm = await subtle.importKey('raw', localBytes, 'HKDF', false, ['deriveBits']);
+  const salt = qrngBytes ?? new Uint8Array();
+  const bits = await subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode(HKDF_INFO) },
+    ikm,
+    byteLength * 8,
+  );
+  return new Uint8Array(bits);
 }
