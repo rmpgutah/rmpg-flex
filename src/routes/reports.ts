@@ -546,8 +546,17 @@ reports.get('/command-center', async (c) => {
     anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
   };
 
+  // calls_for_service has no call_type/address columns — it's incident_type/
+  // location_address (see shift-activity below, anomalies.ts). Those wrong
+  // names made this SELECT throw on every request; list()'s catch swallowed
+  // it to [], while kpis.active_calls (a plain COUNT with no such columns)
+  // kept succeeding — so the KPI tile and the call-queue panel permanently
+  // disagreed (e.g. "2 ACTIVE CALLS" next to an empty "ACTIVE CALLS (0)"
+  // queue). CommandCenterPage.tsx already reads call.incident_type/
+  // call.location_address with a call_type/address fallback, so this fix
+  // alone is enough — no client change needed.
   const active_calls = await list(
-    "SELECT id, call_number, call_type, priority, status, address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
+    "SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
   );
   const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
   const calls_by_hour = await list(
