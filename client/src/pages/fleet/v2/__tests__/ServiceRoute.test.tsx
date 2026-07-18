@@ -12,7 +12,7 @@ beforeEach(() => {
     }
     if (url.includes('/api/fleet/1/maintenance')) {
       return Promise.resolve(new Response(JSON.stringify([
-        { id: 11, service_type: 'Oil Change', service_date: '2026-06-15', vendor: 'Jiffy Lube', cost: 89.99, mileage_at_service: 47000 },
+        { id: 11, type: 'Oil Change', performed_at: '2026-06-15', vendor: 'Jiffy Lube', cost: 89.99, mileage_at_service: 47000 },
       ]), { status: 200 }));
     }
     return Promise.resolve(new Response('[]', { status: 200 }));

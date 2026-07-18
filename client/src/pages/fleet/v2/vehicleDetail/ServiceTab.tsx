@@ -5,8 +5,8 @@ import type { ConflictBadgeConflict } from '../../../../components/FleetioConfli
 
 interface ServiceRow {
   id: number;
-  service_type: string | null;
-  service_date: string | null;
+  type: string | null;
+  performed_at: string | null;
   cost: number | null;
   vendor: string | null;
   notes: string | null;
@@ -78,8 +78,8 @@ export function ServiceTab({ vehicleId }: { vehicleId: number }) {
             const rowConflicts = conflicts.get(r.id);
             return (
               <tr key={r.id} className="border-b border-rmpg-700">
-                <td className="px-2 py-0.5 text-rmpg-300">{r.service_date ?? '—'}</td>
-                <td className="px-2 py-0.5 text-rmpg-100">{r.service_type ?? '—'}</td>
+                <td className="px-2 py-0.5 text-rmpg-300">{r.performed_at ?? '—'}</td>
+                <td className="px-2 py-0.5 text-rmpg-100">{r.type ?? '—'}</td>
                 <td className="px-2 py-0.5 text-rmpg-300">{r.vendor ?? '—'}</td>
                 <td className="px-2 py-0.5 text-right text-rmpg-300">{r.mileage_at_service ?? '—'}</td>
                 <td className="px-2 py-0.5 text-right text-rmpg-300">{r.cost != null ? `$${Number(r.cost).toFixed(2)}` : '—'}</td>

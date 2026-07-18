@@ -11,8 +11,8 @@ import type { ConflictBadgeConflict } from '../../../../components/FleetioConfli
 
 interface ServiceRow {
   id: number;
-  service_type?: string | null;
-  service_date?: string | null;
+  type?: string | null;
+  performed_at?: string | null;
   cost?: number | null;
   vendor?: string | null;
   mileage_at_service?: string | number | null;
@@ -57,13 +57,13 @@ export function ServiceRoute() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const sorted = [...rows].sort((a, b) =>
-      (b.row.service_date ?? '').localeCompare(a.row.service_date ?? '')
+      (b.row.performed_at ?? '').localeCompare(a.row.performed_at ?? '')
     );
     if (!q) return sorted;
     return sorted.filter((entry) =>
       [
         vehicleLabel(entry.vehicle),
-        entry.row.service_type,
+        entry.row.type,
         entry.row.vendor,
       ].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
@@ -102,13 +102,13 @@ export function ServiceRoute() {
               const rowConflicts = conflicts.get(row.id);
               return (
                 <tr key={`${vehicle.id}-${row.id}`} className="border-b border-rmpg-700 hover:bg-rmpg-800">
-                  <td className="px-3 py-0.5 text-rmpg-300">{safeDateStr(row.service_date)}</td>
+                  <td className="px-3 py-0.5 text-rmpg-300">{safeDateStr(row.performed_at)}</td>
                   <td className="px-3 py-0.5">
                     <Link to={`/fleet/v2/vehicles/${vehicle.id}`} className="text-rmpg-100 hover:text-brand-400">
                       {vehicleLabel(vehicle)}
                     </Link>
                   </td>
-                  <td className="px-3 py-0.5 text-rmpg-100">{row.service_type ?? '—'}</td>
+                  <td className="px-3 py-0.5 text-rmpg-100">{row.type ?? '—'}</td>
                   <td className="px-3 py-0.5 text-rmpg-300">{row.vendor ?? '—'}</td>
                   <td className="px-3 py-0.5 text-right text-rmpg-300">{row.mileage_at_service ?? '—'}</td>
                   <td className="px-3 py-0.5 text-right text-rmpg-300">{row.cost != null ? `$${Number(row.cost).toFixed(2)}` : '—'}</td>
