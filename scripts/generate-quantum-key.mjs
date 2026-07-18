@@ -9,6 +9,8 @@
 // This is defense-in-depth against a compromised/backdoored local RNG and
 // gives auditable entropy provenance — it is NOT a defense against quantum
 // computers (that's src/utils/pdfSign.ts's ML-DSA-87/SLH-DSA-256f signing).
+// "Quantum" here means quantum-SOURCED randomness (QRNG) as an entropy
+// input, not quantum-resistant/post-quantum cryptography.
 // See docs/superpowers/specs/2026-07-18-qrng-entropy-augmentation-design.md.
 //
 // Usage:
@@ -24,6 +26,8 @@
 
 import { randomBytes, webcrypto } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+
+const { subtle } = webcrypto;
 
 const QRNG_URL = 'https://qrng.anu.edu.au/API/jsonI.php';
 const QRNG_TIMEOUT_MS = 5000;
@@ -64,7 +68,6 @@ export async function fetchQrngBytes(byteLength) {
  *  salt is used instead — still a fully valid HKDF derivation from
  *  `localBytes` alone, matching src/utils/pdfSign.ts's existing pattern. */
 export async function combineEntropy(localBytes, qrngBytes, byteLength) {
-  const { subtle } = webcrypto;
   const ikm = await subtle.importKey('raw', localBytes, 'HKDF', false, ['deriveBits']);
   const salt = qrngBytes ?? new Uint8Array();
   const bits = await subtle.deriveBits(
@@ -107,7 +110,7 @@ export async function runCli(argv) {
     stderrLines.push('QRNG unreachable — using local CSPRNG only; re-run to retry the mix.');
   }
   stderrLines.push(
-    `[${new Date().toISOString()}] Generated ${byteLength}-byte key. `  // new-date-ok
+    `[${new Date().toISOString()}] Generated ${byteLength}-byte key. `
     + `QRNG mix: ${qrngUsed ? 'yes' : 'no (local-only fallback)'}.`,
   );
 
