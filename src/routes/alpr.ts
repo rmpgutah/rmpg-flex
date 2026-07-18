@@ -25,6 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { putEncrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
@@ -504,8 +505,13 @@ alpr.post('/capture', operational, async (c) => {
   // run the read + persist the row (image_url just resolves to a missing object).
   let imageStored = true;
   try {
-    await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+    if (attachToCall) {
+      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
+    } else {
+      await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+    }
   } catch (err: any) {
+    if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
     console.error('[alpr] R2 image put failed:', err?.message);
   }
