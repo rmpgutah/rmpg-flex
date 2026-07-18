@@ -1523,6 +1523,49 @@ export interface FleetMaintenance {
   created_at: string;
 }
 
+// --- Fleet Work Orders ---
+// Note: ids here are number (matching the actual D1/JSON runtime shape from
+// src/routes/workOrders.ts), unlike the string ids used elsewhere in this
+// file for other Fleet types.
+
+export type WorkOrderStatus = 'open' | 'in_progress' | 'waiting_parts' | 'completed' | 'cancelled';
+export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'emergency';
+
+export interface WorkOrder {
+  id: number;
+  vehicle_id: number;
+  status: WorkOrderStatus;
+  number: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  summary: string | null;
+  vendor_id: number | null;
+  est_cost: number | null;
+  actual_cost: number | null;
+  category_code: string | null;
+  notes: string | null;
+  priority?: WorkOrderPriority;
+  scheduled_date?: string | null;
+  failure_category?: string | null;
+  estimated_hours?: number | null;
+  labor_hours?: number | null;
+}
+
+export interface WorkOrderStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  waiting_parts: number;
+  completed: number;
+  cancelled: number;
+  by_priority: Record<string, number>;
+  by_category: Record<string, number>;
+  total_estimated_cost: number;
+  total_actual_cost: number;
+  overdue_count: number;
+  scheduled_count: number;
+}
+
 // --- Fleet Fuel ---
 
 export type FuelType = 'regular' | 'premium' | 'diesel';
