@@ -1515,15 +1515,21 @@ Paste each value when prompted.
 Create `scripts/r2-cors-policy.json`:
 
 ```json
-[
-  {
-    "AllowedOrigins": ["https://rmpgutah.us", "http://localhost:5173"],
-    "AllowedMethods": ["PUT", "GET", "HEAD"],
-    "AllowedHeaders": ["Content-Type"],
-    "MaxAgeSeconds": 3600
-  }
-]
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://rmpgutah.us", "http://localhost:5173"],
+        "methods": ["PUT", "GET", "HEAD"],
+        "headers": ["Content-Type"]
+      },
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
 ```
+
+(Note: this is Cloudflare's native R2 CORS schema — `{ rules: [{ allowed: { origins, methods, headers } }] }` — NOT the S3 XML-CORS shape (`AllowedOrigins`/`AllowedMethods`). `wrangler r2 bucket cors set` rejects the S3 shape with "must contain a 'rules' array.")
 
 - [ ] **Step 4: Apply CORS to both buckets**
 
