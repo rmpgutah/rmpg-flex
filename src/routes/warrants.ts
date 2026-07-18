@@ -815,6 +815,17 @@ warrants.get('/unified', async (c) => {
     const matchesPersonOnly = c.req.query('matches_person') === '1';
     const stateFilter = c.req.query('state');
     const statePrefix = c.req.query('state_prefix');
+    const watchedOnly = c.req.query('watched_only') === '1';
+    let watchedWarrantIds: Set<number> = new Set();
+    if (watchedOnly) {
+      const userId = (c.get('user') as { id?: number } | undefined)?.id;
+      if (userId) {
+        const watched = await query<{ entity_id: number }>(db,
+          `SELECT entity_id FROM intel_watchlist WHERE entity_type = 'warrant' AND added_by = ? AND active = 1`,
+          userId);
+        watchedWarrantIds = new Set(watched.map((w) => w.entity_id));
+      }
+    }
 
     const localRows = await query<Record<string, any>>(db, 'SELECT * FROM warrants');
     let merged: Record<string, any>[] = localRows.map((row) => ({
@@ -888,6 +899,7 @@ warrants.get('/unified', async (c) => {
       if (matchesPersonOnly && !row.matches_person) return false;
       if (stateFilter && row.source_state !== stateFilter.toUpperCase()) return false;
       if (statePrefix && !String(row.source ?? '').startsWith(statePrefix)) return false;
+      if (watchedOnly && !watchedWarrantIds.has(Number(row.id))) return false;
       return true;
     });
 

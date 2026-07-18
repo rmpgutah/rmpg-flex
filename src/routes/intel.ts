@@ -314,7 +314,7 @@ intel.post('/reindex', requireRole('admin'), async (c) => {
 // drops a HIGH-priority notification in the watcher's inbox when new
 // activity (calls, FIs, citations) links to the watched entity.
 
-const WATCHABLE = ['person', 'vehicle'];
+const WATCHABLE = ['person', 'vehicle', 'warrant'];
 
 intel.get('/watchlist', operational, async (c) => {
   const db = getDb(c.env);
@@ -334,15 +334,24 @@ intel.post('/watchlist', operational, async (c) => {
   const entityType = String(body?.entity_type || '');
   const entityId = Number(body?.entity_id);
   if (!WATCHABLE.includes(entityType) || !Number.isFinite(entityId)) {
-    return c.json({ error: 'entity_type (person|vehicle) and entity_id required' }, 400);
+    return c.json({ error: 'entity_type (person|vehicle|warrant) and entity_id required' }, 400);
+  }
+  // Warrants are watched by row id, unlike person/vehicle — confirm the
+  // referenced warrant is real and seed last_known_status so the sweep's
+  // first pass doesn't spuriously fire a "status changed" alert.
+  let lastKnownStatus: string | null = null;
+  if (entityType === 'warrant') {
+    const warrant = await queryFirst<{ status: string }>(db, 'SELECT status FROM warrants WHERE id = ?', entityId);
+    if (!warrant) return c.json({ error: 'Warrant not found' }, 404);
+    lastKnownStatus = warrant.status;
   }
   // Reactivate an existing watch instead of violating the UNIQUE key.
   await execute(db,
-    `INSERT INTO intel_watchlist (entity_type, entity_id, reason, added_by, active, last_alert_at)
-     VALUES (?, ?, ?, ?, 1, datetime('now'))
+    `INSERT INTO intel_watchlist (entity_type, entity_id, reason, added_by, active, last_alert_at, last_known_status)
+     VALUES (?, ?, ?, ?, 1, datetime('now'), ?)
      ON CONFLICT(entity_type, entity_id, added_by) DO UPDATE SET
        active = 1, reason = excluded.reason, last_alert_at = datetime('now')`,
-    entityType, entityId, body?.reason || null, userId);
+    entityType, entityId, body?.reason || null, userId, lastKnownStatus);
   return c.json({ success: true });
 });
 

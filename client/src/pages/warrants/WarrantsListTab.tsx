@@ -47,6 +47,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { toDisplayLabel } from '../../utils/formatters';
+import { useWatchedWarrantIds } from './useWatchedWarrantIds';
 import { formatDate, formatDateTime, parseTimestamp } from '../../utils/dateUtils';
 import {
   priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
@@ -234,6 +235,8 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   const [filterStateChip, setFilterStateChip] = useState<string>('');
   const [filterFederal, setFilterFederal] = useState(false);
   const [filterArchivedChip, setFilterArchivedChip] = useState(false);
+  const [filterWatchedOnly, setFilterWatchedOnly] = useState(false);
+  const { watchedIds, refresh: refreshWatchedIds } = useWatchedWarrantIds();
 
   // Serve modal
   const [serveModalOpen, setServeModalOpen] = useState(false);
@@ -248,7 +251,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveTargetId, setArchiveTargetId] = useState<number | null>(null);
 
-  const anyFilterActive = filterPriority || filterSinceWeek || filterMatches || !!filterStateChip || filterFederal || filterArchivedChip;
+  const anyFilterActive = filterPriority || filterSinceWeek || filterMatches || !!filterStateChip || filterFederal || filterArchivedChip || filterWatchedOnly;
 
   function toggleSort(key: 'priority' | 'age' | 'freshness' | 'alpha') {
     if (sortKey === key) {
@@ -266,6 +269,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     setFilterStateChip('');
     setFilterFederal(false);
     setFilterArchivedChip(false);
+    setFilterWatchedOnly(false);
   }
 
   const toggleBatchSelect = (id: number) => {
@@ -444,6 +448,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       if (filterStateChip) params.set('state', filterStateChip);
       if (filterFederal) params.set('state_prefix', 'fed_');
       if (filterArchivedChip) params.set('include_archived', '1');
+      if (filterWatchedOnly) params.set('watched_only', '1');
 
       // Try unified endpoint first, fall back to standard
       try {
@@ -467,7 +472,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, debouncedSearch, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, debouncedSearch, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, filterWatchedOnly]);
 
   // This component only ever exists in the warrants-tab context —
   // `isVisible` governs display, not mount — so fetch on mount and on
@@ -486,6 +491,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     setFilterStateChip(searchParams.get('state') || '');
     setFilterFederal(searchParams.get('state_prefix') === 'fed_');
     setFilterArchivedChip(searchParams.get('include_archived') === '1');
+    setFilterWatchedOnly(searchParams.get('watched_only') === '1');
     // Also hydrate the ?status= deep-link into the dropdown filter so that
     // /warrants?status=active lands with the Active filter pre-selected.
     const statusParam = searchParams.get('status');
@@ -509,9 +515,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       if (filterStateChip) next.set('state', filterStateChip); else next.delete('state');
       if (filterFederal) next.set('state_prefix', 'fed_'); else next.delete('state_prefix');
       if (filterArchivedChip) next.set('include_archived', '1'); else next.delete('include_archived');
+      if (filterWatchedOnly) next.set('watched_only', '1'); else next.delete('watched_only');
       return next;
     }, { replace: true });
-  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, setSearchParams]);
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, filterWatchedOnly, setSearchParams]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
@@ -648,6 +655,25 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   };
 
   // ── Right-click context menu (shared by list + table rows) ──
+  const handleToggleWatch = useCallback(async (w: Warrant) => {
+    const isWatched = watchedIds.has(w.id);
+    try {
+      if (isWatched) {
+        await apiFetch(`/intel/watchlist/warrant/${w.id}`, { method: 'DELETE' });
+        addToast(`Stopped watching ${w.warrant_number}`, 'success');
+      } else {
+        await apiFetch('/intel/watchlist', {
+          method: 'POST',
+          body: JSON.stringify({ entity_type: 'warrant', entity_id: w.id, reason: 'flagged from warrants list' }),
+        });
+        addToast(`Watching ${w.warrant_number}`, 'success');
+      }
+      await refreshWatchedIds();
+    } catch {
+      addToast(isWatched ? 'Failed to unwatch warrant' : 'Failed to watch warrant', 'error');
+    }
+  }, [watchedIds, refreshWatchedIds, addToast]);
+
   const buildWarrantMenu = (w: Warrant): ContextMenuItem[] => {
     const isActive = w.status === 'active';
     const isArchived = !!w.archived_at;
@@ -660,6 +686,11 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
         : []),
       m.action('Edit warrant', () => props.onOpenEditForm(w), { icon: <Pencil size={12} /> }),
+      m.action(
+        watchedIds.has(w.id) ? 'Unwatch this warrant' : 'Watch this warrant',
+        () => handleToggleWatch(w),
+        { icon: <Eye size={12} /> },
+      ),
       m.separator(),
       ...(isActive
         ? [
@@ -819,6 +850,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             </select>
             <FilterChip active={filterFederal} onClick={() => { setFilterFederal(v => !v); setPage(1); }}>Federal only</FilterChip>
             <FilterChip active={filterArchivedChip} onClick={() => { setFilterArchivedChip(v => !v); setPage(1); }}>Show archived</FilterChip>
+            <FilterChip active={filterWatchedOnly} onClick={() => { setFilterWatchedOnly(v => !v); setPage(1); }}>My Watched Warrants</FilterChip>
           </div>
 
           {/* Person filter indicator */}
@@ -876,7 +908,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                   !!filterSource || !!filterCourt || !!filterSeverity ||
                   !!filterPersonId || filterPriority || filterSinceWeek ||
                   filterMatches || !!filterStateChip || filterFederal ||
-                  filterArchivedChip;
+                  filterArchivedChip || filterWatchedOnly;
                 if (showArchived) {
                   return (
                     <EmptyState

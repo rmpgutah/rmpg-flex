@@ -319,6 +319,17 @@ export default {
           }).catch((err) => console.error('Panic escalation sweep failed:', err)),
         ).catch(() => {}),
       );
+      // Intel watchlist sweep (person/vehicle/warrant) — alerts a watcher
+      // when new activity, a status change, or an approaching expiration
+      // hits one of their watched entities. This has existed since Phase 4
+      // but was never actually wired into the cron until now.
+      ctx.waitUntil(
+        import('./utils/intelWatchlist').then((m) =>
+          m.sweepWatchlist(env.DB).then((count) => {
+            if (count > 0) console.log(`[intel-watchlist] fired ${count} alert(s)`);
+          }).catch((err) => console.error('Intel watchlist sweep failed:', err)),
+        ).catch(() => {}),
+      );
       // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
       // gate on BOTH Denver hour == 4 AND minute == 0 — an hour-only gate
       // (the original approach) still fires ~60x during that hour. Harmless
