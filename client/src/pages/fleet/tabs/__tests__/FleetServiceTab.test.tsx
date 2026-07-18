@@ -19,8 +19,8 @@ describe('FleetServiceTab', () => {
   it('fans out per-vehicle maintenance and renders a fleet-wide list sorted by date desc', async () => {
     mockedApiFetch.mockImplementation((url: string) => {
       if (url === '/fleet?limit=500') return Promise.resolve([{ id: 1, vehicle_number: 'U-1' }, { id: 2, vehicle_number: 'U-2' }]);
-      if (url === '/fleet/1/maintenance') return Promise.resolve([{ id: 10, service_type: 'oil_change', service_date: '2026-06-01', cost: 40 }]);
-      if (url === '/fleet/2/maintenance') return Promise.resolve([{ id: 11, service_type: 'brake_service', service_date: '2026-07-01', cost: 200 }]);
+      if (url === '/fleet/1/maintenance') return Promise.resolve({ data: [{ id: 10, type: 'oil_change', performed_at: '2026-06-01', cost: 40 }], total: 1 });
+      if (url === '/fleet/2/maintenance') return Promise.resolve({ data: [{ id: 11, type: 'brake_service', performed_at: '2026-07-01', cost: 200 }], total: 1 });
       if (url.startsWith('/fleetio/conflicts')) return Promise.resolve({ conflicts: [] });
       return Promise.reject(new Error('unexpected url ' + url));
     });

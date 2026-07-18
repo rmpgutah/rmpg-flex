@@ -9,16 +9,21 @@ import PanelTitleBar from '../../../components/PanelTitleBar';
 
 interface ServiceRow {
   id: number;
-  service_type?: string | null;
-  service_date?: string | null;
+  type?: string | null;
+  performed_at?: string | null;
   cost?: number | null;
   vendor?: string | null;
   mileage_at_service?: string | number | null;
 }
 
+const extract = (resp: unknown): ServiceRow[] => {
+  const d = (resp as { data?: ServiceRow[] })?.data;
+  return Array.isArray(d) ? d : [];
+};
+
 export default function FleetServiceTab() {
   const pathFor = (id: number) => `/fleet/${id}/maintenance`;
-  const { rows, loading, loadedVehicles, totalVehicles, error } = useFleetWideFanOut<ServiceRow>(pathFor);
+  const { rows, loading, loadedVehicles, totalVehicles, error } = useFleetWideFanOut<ServiceRow>(pathFor, extract);
   const [search, setSearch] = useState('');
   const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
   const fetchedIds = useRef<string>('');
@@ -51,10 +56,10 @@ export default function FleetServiceTab() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const sorted = [...rows].sort((a, b) => (b.row.service_date ?? '').localeCompare(a.row.service_date ?? ''));
+    const sorted = [...rows].sort((a, b) => (b.row.performed_at ?? '').localeCompare(a.row.performed_at ?? ''));
     if (!q) return sorted;
     return sorted.filter((entry) =>
-      [vehicleLabel(entry.vehicle), entry.row.service_type, entry.row.vendor].filter(Boolean).join(' ').toLowerCase().includes(q)
+      [vehicleLabel(entry.vehicle), entry.row.type, entry.row.vendor].filter(Boolean).join(' ').toLowerCase().includes(q)
     );
   }, [rows, search]);
 
@@ -94,9 +99,9 @@ export default function FleetServiceTab() {
               const rowConflicts = conflicts.get(row.id);
               return (
                 <tr key={`${vehicle.id}-${row.id}`} className="border-b border-rmpg-800/40 hover:bg-rmpg-800/40">
-                  <td className="px-3 py-[2px] text-[11px] text-rmpg-300">{safeDateStr(row.service_date)}</td>
+                  <td className="px-3 py-[2px] text-[11px] text-rmpg-300">{safeDateStr(row.performed_at)}</td>
                   <td className="px-3 py-[2px] text-[11px] text-rmpg-100">{vehicleLabel(vehicle)}</td>
-                  <td className="px-3 py-[2px] text-[11px] text-rmpg-100">{row.service_type ?? '—'}</td>
+                  <td className="px-3 py-[2px] text-[11px] text-rmpg-100">{row.type ?? '—'}</td>
                   <td className="px-3 py-[2px] text-[11px] text-rmpg-300">{row.vendor ?? '—'}</td>
                   <td className="px-3 py-[2px] text-[11px] text-right text-rmpg-300">{row.mileage_at_service ?? '—'}</td>
                   <td className="px-3 py-[2px] text-[11px] text-right text-rmpg-300">{row.cost != null ? `$${Number(row.cost).toFixed(2)}` : '—'}</td>
