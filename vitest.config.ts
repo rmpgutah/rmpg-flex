@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 // fail with `document is not defined` since this config runs node).
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'scripts/**/*.test.mjs'],
     exclude: ['node_modules', 'client', 'legacy'],
     environment: 'node',
   },
