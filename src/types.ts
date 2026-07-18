@@ -24,6 +24,10 @@ export type Bindings = {
   PDF_SIGNING_KEY?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
+  // falls back to the incoming request's origin so non-prod environments
+  // (previews, local dev) redirect back to themselves instead of prod.
+  APP_ORIGIN?: string;
   // Mapbox access token (secret, optional). When set, the Worker can call
   // the Mapbox Directions API for true drive-time ETAs (see src/utils/eta.ts);
   // the geocode route also hands it to the client. Absent → ETA falls back to
@@ -87,6 +91,15 @@ export type Bindings = {
   // `wrangler secret put RECOVERY_KEY`; used as a bypass when no one can log in.
   // Pass as `X-Recovery-Key` header. Keep secure — resets ALL user passwords.
   RECOVERY_KEY?: string;
+  // Dial Connect SSO (OIDC relying party) config — see src/routes/oidc.ts.
+  // Set via wrangler.toml vars (issuer/client id/redirect
+  // uri) + `wrangler secret put DIALER_OIDC_CLIENT_SECRET`. DIALER_OIDC_ISSUER
+  // is the full discovery-DOCUMENT URL (ends in /.well-known/openid-configuration),
+  // not a bare issuer.
+  DIALER_OIDC_ISSUER?: string;
+  DIALER_OIDC_CLIENT_ID?: string;
+  DIALER_OIDC_CLIENT_SECRET?: string;
+  DIALER_OIDC_REDIRECT_URI?: string;
 };
 
 export type Variables = {

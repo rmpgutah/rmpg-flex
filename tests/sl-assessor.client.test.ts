@@ -1,13 +1,43 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { searchByAddress, getParcel, buildQueryUrl }
+import { searchByAddress, getParcel, buildQueryUrl, parseAddressComponents }
   from '../src/utils/sl-assessor/client';
 import { AssessorConfigError, AssessorHttpError, AssessorParseError }
   from '../src/utils/sl-assessor/types';
 
 const fixture = (n: string) =>
   readFileSync(join(__dirname, 'fixtures/sl-assessor', n), 'utf8');
+
+describe('parseAddressComponents', () => {
+  // Regression test: verified live 2026-07-14 against parcel
+  // 27-18-451-077-0000 ("10846 S INDIGO SKY WY") — the real SLCo Assessor
+  // address-search form only recognizes the "WY" abbreviation for Way
+  // streets. Searching with the literal word "Way" (previously mapped to
+  // itself, unchanged) returned zero results for a parcel that genuinely
+  // exists, silently producing a false "no matching parcels" in the UI.
+  test('normalizes "Way" to the SLCo form\'s "WY" abbreviation', () => {
+    const comps = parseAddressComponents('10846 S Indigo Sky Way');
+    expect(comps.street_type).toBe('WY');
+  });
+
+  test('leaves an already-abbreviated "WY" token untouched', () => {
+    const comps = parseAddressComponents('10846 S Indigo Sky WY');
+    expect(comps.street_type).toBe('WY');
+  });
+
+  // Regression: callers now pass a full "street, city, state zip" address
+  // (needed so resolveCountyFromAddress can route by city/ZIP) — this must
+  // parse identically to a bare street, not glue the city/state/zip onto
+  // street_name and guarantee a false "no match".
+  test('strips a city/state/zip suffix before parsing the street', () => {
+    const comps = parseAddressComponents('10846 South Indigo Sky Way, South Jordan, UT 84009');
+    expect(comps.street_Num).toBe('10846');
+    expect(comps.street_dir).toBe('S');
+    expect(comps.street_name).toBe('INDIGO SKY');
+    expect(comps.street_type).toBe('WY');
+  });
+});
 
 describe('buildQueryUrl', () => {
   test('encodes the address', () => {

@@ -5,6 +5,7 @@ interface Props {
   slot: ScheduleSlot;
   onClick?: () => void;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 const TIER_CLASSES: Record<string, string> = {
@@ -21,7 +22,7 @@ function surnameOf(name: string | null): string {
   return (parts[parts.length - 1] ?? trimmed).toUpperCase();
 }
 
-export default function AttemptChip({ slot, onClick, onDragStart }: Props) {
+export default function AttemptChip({ slot, onClick, onDragStart, onContextMenu }: Props) {
   const tier = (slot.urgency_tier ?? 'standard') as keyof typeof TIER_CLASSES;
   const cls = TIER_CLASSES[tier];
   const surname = surnameOf(slot.recipient_name);
@@ -32,6 +33,7 @@ export default function AttemptChip({ slot, onClick, onDragStart }: Props) {
       draggable
       onClick={onClick}
       onDragStart={onDragStart}
+      onContextMenu={onContextMenu}
       className={`${cls} relative h-full w-full overflow-hidden rounded-[2px] px-1 py-0.5 text-[10px] leading-tight cursor-grab active:cursor-grabbing`}
       title={`${slot.recipient_name ?? ''} • ${slot.case_number ?? ''} • ${time}`}
     >

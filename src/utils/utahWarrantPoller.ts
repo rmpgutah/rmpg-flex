@@ -25,6 +25,21 @@
 //     against historical state, so "new" here means "appeared this run"
 //     not "appeared this run for the first time ever." Improves once
 //     scraped_warrants is added.
+//
+// 2026-07-17 REBUILD: the state migrated warrants.utah.gov to a new
+// API entirely — POST /api/v1/persons + GET /api/v1/persons/:id/warrants
+// now 403 at the CloudFront edge ("distribution ... supports only cachable
+// requests", i.e. GET-only). Verified live against the site's own
+// js/scripts.js: it now calls GET /warrant-api/warrantPublic/search
+// ?firstName=X&lastName=Y (values UPPERCASED) for candidates, then
+// GET /warrant-api/warrantPublic/detail/:personId for that person's
+// warrants — both requiring a `X-Proxy-App: warrants` header (a plain
+// server-side fetch with that header + a browser UA works fine; no
+// browser-fingerprint/JS-challenge involved, confirmed via curl).
+// Every person fetch had been failing 100% (50/50 errors, every run,
+// for hours) until this rewrite — this is why the Sources/Scrapers tab
+// showed permanent "NaN" active-warrant/indexed counts and a scan
+// history of nothing but errors.
 
 import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
@@ -38,9 +53,13 @@ const SOURCE_KEY = 'utah-warrant-watch';
 const DISPLAY_NAME = 'Utah Warrant Watch';
 const SOURCE_PRIORITY = 1;
 
-const API_BASE = 'https://warrants.utah.gov/api/v1';
+const API_BASE = 'https://warrants.utah.gov/warrant-api/warrantPublic';
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+// Required by the CloudFront distribution in front of the new API — a
+// plain fetch without it 403s with {"message":"Missing X-Proxy-App header"}.
+// Value copied verbatim from the site's own js/scripts.js fetch calls.
+const PROXY_APP_HEADER = 'warrants';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const BASE_DELAY_MS = 8_000; // matches legacy adaptive baseline
@@ -55,24 +74,29 @@ interface PersonRow {
 }
 
 /**
- * Upstream person candidate. Verified live 2026-05-24 against
- * POST warrants.utah.gov/api/v1/persons — the real shape includes
- * homeAddress.city and age (as a STRING, e.g. "64"), neither of which
- * the prior PersonStub declared, so both were silently discarded.
+ * Upstream person candidate. Verified live 2026-07-17 against
+ * GET warrants.utah.gov/warrant-api/warrantPublic/search?firstName=&lastName=.
+ * `age` is a NUMBER here (unlike the pre-migration API's stringified age).
+ * The search endpoint returns duplicate rows per personId (name-spelling
+ * variants, multiple addresses on file) — callers must dedup by personId.
  */
 interface PersonStub {
-  id: string;
-  name: { first: string; middle?: string; last: string };
-  homeAddress?: { city?: string };
-  age?: string; // API returns a string, NOT a number
+  personId: number;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  age?: number;
+  city?: string;
+  zipCode?: string;
 }
 
-/** Full upstream warrant shape from /persons/:id/warrants. */
+/** One warrant from GET /warrant-api/warrantPublic/detail/:personId's `warrant[]`. */
 interface UtahApiWarrant {
-  id: string;
+  warrantNumber?: string;
   issueDate?: string;
-  court?: { name?: string; caseId?: string };
-  charges?: string[];
+  courtDescription?: string;
+  courtCaseNumber?: string;
+  chargeDescription?: string[];
 }
 
 /** Row we insert into utah_warrants — joins the upstream person + warrant data. */
@@ -134,14 +158,14 @@ const AGE_MATCH_TOLERANCE = 1;
  */
 function isLikelyMatch(local: PersonRow, candidate: PersonStub): boolean {
   const localAge = ageFromDob(local.dob);
-  const upstreamAge = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
+  const upstreamAge = candidate.age;
 
-  if (localAge != null && Number.isFinite(upstreamAge)) {
+  if (localAge != null && typeof upstreamAge === 'number' && Number.isFinite(upstreamAge)) {
     if (Math.abs(localAge - upstreamAge) > AGE_MATCH_TOLERANCE) return false;
     // Age agrees. If BOTH have a middle name, require first-initial match
     // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
     const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
-    const um = candidate.name.middle?.trim()?.[0]?.toUpperCase();
+    const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
     if (lm && um && lm !== um) return false;
     return true;
   }
@@ -177,57 +201,68 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * implementation prior to migration 0035.
  */
 export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
-  const personsRes = await fetchWithTimeout(`${API_BASE}/persons`, {
-    method: 'POST',
+  const params = new URLSearchParams();
+  params.set('firstName', person.first_name.toUpperCase());
+  params.set('lastName', person.last_name.toUpperCase());
+
+  const searchRes = await fetchWithTimeout(`${API_BASE}/search?${params.toString()}`, {
+    method: 'GET',
     headers: {
+      'X-Proxy-App': PROXY_APP_HEADER,
       'content-type': 'application/json',
       accept: 'application/json',
       'user-agent': USER_AGENT,
     },
-    body: JSON.stringify({
-      name: { first: person.first_name, last: person.last_name },
-    }),
   });
 
-  if (personsRes.status === 404 || personsRes.status === 204) return [];
-  if (!personsRes.ok && personsRes.status !== 201) {
-    throw new Error(`persons search ${personsRes.status}`);
+  if (searchRes.status === 404 || searchRes.status === 204) return [];
+  if (!searchRes.ok) {
+    throw new Error(`search ${searchRes.status}`);
   }
 
-  const personsJson = (await personsRes.json()) as { persons?: PersonStub[] };
-  const allCandidates = personsJson.persons ?? [];
+  const allCandidates = (await searchRes.json()) as PersonStub[];
   if (allCandidates.length === 0) return [];
 
   // Reject namesakes BEFORE fetching their warrants — saves rate budget and
   // prevents attributing a stranger's warrant to this local person.
-  const candidates = allCandidates.filter((c) => isLikelyMatch(person, c));
-  if (candidates.length === 0) return [];
+  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
+  if (matched.length === 0) return [];
+
+  // The search endpoint returns duplicate rows per personId (name-spelling
+  // variants, multiple addresses on file) — dedup before hitting /detail so
+  // we don't re-fetch (and double-count) the same person's warrants.
+  const seenPersonIds = new Set<number>();
+  const candidates = matched.filter((c) => {
+    if (seenPersonIds.has(c.personId)) return false;
+    seenPersonIds.add(c.personId);
+    return true;
+  });
 
   const out: FetchedWarrant[] = [];
   for (const candidate of candidates) {
-    const warrantsRes = await fetchWithTimeout(
-      `${API_BASE}/persons/${encodeURIComponent(candidate.id)}/warrants`,
-      { headers: { accept: 'application/json', 'user-agent': USER_AGENT } },
+    const detailRes = await fetchWithTimeout(
+      `${API_BASE}/detail/${encodeURIComponent(candidate.personId)}`,
+      { headers: { 'X-Proxy-App': PROXY_APP_HEADER, accept: 'application/json', 'user-agent': USER_AGENT } },
     );
-    if (warrantsRes.status === 404) continue;
-    if (!warrantsRes.ok) throw new Error(`warrants/${candidate.id} ${warrantsRes.status}`);
-    const wJson = (await warrantsRes.json()) as { warrants?: UtahApiWarrant[] };
-    const ageNum = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
-    for (const w of wJson.warrants ?? []) {
+    if (detailRes.status === 404) continue;
+    if (!detailRes.ok) throw new Error(`detail/${candidate.personId} ${detailRes.status}`);
+    const detail = (await detailRes.json()) as { warrant?: UtahApiWarrant[] };
+    for (const w of detail.warrant ?? []) {
       out.push({
-        utah_person_id: candidate.id,
-        utah_warrant_id: w.id,
-        first_name: candidate.name.first,
-        middle_name: candidate.name.middle ?? null,
-        last_name: candidate.name.last,
-        // API returns age as a string ("64"); parse to int, null if absent.
-        age: Number.isFinite(ageNum) ? ageNum : null,
-        // homeAddress.city IS exposed by the upstream API (verified live).
-        city: candidate.homeAddress?.city ?? null,
+        utah_person_id: String(candidate.personId),
+        // warrantNumber is the closest upstream analog to a stable warrant
+        // id; fall back to a composite key on the rare row missing it so we
+        // never insert a null/empty primary identifier.
+        utah_warrant_id: w.warrantNumber || `${candidate.personId}:${w.courtCaseNumber ?? ''}:${w.issueDate ?? ''}`,
+        first_name: candidate.firstName,
+        middle_name: candidate.middleName ?? null,
+        last_name: candidate.lastName,
+        age: typeof candidate.age === 'number' ? candidate.age : null,
+        city: candidate.city?.trim() || null,
         issue_date: w.issueDate ?? null,
-        court_name: w.court?.name ?? null,
-        case_id: w.court?.caseId ?? null,
-        charges: JSON.stringify(w.charges ?? []),
+        court_name: w.courtDescription ?? null,
+        case_id: w.courtCaseNumber ?? null,
+        charges: JSON.stringify(w.chargeDescription ?? []),
       });
     }
   }
@@ -255,7 +290,7 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
 // uses it to decide whether to emit a 'warrant_found' notification — we only
 // want to alert on the transition into our view, not on every steady-state
 // re-confirmation every 4 hours.
-async function recordWarrant(
+export async function recordWarrant(
   db: D1Database,
   w: FetchedWarrant,
   localPersonId: number | null,
@@ -468,6 +503,39 @@ async function markClearedWarrants(
     await logWatchEvent(db, 'warrant_cleared', r, r.person_id, runId);
   }
   return clearing.length;
+}
+
+/**
+ * On-demand single-person check ("Run Check Now" in the WarrantsPage person
+ * drawer). Deliberately does NOT call markClearedWarrants() — that sweep
+ * clears every utah_warrants row whose last_seen_at predates the run, which
+ * is only valid for a full-population run_id; scoping it to a run that only
+ * ever touched one person would incorrectly mass-clear everyone else's
+ * active warrants. Also doesn't write a warrant_watch_runs row — that table
+ * represents scheduled/full population runs, not per-person spot-checks.
+ */
+export async function runUtahWarrantCheckForPerson(
+  db: D1Database, personId: number,
+): Promise<{ found: number; errors: number }> {
+  const person = await queryFirst<PersonRow>(
+    db, 'SELECT id, first_name, middle_name, last_name, dob FROM persons WHERE id = ?', personId,
+  );
+  if (!person) return { found: 0, errors: 0 };
+
+  const confirmed = !!(person.dob && person.dob.trim() !== '');
+  try {
+    const fetched = await fetchWarrantsForPerson(person);
+    for (const w of fetched) {
+      await recordWarrant(db, w, person.id);
+      if (confirmed) await syncLocalWarrantRecord(db, w, person.id);
+    }
+    return { found: fetched.length, errors: 0 };
+  } catch (err) {
+    console.warn(
+      `[Utah Warrants] on-demand check for person ${personId} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { found: 0, errors: 1 };
+  }
 }
 
 /**

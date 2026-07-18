@@ -9,6 +9,13 @@ export function createMapboxMap(
   style?: string,
 ): mapboxgl.Map {
   try {
+    // Server-fetched runtime tokens (see getMapboxTokenStatus/MapCore) never
+    // flow through mapboxLoader's build-time `mapboxgl.accessToken =` assignment,
+    // so this call site is the only place that sees the actual token to use —
+    // apply it here or every map with no VITE_MAPBOX_ACCESS_TOKEN build var
+    // throws "An API access token is required" despite a valid server token.
+    if (token) mapboxgl.accessToken = token;
+
     // `style` may be a short id ('dark', 'satellite', …) from MapboxMapPage's
     // persisted UI state, or a full mapbox://styles/... / https:// URL (custom
     // Studio styles, e.g. Admin-configured mapbox_style_url). Passing a bare

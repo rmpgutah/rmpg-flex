@@ -72,6 +72,7 @@ import { recordAudit } from '../utils/auditLog';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -195,6 +196,14 @@ const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer']
 function isPdf(mime: string): boolean { return mime === 'application/pdf'; }
 function isImage(mime: string): boolean { return mime.startsWith('image/'); }
 
+function emptyExtraction(model: string, error?: string): ExtractionResult {
+  return {
+    success: false, documentType: 'other', confidence: 0,
+    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
+    model, ms: 0, error,
+  };
+}
+
 // Minimum browser-extracted text length to trust a PDF as "born-digital"
 // and skip the OCR container. A court summons cover page alone is ~800
 // chars; 200 comfortably clears sparse single-page exhibits while still
@@ -302,12 +311,33 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
+      let text: string;
+      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        text = clientText;
+        ocrEngine = 'pdfjs-client';
+      } else {
+        const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch (e) {
+          log.warn('scan-document: PDF Tools container unavailable, falling back to client_text', {
+            traceId: c.get('traceId'),
+            error: e instanceof Error ? e.message : String(e),
+          });
+          text = clientText;
+          ocrEngine = 'container-unavailable';
+        }
+      }
+      extraction = text.trim().length >= 20
+        ? await ocrText(c.env, text)
+        : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -415,12 +445,6 @@ si.post('/upload', async (c) => {
     ex: ExtractionResult;   // per-document field extraction
     error?: string;          // file-level (read/store) error
   }
-
-  const emptyExtraction = (model: string, error?: string): ExtractionResult => ({
-    success: false, documentType: 'other', confidence: 0,
-    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
-    model, ms: 0, error,
-  });
 
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
     const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
@@ -620,7 +644,20 @@ si.post('/upload', async (c) => {
   const failedDocs: string[] = [];   // docs that yielded no usable extraction
   for (const c2 of collected) {
     if (c2.error && !c2.text) {
-      documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
+      // Persist even pre-extraction failures (upload/OCR error before any
+      // text was recovered) — previously these were dropped from the
+      // response only and never written to serve_intake_documents, so they
+      // could never surface in the doc-recovery review queue for a retry.
+      const failRes = await execute(
+        db,
+        `INSERT INTO serve_intake_documents (
+          uploaded_by, file_name, file_type, r2_key, size_bytes, page_count,
+          ocr_used, ocr_engine, status, error_message
+        ) VALUES (?,?,?,?,?,?, ?,?,?,?)`,
+        user.id, c2.file.name, c2.file.type, c2.r2Key, c2.file.size, c2.pageCount,
+        c2.ocrUsed ? 1 : 0, c2.ocrEngine, 'failed', c2.error,
+      );
+      documents.push({ id: failRes.meta.last_row_id, file_name: c2.file.name, status: 'failed', error: c2.error });
       failedDocs.push(c2.file.name);
       continue;
     }
@@ -726,24 +763,30 @@ si.post('/upload', async (c) => {
   // instead of a silent partial success (doc rows but no queue entry).
   const noRecords = commit.serve_queue_id == null && commit.call_id == null;
   const hadText = collected.some((c2) => (c2.text || '').trim().length > 0);
-  let warning: string | null = noRecords
-    ? (hadText
-        ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
-        : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.')
-    : null;
+  // Collected rather than a single reassigned string -- these three
+  // conditions are independent (a duplicate-intake match can co-occur with a
+  // partial extraction failure on one of the attached documents), and
+  // overwriting a prior warning previously hid it entirely.
+  const warnings: string[] = [];
+  if (noRecords) {
+    warnings.push(hadText
+      ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
+      : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.');
+  }
   // Partial failure: the entry WAS created, but one or more documents didn't
   // extract — fields that live only on those (e.g. attorney/case details from a
   // Court Docket whose OCR timed out) may be missing. Previously this was
   // silent; surface it so the user knows to review those documents.
   if (!noRecords && failedDocs.length > 0) {
-    warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
+    warnings.push(`Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`);
   }
   // Duplicate intake: an ACTIVE queue entry already covers this case +
   // recipient. The uploaded documents were attached to it (back-link above);
   // no new call/queue/person records were created.
   if (commit.duplicate_of) {
-    warning = `Active serve entry #${commit.duplicate_of.serve_queue_id} already exists for this case and recipient (status: ${commit.duplicate_of.status}). Documents were attached to the existing entry — no new call was created.`;
+    warnings.push(`Active serve entry #${commit.duplicate_of.serve_queue_id} already exists for this case and recipient (status: ${commit.duplicate_of.status}). Documents were attached to the existing entry — no new call was created.`);
   }
+  const warning: string | null = warnings.length > 0 ? warnings.join(' ') : null;
 
   // Intake can spawn a CAD call (createServiceCall writes calls_for_service
   // directly, bypassing the calls.ts POST broadcast). Fan it to every dispatch
@@ -930,7 +973,17 @@ function buildCallDescription(
   // ── 10. Document count ───────────────────────────────────────
   if (docCount) parts.push(`${docCount} doc${docCount > 1 ? 's' : ''} on file`);
 
-  return parts.join(' · ');
+  // No hard cap previously — a packet with long business/attorney names,
+  // multiple parties, and a long court name could produce a description well
+  // past what the CAD board's one-line summary can show. Truncate at a
+  // whole-segment boundary (never mid-word) so it still reads cleanly.
+  const MAX_DESCRIPTION_LEN = 500;
+  const full = parts.join(' · ');
+  if (full.length <= MAX_DESCRIPTION_LEN) return full;
+  let truncated = full.slice(0, MAX_DESCRIPTION_LEN);
+  const lastSep = truncated.lastIndexOf(' · ');
+  if (lastSep > 0) truncated = truncated.slice(0, lastSep);
+  return truncated + ' …';
 }
 
 // ── POST /intake — legacy-shape commit ─────────────────────
@@ -1010,6 +1063,8 @@ si.post('/intake', async (c) => {
 
 // ── GET /:id/documents — list documents on a queue entry ────
 si.get('/:id/documents', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -1028,6 +1083,8 @@ si.get('/:id/documents', async (c) => {
 
 // ── GET /documents/:docId/file — stream the R2 object ───────
 si.get('/documents/:docId/file', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const docId = parseInt(c.req.param('docId'), 10);
   if (isNaN(docId)) return c.json({ error: 'Invalid docId' }, 400);
   const db = getDb(c.env);
@@ -1187,6 +1244,8 @@ si.post('/reprocess-failed', async (c) => {
 
 // ── GET /stats ──────────────────────────────────────────────
 si.get('/stats', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const total = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM serve_queue');
   const pending = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='pending'");
@@ -1207,6 +1266,9 @@ si.get('/stats', async (c) => {
 
 // ── GET / — list with filters ───────────────────────────────
 si.get('/', async (c) => {
+  // Exposes recipient names + addresses + case numbers — same gate as /queue.
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const status = c.req.query('status');
   const officerId = c.req.query('officer_id');
@@ -1656,6 +1718,9 @@ si.delete('/schedule/:slotId', async (c) => {
 // alarm codes, and key-holder info from existing records while the
 // operator is still reviewing the extracted fields before submitting.
 si.get('/record-lookup', async (c) => {
+  // Exposes gate/alarm codes and key-holder contact info — same gate as /queue.
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const addressQ = (c.req.query('address') || '').trim();
   const nameQ = (c.req.query('business_name') || '').trim();
@@ -1694,6 +1759,8 @@ si.get('/record-lookup', async (c) => {
 
 // ── GET /clients — active clients for the intake client selector ──
 si.get('/clients', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const rows = await query<{ id: number; name: string; contact_name: string | null; contact_phone: string | null }>(
     db,
@@ -1764,6 +1831,64 @@ si.post('/', async (c) => {
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status,
   );
   return c.json({ success: true, id: result.meta.last_row_id });
+});
+
+// ── POST /bulk — BulkDefendantTable (paste/type a table of defendants) ──
+// The client (client/src/components/serve/BulkDefendantTable.tsx) has posted
+// to this route from the start; it never existed on the worker, so every
+// bulk-intake submission 404'd. Creates one serve_queue row per valid row.
+// Duplicate/merge detection (the `merged` field in the response contract) is
+// NOT implemented — there's no existing name+address matching logic to reuse
+// safely here, so every valid row always lands in `created`, never `merged`.
+si.post('/bulk', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<any>().catch(() => ({}));
+  const rows: any[] = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length) return c.json({ error: 'rows required' }, 400);
+  const db = getDb(c.env);
+
+  const created: Array<{ rowIndex: number; call_id: number; call_number: string }> = [];
+  const errors: Array<{ rowIndex: number; message: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] ?? {};
+    try {
+      const isBusiness = r.kind === 'business';
+      const recipientName = isBusiness
+        ? String(r.businessName ?? '').trim()
+        : [r.firstName, r.middleName, r.lastName].filter(Boolean).map(String).join(' ').trim();
+      const address = String(r.address ?? '').trim();
+      if (!recipientName || !address) {
+        errors.push({ rowIndex: i, message: 'Missing recipient name or address' });
+        continue;
+      }
+      const contractId = r.contractId != null && r.contractId !== '' ? parseInt(r.contractId, 10) : null;
+      const parsedData = JSON.stringify({
+        recipient_type: isBusiness ? 'business' : 'individual',
+        recipient_dob: r.dob || null,
+        recipient_sex: r.sex || null,
+      });
+      const result = await execute(
+        db,
+        `INSERT INTO serve_queue (recipient_name, recipient_address, contract_id, priority, status, max_attempts, parsed_data)
+         VALUES (?, ?, ?, 'normal', 'pending', 3, ?)`,
+        recipientName, address, Number.isFinite(contractId) ? contractId : null, parsedData,
+      );
+      const newId = result.meta.last_row_id as number;
+      created.push({ rowIndex: i, call_id: newId, call_number: `PS-${newId}` });
+    } catch (err) {
+      errors.push({ rowIndex: i, message: err instanceof Error ? err.message : 'Insert failed' });
+    }
+  }
+
+  return c.json({
+    success: errors.length === 0,
+    created,
+    merged: [],
+    errors,
+    summary: { total: rows.length, created: created.length, merged: 0, failed: errors.length },
+  });
 });
 
 // ── PUT /:id ────────────────────────────────────────────────
@@ -1986,7 +2111,12 @@ si.post('/:id/attempts', async (c) => {
   let replanSummary: { slot_id: number; scheduled_date: string; window: string } | null = null;
   const attemptId = ins.meta.last_row_id as number;
 
-  if (REPLAN_RESULTS.has(String(body.result ?? ''))) {
+  // Use finalResult (the resolved outcome), not raw body.result -- a
+  // disposition-code-only submission (structured PS/xx code, no body.result)
+  // derives finalResult via codeToLegacyResult() but left body.result
+  // undefined, so this check silently never triggered auto-replan for those
+  // submissions even when the derived result should have.
+  if (REPLAN_RESULTS.has(finalResult)) {
     // Re-read the queue row to get the post-increment attempt_count + recipient details.
     const q = await queryFirst<{
       id: number; deadline: string | null; max_attempts: number;
@@ -2008,7 +2138,7 @@ si.post('/:id/attempts', async (c) => {
       const next = replanAfterFailedAttempt(
         {
           attempt_at: new Date().toISOString(),
-          result: String(body.result),
+          result: finalResult,
           window: typeof body.window === 'string' ? body.window : null,
         },
         {

@@ -92,3 +92,42 @@ describe('readOnlyRoleGuard', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('auth middleware — media-path query-auth passthrough', () => {
+  // GET /:id/thumbnail (bodycam storage-architecture phase) is fetched by an
+  // <img> tag, which can't send an Authorization header — same constraint as
+  // /stream and /audio. It must be recognized by isMediaPath() so the
+  // signed-URL (sig/exp) and legacy query-token passthroughs apply; a Task-4
+  // regression shipped this route without updating isMediaPath(), which
+  // silently 401'd every thumbnail request in production despite Miniflare
+  // tests passing (those tests bypass authMiddleware entirely by injecting
+  // a fake user directly — see test-workers/entry.ts).
+  it('lets a signed-URL request through to the handler for a /thumbnail path', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/personnel/bodycam-videos/:id/thumbnail', (c) => c.json({ ok: true }));
+
+    const res = await app.request(
+      '/api/personnel/bodycam-videos/5/thumbnail?sig=deadbeef&exp=9999999999',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    // The middleware's job is only to pass the request through when sig+exp
+    // are present on a recognized media path — actual signature validity is
+    // verified downstream in the route handler via verifySignedResource().
+    expect(res.status).toBe(200);
+  });
+
+  it('still 401s a /thumbnail request with no token and no signature', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/personnel/bodycam-videos/:id/thumbnail', (c) => c.json({ ok: true }));
+
+    const res = await app.request(
+      '/api/personnel/bodycam-videos/5/thumbnail',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(res.status).toBe(401);
+  });
+});

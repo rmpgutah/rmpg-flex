@@ -137,6 +137,8 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
       plat TEXT,
       lot TEXT,
       block TEXT,
+      recorded_document_url TEXT,
+      recorded_document_type TEXT,
       raw_data_json TEXT,
       fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
       refreshed_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -178,6 +180,21 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
     try {
       if (!(await columnExists(db, table, col))) {
         await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+
+  // ── parcel_records-only columns (multi-county additions, mig 0188) ──
+  const PARCEL_RECORD_COLUMNS: Array<[string, string]> = [
+    ['recorded_document_url', 'TEXT'],
+    ['recorded_document_type', 'TEXT'],
+  ];
+  for (const [col, type] of PARCEL_RECORD_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'parcel_records', col))) {
+        await db.prepare(`ALTER TABLE parcel_records ADD COLUMN ${col} ${type}`).run();
       }
     } catch {
       // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
@@ -245,4 +262,99 @@ export async function ensureTimeEntryColumns(db: D1Database): Promise<void> {
     }
   }
   _timeEntryColumnsEnsured = await columnExists(db, 'time_entries', 'clock_in_local');
+}
+
+// ── nav_favorites staging-flag reconciler ──────────────────
+// Migration 0183_nav_favorites_staging.sql adds is_staging to
+// nav_favorites so officers can flag a saved destination as a
+// parking/staging spot. Same continue-on-error/no-IF-NOT-EXISTS
+// situation as above — self-heal at runtime, once per isolate.
+let _navFavoritesColumnsEnsured = false;
+
+export async function ensureNavFavoritesColumns(db: D1Database): Promise<void> {
+  if (_navFavoritesColumnsEnsured) return;
+  try {
+    if (!(await columnExists(db, 'nav_favorites', 'is_staging'))) {
+      await db.prepare(`ALTER TABLE nav_favorites ADD COLUMN is_staging INTEGER DEFAULT 0`).run();
+    }
+  } catch {
+    // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+  }
+  _navFavoritesColumnsEnsured = await columnExists(db, 'nav_favorites', 'is_staging');
+}
+
+// ── users.dialer_oidc_sub reconciler ───────────────────────
+// Migration 0184_dialer_oidc_link.sql adds dialer_oidc_sub to users for
+// "Sign in with Dialer" OIDC SSO linking. Same self-heal situation as above.
+let _dialerOidcColumnsEnsured = false;
+
+export async function ensureDialerOidcColumns(db: D1Database): Promise<void> {
+  if (_dialerOidcColumnsEnsured) return;
+  try {
+    if (!(await columnExists(db, 'users', 'dialer_oidc_sub'))) {
+      await db.prepare(`ALTER TABLE users ADD COLUMN dialer_oidc_sub TEXT`).run();
+    }
+    await db.prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dialer_oidc_sub
+         ON users(dialer_oidc_sub) WHERE dialer_oidc_sub IS NOT NULL`
+    ).run();
+  } catch {
+    // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+  }
+  _dialerOidcColumnsEnsured = await columnExists(db, 'users', 'dialer_oidc_sub');
+}
+
+// ── Jurisdiction override + photo/layout reconciler ────────
+// Migration 0189_jurisdiction_photo_layout.sql adds jurisdiction_override to
+// businesses/properties, photo_url/layout_url to parcel_records, a `kind`
+// column to business_photos, and creates property_photos. Same self-heal
+// situation as above (CLAUDE.md rule #5).
+let _jurisdictionPhotoColumnsEnsured = false;
+
+export async function ensureJurisdictionAndPhotoColumns(db: D1Database): Promise<void> {
+  if (_jurisdictionPhotoColumnsEnsured) return;
+  const COLUMNS: Array<[string, string, string]> = [
+    ['businesses', 'jurisdiction_override', 'TEXT'],
+    ['properties', 'jurisdiction_override', 'TEXT'],
+    ['parcel_records', 'photo_url', 'TEXT'],
+    ['parcel_records', 'layout_url', 'TEXT'],
+    ['business_photos', 'kind', `TEXT NOT NULL DEFAULT 'photo'`],
+  ];
+  for (const [table, col, type] of COLUMNS) {
+    try {
+      if (!(await columnExists(db, table, col))) {
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  try {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS property_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      caption TEXT,
+      category TEXT,
+      kind TEXT NOT NULL DEFAULT 'photo',
+      uploaded_by INTEGER,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+    )`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_property_photos_property ON property_photos(property_id)`).run();
+  } catch {
+    // Race or pre-existing table — tolerated by design (CLAUDE.md rule #5).
+  }
+  // Only cache success once every column AND the property_photos table are
+  // actually confirmed present — a partial failure (e.g. property_photos
+  // creation raced/failed while the column ALTERs succeeded) must leave the
+  // flag false so the next call in this isolate retries the missing pieces,
+  // rather than permanently skipping reconciliation for the isolate's life.
+  const columnsOk = await Promise.all(
+    COLUMNS.map(([table, col]) => columnExists(db, table, col)),
+  ).then((results) => results.every(Boolean));
+  const propertyPhotosOk = await db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'property_photos'`,
+  ).first().then((row) => row !== null).catch(() => false);
+  _jurisdictionPhotoColumnsEnsured = columnsOk && propertyPhotosOk;
 }

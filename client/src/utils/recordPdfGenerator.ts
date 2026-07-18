@@ -21,6 +21,7 @@ import {
   setActiveBranding, loadPdfAssets, setActiveFormKey, setActiveCaseNumber,
   addAttachmentsSection, addImageToPage, formSectionPageBreak, sanitizePdfText,
   displayStatus, finalizePoliceReport, setActiveSectionStyle,
+  addVoidWatermark, setActiveVoidWatermark,
   type PersonIdPayload, type FormMetadataPayload,
 } from './pdfGenerator';
 import {
@@ -2312,15 +2313,21 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let cx = margin + 2 + doc.getTextWidth('COMPLIANCE:') + 3;
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        // Status dot
-        // intentional one-off grays, no matching COLOR token — luminance pair
-        // for a small on/off status dot, distinct from any labeled token
+        // Status dot — solid filled for ON, hollow outline-only for OFF.
+        // Previously both states were filled circles distinguished only by
+        // a 80-vs-180 gray shade at 0.9mm radius — too subtle to read at a
+        // glance (the whole point of this row) and prone to washing out
+        // identically on a photocopy/fax/scan, which police records
+        // routinely go through (2026-07-13 fix). Filled-vs-hollow reads
+        // unambiguously even in a degraded grayscale copy.
         if (it.on) {
           doc.setFillColor(80, 80, 80); // neutralized 2026-05-30
+          doc.circle(cx + 1.2, y + 2.3, 0.9, 'F');
         } else {
-          doc.setFillColor(180, 180, 180);
+          doc.setDrawColor(180, 180, 180);
+          doc.setLineWidth(0.25);
+          doc.circle(cx + 1.2, y + 2.3, 0.9, 'S');
         }
-        doc.circle(cx + 1.2, y + 2.3, 0.9, 'F');
         cx += 3;
         doc.setTextColor(it.on ? COLOR.TEXT_PRIMARY[0] : COLOR.TEXT_TERTIARY[0],
           it.on ? COLOR.TEXT_PRIMARY[1] : COLOR.TEXT_TERTIARY[1],
@@ -3396,7 +3403,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // (src/routes/mobileCfs.ts). The Worker can't rasterize a QR, so the endpoint
   // returns { token, url } and we render the PNG here with the bundled qrcode lib.
   const MOBILE_PSO_QR_ENABLED: boolean = true;
-  if (MOBILE_PSO_QR_ENABLED && data.incident_type === 'pso_client_request' && data.id) {
+  // Also fires for any serve-queue-linked call (isProcessServiceCall +
+  // serve_queue_id), not just pso_client_request — the CallPdfData
+  // interface's own comment on `serve_queue_id` ("enables QR code on
+  // printout for mobile status update") documents this as intended, but
+  // the field was never actually read anywhere in this generator
+  // (2026-07-13 fix). Caption reflects which flow the QR leads to.
+  const showMobileQr = data.incident_type === 'pso_client_request' || (isProcessServiceCall && !!data.serve_queue_id);
+  if (MOBILE_PSO_QR_ENABLED && showMobileQr && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
         method: 'POST',
@@ -3430,7 +3444,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(4.5);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text('SCAN FOR MOBILE PSO', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
+        const qrCaption = data.incident_type === 'pso_client_request' ? 'SCAN FOR MOBILE PSO' : 'SCAN FOR SERVICE STATUS';
+        doc.text(qrCaption, qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without QR */ }
   }
@@ -4607,12 +4622,16 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const subject = [data.subject_last_name, data.subject_first_name]
       .filter(Boolean).join(', ').toUpperCase();
     const status = String(data.status || '').toLowerCase();
+    // formatEnumValue humanizes underscore-separated status values instead
+    // of printing them verbatim (2026-07-13 fix, same class of bug as the
+    // evidence-report pill above).
+    const statusLabel = formatEnumValue(status).toUpperCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
       ? { label: 'ACTIVE', tone: 'high' }
       : status === 'served' || status === 'cleared' || status === 'recalled'
-        ? { label: status.toUpperCase(), tone: 'inactive' }
+        ? { label: statusLabel, tone: 'inactive' }
         : status
-          ? { label: status.toUpperCase(), tone: 'elevated' }
+          ? { label: statusLabel, tone: 'elevated' }
           : undefined;
     const bannerCharges = parseCharges(data.charge_description ?? (data as any).charges);
     const bannerChargeText = bannerCharges.length
@@ -5051,12 +5070,18 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   // Quick-reference banner — evidence# + description + status pill
   {
     const status = String(data.status || '').toLowerCase();
+    // Pill label was raw status.toUpperCase() — printed underscore-separated
+    // enum values verbatim ("IN_CUSTODY") instead of a readable label
+    // (2026-07-13 fix, visually confirmed on a rendered evidence PDF).
+    // formatEnumValue is the same acronym-aware humanizer used elsewhere
+    // in this file for status/type display text.
+    const statusLabel = formatEnumValue(status).toUpperCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'sealed' || status === 'court-hold'
-      ? { label: status.toUpperCase(), tone: 'high' }
+      ? { label: statusLabel, tone: 'high' }
       : status === 'destroyed' || status === 'returned' || status === 'released'
-        ? { label: status.toUpperCase(), tone: 'inactive' }
+        ? { label: statusLabel, tone: 'inactive' }
         : status
-          ? { label: status.toUpperCase(), tone: 'standard' }
+          ? { label: statusLabel, tone: 'standard' }
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: data.evidence_number,
@@ -5763,12 +5788,15 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   {
     const name = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
     const status = String(data.status || data.employment_status || '').toLowerCase();
+    // formatEnumValue humanizes underscore-separated status values (e.g.
+    // "leave_of_absence") instead of printing them verbatim (2026-07-13 fix).
+    const statusLabel = formatEnumValue(status).toUpperCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
       ? { label: 'ACTIVE', tone: 'standard' }
       : status === 'terminated' || status === 'separated' || status === 'inactive'
-        ? { label: status.toUpperCase(), tone: 'inactive' }
+        ? { label: statusLabel, tone: 'inactive' }
         : status === 'suspended' || status === 'leave'
-          ? { label: status.toUpperCase(), tone: 'elevated' }
+          ? { label: statusLabel, tone: 'elevated' }
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: name,
@@ -6412,7 +6440,7 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
       ? { label: 'ACTIVE', tone: 'standard' }
       : statusLower === 'closed'
         ? { label: 'CLOSED', tone: 'inactive' }
-        : { label: (data.status || '').toUpperCase(), tone: 'elevated' };
+        : { label: formatEnumValue(data.status || '').toUpperCase(), tone: 'elevated' };
     y = addQuickReferenceBanner(doc, {
       primary: (data.name || 'UNNAMED BUSINESS').toUpperCase(),
       secondary: [data.dba_name ? `DBA: ${data.dba_name}` : '', addr].filter(Boolean).join(' · '),
@@ -6650,15 +6678,18 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   {
     const violation = data.violation_description || data.statute_citation || '';
     const status = String(data.status || '').toLowerCase();
+    const statusLabel = formatEnumValue(status).toUpperCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'paid'
       ? { label: 'PAID', tone: 'inactive' }
       : status === 'voided' || status === 'dismissed'
-        ? { label: status.toUpperCase(), tone: 'inactive' }
+        ? { label: statusLabel, tone: 'inactive' }
         : status === 'contested' || status === 'court'
-          ? { label: status.toUpperCase(), tone: 'elevated' }
+          ? { label: statusLabel, tone: 'elevated' }
           : status === 'issued'
             ? { label: 'ISSUED', tone: 'standard' }
-            : undefined;
+            : status
+              ? { label: statusLabel, tone: 'standard' }
+              : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: data.citation_number,
       secondary: [data.type?.toUpperCase(), violation].filter(Boolean).join(' · '),
@@ -6749,8 +6780,11 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
       const c2 = addFieldPair(doc, 'Road Conditions', data.road_conditions || '', lx + thirdW, y, thirdW);
       const c3 = addFieldPair(doc, 'Is Warning', data.is_warning ? 'YES' : 'NO', lx + 2 * thirdW, y, thirdW);
       y = Math.max(c1, c2, c3);
-      // Flag checkboxes
-      y += 1;
+      // Flag checkboxes — addCheckboxField draws its box 1.8mm ABOVE the y
+      // it's given, but addFieldPair's returned y sits only 0.4mm below
+      // its own underline. Same class of overlap bug fixed on the
+      // Appearance Required checkbox above (2026-07-13); SPACING.XL clears it.
+      y += SPACING.XL;
       let flagX = lx;
       if (data.school_zone) flagX = addCheckboxField(doc, 'School Zone', true, flagX, y);
       if (data.construction_zone) flagX = addCheckboxField(doc, 'Construction Zone', true, flagX + 1, y);
@@ -6841,8 +6875,13 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     const r1d = addFieldPair(doc, 'Court Room', data.court_room || '', lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     if (data.court_address) y = addFieldPair(doc, 'Court Address', data.court_address, lx, y, ffw);
-    // Appearance checkbox
-    y += 1;
+    // Appearance checkbox — addCheckboxField draws its box 1.8mm ABOVE the
+    // y it's given (boxY = y - 1.8), but addFieldPair's returned y sits
+    // only 0.4mm below its own underline rule. A 1mm gap here left the
+    // checkbox's top edge ~0.4mm above that underline, so the rule visibly
+    // struck through "Appearance Required" (2026-07-13 fix, visually
+    // confirmed on a rendered citation PDF). SPACING.XL (2.5mm) clears it.
+    y += SPACING.XL;
     addCheckboxField(doc, 'Appearance Required', !!data.appearance_required, lx, y);
     y += 4;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -6944,6 +6983,41 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   // @ts-expect-error jsPDF GState — safety reset after watermark
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
+  // Header style ('light' letterhead vs legacy 'dark' solid-navy bar) is
+  // shared MUTABLE MODULE STATE (pdfGenerator.ts's activeSectionStyle),
+  // not per-document. Only generateCallReport/generatePersonReport ever
+  // set it explicitly (and reset to 'dark' when done) — every other
+  // generator (vehicle, warrant, evidence, fleet, personnel, property,
+  // citation, business, case, field_interview, court_event, jail_booking)
+  // just inherited whatever the PREVIOUS generateRecordPdf() call in the
+  // same session left behind. Same record type rendered with a totally
+  // different header depending purely on generation order (2026-07-13 fix,
+  // caught when a batch of sample PDFs generated in one session came out
+  // visually inconsistent with each other). Setting it here, once, at the
+  // single shared entry point every record type funnels through, makes
+  // every generated PDF deterministic regardless of what ran before it.
+  setActiveSectionStyle('light');
+
+  // VOID watermark for voided citations / recalled or quashed warrants —
+  // addVoidWatermark() was fully built (red X + "VOID" diagonal stamp,
+  // Improvement 75) but never wired to any generator, so a voided
+  // citation or a recalled/quashed warrant printed identically to an
+  // active one (2026-07-13 fix).
+  const voidStatus = (data as { status?: string })?.status?.toLowerCase();
+  const isVoidedRecord =
+    (recordType === 'citation' && voidStatus === 'voided') ||
+    (recordType === 'warrant' && (voidStatus === 'recalled' || voidStatus === 'quashed'));
+  // setActiveVoidWatermark also covers page breaks that happen mid-render
+  // (checkPageBreak's inline addPage()), not just the final per-page loop
+  // below — must be reset to false after this doc finishes generating or
+  // the NEXT (non-voided) PDF generated in the same session would
+  // incorrectly inherit the stamp via this shared module-level flag.
+  setActiveVoidWatermark(isVoidedRecord);
+  if (isVoidedRecord) {
+    addVoidWatermark(doc);
+  }
+
+  try {
   switch (recordType) {
     case 'call':
       await generateCallReport(doc, data as CallPdfData);
@@ -6990,6 +7064,12 @@ export async function generateRecordPdf<T extends RecordPdfType>(
     default:
       throw new Error(`Unknown record type: ${recordType}`);
   }
+  } finally {
+    // Reset regardless of success/failure so a thrown error mid-generation
+    // can't leak the VOID flag into whatever PDF a caller generates next
+    // (e.g. an affidavit or blank form that doesn't set this flag itself).
+    setActiveVoidWatermark(false);
+  }
 
   // Document integrity trailer page removed 2026-05-04 per user request.
   // The trailer used to print the canonical-JSON SHA-256 of the record
@@ -6999,13 +7079,19 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   // /api/pdf-tools/sign-payload + /verify-signature endpoints) is left
   // in place but dormant — re-enable by restoring the call below.
 
-  // Add page footers and watermarks to all pages
+  // Add page footers and watermarks to all pages. Continuation pages also
+  // get the VOID stamp when isVoidedRecord (set above) — previously VOID
+  // only rendered on page 1 via the addVoidWatermark() call before the
+  // switch, so a multi-page voided citation or recalled/quashed warrant
+  // shipped continuation pages with no void marking at all, a document-
+  // integrity gap in a law-enforcement RMS (2026-07-13 fix).
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     addPageFooter(doc, i, totalPages);
     if (i > 1) {
       addConfidentialWatermark(doc);
+      if (isVoidedRecord) addVoidWatermark(doc);
     }
   }
 

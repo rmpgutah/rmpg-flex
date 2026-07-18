@@ -81,7 +81,7 @@ interface Suggestion {
   raw?: any;
 }
 
-interface MapboxFeature {
+interface MapboxSuggestion {
   id: string;
   place_name: string;
   center?: [number, number];
@@ -93,7 +93,7 @@ interface MapboxFeature {
 }
 
 /** Parse Mapbox Geocoding feature into structured address components */
-function parseAddressFromFeature(feature: MapboxFeature): ParsedAddress {
+function parseAddressFromFeature(feature: MapboxSuggestion): ParsedAddress {
   const props: Record<string, string> = {};
   const ctx = feature.context || [];
 
@@ -320,9 +320,9 @@ export default function AddressAutocomplete({
       const mapData = await res.json();
       if (isStale()) return;
 
-      const features: MapboxFeature[] = mapData.features || [];
+      const features: MapboxSuggestion[] = mapData.features || [];
 
-      const mapped: Suggestion[] = features.map((f: MapboxFeature) => ({
+      const mapped: Suggestion[] = features.map((f: MapboxSuggestion) => ({
         place_name: f.place_name,
         id: f.id,
         source: 'mapbox',
@@ -421,7 +421,7 @@ export default function AddressAutocomplete({
     // partially." The forward-geocode response already includes
     // place_name + context + center, so re-parsing from `raw` is both
     // accurate and one fewer network round-trip.
-    const feature = (suggestion.raw as MapboxFeature | undefined);
+    const feature = (suggestion.raw as MapboxSuggestion | undefined);
     const parsed: ParsedAddress = feature
       ? parseAddressFromFeature(feature)
       : {

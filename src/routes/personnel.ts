@@ -65,6 +65,10 @@ const MANAGER_EDITABLE: readonly string[] = [
   'certifications', 'notes', 'profile_image',
   'voice_persona', 'voice_rate', 'voice_pitch', 'voice_terseness', 'voice_brain_enabled',
   'theme_preference', 'font_size_preference', 'notification_prefs', 'email_signature',
+  // Dial Connect SSO opt-in (migration 0164) — manager-set only, intentionally
+  // excluded from SELF_EDITABLE below so a user can't grant themselves SSO
+  // login via their own profile edit.
+  'sso_enabled',
 ];
 
 // Subset a user can change on their own row. Excludes anything that affects
@@ -96,7 +100,7 @@ personnel.get('/', async (c) => {
                       u.address, u.address_2, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
-                      u.emergency_contact_relationship, u.created_at, u.updated_at,
+                      u.emergency_contact_relationship, u.sso_enabled, u.created_at, u.updated_at,
                       (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign,
                       (SELECT status FROM units WHERE officer_id = u.id LIMIT 1) AS unit_status
                FROM users u WHERE 1=1`;
@@ -1461,7 +1465,7 @@ personnel.post('/', async (c) => {
       `SELECT id, username, full_name, first_name, middle_name, last_name,
               email, phone, role, badge_number, rank, department,
               assigned_unit_id, employee_id, status, must_change_password,
-              created_at, updated_at
+              sso_enabled, created_at, updated_at
          FROM users WHERE id = ?`,
       newId
     );
@@ -1584,7 +1588,7 @@ personnel.put('/:id', async (c) => {
       db,
       `SELECT id, username, full_name, first_name, middle_name, last_name,
               email, phone, role, badge_number, rank, department,
-              assigned_unit_id, employee_id, status, updated_at
+              assigned_unit_id, employee_id, status, sso_enabled, updated_at
          FROM users WHERE id = ?`,
       targetId
     );

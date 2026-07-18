@@ -9,7 +9,7 @@ import { utahApiAdapter } from '../../src/utils/warrantSources/adapters/utahApi'
 // warrants are ever fetched — that's the guard this test pins down.
 const local = { id: 1, first_name: 'John', middle_name: null, last_name: 'Smith', dob: '1990-01-01' };
 
-function matchingAge(): string {
+function matchingAge(): number {
   // Recompute the same whole-years age the poller derives, so the test is
   // stable regardless of the calendar date it runs on.
   const born = new Date('1990-01-01');
@@ -17,53 +17,67 @@ function matchingAge(): string {
   let age = now.getFullYear() - born.getFullYear();
   const m = now.getMonth() - born.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
-  return String(age);
+  return age;
 }
 
-// Stub the upstream Utah API. POST /persons returns two candidates for
-// "JOHN SMITH": one age-matched (id MATCH) and one namesake (id NAMESAKE,
-// age wildly off). GET /persons/MATCH/warrants returns one warrant (UW1);
-// GET /persons/NAMESAKE/warrants returns a DIFFERENT warrant (UW2) that
-// must NOT appear in the result if the age guard is intact.
+// Stub the upstream Utah API (post-2026-07-17 migration shape, verified
+// live against the site's own js/scripts.js + curl):
+// GET /warrant-api/warrantPublic/search?firstName=&lastName= returns an
+// array of candidates directly (no wrapper object), age as a NUMBER, and
+// personId as the identifier. GET /warrant-api/warrantPublic/detail/:id
+// returns { warrant: [...] } with warrantNumber/courtCaseNumber/
+// courtDescription/chargeDescription/issueDate fields.
 function buildFetchStub() {
-  return vi.fn(async (url: string, init?: RequestInit) => {
+  return vi.fn(async (url: string) => {
     const u = String(url);
-    if (u.endsWith('/persons') && init?.method === 'POST') {
+    if (u.includes('/warrant-api/warrantPublic/search')) {
+      return new Response(
+        JSON.stringify([
+          {
+            personId: 1001,
+            firstName: 'JOHN',
+            lastName: 'SMITH',
+            city: 'SALT LAKE CITY',
+            age: matchingAge(),
+          },
+          {
+            personId: 2002,
+            firstName: 'JOHN',
+            lastName: 'SMITH',
+            city: 'PROVO',
+            age: 88, // wildly off → rejected by isLikelyMatch age guard
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (u.includes('/warrant-api/warrantPublic/detail/1001')) {
       return new Response(
         JSON.stringify({
-          persons: [
+          warrant: [
             {
-              id: 'MATCH',
-              name: { first: 'JOHN', last: 'SMITH' },
-              homeAddress: { city: 'SALT LAKE CITY' },
-              age: matchingAge(),
-            },
-            {
-              id: 'NAMESAKE',
-              name: { first: 'JOHN', last: 'SMITH' },
-              homeAddress: { city: 'PROVO' },
-              age: '88', // wildly off → rejected by isLikelyMatch age guard
+              warrantNumber: 'UW1',
+              issueDate: '2026-01-01',
+              courtDescription: 'X JUSTICE COURT',
+              courtCaseNumber: 'C1',
+              chargeDescription: ['BATTERY'],
             },
           ],
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     }
-    if (u.includes('/persons/MATCH/warrants')) {
+    if (u.includes('/warrant-api/warrantPublic/detail/2002')) {
       return new Response(
         JSON.stringify({
-          warrants: [
-            { id: 'UW1', issueDate: '2026-01-01', court: { name: 'X JUSTICE COURT', caseId: 'C1' }, charges: ['BATTERY'] },
-          ],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }
-    if (u.includes('/persons/NAMESAKE/warrants')) {
-      return new Response(
-        JSON.stringify({
-          warrants: [
-            { id: 'UW2', issueDate: '2020-05-05', court: { name: 'Y JUSTICE COURT', caseId: 'C2' }, charges: ['THEFT'] },
+          warrant: [
+            {
+              warrantNumber: 'UW2',
+              issueDate: '2020-05-05',
+              courtDescription: 'Y JUSTICE COURT',
+              courtCaseNumber: 'C2',
+              chargeDescription: ['THEFT'],
+            },
           ],
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -107,5 +121,35 @@ describe('utahApiAdapter', () => {
     expect(hits.some((h) => h.warrant_id === 'UW2')).toBe(false);
     // Only the matched candidate's warrant comes through.
     expect(hits.map((h) => h.warrant_id)).toEqual(['UW1']);
+  });
+
+  it('dedups duplicate personId rows from /search before hitting /detail', async () => {
+    const fetchStub = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('/warrant-api/warrantPublic/search')) {
+        // Same personId twice — a real-world occurrence (name-spelling
+        // variants / multiple addresses on file for the same person).
+        return new Response(
+          JSON.stringify([
+            { personId: 1001, firstName: 'JOHN', lastName: 'SMITH', city: 'SALT LAKE CITY', age: matchingAge() },
+            { personId: 1001, firstName: 'JOHN', lastName: 'SMITH', city: 'MURRAY', age: matchingAge() },
+          ]),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (u.includes('/warrant-api/warrantPublic/detail/1001')) {
+        return new Response(
+          JSON.stringify({ warrant: [{ warrantNumber: 'UW1', issueDate: '2026-01-01', courtDescription: 'X', courtCaseNumber: 'C1', chargeDescription: ['THEFT'] }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchStub);
+
+    const hits = await utahApiAdapter.fetchForPerson!(local, { DB: {} as unknown as D1Database });
+    expect(hits.map((h) => h.warrant_id)).toEqual(['UW1']);
+    const detailCalls = fetchStub.mock.calls.filter(([u]) => String(u).includes('/detail/1001'));
+    expect(detailCalls).toHaveLength(1);
   });
 });

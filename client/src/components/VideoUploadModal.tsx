@@ -8,6 +8,10 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
+import { captureVideoThumbnail } from '../utils/videoThumbnail';
+import { runAutoDetection } from '../utils/videoAutoDetect';
+import { extractAudioBlob } from '../utils/videoTranscribe';
+import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
 interface Props {
@@ -39,6 +43,65 @@ const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks
 const MAX_RETRIES = 3;
 
 type UploadPhase = 'idle' | 'initializing' | 'uploading' | 'finalizing' | 'done' | 'error';
+
+// Fire-and-forget: capture + upload a thumbnail for the just-created video.
+// Never blocks or fails the upload flow — a thrown/rejected promise here is
+// swallowed, leaving the video usable with no thumbnail.
+async function uploadThumbnailBestEffort(
+  file: File, videoId: number, apiBase: string, getAuthHeaders: () => Record<string, string>,
+): Promise<void> {
+  try {
+    const blob = await captureVideoThumbnail(file);
+    if (!blob) return;
+    const fd = new FormData();
+    fd.append('thumbnail', blob, 'thumb.jpg');
+    await fetch(`${apiBase}/personnel/bodycam-videos/${videoId}/thumbnail`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: fd,
+    });
+  } catch (e) {
+    console.warn('[VideoUploadModal] thumbnail capture/upload failed (non-fatal):', e);
+  }
+}
+
+// Fire-and-forget: auto-scan the just-uploaded video for faces/plates and
+// post the results. Never blocks or fails the upload flow.
+async function uploadDetectionsBestEffort(
+  file: File, videoId: number, apiBase: string, getAuthHeaders: () => Record<string, string>,
+): Promise<void> {
+  try {
+    const regions = await runAutoDetection(file);
+    if (!regions) return;
+    await fetch(`${apiBase}/personnel/bodycam-videos/${videoId}/detections`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'content-type': 'application/json' },
+      body: JSON.stringify({ regions }),
+    });
+  } catch (e) {
+    console.warn('[VideoUploadModal] auto-detection scan/upload failed (non-fatal):', e);
+  }
+}
+
+// Fire-and-forget: extract the just-uploaded video's audio and post it for
+// transcription. Never blocks or fails the upload flow.
+async function uploadTranscriptBestEffort(
+  file: File, videoId: number, apiBase: string, getAuthHeaders: () => Record<string, string>,
+): Promise<void> {
+  try {
+    const blob = await extractAudioBlob(file);
+    if (!blob) return;
+    const fd = new FormData();
+    fd.append('audio', blob, 'audio.webm');
+    await fetch(`${apiBase}/personnel/bodycam-videos/${videoId}/transcribe`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: fd,
+    });
+  } catch (e) {
+    console.warn('[VideoUploadModal] audio extraction/transcription failed (non-fatal):', e);
+  }
+}
 
 export default function VideoUploadModal({
   isOpen, onClose, onUploaded, cameras, officerId, apiBase, getAuthHeaders,
@@ -203,7 +266,7 @@ export default function VideoUploadModal({
       formData.append('officer_id', String(resolvedOfficerId));
       formData.append('classification', classification);
       if (duration != null) formData.append('duration_seconds', String(duration));
-      if (recordedAt) formData.append('recorded_at', recordedAt);
+      if (recordedAt) formData.append('recorded_at', mtDatetimeLocalToUtc(recordedAt));
       if (caseNumber) formData.append('case_number', caseNumber);
       if (notes) formData.append('notes', notes);
 
@@ -221,6 +284,14 @@ export default function VideoUploadModal({
         activeXhrRef.current = null;
         if (xhr.status >= 200 && xhr.status < 300) {
           setPhase('done');
+          try {
+            const created = JSON.parse(xhr.responseText) as { id?: number };
+            if (created.id) {
+              void uploadThumbnailBestEffort(file, created.id, apiBase, getAuthHeaders);
+              void uploadDetectionsBestEffort(file, created.id, apiBase, getAuthHeaders);
+              void uploadTranscriptBestEffort(file, created.id, apiBase, getAuthHeaders);
+            }
+          } catch { /* thumbnail is best-effort; a parse failure here must not block the modal closing */ }
           setTimeout(() => { reset(); onUploaded(); onClose(); }, 500);
         } else {
           setPhase('error');
@@ -309,7 +380,7 @@ export default function VideoUploadModal({
       setPhase('finalizing');
       setChunkStatus('Assembling file on server...');
 
-      await apiFetchJson('/personnel/bodycam-videos/upload-complete', {
+      const completed = await apiFetchJson('/personnel/bodycam-videos/upload-complete', {
         method: 'POST',
         body: JSON.stringify({
           uploadId,
@@ -317,12 +388,17 @@ export default function VideoUploadModal({
           officer_id: resolvedOfficerId,
           title,
           duration_seconds: duration,
-          recorded_at: recordedAt || undefined,
+          recorded_at: recordedAt ? mtDatetimeLocalToUtc(recordedAt) : undefined,
           case_number: caseNumber || undefined,
           classification,
           notes: notes || undefined,
         }),
-      });
+      }) as { id?: number };
+      if (completed?.id) {
+        void uploadThumbnailBestEffort(file, completed.id, apiBase, getAuthHeaders);
+        void uploadDetectionsBestEffort(file, completed.id, apiBase, getAuthHeaders);
+        void uploadTranscriptBestEffort(file, completed.id, apiBase, getAuthHeaders);
+      }
 
       setPhase('done');
       setChunkStatus('Upload complete!');

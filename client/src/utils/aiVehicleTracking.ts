@@ -32,7 +32,13 @@ export function loadVehicleDetector(): Promise<unknown | null> {
         const tf: any = await import(/* @vite-ignore */ TFJS_URL);
         await tf.ready();                                  // initialize a compute backend (webgl)
         const cocoSsd: any = await import(/* @vite-ignore */ COCO_URL);
-        return await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        // mobilenet_v2 (full accuracy variant, not lite_mobilenet_v2) — this
+        // runs against an already-loaded clip during an explicit redaction
+        // scan, not a live camera feed, so the extra inference latency is
+        // acceptable. lite_mobilenet_v2's lower accuracy was misclassifying
+        // non-vehicle objects (e.g. a held phone) as cars/trucks, seeding
+        // false "plate" regions — see the design spec.
+        return await cocoSsd.load({ base: 'mobilenet_v2' });
       } catch (e) {
         console.warn('[ai-track] detector load failed — falling back to telemetry overlays', e);
         return null;

@@ -1,4 +1,6 @@
 import type { RawWarrantHit, PersonRow } from './types';
+import { identityMatch } from './identityMatch';
+import { log } from '../logger';
 
 /**
  * One canonical warrant for a person after cross-source dedup. A warrant that
@@ -104,9 +106,24 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
   const personAge = ageFromDob(person.dob);
   const personHasDob = !isBlank(person.dob);
 
+  // Positive identity confirmation required before a hit is allowed to link
+  // to this person at all — see identityMatch.ts / the design doc for the
+  // full rationale. This replaces the old "attach unconditionally, flag via
+  // confidence" behavior for name-mismatched or identity-unconfirmable hits.
+  const identityChecked = hits.filter((h) => identityMatch(h, person));
+  const dropped = hits.length - identityChecked.length;
+  if (dropped > 0) {
+    log.info('reconcileHits: identity gate excluded hits', {
+      person_id: person.id,
+      personHasDob,
+      total: hits.length,
+      excluded: dropped,
+    });
+  }
+
   const byKey = new Map<string, CanonicalHit>();
 
-  for (const h of hits) {
+  for (const h of identityChecked) {
     const key = dedupKey(h);
     const existing = byKey.get(key);
 
@@ -140,6 +157,16 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
     // masked by an earlier corroborating one. That's a same-warrant data
     // discrepancy (not a namesake), so it doesn't weaken the invariant that a
     // DOB-less person or a decisive >1-off age reads unverified.
+    //
+    // NOTE: with the identityMatch pre-filter, this branch is currently
+    // unreachable ONLY because today's per-person sources (Ada/Natrona)
+    // emit `age` but never `date_of_birth`, so dobOrAgeConfirms always
+    // goes through the age-tolerance path (which rejects >1yr conflicts).
+    // If a future source emits both DOB and age, dobOrAgeConfirms passes
+    // on exact-DOB alone WITHOUT checking age, and ageDisconfirms below can
+    // again return true. Kept as defense-in-depth, not dead code — don't
+    // rely on it doing real filtering today, but it's a real safety net
+    // against tomorrow's source shape.
     let confidence: 'confirmed' | 'unverified';
     if (!personHasDob) {
       confidence = 'unverified';

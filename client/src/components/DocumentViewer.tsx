@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
@@ -138,7 +139,15 @@ export default function DocumentViewer({
 
   if (!isOpen) return null;
 
-  return (
+  // Portaled to document.body — this is a page-level modal that must cover
+  // the full viewport regardless of ancestors. Rendered inline (as it was
+  // before), any ancestor with an active CSS transform (e.g. .spm-page's
+  // page-enter animation, which non-none transforms even at rest per a few
+  // browsers' timing quirks) becomes position:fixed's containing block
+  // instead of the viewport, trapping this modal inside that ancestor's box
+  // — it then renders squeezed into the content area instead of full-screen,
+  // interleaved with whatever's underneath instead of covering it.
+  return createPortal(
     <div className="fixed inset-0 z-[9998] flex flex-col bg-black/95" role="dialog" aria-modal="true" style={{ touchAction: 'manipulation' }}>
       {/* Toolbar — z-index above iframe to ensure clicks register */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0 relative z-10">
@@ -248,16 +257,25 @@ export default function DocumentViewer({
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+      {/* Content Area — margin-based centering, NOT flex items-center/justify-center.
+          A centered flex child that overflows a scrollable parent has its
+          overflow clipped symmetrically by the browser (you can't scroll to
+          reach the top/left edge), which is exactly what happened once the
+          PDF was zoomed past ~100%: the top of the document became
+          permanently unreachable. margin: auto on the child keeps it
+          centered when it fits, but degrades to a normal scrollable block
+          once it overflows. */}
+      <div className="flex-1 overflow-auto p-4">
         {detectedType === 'pdf' ? (
           <iframe
             id="doc-viewer-iframe"
             src={safeSrc}
-            className="border border-rmpg-600 bg-white"
+            className="border border-rmpg-600 bg-white block"
             style={{
               width: isFullscreen ? '100%' : `${Math.min(zoom, 100)}%`,
               height: '100%',
+              minHeight: '100%',
+              margin: '0 auto',
               transform: zoom > 100 ? `scale(${zoom / 100})` : undefined,
               transformOrigin: 'top center',
             }}
@@ -267,11 +285,17 @@ export default function DocumentViewer({
           <img
             src={safeSrc}
             alt={title}
-            className="max-w-full max-h-full object-contain select-none"
+            className="max-w-full max-h-full object-contain select-none block"
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-              transformOrigin: 'center center',
+              // 'top center', not 'center center' — a transform doesn't
+              // affect layout or the scroll container's scrollable area, so
+              // a center-origin scale overflows symmetrically and the top
+              // half becomes permanently unreachable by scroll once zoomed
+              // past 100%, same as the PDF branch this mirrors.
+              transformOrigin: 'top center',
               transition: 'transform 0.2s ease',
+              margin: '0 auto',
             }}
             draggable={false}
           />
@@ -287,6 +311,7 @@ export default function DocumentViewer({
             : `Zoom: ${zoom}%`}
         </span>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

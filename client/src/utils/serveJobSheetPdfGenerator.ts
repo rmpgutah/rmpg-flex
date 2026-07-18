@@ -144,13 +144,13 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, '1. Job Information', y); y = sec.contentY;
     const r1a = addFieldPair(doc, 'Job ID', `JOB-${data.jobId}`, lx, y, qw);
-    const r1b = addFieldPair(doc, 'Priority', PRIORITY_LABEL[data.priority] || data.priority.toUpperCase(), lx + qw + SPACING.SM, y, qw);
-    const r1c = addFieldPair(doc, 'Status', data.status.replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    const r1b = addFieldPair(doc, 'Priority', PRIORITY_LABEL[data.priority] || (data.priority || 'N/A').toUpperCase(), lx + qw + SPACING.SM, y, qw);
+    const r1c = addFieldPair(doc, 'Status', (data.status || 'N/A').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
     y = Math.max(r1a, r1b, r1c);
     const r2a = addFieldPair(doc, 'Serve Date', data.serveDate || 'N/A', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Deadline', data.deadline || 'N/A', rx, y, hfw);
     y = Math.max(r2a, r2b);
-    y = addFieldPair(doc, 'Preferred Time Window', TIME_WINDOW_LABEL[data.timeWindow] || data.timeWindow.toUpperCase(), lx, y, ffw);
+    y = addFieldPair(doc, 'Preferred Time Window', TIME_WINDOW_LABEL[data.timeWindow] || (data.timeWindow || 'N/A').toUpperCase(), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

@@ -104,8 +104,16 @@ export default function JailPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const r = await apiFetch<{ total: number; housed: number; booked: number }>('/jail/stats');
-      setStats(r);
+      // /jail/stats actually returns { total_inmates, by_status, by_classification }
+      // — the old { total, housed, booked } shape here never matched, so
+      // stats.total/.housed/.booked were always undefined and the three
+      // StatsCards on this page silently rendered blank.
+      const r = await apiFetch<{ total_inmates: number; by_status: Record<string, number> }>('/jail/stats');
+      setStats({
+        total: r.total_inmates ?? 0,
+        housed: r.by_status?.housed ?? 0,
+        booked: r.by_status?.booked ?? 0,
+      });
     } catch { /* ignore */ }
   }, []);
 

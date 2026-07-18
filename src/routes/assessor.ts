@@ -23,27 +23,30 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, columnExists, ensureAssessorColumns } from '../utils/db';
+import { getDb, columnExists, ensureAssessorColumns, ensureJurisdictionAndPhotoColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import {
   cacheKeyParcel, cacheKeyParcels, durableKeyParcels, durableKeyParcel,
   getCached, putCached, invalidate,
 } from '../utils/sl-assessor/cache';
-import { getParcel } from '../utils/sl-assessor/client';
 import { applyParcelToRecord } from '../utils/sl-assessor/autofill';
 import {
   AssessorConfigError, AssessorHttpError, AssessorParseError, AssessorTimeoutError,
 } from '../utils/sl-assessor/types';
 import type { Parcel, ParcelSummary } from '../utils/sl-assessor/types';
 import { lookupParcelsWithFallback, lookupParcelWithFallback } from '../utils/sl-assessor/lookup';
+import {
+  dispatchSearchByAddress, dispatchGetParcel, resolveCountyFromAddress, resolveEffectiveCounty,
+  buildManualUrl, COUNTY_LABELS, isOverridableCounty,
+} from '../utils/parcel-lookup/lookup';
 
 const app = new Hono<Env>();
 
 function handleError(c: any, e: unknown) {
-  // POST /apply still uses the legacy client.getParcel() (so it can raise
-  // typed errors that the caller might want to act on). The lookup-route
-  // handlers below NEVER throw — they always return a structured 200.
+  // POST /apply still goes through dispatchGetParcel (which can raise typed
+  // errors the caller might want to act on). The lookup-route handlers below
+  // NEVER throw — they always return a structured 200.
   if (e instanceof AssessorConfigError)
     return c.json({ ok: false, code: 'not_configured', message: e.message });
   if (e instanceof AssessorTimeoutError)
@@ -69,47 +72,211 @@ const LOOKUP_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
 app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   const address = c.req.query('address')?.trim();
   if (!address) return c.json({ ok: false, code: 'missing_address' }, 400);
-  // ?fresh=1 busts the KV cache so the next call hits the live assessor POST.
-  if (c.req.query('fresh') === '1') {
-    await Promise.all([
-      invalidate(c.env, cacheKeyParcels(address)),
-      invalidate(c.env, durableKeyParcels(address)),
-    ]);
+
+  const county = resolveCountyFromAddress(address);
+
+  // SL Co keeps its dedicated fresh/stale KV fallback chain (lookupParcelsWithFallback).
+  // The three newer counties dispatch straight to their client — no fallback-chain
+  // wrapper yet (see design doc "kept per-county-duplicated" note); revisit only if
+  // a real caching need shows up.
+  if (county === 'salt_lake') {
+    // ?fresh=1 busts the KV cache so the next call hits the live assessor POST.
+    if (c.req.query('fresh') === '1') {
+      await Promise.all([
+        invalidate(c.env, cacheKeyParcels(address)),
+        invalidate(c.env, durableKeyParcels(address)),
+      ]);
+    }
+    const r = await lookupParcelsWithFallback(c.env, address);
+    return c.json({
+      ok: r.code === 'ok',
+      parcels: r.parcels,
+      cached: r.source === 'cache' || r.source === 'stale_cache',
+      source: r.source,
+      code: r.code,
+      degraded: r.degraded,
+      manual_url: r.manual_url,
+      diagnostic: r.diagnostic,
+    });
   }
-  const r = await lookupParcelsWithFallback(c.env, address);
-  return c.json({
-    ok: r.code === 'ok',
-    parcels: r.parcels,
-    cached: r.source === 'cache' || r.source === 'stale_cache',
-    source: r.source,
-    code: r.code,
-    degraded: r.degraded,
-    manual_url: r.manual_url,
-    diagnostic: r.diagnostic,
-  });
+
+  if (county === 'unsupported') {
+    return c.json({
+      ok: false,
+      parcels: [],
+      cached: false,
+      source: 'none',
+      code: 'no_match',
+      degraded: false,
+      manual_url: '',
+      diagnostic: 'no assessor/recorder integration for this county yet',
+    });
+  }
+
+  try {
+    const parcels = await dispatchSearchByAddress(c.env, address);
+    return c.json({
+      ok: parcels.length > 0,
+      parcels,
+      cached: false,
+      source: 'direct',
+      code: parcels.length > 0 ? 'ok' : 'no_match',
+      degraded: false,
+      manual_url: '',
+    });
+  } catch (e: any) {
+    return c.json({
+      ok: false,
+      parcels: [],
+      cached: false,
+      source: 'none',
+      code: 'upstream_error',
+      degraded: false,
+      manual_url: '',
+      diagnostic: e?.message ?? 'unknown',
+    });
+  }
 });
+
+// Maps a stored parcel_records.source back to the County the dispatch
+// layer expects. Used below to route a bare parcel_number (no address in
+// hand) to the right county's client once we already know its source.
+const SOURCE_TO_COUNTY: Record<string, 'salt_lake' | 'utah' | 'summit' | 'tooele'> = {
+  sl_county_assessor: 'salt_lake',
+  utah_county_assessor: 'utah',
+  summit_county_assessor: 'summit',
+  tooele_county_recorder: 'tooele',
+};
 
 app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
   const parcelNo = c.req.param('parcel_no');
   if (!parcelNo) return c.json({ ok: false, code: 'missing_parcel_no' }, 400);
-  if (c.req.query('fresh') === '1') {
-    await Promise.all([
-      invalidate(c.env, cacheKeyParcel(parcelNo)),
-      invalidate(c.env, durableKeyParcel(parcelNo)),
-    ]);
+
+  const db = getDb(c.env);
+  await ensureAssessorColumns(db);
+  const existing = await db.prepare('SELECT source FROM parcel_records WHERE parcel_number = ?')
+    .bind(parcelNo).first<{ source: string }>();
+  const county = existing ? SOURCE_TO_COUNTY[existing.source] : undefined;
+
+  // Salt Lake County (or unknown/never-applied parcels, preserving prior
+  // behavior) keeps the dedicated fresh/stale KV fallback chain.
+  if (!county || county === 'salt_lake') {
+    if (c.req.query('fresh') === '1') {
+      await Promise.all([
+        invalidate(c.env, cacheKeyParcel(parcelNo)),
+        invalidate(c.env, durableKeyParcel(parcelNo)),
+      ]);
+    }
+    const r = await lookupParcelWithFallback(c.env, parcelNo);
+    return c.json({
+      ok: r.code === 'ok' && r.parcel !== null,
+      parcel: r.parcel,
+      sales: r.parcel?.sales ?? [],
+      cached: r.source === 'cache' || r.source === 'stale_cache',
+      source: r.source,
+      code: r.code,
+      degraded: r.degraded,
+      manual_url: r.manual_url,
+      diagnostic: r.diagnostic,
+    });
   }
-  const r = await lookupParcelWithFallback(c.env, parcelNo);
+
+  try {
+    const parcel = await dispatchGetParcel(c.env, parcelNo, county);
+    return c.json({
+      ok: true,
+      parcel,
+      sales: parcel.sales,
+      cached: false,
+      source: 'direct',
+      code: 'ok',
+      degraded: false,
+      manual_url: '',
+    });
+  } catch (e: any) {
+    return c.json({
+      ok: false,
+      parcel: null,
+      sales: [],
+      cached: false,
+      source: 'none',
+      code: 'upstream_error',
+      degraded: false,
+      manual_url: '',
+      diagnostic: e?.message ?? 'unknown',
+    });
+  }
+});
+
+/**
+ * GET /jurisdiction?address=&record_type=&record_id=
+ * Resolves which county an address falls under, and — when record_type +
+ * record_id are supplied — whether that record has a manual override on
+ * file. The override always wins over the router when set. Returns the
+ * effective county, a human label, and a link to that county's manual
+ * search page so an operator can sanity-check or work around a bad match.
+ */
+app.get('/jurisdiction', async (c) => {
+  const address = c.req.query('address')?.trim();
+  if (!address) return c.json({ code: 'missing_address' }, 400);
+
+  const recordType = c.req.query('record_type');
+  const recordIdRaw = c.req.query('record_id');
+  let override: string | null = null;
+
+  if (recordType && recordIdRaw) {
+    const table = recordType === 'business' ? 'businesses' : recordType === 'property' ? 'properties' : null;
+    const recordId = Number(recordIdRaw);
+    if (table && Number.isFinite(recordId)) {
+      const db = getDb(c.env);
+      await ensureJurisdictionAndPhotoColumns(db);
+      const row = await db.prepare(`SELECT jurisdiction_override FROM ${table} WHERE id = ?`)
+        .bind(recordId).first<{ jurisdiction_override: string | null }>();
+      override = row?.jurisdiction_override ?? null;
+    }
+  }
+
+  const resolved = resolveCountyFromAddress(address);
+  const effective = resolveEffectiveCounty(address, override);
   return c.json({
-    ok: r.code === 'ok' && r.parcel !== null,
-    parcel: r.parcel,
-    sales: r.parcel?.sales ?? [],
-    cached: r.source === 'cache' || r.source === 'stale_cache',
-    source: r.source,
-    code: r.code,
-    degraded: r.degraded,
-    manual_url: r.manual_url,
-    diagnostic: r.diagnostic,
+    resolved_county: resolved,
+    override,
+    effective_county: effective,
+    label: COUNTY_LABELS[effective],
+    manual_url: buildManualUrl(effective, address),
   });
+});
+
+/**
+ * POST /jurisdiction  { record_type, record_id, county: County|null }
+ * Sets (or clears, when county is null) the manual jurisdiction override
+ * on a business/property record. `county` must be one of the four
+ * supported counties, or null to clear back to automatic resolution.
+ */
+app.post('/jurisdiction', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const body = await c.req.json().catch(() => null) as
+    { record_type?: string; record_id?: number; county?: string | null } | null;
+  if (!body?.record_type || !body.record_id) return c.json({ code: 'missing_fields' }, 400);
+  if (body.county !== null && !isOverridableCounty(body.county)) {
+    return c.json({ code: 'invalid_county' }, 400);
+  }
+  const table = body.record_type === 'business' ? 'businesses' : body.record_type === 'property' ? 'properties' : null;
+  if (!table) return c.json({ code: 'bad_record_type' }, 400);
+
+  const db = getDb(c.env);
+  await ensureJurisdictionAndPhotoColumns(db);
+  const res = await db.prepare(`UPDATE ${table} SET jurisdiction_override = ? WHERE id = ?`)
+    .bind(body.county ?? null, body.record_id).run();
+  if (!res.meta.changes) return c.json({ code: 'not_found' }, 404);
+
+  await recordAudit(c, {
+    action: 'ASSESSOR_JURISDICTION_OVERRIDE_SET',
+    entityType: body.record_type,
+    entityId: body.record_id,
+    details: { county: body.county ?? null },
+  });
+
+  return c.json({ ok: true, county: body.county ?? null });
 });
 
 /**
@@ -131,6 +298,7 @@ app.post('/apply', async (c) => {
   // Self-heal: ensure the new columns + parcel_records/parcel_sales tables
   // exist before any read or write touches them.
   await ensureAssessorColumns(db);
+  await ensureJurisdictionAndPhotoColumns(db);
 
   const record = await db.prepare(`SELECT * FROM ${table} WHERE id = ?`)
     .bind(body.record_id).first<Record<string, unknown>>();
@@ -139,7 +307,9 @@ app.post('/apply', async (c) => {
   let parcel: Parcel;
   try {
     const cached = await getCached<Parcel>(c.env, cacheKeyParcel(body.parcel_number));
-    parcel = cached ?? await getParcel(c.env, body.parcel_number);
+    const recordForCounty = record as { address?: string; jurisdiction_override?: string | null };
+    const county = resolveEffectiveCounty(recordForCounty.address ?? '', recordForCounty.jurisdiction_override);
+    parcel = cached ?? await dispatchGetParcel(c.env, body.parcel_number, county);
     if (!cached) await putCached(c.env, cacheKeyParcel(body.parcel_number), parcel);
   } catch (e) { return handleError(c, e); }
 
@@ -170,11 +340,11 @@ app.post('/apply', async (c) => {
       stories, bedrooms, bathrooms, construction_type, improvement_class, improvement_value,
       market_value_total, market_value_land, market_value_improvement,
       taxable_value, assessed_value, tax_year,
-      legal_description, plat, lot, block, raw_data_json,
+      legal_description, plat, lot, block, photo_url, layout_url, raw_data_json,
       fetched_at, refreshed_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       datetime('now'), datetime('now')
     )
     ON CONFLICT(parcel_number) DO UPDATE SET
@@ -185,6 +355,8 @@ app.post('/apply', async (c) => {
       market_value_total = excluded.market_value_total,
       year_built = excluded.year_built,
       legal_description = excluded.legal_description,
+      photo_url = excluded.photo_url,
+      layout_url = excluded.layout_url,
       raw_data_json = excluded.raw_data_json,
       refreshed_at = datetime('now')
   `).bind(
@@ -197,6 +369,7 @@ app.post('/apply', async (c) => {
     parcel.market_value_total, parcel.market_value_land, parcel.market_value_improvement,
     parcel.taxable_value, parcel.assessed_value, parcel.tax_year,
     parcel.legal_description, parcel.plat, parcel.lot, parcel.block,
+    parcel.photo_url, parcel.layout_url,
     JSON.stringify(parcel.raw_data_json),
   ).run();
 
@@ -212,6 +385,31 @@ app.post('/apply', async (c) => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).bind(pr.id, s.sale_date, s.sale_price, s.doc_number, s.buyer, s.seller, s.sale_type).run();
     }
+  }
+
+  // Scraped photo/layout images (when present) land in the same
+  // business_photos/property_photos gallery as manual uploads — as a
+  // 'scraped' provenance-tagged row pointing at the external URL directly
+  // rather than re-hosting the bytes in R2. Idempotent on re-apply: skip if
+  // a row with this exact url already exists for the record.
+  const photosTable = body.record_type === 'business' ? 'business_photos' : 'property_photos';
+  const photosFk = body.record_type === 'business' ? 'business_id' : 'property_id';
+  const sourceCounty: Record<Parcel['source'], string> = {
+    sl_county_assessor: COUNTY_LABELS.salt_lake,
+    utah_county_assessor: COUNTY_LABELS.utah,
+    summit_county_assessor: COUNTY_LABELS.summit,
+    tooele_county_recorder: COUNTY_LABELS.tooele,
+  };
+  for (const [kind, url] of [['photo', parcel.photo_url], ['layout', parcel.layout_url]] as const) {
+    if (!url) continue;
+    const existing = await db.prepare(
+      `SELECT id FROM ${photosTable} WHERE ${photosFk} = ? AND url = ?`,
+    ).bind(body.record_id, url).first();
+    if (existing) continue;
+    await db.prepare(
+      `INSERT INTO ${photosTable} (${photosFk}, url, caption, kind, uploaded_by)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(body.record_id, url, `Scraped from ${sourceCounty[parcel.source]}`, kind, null).run();
   }
 
   // Audit AFTER the writes — a failed write must not log a success.

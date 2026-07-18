@@ -13,16 +13,19 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Navigation, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Navigation, Pencil, RefreshCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu } from '../context/ContextMenuContext';
 import RangePicker from '../components/scheduler/RangePicker';
 import UnassignedQueueSidebar from '../components/scheduler/UnassignedQueueSidebar';
 import OfficerLaneTimeline, { type OfficerOption } from '../components/scheduler/OfficerLaneTimeline';
 import RebalancePreviewModal from '../components/scheduler/RebalancePreviewModal';
+import EditSlotModal from '../components/serve/EditSlotModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { RangeMode } from '../utils/schedulerLanes';
 import type { ScheduleSlot } from '../utils/schedulerView';
 
@@ -82,7 +85,9 @@ export default function ServeSchedulerPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
 
   const refetch = useCallback(async () => {
     try {
@@ -147,10 +152,15 @@ export default function ServeSchedulerPage() {
         : s,
     ));
     try {
+      // The PATCH endpoint reads `scheduled_date`, not `date` — sending the
+      // raw `target` object silently no-ops the date move (server falls back
+      // to the slot's current date) while still returning 200, so the chip
+      // appears to move until the next refetch snaps it back to where it
+      // started. Map the field name explicitly.
       await apiFetch(`/serve-intake/schedule/${slot.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(target),
+        body: JSON.stringify({ scheduled_date: target.date, officer_id: target.officer_id }),
       });
     } catch (e) {
       refetch();
@@ -218,6 +228,41 @@ export default function ServeSchedulerPage() {
     if (pendingAction.type === 'unassign') return void handleConfirmUnassign(pendingAction.slot);
   }, [pendingAction, handleConfirmDismiss, handleConfirmUnassign]);
 
+  // ── EditSlotModal: full manual edit (date, window, officer, label, notify) ─
+  const handleSlotSave = useCallback(async (edited: ScheduleSlot) => {
+    if (!editingSlot) return;
+    await apiFetch(`/serve-intake/schedule/${editingSlot.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scheduled_date: edited.scheduled_date,
+        window_start: edited.window_start,
+        window_end: edited.window_end,
+        officer_id: edited.officer_id,
+        window_label: edited.window_label,
+        notify_before_secs: edited.notify_before_secs,
+      }),
+    });
+    refetch();
+  }, [editingSlot, refetch]);
+
+  // Right-click menu — dismiss/unassign already had handlers wired above
+  // (handleConfirmDismiss/handleConfirmUnassign) but were never actually
+  // reachable from the UI: nothing rendered ConfirmDialog or passed them to
+  // OfficerLaneTimeline, so "Dismiss slot"/"Unassign officer" silently had no
+  // way to trigger. Wiring them in here alongside the new Edit action.
+  const handleSlotContextMenu = useCallback((slot: ScheduleSlot, e: React.MouseEvent) => {
+    if (!canManage) return;
+    openMenu(e, [
+      { key: 'edit', label: 'Edit slot…', icon: <Pencil size={12} />, onClick: () => setEditingSlot(slot) },
+      { key: 'sep', separator: true },
+      ...(slot.officer_id != null
+        ? [{ key: 'unassign', label: 'Unassign officer', onClick: () => setPendingAction({ type: 'unassign', slot }) }]
+        : []),
+      { key: 'dismiss', label: 'Dismiss slot', danger: true, onClick: () => setPendingAction({ type: 'dismiss', slot }) },
+    ]);
+  }, [canManage, openMenu]);
+
   // ── Timeline area: loading / error / empty / data ─────────────────────────
   const renderTimeline = () => {
     if (loading) {
@@ -250,6 +295,7 @@ export default function ServeSchedulerPage() {
         officers={officers}
         todayYmd={today}
         highlightSlotId={deepLinkSlotId.current ?? undefined}
+        onSlotContextMenu={canManage ? handleSlotContextMenu : undefined}
         onSlotDrop={canManage ? handleSlotDrop : undefined}
         onQueueDrop={canManage ? handleQueueDrop : undefined}
       />
@@ -326,6 +372,30 @@ export default function ServeSchedulerPage() {
           onApplied={refetch}
         />
       )}
+
+      {editingSlot && (
+        <EditSlotModal
+          visible
+          slot={editingSlot}
+          officers={officers}
+          onSave={handleSlotSave}
+          onCancel={() => setEditingSlot(null)}
+          onClose={() => setEditingSlot(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={pendingAction !== null}
+        onClose={() => setPendingAction(null)}
+        onConfirm={handleConfirm}
+        title={pendingAction?.type === 'dismiss' ? 'Dismiss slot?' : 'Unassign officer?'}
+        message={pendingAction?.type === 'dismiss'
+          ? 'This removes the scheduled attempt window. It can be re-generated via backfill if needed.'
+          : 'The slot stays scheduled but no officer will be assigned.'}
+        confirmLabel={pendingAction?.type === 'dismiss' ? 'Dismiss' : 'Unassign'}
+        confirmVariant={pendingAction?.type === 'dismiss' ? 'danger' : 'warning'}
+        isLoading={confirmLoading}
+      />
     </div>
   );
 }

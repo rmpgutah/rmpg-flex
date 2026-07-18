@@ -14,6 +14,9 @@ export interface ParcelSummary {
   land_sqft: number | null;
   total_market_value: number | null;
   detail_url: string;
+  /** Recorder-only counties (Tooele) populate these instead of value fields. */
+  recorded_document_url?: string | null;
+  recorded_document_type?: string | null;
 }
 
 export type LookupSource =

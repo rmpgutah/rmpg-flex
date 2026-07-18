@@ -1022,6 +1022,13 @@ export interface BodyCamVideo {
   officer_id: number;
   title: string;
   file_path: string;
+  thumbnail_path?: string;
+  redacted_path?: string;
+  detected_plate_count?: number;
+  detected_face_count?: number;
+  detection_regions_json?: string;
+  transcript?: string;
+  ai_analysis_json?: string;
   file_size: number;
   duration_seconds: number;
   mime_type: string;
@@ -1514,6 +1521,49 @@ export interface FleetMaintenance {
   next_due_date?: string;
   next_due_mileage?: number;
   created_at: string;
+}
+
+// --- Fleet Work Orders ---
+// Note: ids here are number (matching the actual D1/JSON runtime shape from
+// src/routes/workOrders.ts), unlike the string ids used elsewhere in this
+// file for other Fleet types.
+
+export type WorkOrderStatus = 'open' | 'in_progress' | 'waiting_parts' | 'completed' | 'cancelled';
+export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'emergency';
+
+export interface WorkOrder {
+  id: number;
+  vehicle_id: number;
+  status: WorkOrderStatus;
+  number: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  summary: string | null;
+  vendor_id: number | null;
+  est_cost: number | null;
+  actual_cost: number | null;
+  category_code: string | null;
+  notes: string | null;
+  priority?: WorkOrderPriority;
+  scheduled_date?: string | null;
+  failure_category?: string | null;
+  estimated_hours?: number | null;
+  labor_hours?: number | null;
+}
+
+export interface WorkOrderStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  waiting_parts: number;
+  completed: number;
+  cancelled: number;
+  by_priority: Record<string, number>;
+  by_category: Record<string, number>;
+  total_estimated_cost: number;
+  total_actual_cost: number;
+  overdue_count: number;
+  scheduled_count: number;
 }
 
 // --- Fleet Fuel ---
@@ -3229,7 +3279,11 @@ export interface ServeJob {
   deadline: string | null;
   attempt_count: number;
   max_attempts: number;
-  status: 'pending' | 'in_progress' | 'served' | 'failed' | 'skipped' | 'archived';
+  // 'attempted' is the status the server writes after a non-terminal failed
+  // attempt (attempt logged, still under max_attempts — see codeToQueueStatus
+  // in src/utils/processServiceCodes.ts). It means "still needs another
+  // attempt", so deriveServeFolder below treats it like 'pending'.
+  status: 'pending' | 'in_progress' | 'served' | 'failed' | 'skipped' | 'archived' | 'attempted';
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
@@ -3256,7 +3310,11 @@ export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'arc
 /** Map a job's status to its display folder. */
 export function deriveServeFolder(job: ServeJob): ServeFolder {
   if (job.status === 'in_progress') return 'in_progress';
-  if (job.status === 'pending') return 'pending';
+  // 'attempted' = a non-terminal failed attempt was logged but the job hasn't
+  // hit max_attempts yet — it still needs another attempt, same as 'pending'.
+  // Without this, every job with 1+ non-final attempts fell through to the
+  // 'archived' bucket and vanished from the officer's active work queues.
+  if (job.status === 'pending' || job.status === 'attempted') return 'pending';
   if (job.status === 'served') return 'served';
   if (job.status === 'failed') return 'failed';
   return 'archived'; // skipped | archived
@@ -3648,7 +3706,7 @@ export interface CpgpsAlert {
 
 // ── Nav Trip Log ─────────────────────────────────────────────
 
-export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+export type NavTripStatus = 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
 
 export interface NavRoutePoint {
   lat: number;

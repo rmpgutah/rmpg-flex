@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
-import type { BodyCamera, BodyCamVideo, VideoClassification } from '../types';
+import type { BodyCamera, BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -19,6 +19,8 @@ import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import BodyCameraTab from './personnel/tabs/BodyCameraTab';
 import BodyCameraFormModal from './personnel/modals/BodyCameraFormModal';
+import RedactionStudio from '../components/RedactionStudio';
+import BodyCamVideoEditModal, { type BodyCamVideoEditData } from '../components/BodyCamVideoEditModal';
 import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal';
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
 import DeleteRecordModal from '../components/DeleteRecordModal';
@@ -60,6 +62,8 @@ export default function BodyCamerasPage() {
   const [editData, setEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [editMode, setEditMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [redactingVideo, setRedactingVideo] = useState<BodyCamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
   // Officer list for the form modal dropdown
@@ -222,10 +226,10 @@ export default function BodyCamerasPage() {
   }, [videos, loading]);
 
   // ── Keyboard shortcuts: Esc cascade + N shortcut ──
-  // Esc closes the smallest-open-first of the five modals BodyCamerasPage
-  // owns (player → upload → camera form → camera-delete → video-delete).
-  // N opens the "Assign Camera" form (canManage only) when no modal is
-  // open and the operator is not typing in a field.
+  // Esc closes the smallest-open-first of the six modals BodyCamerasPage
+  // owns (player/redaction studio → upload → camera form → camera-delete →
+  // video-delete). N opens the "Assign Camera" form (canManage only) when no
+  // modal is open and the operator is not typing in a field.
   useEffect(() => {
     const isTypingInField = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -233,11 +237,16 @@ export default function BodyCamerasPage() {
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
     };
     const handler = (e: KeyboardEvent) => {
-      // Esc cascade: top-most-first — destructive dialog → player → upload → form.
+      // Esc cascade: top-most-first — destructive dialog → player/redaction studio → upload → form.
       if (e.key === 'Escape') {
         if (cameraToDelete) { setCameraToDelete(null); return; }
         if (videoToDelete) { setVideoToDelete(null); return; }
         if (playingVideo) { setPlayingVideo(null); return; }
+        // Cancel/dismiss only — do not refetch here (unlike the studio's own
+        // onClose, which refreshes after a redaction commit). Esc is a fast
+        // dismiss, not a save-and-refresh action.
+        if (redactingVideo) { setRedactingVideo(null); return; }
+        if (editingVideo) { if (isTypingInField(e.target)) return; setEditingVideo(null); return; }
         if (modal === 'upload_video') { setModal('none'); return; }
         if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
           if (isTypingInField(e.target)) return;
@@ -248,7 +257,7 @@ export default function BodyCamerasPage() {
       // N shortcut: open "Assign Camera" when no modal is active.
       if (e.key === 'n' || e.key === 'N') {
         if (isTypingInField(e.target)) return;
-        if (modal !== 'none' || cameraToDelete || videoToDelete || playingVideo) return;
+        if (modal !== 'none' || cameraToDelete || videoToDelete || playingVideo || redactingVideo || editingVideo) return;
         if (!canManage) return;
         e.preventDefault();
         openAdd();
@@ -259,7 +268,7 @@ export default function BodyCamerasPage() {
   // openAdd is a stable arrow function defined below — exclude from deps to
   // avoid a cycle; the handler closes over canManage + modal from state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraToDelete, videoToDelete, playingVideo, modal, canManage]);
+  }, [cameraToDelete, videoToDelete, playingVideo, redactingVideo, editingVideo, modal, canManage]);
 
   // ----------------------------------------------------------
   // Refresh (cameras + videos only, skip officers)
@@ -271,6 +280,21 @@ export default function BodyCamerasPage() {
     ]);
     setCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
     setVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+  };
+
+  const handleVideoEditSave = async (videoId: number, data: BodyCamVideoEditData) => {
+    await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    await refreshBodyCameras();
+    // Keep the open player's video in sync with the edited fields
+    setPlayingVideo(prev =>
+      prev && prev.id === videoId
+        ? { ...prev, ...data, retention_status: data.retention_status as VideoRetention }
+        : prev
+    );
+    addToast('Video details saved', 'success');
   };
 
   // ----------------------------------------------------------
@@ -501,6 +525,7 @@ export default function BodyCamerasPage() {
             onEditCamera={openEdit}
             onDeleteCamera={handleDelete}
             onPlayVideo={setPlayingVideo}
+            onRedactVideo={canManage ? setRedactingVideo : undefined}
             onDeleteVideo={handleVideoDelete}
             onUploadVideo={() => setModal('upload_video')}
             canManage={canManage}
@@ -568,7 +593,34 @@ export default function BodyCamerasPage() {
             addToast('Failed to reclassify video', 'error');
           }
         } : undefined}
+        onEditVideo={canManage ? setEditingVideo : undefined}
       />
+
+      <BodyCamVideoEditModal
+        isOpen={editingVideo !== null}
+        onClose={() => setEditingVideo(null)}
+        video={editingVideo}
+        onSave={handleVideoEditSave}
+      />
+
+      {redactingVideo && (
+        <RedactionStudio
+          eventId={redactingVideo.id}
+          source="bodycam"
+          streamUrl={`/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
+          stampLines={[
+            redactingVideo.title,
+            redactingVideo.officer_name || '',
+            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString() : '',
+          ].filter(Boolean)}
+          initialRegions={(() => {
+            const raw = redactingVideo.detection_regions_json;
+            if (!raw) return undefined;
+            try { return JSON.parse(raw); } catch { return undefined; }
+          })()}
+          onClose={() => { setRedactingVideo(null); refreshBodyCameras(); }}
+        />
+      )}
 
       <DeleteRecordModal
         isOpen={cameraToDelete !== null}

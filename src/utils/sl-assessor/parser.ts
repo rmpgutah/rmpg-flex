@@ -185,6 +185,10 @@ export function parseParcelDetail(html: string): Parcel {
     plat: pullByLabel(html, /plat/i),
     lot: pullByLabel(html, /lot/i),
     block: pullByLabel(html, /block/i),
+    recorded_document_url: null,
+    recorded_document_type: null,
+    photo_url: null,
+    layout_url: null,
     sales,
     raw_data_json,
   };

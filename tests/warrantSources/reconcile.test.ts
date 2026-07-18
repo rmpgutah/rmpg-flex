@@ -4,7 +4,7 @@ import type { RawWarrantHit, PersonRow } from '../../src/utils/warrantSources/ty
 
 const dobPerson: PersonRow = { id: 7, first_name: 'John', middle_name: null, last_name: 'Smith', dob: '1990-01-01' };
 const noDobPerson: PersonRow = { id: 8, first_name: 'John', middle_name: null, last_name: 'Smith', dob: '' };
-const hit = (o: Partial<RawWarrantHit>): RawWarrantHit => ({ source_key: 's1', warrant_id: 'W1', ...o });
+const hit = (o: Partial<RawWarrantHit>): RawWarrantHit => ({ source_key: 's1', warrant_id: 'W1', first_name: 'John', last_name: 'Smith', ...o });
 
 // Compute the person's true age from DOB + the real current date so the
 // "corroborates" assertions stay honest regardless of the run year.
@@ -24,9 +24,9 @@ describe('reconcileHits', () => {
     expect(out[0].sources.sort()).toEqual(['ada-county-id', 'natrona-county-wy']);
   });
 
-  it('DOB-less person => every hit unverified', () => {
+  it('DOB-less person => hit is excluded (no dob on person side means no positive identity evidence possible from age alone)', () => {
     const out = reconcileHits([hit({ warrant_id: 'W1', age: 33 })], noDobPerson);
-    expect(out[0].confidence).toBe('unverified');
+    expect(out).toHaveLength(0);
   });
 
   it('DOB person whose age corroborates => confirmed', () => {
@@ -34,9 +34,9 @@ describe('reconcileHits', () => {
     expect(out[0].confidence).toBe('confirmed');
   });
 
-  it('DOB person whose hit age is off by >1 => unverified', () => {
+  it('DOB person whose hit age is off by >1 => excluded entirely (identity gate rejects the conflicting age)', () => {
     const out = reconcileHits([hit({ warrant_id: 'W1', age: 50 })], dobPerson);
-    expect(out[0].confidence).toBe('unverified');
+    expect(out).toHaveLength(0);
   });
 
   it('dedups on case_number when no warrant_id', () => {
@@ -96,5 +96,36 @@ describe('reconcileHits', () => {
 
   it('empty input => empty output', () => {
     expect(reconcileHits([], dobPerson)).toEqual([]);
+  });
+
+  // --- identity-match safeguard (name + dob/age gate) ---
+
+  it('name-mismatched hit is excluded entirely, not just downgraded', () => {
+    const out = reconcileHits([hit({ warrant_id: 'W1', last_name: 'Jones' })], dobPerson);
+    expect(out).toHaveLength(0);
+  });
+
+  it('partial name match (first-initial) with dob match is included and confirmed', () => {
+    const out = reconcileHits([hit({ warrant_id: 'W1', first_name: 'Jon', date_of_birth: '1990-01-01' })], dobPerson);
+    expect(out).toHaveLength(1);
+    expect(out[0].confidence).toBe('confirmed');
+  });
+
+  it('a mix of matching and non-matching hits: only the matching one survives', () => {
+    const matching = hit({ warrant_id: 'W1', source_key: 's1' });
+    const mismatched = hit({ warrant_id: 'W2', source_key: 's2', last_name: 'Jones' });
+    const out = reconcileHits([matching, mismatched], dobPerson);
+    expect(out).toHaveLength(1);
+    expect(out[0].warrant_id).toBe('W1');
+  });
+
+  it('DOB-less person with a hit carrying no age at all is excluded (no positive identity evidence)', () => {
+    const out = reconcileHits([hit({ warrant_id: 'W1', age: null })], noDobPerson);
+    expect(out).toHaveLength(0);
+  });
+
+  it('name matches via full_name fallback when discrete first/last are blank on the hit', () => {
+    const out = reconcileHits([hit({ warrant_id: 'W1', first_name: undefined, last_name: undefined, full_name: 'John Smith', date_of_birth: '1990-01-01' })], dobPerson);
+    expect(out).toHaveLength(1);
   });
 });

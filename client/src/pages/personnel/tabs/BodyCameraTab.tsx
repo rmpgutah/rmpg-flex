@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search, Play, HardDrive,
-  Film, Shield, Clock, CheckSquare, Square, Upload, Loader2,
+  Film, Shield, ShieldOff, Clock, CheckSquare, Square, Upload, Loader2,
 } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, CameraStatus, VideoClassification } from '../../../types';
 import {
@@ -18,6 +18,7 @@ import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { authedImageUrl } from '../../../hooks/useApi';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
@@ -54,6 +55,7 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onSelectOfficer?: (officerId: string) => void;
   onPlayVideo?: (video: BodyCamVideo) => void;
+  onRedactVideo?: (video: BodyCamVideo) => void;
   onDeleteVideo?: (videoId: number) => void;
   onUploadVideo?: () => void;
   /** Role-gating: only admin/manager can add/edit/delete */
@@ -81,7 +83,7 @@ interface Props {
 export default function BodyCameraTab({
   cameras, videos,
   onAddCamera, onEditCamera, onDeleteCamera,
-  onSelectOfficer, onPlayVideo, onDeleteVideo,
+  onSelectOfficer, onPlayVideo, onRedactVideo, onDeleteVideo,
   onUploadVideo, canManage = true,
   onBulkDeleteVideos, onBulkClassifyVideos, onBulkDeleteCameras,
   bulkLoading = false,
@@ -110,6 +112,9 @@ export default function BodyCameraTab({
   const [selectedCameraIds, setSelectedCameraIds] = useState<Set<number>>(new Set());
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
   const [bulkClassification, setBulkClassification] = useState<VideoClassification>('routine');
+  // Video ids whose thumbnail image failed to load (e.g. R2 object missing/404
+  // despite thumbnail_path being set on the row) — fall back to the icon.
+  const [brokenThumbnailIds, setBrokenThumbnailIds] = useState<Set<number>>(new Set());
 
   // ── Bulk-confirm dialog state ─────────────────────────────
   // Page-25 audit caught: bulk delete buttons used `window.confirm()`,
@@ -195,11 +200,20 @@ export default function BodyCameraTab({
     }
   }
 
+  // KB = bytes/1024 (binary), then MB/GB step decimally (/1000) from there —
+  // matches how file managers commonly report size (e.g. a 293,601,280-byte
+  // file reads as 286,720 KB, then 286.72 MB — not 280.00 MB from a fully
+  // binary chain). Audit caught (2026-07-14): the old fully-binary chain
+  // under-reported MB/GB relative to what officers see in their editing
+  // software's KB reading.
   function formatFileSize(bytes: number): string {
     if (!bytes) return '-';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    const kb = bytes / 1024;
+    if (kb < 1000) return `${kb.toFixed(2)} KB`;
+    const mb = kb / 1000;
+    if (mb < 1000) return `${mb.toFixed(2)} MB`;
+    const gb = mb / 1000;
+    return `${gb.toFixed(2)} GB`;
   }
 
   function formatDuration(seconds?: number): string {
@@ -281,6 +295,7 @@ export default function BodyCameraTab({
 
   const buildVideoMenu = (vid: BodyCamVideo): ContextMenuItem[] => [
     ...(onPlayVideo ? [m.action('Play video', () => onPlayVideo(vid), { icon: <Play size={12} /> })] : []),
+    ...(canManage && onRedactVideo ? [m.action('Redact video', () => onRedactVideo(vid), { icon: <ShieldOff size={12} /> })] : []),
     ...(onSelectOfficer ? [m.action('Open officer', () => onSelectOfficer(String(vid.officer_id)), { icon: <Camera size={12} /> })] : []),
     m.separator(),
     m.copy('Copy title', vid.title),
@@ -720,7 +735,29 @@ export default function BodyCameraTab({
                         </td>
                       )}
                       <td>
-                        <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
+                        <div className="flex items-center gap-2">
+                          {vid.thumbnail_path && !brokenThumbnailIds.has(vid.id) ? (
+                            <img
+                              src={authedImageUrl(`/api/personnel/bodycam-videos/${vid.id}/thumbnail`)}
+                              alt=""
+                              className="w-8 h-[18px] object-cover flex-shrink-0 border border-rmpg-700"
+                              onError={() => setBrokenThumbnailIds(prev => (prev.has(vid.id) ? prev : new Set(prev).add(vid.id)))}
+                            />
+                          ) : (
+                            <Video className="w-4 h-[18px] text-rmpg-600 flex-shrink-0" aria-hidden="true" />
+                          )}
+                          <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
+                          {((vid.detected_plate_count || 0) + (vid.detected_face_count || 0)) > 0 && (
+                            <span
+                              className="flex items-center gap-0.5 text-[9px] font-mono text-amber-400 flex-shrink-0"
+                              title={`${vid.detected_plate_count || 0} plate(s), ${vid.detected_face_count || 0} face(s) detected`}
+                              aria-label={`${vid.detected_plate_count || 0} plate(s), ${vid.detected_face_count || 0} face(s) detected`}
+                            >
+                              <ShieldOff className="w-2.5 h-2.5" aria-hidden="true" />
+                              {(vid.detected_plate_count || 0) + (vid.detected_face_count || 0)}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <button type="button"

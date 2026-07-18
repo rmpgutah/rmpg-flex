@@ -22,6 +22,7 @@ import type { CostCategory } from '../modals/FleetCostFormModal';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { toNum, fmtFixed } from '../utils/fleetFormatters';
+import OpenWorkOrdersPanel from './OpenWorkOrdersPanel';
 
 function isRealDate(d: unknown): d is string {
   if (typeof d !== 'string') return false;
@@ -33,6 +34,8 @@ function isRealDate(d: unknown): d is string {
 type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 interface Props {
+  vehicleId: string;
+  onViewAllWorkOrders: () => void;
   loans: FleetLoan[];
   insurance: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
@@ -94,6 +97,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
 }
 
 export default function FleetCostsTab({
+  vehicleId, onViewAllWorkOrders,
   loans, insurance, accessories, utilities, other, summary,
   subTab, onSubTabChange, onAdd, onEdit, onDelete, onSaveBudgets,
 }: Props) {
@@ -135,6 +139,8 @@ export default function FleetCostsTab({
           )}
         </div>
       )}
+
+      <OpenWorkOrdersPanel vehicleId={vehicleId} onViewAll={onViewAllWorkOrders} />
 
       {/* ── Budget vs. Actual — inline-editable rows ────────── */}
       {onSaveBudgets && summary && (

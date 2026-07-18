@@ -322,6 +322,12 @@ const CASE_UPDATABLE = new Set([
   'requesting_agency', 'requesting_officer', 'lead_examiner_id',
   'linked_incident_id', 'linked_case_id', 'linked_incident_number',
   'linked_case_number', 'due_date', 'completed_date', 'released_date', 'notes',
+  // metadata: generic per-case JSON bag (imaging workflow, etc.) — client
+  // already sends this via saveMetadata() in ForensicLabPage.tsx, but the
+  // column/field didn't exist until migration 0187, so every save 400'd
+  // on "No fields to update". report_sections: JSON layout from an
+  // applied report template (see POST /:caseId/apply-template).
+  'metadata', 'report_sections',
 ]);
 
 forensics.put('/:id', async (c) => {
@@ -612,6 +618,293 @@ forensics.post('/:caseId/exhibits/:exhibitId/custody', async (c) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// HASHES — tamper-evident file integrity (forensic_exhibit_hashes)
+// ═══════════════════════════════════════════════════════════════
+
+const HASH_ALGORITHMS = new Set(['md5', 'sha1', 'sha256']);
+const HASH_PURPOSES = new Set(['intake', 'reverify']);
+
+// POST /:caseId/exhibits/:exhibitId/hashes — append-only. Compares the new
+// value against the most recent row for the same algorithm on this
+// exhibit; a differing value is flagged as a possible tamper event and
+// logged to the case activity timeline (not just the Hashes tab), since
+// a hash mismatch is chain-of-custody-critical, not merely informational.
+forensics.post('/:caseId/exhibits/:exhibitId/hashes', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    const exhibitId = parseInt(c.req.param('exhibitId'), 10);
+    if (isNaN(caseId) || isNaN(exhibitId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number;
+    const b = await c.req.json<Record<string, unknown>>();
+
+    if (typeof b.algorithm !== 'string' || !HASH_ALGORITHMS.has(b.algorithm)) {
+      return c.json({ error: 'algorithm must be one of md5, sha1, sha256', code: 'ALGORITHM_REQUIRED' }, 400);
+    }
+    if (typeof b.hash_value !== 'string' || !b.hash_value.trim()) {
+      return c.json({ error: 'hash_value required', code: 'HASH_VALUE_REQUIRED' }, 400);
+    }
+    const purpose = typeof b.purpose === 'string' && HASH_PURPOSES.has(b.purpose) ? b.purpose : 'intake';
+    const hashValue = b.hash_value.trim().toLowerCase();
+
+    const exhibit = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?', exhibitId, caseId,
+    );
+    if (!exhibit) return c.json({ error: 'Exhibit not found', code: 'NOT_FOUND' }, 404);
+
+    const prior = await queryFirst<{ hash_value: string }>(
+      db,
+      `SELECT hash_value FROM forensic_exhibit_hashes
+       WHERE exhibit_id = ? AND algorithm = ? ORDER BY computed_at DESC, id DESC LIMIT 1`,
+      exhibitId, b.algorithm,
+    );
+    const mismatch = prior ? prior.hash_value.toLowerCase() !== hashValue : false;
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_exhibit_hashes
+         (forensic_case_id, exhibit_id, algorithm, hash_value, purpose, file_name, mismatch, computed_by, computed_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      caseId, exhibitId, b.algorithm, hashValue, purpose, b.file_name ?? null, mismatch ? 1 : 0, userId, user?.full_name ?? '',
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    if (mismatch) {
+      await logActivity(db, caseId, 'hash_mismatch',
+        `${b.algorithm.toUpperCase()} mismatch on exhibit ${exhibitId} (${purpose})`,
+        userId, user?.full_name ?? '', exhibitId);
+    } else {
+      await logActivity(db, caseId, 'hash_recorded',
+        `${b.algorithm.toUpperCase()} ${purpose} hash recorded for exhibit ${exhibitId}`,
+        userId, user?.full_name ?? '', exhibitId);
+    }
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_exhibit_hashes WHERE id = ?', newId);
+    return c.json({ data: created, mismatch }, 201);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to record hash', 'HASH_POST_ERROR');
+  }
+});
+
+// GET /:caseId/hashes — flat list across every exhibit in the case, plus
+// the {total, flagged, matched} stats ForensicLabPage.tsx's Hashes tab
+// reads directly. `matched`/`flagged` cross-reference forensic_hash_entries
+// (populated by the existing IPED import pipeline, src/routes/iped.ts) —
+// a match against a 'known_bad' set folds into `flagged` alongside
+// mismatches; a match against any other set type (nsrl/known_good/etc.)
+// counts as `matched` only.
+forensics.get('/:caseId/hashes', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT h.*, e.exhibit_number, e.description AS exhibit_description
+       FROM forensic_exhibit_hashes h
+       JOIN forensic_exhibits e ON h.exhibit_id = e.id
+       WHERE h.forensic_case_id = ?
+       ORDER BY h.computed_at DESC, h.id DESC`,
+      caseId,
+    );
+
+    const hashes: Record<string, unknown>[] = [];
+    let flagged = 0;
+    let matched = 0;
+    // TODO: batch into a single IN(...) query against forensic_hash_entries if per-case hash volume grows significantly.
+    for (const row of rows) {
+      const hashValue = row.hash_value as string;
+      const hashType = row.algorithm as string;
+      const setMatch = await queryFirst<{ set_type: string }>(
+        db,
+        `SELECT hs.set_type FROM forensic_hash_entries fe
+         JOIN forensic_hash_sets hs ON fe.hash_set_id = hs.id
+         WHERE fe.hash_value = ? AND fe.hash_type = ? LIMIT 1`,
+        hashValue, hashType,
+      );
+      const hashSetMatch = !!setMatch;
+      const isMismatch = row.mismatch === 1;
+      const isKnownBad = setMatch?.set_type === 'known_bad';
+      if (isMismatch || isKnownBad) flagged++;
+      if (hashSetMatch && !isKnownBad) matched++;
+      hashes.push({
+        ...row,
+        file_name: row.file_name ?? row.exhibit_description,
+        sha256: hashType === 'sha256' ? hashValue : undefined,
+        flagged: isMismatch || isKnownBad,
+        hash_set_match: hashSetMatch,
+        hash_set_type: setMatch?.set_type ?? null,
+      });
+    }
+
+    return c.json({ hashes, stats: { total: hashes.length, flagged, matched } });
+  } catch (err) {
+    return c.json({ error: 'Failed to get hashes', code: 'HASHES_GET_ERROR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// LINKS — cross-references to other RMS entities (forensic_case_entity_links)
+// ═══════════════════════════════════════════════════════════════
+
+const LINK_ENTITY_TYPES = new Set(['person', 'vehicle', 'case', 'incident', 'evidence', 'warrant']);
+
+// GET /:caseId/links/search?q=&type= — mirrors the request/response
+// contract of GET /records/search (src/routes/records.ts:2003): same
+// `type` param values, same label-synthesis-on-every-row convention,
+// same 50-row cap, same "unknown type → []" behavior, so the Links tab
+// search bar behaves identically to LinkRecordModal elsewhere in the app.
+forensics.get('/:caseId/links/search', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    const type = (c.req.query('type') || 'person').toLowerCase();
+    if (!q || q.length < 2) return c.json([]);
+    if (!LINK_ENTITY_TYPES.has(type)) return c.json([]);
+    const like = `%${q}%`;
+
+    if (type === 'person') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, first_name, last_name, phone FROM persons
+        WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
+        ORDER BY last_name, first_name LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'person', label: [r.last_name, r.first_name].filter(Boolean).join(', ') || `Person #${r.id}` })));
+    }
+    if (type === 'vehicle') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, plate_number, make, model, year FROM vehicles_records
+        WHERE plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ?
+        ORDER BY plate_number LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'vehicle', label: (r.plate_number as string) || `Vehicle #${r.id}` })));
+    }
+    if (type === 'case') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, case_number, title FROM cases
+        WHERE case_number LIKE ? OR title LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'case', label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}` })));
+    }
+    if (type === 'incident') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, incident_number, incident_type FROM incidents
+        WHERE incident_number LIKE ? OR incident_type LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'incident', label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}` })));
+    }
+    if (type === 'evidence') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, evidence_number, description FROM evidence
+        WHERE evidence_number LIKE ? OR description LIKE ? ORDER BY evidence_number LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'evidence', label: [r.evidence_number, r.description].filter(Boolean).join(' — ') || `Evidence #${r.id}` })));
+    }
+    if (type === 'warrant') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, warrant_number, subject_name FROM warrants
+        WHERE warrant_number LIKE ? OR subject_name LIKE ? ORDER BY created_at DESC LIMIT 50
+      `, like, like);
+      return c.json(rows.map((r) => ({ ...r, type: 'warrant', label: [r.warrant_number, r.subject_name].filter(Boolean).join(' — ') || `Warrant #${r.id}` })));
+    }
+    return c.json([]);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Link search failed', 'LINK_SEARCH_ERROR');
+  }
+});
+
+forensics.get('/:caseId/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db, 'SELECT * FROM forensic_case_entity_links WHERE forensic_case_id = ? ORDER BY linked_at DESC', caseId,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to list links', code: 'LINKS_LIST_ERROR' }, 500);
+  }
+});
+
+// Label lookup table for POST /:caseId/links — server resolves the label
+// itself rather than trusting a client-supplied one, matching the
+// principle already used by GET /records/search.
+const LINK_LABEL_QUERIES: Record<string, string> = {
+  person: `SELECT (last_name || ', ' || first_name) AS label FROM persons WHERE id = ?`,
+  vehicle: `SELECT plate_number AS label FROM vehicles_records WHERE id = ?`,
+  case: `SELECT case_number AS label FROM cases WHERE id = ?`,
+  incident: `SELECT incident_number AS label FROM incidents WHERE id = ?`,
+  evidence: `SELECT evidence_number AS label FROM evidence WHERE id = ?`,
+  warrant: `SELECT warrant_number AS label FROM warrants WHERE id = ?`,
+};
+
+forensics.post('/:caseId/links', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number;
+    const b = await c.req.json<Record<string, unknown>>();
+
+    if (typeof b.entity_type !== 'string' || !LINK_ENTITY_TYPES.has(b.entity_type)) {
+      return c.json({ error: 'entity_type required and must be a supported type', code: 'ENTITY_TYPE_REQUIRED' }, 400);
+    }
+    const entityId = Number(b.entity_id);
+    if (!Number.isFinite(entityId)) return c.json({ error: 'entity_id required', code: 'ENTITY_ID_REQUIRED' }, 400);
+    const relationship = typeof b.relationship === 'string' && b.relationship.trim() ? b.relationship.trim() : 'related';
+
+    const found = await queryFirst<{ label: string | null }>(db, LINK_LABEL_QUERIES[b.entity_type], entityId);
+    if (!found) return c.json({ error: `${b.entity_type} #${entityId} not found`, code: 'ENTITY_NOT_FOUND' }, 400);
+    const entityLabel = found.label || `${b.entity_type} #${entityId}`;
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_case_entity_links (forensic_case_id, entity_type, entity_id, entity_label, relationship, linked_by, linked_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      caseId, b.entity_type, entityId, entityLabel, relationship, userId, user?.full_name ?? '',
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    await logActivity(db, caseId, 'link_added', `Linked ${b.entity_type} "${entityLabel}" (${relationship})`, userId, user?.full_name ?? '');
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_case_entity_links WHERE id = ?', newId);
+    return c.json({ data: created }, 201);
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to link entity', 'LINK_POST_ERROR');
+  }
+});
+
+forensics.delete('/:caseId/links/:linkId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    const linkId = parseInt(c.req.param('linkId'), 10);
+    if (isNaN(caseId) || isNaN(linkId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const existing = await queryFirst<{ entity_type: string; entity_label: string }>(
+      db, 'SELECT entity_type, entity_label FROM forensic_case_entity_links WHERE id = ? AND forensic_case_id = ?', linkId, caseId,
+    );
+    if (!existing) return c.json({ error: 'Link not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, 'DELETE FROM forensic_case_entity_links WHERE id = ?', linkId);
+    const userId = c.get('userId') as number;
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    await logActivity(db, caseId, 'link_removed', `Unlinked ${existing.entity_type} "${existing.entity_label}"`, userId, user?.full_name ?? '');
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to remove link', code: 'LINK_DELETE_ERROR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // ANALYSES
 // ═══════════════════════════════════════════════════════════════
 
@@ -888,32 +1181,65 @@ forensics.get('/metrics/backlog', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
+// GET /:id/qc-history — reads the dedicated forensic_qc_checks table.
+// Previously read the generic activity_log table with a JSON-stringified
+// `details` blob the frontend couldn't reliably parse
+// (`qc.details?.includes('PASS')` never matched JSON — QC results always
+// rendered as FAIL). A dedicated table also satisfies ISO-17025/ANAB's
+// expectation that QC be its own auditable record.
 forensics.get('/:id/qc-history', async (c) => {
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM activity_log WHERE entity_type = 'forensic_case' AND entity_id = ? AND action LIKE '%qc%' ORDER BY created_at DESC LIMIT 50`, id);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT * FROM forensic_qc_checks WHERE forensic_case_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
+      id,
+    );
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
 });
 
 // /analysis-templates relocated to before /:id (see comment block near line 188).
 
+// POST /:id/qc-check — now role-gated (admin/manager/supervisor, matching
+// the reviewer-tier roles elsewhere in this file) since it wasn't gated
+// at all previously, an odd gap on a QC-record-critical endpoint.
 forensics.post('/:id/qc-check', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const body = await c.req.json<Record<string, unknown>>();
     const userId = c.get('userId') as number;
-    const fc = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', id);
-    if (!fc) return c.json({ error: 'Case not found' }, 404);
-    await execute(db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'qc_check', 'forensic_case', ?, ?, datetime('now'))`,
-      userId, id, JSON.stringify({ result: body.result || 'pass', notes: body.notes || '' }));
-    return c.json({ success: true });
-  } catch { return c.json({ error: 'QC check failed' }, 500); }
+    const fc = await queryFirst<{ id: number }>(db, 'SELECT id FROM forensic_cases WHERE id = ?', id);
+    if (!fc) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    const checkType = typeof body.check_type === 'string' && body.check_type.trim() ? body.check_type : 'peer_review';
+    const pass = body.pass !== false; // default true unless explicitly false
+    const reviewerNotes = typeof body.reviewer_notes === 'string'
+      ? body.reviewer_notes
+      : (typeof body.notes === 'string' ? body.notes : null);
+
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    const result = await execute(
+      db,
+      `INSERT INTO forensic_qc_checks (forensic_case_id, exhibit_id, check_type, reviewer_id, reviewer_name, pass, reviewer_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, body.exhibit_id ?? null, checkType, userId, user?.full_name ?? '', pass ? 1 : 0, reviewerNotes,
+    );
+    const newId = Number(result.meta.last_row_id);
+
+    await logActivity(db, id, 'qc_check', `${checkType}: ${pass ? 'PASS' : 'FAIL'}`, userId, user?.full_name ?? '');
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_qc_checks WHERE id = ?', newId);
+    return c.json({ data: created, success: true });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'QC check failed', 'QC_CHECK_ERROR');
+  }
 });
 
 forensics.get('/queue/priority', async (c) => {
@@ -952,6 +1278,45 @@ forensics.get('/capacity/planning', async (c) => {
       },
     });
   } catch { return c.json({ data: { active_cases: 0, avg_new_per_week: 0 } }); }
+});
+
+// POST /:caseId/apply-template — copies a report template's `sections`
+// onto forensic_cases.report_sections. generateForensicCasePdf()
+// (client-side, forensicCasePdf.ts) reads this to render a structured
+// report layout instead of its hardcoded default.
+forensics.post('/:caseId/apply-template', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('caseId'), 10);
+    if (isNaN(caseId)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+    const b = await c.req.json<Record<string, unknown>>();
+    const templateId = Number(b.template_id);
+    if (!Number.isFinite(templateId)) return c.json({ error: 'template_id required', code: 'TEMPLATE_ID_REQUIRED' }, 400);
+
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM forensic_cases WHERE id = ?', caseId);
+    if (!existing) return c.json({ error: 'Forensics case not found', code: 'NOT_FOUND' }, 404);
+
+    const template = await queryFirst<{ sections: string; name: string }>(
+      db, 'SELECT sections, name FROM forensic_report_templates WHERE id = ? AND active = 1', templateId,
+    );
+    if (!template) return c.json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }, 404);
+
+    await execute(
+      db, `UPDATE forensic_cases SET report_sections = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      template.sections, caseId,
+    );
+
+    const userId = c.get('userId') as number;
+    const user = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', userId);
+    await logActivity(db, caseId, 'template_applied', `Applied report template "${template.name}"`, userId, user?.full_name ?? '');
+
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', caseId);
+    return c.json({ data: updated });
+  } catch (err) {
+    return dbErrorResponse(c, err, 'Failed to apply template', 'APPLY_TEMPLATE_ERROR');
+  }
 });
 
 export default forensics;

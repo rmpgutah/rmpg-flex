@@ -296,6 +296,26 @@ export interface FleetioFuelEntry {
   [key: string]: unknown;
 }
 
+export interface ListFuelEntriesInput {
+  config: FleetioConfig;
+  /** Fleet.io's own vehicle id (not RMPG's) — the caller resolves this via
+   *  fleetio_links before calling. */
+  vehicleId: number;
+  page?: number;
+  perPage?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export async function listFuelEntries(input: ListFuelEntriesInput): Promise<FleetioListResponse<FleetioFuelEntry>> {
+  return fleetioFetch<FleetioListResponse<FleetioFuelEntry>>({
+    method: 'GET',
+    path: '/fuel_entries',
+    config: input.config,
+    query: { vehicle_id: input.vehicleId, page: input.page ?? 1, per_page: input.perPage ?? 100 },
+    fetchImpl: input.fetchImpl,
+  });
+}
+
 export async function createFuelEntry(input: CreateFuelEntryInput): Promise<FleetioFuelEntry> {
   return fleetioFetch<FleetioFuelEntry>({
     method: 'POST',

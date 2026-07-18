@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   isChunkLoadError,
   normalizeChunkError,
   mayReloadForChunkFailure,
   reloadAndHold,
+  CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   CHUNK_RELOAD_HOLD_MS,
 } from '../chunkRetry';
@@ -95,5 +98,18 @@ describe('reloadAndHold', () => {
     const rejection = expect(p).rejects.toThrow('Chunk load failed');
     await vi.advanceTimersByTimeAsync(100);
     await rejection;
+  });
+});
+
+describe('index.html entry-graph guard', () => {
+  // index.html can't import chunkRetry.ts (it runs before any module has
+  // loaded), so it carries its own inline copies of the reload key/window.
+  // Pin those literals to the exported constants so a future rename here
+  // can't silently drift the two recovery paths apart (see the comment
+  // above CHUNK_RELOAD_KEY: "Do NOT change this string in isolation").
+  it('uses the same reload key and window as chunkRetry.ts', () => {
+    const html = readFileSync(resolve(__dirname, '../../../index.html'), 'utf8');
+    expect(html).toContain(`'${CHUNK_RELOAD_KEY}'`);
+    expect(html).toContain(String(CHUNK_RELOAD_WINDOW_MS));
   });
 });

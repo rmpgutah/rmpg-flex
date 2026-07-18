@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 import { dbErrorResponse } from '../utils/dbErrors';
@@ -76,6 +76,23 @@ jail.get('/inmates/:id', async (c) => {
   }
 });
 
+// Migration 0185 latch — deploy applies migrations with continue-on-error
+// (see CLAUDE.md), so this guards the classification column existing before
+// the INSERT/UPDATE paths below reference it.
+let classificationColReady: Promise<void> | null = null;
+function ensureClassificationColumn(db: ReturnType<typeof getDb>): Promise<void> {
+  if (!classificationColReady) {
+    classificationColReady = (async () => {
+      try {
+        if (!(await columnExists(db, 'inmates', 'classification'))) {
+          await execute(db, 'ALTER TABLE inmates ADD COLUMN classification TEXT');
+        }
+      } catch { /* best-effort — INSERT/UPDATE below will surface a real error if this didn't take */ }
+    })();
+  }
+  return classificationColReady;
+}
+
 jail.post('/inmates', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
@@ -85,13 +102,15 @@ jail.post('/inmates', async (c) => {
     const b = await c.req.json<Record<string, unknown>>();
     if (typeof b.last_name !== 'string' || !b.last_name.trim()) return c.json({ error: 'last_name required', code: 'LAST_NAME_REQUIRED' }, 400);
     if (typeof b.first_name !== 'string' || !b.first_name.trim()) return c.json({ error: 'first_name required', code: 'FIRST_NAME_REQUIRED' }, 400);
+    await ensureClassificationColumn(db);
     const bookingNumber = await generateBookingNumber(db);
     const result = await execute(db,
-      `INSERT INTO inmates (booking_number, last_name, first_name, middle_name, dob, gender, race, height_inches, weight_lbs, hair_color, eye_color, skin_tone, marks_scars_tattoos, housing_unit, housing_cell, arresting_agency, arresting_officer_id, arrest_incident_id, bail_amount, bond_type, notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO inmates (booking_number, last_name, first_name, middle_name, dob, gender, race, height_inches, weight_lbs, hair_color, eye_color, skin_tone, marks_scars_tattoos, housing_unit, housing_cell, classification, arresting_agency, arresting_officer_id, arrest_incident_id, bail_amount, bond_type, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       bookingNumber, b.last_name, b.first_name, b.middle_name ?? null, b.dob ?? null, b.gender ?? null,
       b.race ?? null, b.height_inches ?? null, b.weight_lbs ?? null, b.hair_color ?? null, b.eye_color ?? null,
       b.skin_tone ?? null, b.marks_scars_tattoos ?? null, b.housing_unit ?? null, b.housing_cell ?? null,
+      b.classification ?? null,
       b.arresting_agency ?? 'RMPG', b.arresting_officer_id ?? null, b.arrest_incident_id ?? null,
       b.bail_amount ?? null, b.bond_type ?? null, b.notes ?? null, userId,
     );
@@ -113,7 +132,7 @@ jail.post('/inmates', async (c) => {
   }
 });
 
-const INMATE_UPDATABLE = new Set(['last_name','first_name','middle_name','dob','gender','race','height_inches','weight_lbs','hair_color','eye_color','skin_tone','marks_scars_tattoos','housing_unit','housing_cell','bail_amount','bond_type','status','release_date','release_reason','notes']);
+const INMATE_UPDATABLE = new Set(['last_name','first_name','middle_name','dob','gender','race','height_inches','weight_lbs','hair_color','eye_color','skin_tone','marks_scars_tattoos','housing_unit','housing_cell','classification','bail_amount','bond_type','status','release_date','release_reason','notes']);
 
 jail.put('/inmates/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer');
@@ -125,6 +144,7 @@ jail.put('/inmates/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM inmates WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Inmate not found', code: 'NOT_FOUND' }, 404);
     const b = await c.req.json<Record<string, unknown>>();
+    if ('classification' in b) await ensureClassificationColumn(db);
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) {
       if (!INMATE_UPDATABLE.has(k)) continue;
@@ -421,15 +441,47 @@ jail.put('/inmates/:id/transports/:transportId', async (c) => {
 });
 
 // Stats
+// GET /jail/housing — JailManagementPage.tsx's Housing Board tab. There is no
+// separate housing_units capacity table; this aggregates the real
+// housing_unit/housing_cell columns already on `inmates` (booked/housed/
+// court/medical count as "in custody" for occupancy purposes — released/
+// transferred inmates don't occupy a cell). capacity/unit_type aren't
+// tracked anywhere, so they're omitted rather than fabricated.
+jail.get('/housing', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const inmateTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
+    if (!inmateTable?.n) return c.json([]);
+    const rows = await query<{ housing_unit: string | null; current_count: number }>(db, `
+      SELECT housing_unit, COUNT(*) AS current_count
+      FROM inmates
+      WHERE status IN ('booked', 'housed', 'court', 'medical') AND housing_unit IS NOT NULL AND housing_unit != ''
+      GROUP BY housing_unit
+      ORDER BY housing_unit
+    `);
+    return c.json(rows.map((r, i) => ({ id: i + 1, name: r.housing_unit, current_count: r.current_count })));
+  } catch (err) {
+    return c.json({ error: 'Failed to load housing board' }, 500);
+  }
+});
+
 jail.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
     const inmateTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
-    if (!inmateTable?.n) return c.json({ total_inmates: 0, active_inmates: 0, on_probation: 0, released_this_month: 0, booked_this_month: 0, by_gender: [], by_race: [] });
+    if (!inmateTable?.n) return c.json({ total_inmates: 0, by_status: {}, by_classification: {} });
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM inmates'))?.count ?? 0;
-    const housed = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'housed'"))?.count ?? 0;
-    const booked = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'booked'"))?.count ?? 0;
-    return c.json({ total, housed, booked });
+    const byStatusRows = await query<{ status: string; n: number }>(db, 'SELECT status, COUNT(*) AS n FROM inmates GROUP BY status');
+    const by_status: Record<string, number> = {};
+    for (const r of byStatusRows) by_status[r.status] = r.n;
+    // Migration 0185 — guard in case it hasn't landed on this environment yet
+    // (deploy applies migrations with continue-on-error; see CLAUDE.md).
+    const by_classification: Record<string, number> = {};
+    if (await columnExists(db, 'inmates', 'classification')) {
+      const byClassRows = await query<{ classification: string | null; n: number }>(db, "SELECT classification, COUNT(*) AS n FROM inmates WHERE classification IS NOT NULL GROUP BY classification");
+      for (const r of byClassRows) by_classification[r.classification as string] = r.n;
+    }
+    return c.json({ total_inmates: total, by_status, by_classification });
   } catch (err) {
     return c.json({ error: 'Failed to load stats' }, 500);
   }

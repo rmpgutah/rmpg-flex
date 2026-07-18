@@ -118,17 +118,22 @@ export default React.memo(function ServeJobCard({
   isSelected = false,
   onToggleSelect,
 }: ServeJobCardProps) {
+  // Deadline urgency only applies to jobs still awaiting service — a job
+  // that's already served/failed/archived is resolved and shouldn't show a
+  // pulsing OVERDUE/CRITICAL alert just because its deadline has since passed.
+  const isOpenJob = job.status === 'pending' || job.status === 'in_progress';
+
   const isDueSoon = useMemo(() => {
-    if (!job.deadline) return false;
+    if (!isOpenJob || !job.deadline) return false;
     const deadlineMs = parseTimestamp(job.deadline).getTime();
     const now = Date.now();
     return deadlineMs - now <= 48 * 60 * 60 * 1000 && deadlineMs > now;
-  }, [job.deadline]);
+  }, [isOpenJob, job.deadline]);
 
   const isOverdue = useMemo(() => {
-    if (!job.deadline) return false;
+    if (!isOpenJob || !job.deadline) return false;
     return parseTimestamp(job.deadline).getTime() <= Date.now();
-  }, [job.deadline]);
+  }, [isOpenJob, job.deadline]);
 
   const isCritical = job.urgency_tier === 'critical';
   const statusCfg = STATUS_COLORS[job.status] ?? STATUS_COLORS.pending;

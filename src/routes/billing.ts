@@ -118,9 +118,13 @@ billing.get('/invoices', async (c) => {
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('client_id')) { conditions.push('i.client_id = ?'); params.push(q('client_id')); }
     if (q('status')) { conditions.push('i.status = ?'); params.push(q('status')); }
+    if (q('date_from')) { conditions.push('i.issue_date >= ?'); params.push(q('date_from')); }
+    if (q('date_to')) { conditions.push('i.issue_date <= ?'); params.push(q('date_to')); }
+    if (q('q')) { conditions.push('(i.invoice_number LIKE ? OR i.notes LIKE ?)'); params.push(`%${q('q')}%`, `%${q('q')}%`); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
-    const perPage = 50; const offset = (page - 1) * perPage;
+    const perPage = Math.min(200, Math.max(1, parseInt(q('limit') || '50', 10) || 50));
+    const offset = (page - 1) * perPage;
     const count = await queryFirst<{ total: number }>(db, `SELECT COUNT(*) as total FROM invoices i ${where}`, ...params);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT i.*, cl.name AS client_name FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id ${where} ORDER BY i.issue_date DESC LIMIT ? OFFSET ?`, ...params, perPage, offset);
@@ -128,6 +132,37 @@ billing.get('/invoices', async (c) => {
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
     return c.json({ error: 'Failed to list invoices' }, 500);
+  }
+});
+
+// GET /invoices/:id — full invoice detail for InvoicesPage.tsx's fetchDetail:
+// the base row + client_name, line items (line_total aliased to `amount`,
+// the field the client's detail view actually renders), and payments
+// (with recorded_by_name joined in, matching the client's Payment type).
+// No such endpoint existed anywhere — InvoicesPage previously called
+// /api/invoices/:id (a different, stub-only router that only ever
+// registered /stats and /:id/pdf-data), which always 404'd.
+billing.get('/invoices/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const invoice = await queryFirst<Record<string, unknown>>(db,
+      `SELECT i.*, cl.name AS client_name FROM invoices i
+       LEFT JOIN clients cl ON i.client_id = cl.id
+       WHERE i.id = ?`, id);
+    if (!invoice) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404);
+    const lineItems = await query<Record<string, unknown>>(db,
+      `SELECT id, invoice_id, line_type, description, quantity, unit_price,
+              line_total AS amount, sort_order, created_at
+       FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id`, id);
+    const payments = await query<Record<string, unknown>>(db,
+      `SELECT p.*, u.full_name AS recorded_by_name FROM payments p
+       LEFT JOIN users u ON p.recorded_by = u.id
+       WHERE p.invoice_id = ? ORDER BY p.payment_date DESC`, id);
+    return c.json({ data: { ...invoice, line_items: lineItems, payments } });
+  } catch (err) {
+    return c.json({ error: 'Failed to fetch invoice' }, 500);
   }
 });
 

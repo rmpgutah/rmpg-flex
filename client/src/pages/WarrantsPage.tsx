@@ -3,11 +3,12 @@ import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
+import LegalDataHunterValidateButton from '../components/LegalDataHunterValidateButton';
 import {
-  AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
-  Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
+  AlertTriangle, Plus, Search, CheckCircle, Clock,
+  Loader2, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
   PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
-  UserCheck, Eye, Pencil, ShieldAlert,
+  UserCheck, ShieldAlert,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
@@ -22,7 +23,6 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
 import JurisdictionLookup from '../components/JurisdictionLookup';
 import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
@@ -41,22 +41,16 @@ import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/r
 import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import EmailedDocuments from '../components/EmailedDocuments';
-import {
-  priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
-  stateFromSource,
-} from '../utils/warrantListHelpers';
-import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
-import { useMenuActions } from '../utils/contextMenuActions';
 import ScrapersTab from './warrants/ScrapersTab';
+import WarrantsListTab, { type WarrantsListTabHandle } from './warrants/WarrantsListTab';
 
 // ============================================================
 // Types
 // ============================================================
 
-interface Warrant {
+export interface Warrant {
   id: number;
   warrant_number: string;
   type: 'arrest' | 'search' | 'bench' | 'civil' | 'other';
@@ -179,7 +173,7 @@ interface PersonProfile {
 }
 
 // Unified warrants list
-interface UnifiedWarrant extends Warrant {
+export interface UnifiedWarrant extends Warrant {
   source?: string | null;
 }
 
@@ -471,34 +465,19 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
 // Component
 // ============================================================
 
-// Filter chip used in the Warrants tab list filter bar
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[var(--brand-gold)] text-black border-[var(--brand-gold)]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function WarrantsPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { openMenu } = useContextMenu();
-  const m = useMenuActions();
   const warrantFormTitleId = useId();
-  const serveTitleId = useId();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPersonId = searchParams.get('personId');
   // ?warrant_id=<id> deep-link auto-select — resolved AFTER warrants hydrate;
   // we hold the pending id in a ref so a rerender doesn't re-attempt the lookup.
   const pendingWarrantIdRef = useRef<string | null>(searchParams.get('warrant_id'));
+  const listTabRef = useRef<WarrantsListTabHandle>(null);
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -514,7 +493,6 @@ export default function WarrantsPage() {
   const [activeTab, setActiveTab] = useState<TabId>(
     initialPersonId || pendingWarrantIdRef.current ? 'warrants' : 'dashboard'
   );
-  const [filterPersonId, setFilterPersonId] = useState<string | null>(initialPersonId);
 
   // ============================================================
   // DASHBOARD STATE
@@ -533,207 +511,6 @@ export default function WarrantsPage() {
   const [summaryFrom, setSummaryFrom] = useState('');
   const [summaryTo, setSummaryTo] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
-
-  // ============================================================
-  // WARRANTS TAB STATE
-  // ============================================================
-  const [warrants, setWarrants] = useState<UnifiedWarrant[]>([]);
-  const [selectedWarrant, setSelectedWarrant] = useState<Warrant | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('');
-  const [filterSource, setFilterSource] = useState<string>('');
-  const [filterCourt, setFilterCourt] = useState('');
-  const [filterSeverity, setFilterSeverity] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
-
-  // Batch selection
-  const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
-  const [batchStatus, setBatchStatus] = useState('');
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
-
-  // Bulk-action confirms — replace native window.confirm with ConfirmDialog
-  // so the operator gets a themed modal that matches the rest of the page.
-  const [bulkUpdateConfirmOpen, setBulkUpdateConfirmOpen] = useState(false);
-  const [bulkArchiveConfirmOpen, setBulkArchiveConfirmOpen] = useState(false);
-  const [bulkPrintConfirmOpen, setBulkPrintConfirmOpen] = useState(false);
-
-  // Phase 1 sort + filter chips state
-  const [sortKey, setSortKey] = useState<'priority' | 'age' | 'freshness' | 'alpha'>('priority');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [filterPriority, setFilterPriority] = useState(false);
-  const [filterSinceWeek, setFilterSinceWeek] = useState(false);
-  const [filterMatches, setFilterMatches] = useState(false);
-  const [filterStateChip, setFilterStateChip] = useState<string>('');
-  const [filterFederal, setFilterFederal] = useState(false);
-  const [filterArchivedChip, setFilterArchivedChip] = useState(false);
-
-  const anyFilterActive = filterPriority || filterSinceWeek || filterMatches || !!filterStateChip || filterFederal || filterArchivedChip;
-
-  function toggleSort(key: 'priority' | 'age' | 'freshness' | 'alpha') {
-    if (sortKey === key) {
-      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-    } else {
-      setSortKey(key);
-      setSortOrder(key === 'priority' ? 'desc' : 'asc');
-    }
-  }
-
-  function clearAllFilters() {
-    setFilterPriority(false);
-    setFilterSinceWeek(false);
-    setFilterMatches(false);
-    setFilterStateChip('');
-    setFilterFederal(false);
-    setFilterArchivedChip(false);
-  }
-
-  const toggleBatchSelect = (id: number) => {
-    setBatchSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelectAll = () => {
-    if (batchSelected.size === warrants.length) {
-      setBatchSelected(new Set());
-    } else {
-      setBatchSelected(new Set(warrants.map(w => w.id)));
-    }
-  };
-  const handleBatchUpdate = async () => {
-    if (batchSelected.size === 0 || !batchStatus) return;
-    setBulkUpdateConfirmOpen(true);
-  };
-  const performBatchUpdate = async () => {
-    setBulkUpdateConfirmOpen(false);
-    if (batchSelected.size === 0 || !batchStatus) return;
-    setBatchSubmitting(true);
-    try {
-      await apiFetch('/warrants/batch-update', {
-        method: 'PUT',
-        body: JSON.stringify({ ids: Array.from(batchSelected), status: batchStatus }),
-      });
-      setBatchSelected(new Set());
-      setBatchStatus('');
-      fetchWarrants({ silent: true });
-    } catch (err: any) { addToast(err?.message || 'Batch update failed', 'error'); }
-    finally { setBatchSubmitting(false); }
-  };
-
-  // Phase 1 bulk handlers — Archive / Mark Reviewed / Print Packet
-  const handleBulkArchive = async () => {
-    if (!batchSelected.size) return;
-    setBulkArchiveConfirmOpen(true);
-  };
-  const performBulkArchive = async () => {
-    setBulkArchiveConfirmOpen(false);
-    if (!batchSelected.size) return;
-    try {
-      const res = await apiFetch<{ archived: number; skipped: number }>('/warrants/bulk-archive', {
-        method: 'POST',
-        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
-      });
-      addToast(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`, 'success');
-      setBatchSelected(new Set());
-      fetchWarrants({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk archive failed', 'error');
-    }
-  };
-
-  const handleBulkReview = async () => {
-    if (!batchSelected.size) return;
-    try {
-      const res = await apiFetch<{ reviewed: number }>('/warrants/bulk-review', {
-        method: 'POST',
-        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
-      });
-      addToast(`Marked ${res.reviewed} warrant(s) reviewed`, 'success');
-      setBatchSelected(new Set());
-      fetchWarrants({ silent: true });
-    } catch (err: any) {
-      addToast(err?.message || 'Bulk review failed', 'error');
-    }
-  };
-
-  const handleBulkPrintPacket = async () => {
-    if (!batchSelected.size) return;
-    if (batchSelected.size > 200) { addToast('Packet print limited to 200 warrants', 'error'); return; }
-    if (batchSelected.size > 50) {
-      setBulkPrintConfirmOpen(true);
-      return;
-    }
-    await performBulkPrintPacket();
-  };
-  const performBulkPrintPacket = async () => {
-    setBulkPrintConfirmOpen(false);
-    if (!batchSelected.size) return;
-    const ids = Array.from(batchSelected);
-    try {
-      await buildWarrantPacketPdf(ids, {
-        full_name: user?.full_name,
-        badge_number: user?.badge_number,
-      });
-    } catch (err: any) {
-      addToast(err?.message || 'Packet generation failed', 'error');
-    }
-  };
-
-  // Phase 1: download a single-warrant PDF for the currently selected warrant
-  const handlePrintWarrantPdf = async (id: number) => {
-    try {
-      const res = await apiFetch<any>(`/warrants/${id}`);
-      const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
-
-      const printedByName = displayUserName(user);
-
-      const data: any = {
-        ...raw,
-        subject_aliases: raw.subject_aliases
-          ? (Array.isArray(raw.subject_aliases) ? raw.subject_aliases : [raw.subject_aliases])
-          : undefined,
-        printed_by_name: printedByName,
-        printed_by_badge: user?.badge_number,
-        printed_at: new Date().toISOString(),
-      };
-
-      // Filename fallback ladder — warrant_number is often the literal
-      // sentinel "N/A" (the warrant create form defaults it that way for
-      // manually-entered warrants), so a naive `warrant-${warrant_number}`
-      // produced files named `warrant-N_A.pdf` / `N_A_warrant.pdf`
-      // depending on internal sanitization. Try real warrant_number first,
-      // then subject-name + local id, then bare id, so every download
-      // gets an operator-readable name.
-      const sentinelRe = /^(n\/a|none|null|undefined)$/i;
-      const rawWarrantNumber = typeof raw.warrant_number === 'string' ? raw.warrant_number.trim() : '';
-      const goodWarrantNumber = rawWarrantNumber && !sentinelRe.test(rawWarrantNumber) ? rawWarrantNumber : '';
-      const subjectSlug = [raw.subject_last_name, raw.subject_first_name]
-        .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
-        .filter(Boolean)
-        .join('-');
-      const filenameStem =
-        goodWarrantNumber
-          || (subjectSlug ? `${subjectSlug}-${id}` : `warrant-${id}`);
-      // Sanitize: replace anything that would confuse a filesystem (path
-      // separators, control chars) with a hyphen. Allowed: word chars,
-      // hyphen, period, parens, space.
-      const safeStem = filenameStem.replace(/[^\w\-. ()]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      const filename = `warrant-${safeStem || id}.pdf`;
-
-      await downloadRecordPdf('warrant', data, filename);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to print warrant PDF', 'error');
-    }
-  };
 
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
@@ -777,19 +554,6 @@ export default function WarrantsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
-
-  // Serve modal
-  const [serveModalOpen, setServeModalOpen] = useState(false);
-  const [serveLocation, setServeLocation] = useState('');
-  const [serving, setServing] = useState(false);
-
-  // Delete confirm
-  const [deletingWarrant, setDeletingWarrant] = useState<Warrant | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Single-warrant archive confirm (detail panel toolbar)
-  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
-  const [archiveTargetId, setArchiveTargetId] = useState<number | null>(null);
 
   // Person search for form
   const [personSearch, setPersonSearch] = useState('');
@@ -855,6 +619,7 @@ export default function WarrantsPage() {
   const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanRunning, setScanRunning] = useState(false);
+  const [boloPrinting, setBoloPrinting] = useState(false);
 
   // ============================================================
   // DASHBOARD FETCHES
@@ -902,167 +667,6 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchFeed();
   }, [activeTab, fetchFeed]);
-
-  // ============================================================
-  // WARRANTS TAB FETCHES
-  // ============================================================
-
-  // Debounce search query — 400ms delay prevents hammering API on every keystroke
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const fetchWarrants = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoading(true); setError(null); }
-    try {
-      const params = new URLSearchParams();
-      if (filterStatus) params.set('status', filterStatus);
-      if (filterType) params.set('type', filterType);
-      if (filterSource) params.set('source', filterSource);
-      if (filterCourt) params.set('court', filterCourt);
-      if (filterSeverity) params.set('severity', filterSeverity);
-      if (filterPersonId) params.set('person_id', filterPersonId);
-      if (searchQuery) params.set('subject_name', searchQuery);
-      params.set('archived', showArchived ? 'true' : 'false');
-      params.set('page', String(page));
-      params.set('per_page', '50');
-      // Phase 1 sort + filter chips
-      if (sortKey) params.set('sort', sortKey);
-      if (sortOrder) params.set('order', sortOrder);
-      if (filterPriority) params.set('priority_min', '70');
-      if (filterSinceWeek) params.set('since_days', '7');
-      if (filterMatches) params.set('matches_person', '1');
-      if (filterStateChip) params.set('state', filterStateChip);
-      if (filterFederal) params.set('state_prefix', 'fed_');
-      if (filterArchivedChip) params.set('include_archived', '1');
-
-      // Try unified endpoint first, fall back to standard
-      try {
-        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
-          `/warrants/unified?${params.toString()}`
-        );
-        setWarrants(res.warrants || []);
-        setTotalCount(res.total || 0);
-        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
-      } catch {
-        // Fallback to standard endpoint
-        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-          `/warrants?${params.toString()}`
-        );
-        setWarrants(res.data || []);
-        setTotalPages(res.pagination?.totalPages || 1);
-        setTotalCount(res.pagination?.total || 0);
-      }
-    } catch (err: any) {
-      if (!options?.silent) setError(err?.message || 'Failed to load warrants');
-    } finally {
-      if (!options?.silent) setLoading(false);
-    }
-  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
-
-  useEffect(() => {
-    if (activeTab === 'warrants') fetchWarrants();
-  }, [activeTab, fetchWarrants]);
-
-  // Phase 1: hydrate filter chips from URL on mount.
-  // Uses searchParams (via useSearchParams) so react-router owns the URL and
-  // ?warrant_id= / ?personId= deep-links are not clobbered on first render.
-  useEffect(() => {
-    setFilterPriority(searchParams.get('priority_min') === '70');
-    setFilterSinceWeek(searchParams.get('since_days') === '7');
-    setFilterMatches(searchParams.get('matches_person') === '1');
-    setFilterStateChip(searchParams.get('state') || '');
-    setFilterFederal(searchParams.get('state_prefix') === 'fed_');
-    setFilterArchivedChip(searchParams.get('include_archived') === '1');
-    // Also hydrate the ?status= deep-link into the dropdown filter so that
-    // /warrants?status=active lands with the Active filter pre-selected.
-    const statusParam = searchParams.get('status');
-    if (statusParam && WARRANT_STATUSES.some(s => s.value === statusParam)) {
-      setFilterStatus(statusParam);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Phase 1: persist filter chips to URL when they change.
-  // Uses setSearchParams so react-router remains the single URL authority —
-  // window.history.replaceState was previously used here but it silently
-  // dropped params managed by react-router (e.g. ?warrant_id=).
-  useEffect(() => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      // Remove chip params that are no longer active; set those that are.
-      if (filterPriority) next.set('priority_min', '70'); else next.delete('priority_min');
-      if (filterSinceWeek) next.set('since_days', '7'); else next.delete('since_days');
-      if (filterMatches) next.set('matches_person', '1'); else next.delete('matches_person');
-      if (filterStateChip) next.set('state', filterStateChip); else next.delete('state');
-      if (filterFederal) next.set('state_prefix', 'fed_'); else next.delete('state_prefix');
-      if (filterArchivedChip) next.set('include_archived', '1'); else next.delete('include_archived');
-      return next;
-    }, { replace: true });
-  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, setSearchParams]);
-
-  // Live sync — skip while form modal is open to prevent UI freezes during person search
-  const silentRefreshWarrants = useCallback(() => {
-    if (formOpen) return; // Don't refresh list while editing
-    fetchWarrants({ silent: true });
-  }, [fetchWarrants, formOpen]);
-  // 'warrants' matches the liveBroadcast module derived from /api/warrants/*
-  // mutations; 'alerts' never fired (no producer emits that module).
-  useLiveSync('warrants', silentRefreshWarrants);
-
-  // Fetch warrant detail
-  const fetchWarrantDetail = useCallback(async (id: number) => {
-    try {
-      const detail = await apiFetch<Warrant>(`/warrants/${id}`);
-      setSelectedWarrant(detail);
-    } catch { /* keep existing */ }
-  }, []);
-
-  // ── /warrants?warrant_id=<id> deep-link auto-select ──
-  // Once the warrants list hydrates, find the target by id and select it. If
-  // the row is not in the current paged view, fall through to a direct fetch
-  // by id (so deep-links to archived or off-page warrants still land). Strip
-  // the query after so a refresh doesn't re-trigger the lookup.
-  useEffect(() => {
-    const target = pendingWarrantIdRef.current;
-    if (!target || activeTab !== 'warrants') return;
-    if (loading) return;
-    const hit = warrants.find((w) => String(w.id) === String(target));
-    if (hit) {
-      pendingWarrantIdRef.current = null;
-      fetchWarrantDetail(hit.id);
-      const next = new URLSearchParams(searchParams);
-      next.delete('warrant_id');
-      setSearchParams(next, { replace: true });
-      return;
-    }
-    // Wait until the list has actually hydrated before trying the fallback.
-    if (warrants.length === 0) return;
-    // Not in the paged list — try a direct fetch by id (handles archived /
-    // off-page targets).
-    pendingWarrantIdRef.current = null;
-    const numeric = Number(target);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      addToast(`Warrant ${target} not found`, 'warning');
-    } else {
-      (async () => {
-        try {
-          const detail = await apiFetch<Warrant>(`/warrants/${numeric}`);
-          setSelectedWarrant(detail);
-        } catch {
-          addToast(`Warrant ${target} not in the current view (try clearing filters or unarchiving)`, 'warning');
-        }
-      })();
-    }
-    const next = new URLSearchParams(searchParams);
-    next.delete('warrant_id');
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [warrants, loading, activeTab]);
 
   // Person search for form — uses the dedicated search endpoint
   useEffect(() => {
@@ -1126,13 +730,13 @@ export default function WarrantsPage() {
       if (first.trim()) body.firstName = first.trim();
       if (last.trim()) body.lastName = last.trim();
       if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
-      if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
-      if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
+      if (uniSearchWarrantNum.trim()) body.caseNumber = uniSearchWarrantNum.trim();
+      if (uniSearchCourt.trim()) body.courtName = uniSearchCourt.trim();
       if (uniSearchSource) body.source = uniSearchSource;
       if (uniSearchOffenseLevel) body.offenseLevel = uniSearchOffenseLevel;
       if (uniSearchStatus) body.status = uniSearchStatus;
       if (uniSearchType) body.type = uniSearchType;
-      if (uniSearchCharge.trim()) body.chargeKeyword = uniSearchCharge.trim();
+      if (uniSearchCharge.trim()) body.charge = uniSearchCharge.trim();
       if (uniSearchDateFrom) body.dateFrom = uniSearchDateFrom;
       if (uniSearchDateTo) body.dateTo = uniSearchDateTo;
 
@@ -1239,13 +843,13 @@ export default function WarrantsPage() {
       });
       setAddedToLocal(true);
       // Refresh warrants list if on warrants tab
-      fetchWarrants({ silent: true });
+      listTabRef.current?.refresh({ silent: true });
     } catch (err: any) {
-      setError(err?.message || 'Failed to add to local records');
+      addToast(err?.message || 'Failed to add to local records', 'error');
     } finally {
       setAddingToLocal(false);
     }
-  }, [utahDetailWarrant, addingToLocal, fetchWarrants]);
+  }, [utahDetailWarrant, addingToLocal]);
 
   const handleCheckPerson = useCallback(() => {
     if (!utahDetailWarrant) return;
@@ -1429,132 +1033,19 @@ export default function WarrantsPage() {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        setWarrants((prev) => prev.map((w) => w.id === editingWarrant.id ? { ...w, ...updated } : w));
-        if (selectedWarrant?.id === editingWarrant.id) fetchWarrantDetail(editingWarrant.id);
+        listTabRef.current?.applyWarrantUpdate(updated);
+        listTabRef.current?.refetchIfSelected(editingWarrant.id);
       } else {
         await apiFetch('/warrants', { method: 'POST', body: JSON.stringify(body) });
-        await fetchWarrants({ silent: true });
+        await listTabRef.current?.refresh({ silent: true });
       }
       clearFormDraft();
       setFormOpen(false);
     } catch (err: any) {
-      setError(err?.message || 'Failed to save warrant');
+      listTabRef.current?.setListError(err?.message || 'Failed to save warrant');
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleServe = async () => {
-    if (!selectedWarrant) return;
-    setServing(true);
-    try {
-      const updated = await apiFetch<Warrant>(`/warrants/${selectedWarrant.id}/serve`, {
-        method: 'PUT',
-        body: JSON.stringify({ served_location: serveLocation.trim() || null }),
-      });
-      setWarrants((prev) => prev.map((w) => w.id === selectedWarrant.id ? { ...w, ...updated } : w));
-      setSelectedWarrant(prev => prev ? { ...prev, ...updated } : prev);
-      setServeModalOpen(false);
-      setServeLocation('');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to serve warrant');
-    } finally {
-      setServing(false);
-    }
-  };
-
-  const handleArchive = async (id: number) => {
-    try {
-      await apiFetch(`/warrants/${id}/archive`, { method: 'POST' });
-      await fetchWarrants({ silent: true });
-      if (selectedWarrant?.id === id) setSelectedWarrant(null);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to archive warrant');
-    }
-  };
-
-  const performArchive = async () => {
-    setArchiveConfirmOpen(false);
-    if (archiveTargetId == null) return;
-    await handleArchive(archiveTargetId);
-    setArchiveTargetId(null);
-  };
-
-  const handleUnarchive = async (id: number) => {
-    try {
-      await apiFetch(`/warrants/${id}/unarchive`, { method: 'POST' });
-      await fetchWarrants({ silent: true });
-      if (selectedWarrant?.id === id) fetchWarrantDetail(id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to unarchive warrant');
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deletingWarrant) return;
-    setDeleteLoading(true);
-    try {
-      await apiFetch(`/warrants/${deletingWarrant.id}`, { method: 'DELETE' });
-      setDeletingWarrant(null);
-      if (selectedWarrant?.id === deletingWarrant.id) setSelectedWarrant(null);
-      await fetchWarrants({ silent: true });
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete warrant');
-      setDeletingWarrant(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const handleUpdateStatus = async (id: number, newStatus: string) => {
-    try {
-      const updated = await apiFetch<Warrant>(`/warrants/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setWarrants((prev) => prev.map((w) => w.id === id ? { ...w, ...updated } : w));
-      if (selectedWarrant?.id === id) fetchWarrantDetail(id);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update status');
-    }
-  };
-
-  // ── Right-click context menu (shared by list + table rows) ──
-  const buildWarrantMenu = (w: Warrant): ContextMenuItem[] => {
-    const isActive = w.status === 'active';
-    const isArchived = !!w.archived_at;
-    return [
-      m.action('View warrant', () => fetchWarrantDetail(w.id), { icon: <Eye size={12} /> }),
-      ...(w.subject_person_id
-        ? [m.action('View subject', () => openPersonProfile(w.subject_person_id!), { icon: <User size={12} /> })]
-        : []),
-      ...(w.subject_name && !/^(none|n\/a)$/i.test(w.subject_name)
-        ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
-        : []),
-      m.action('Edit warrant', () => openEditForm(w), { icon: <Pencil size={12} /> }),
-      m.separator(),
-      ...(isActive
-        ? [
-            m.action('Mark served', () => handleUpdateStatus(w.id, 'served'), { icon: <CheckCircle size={12} /> }),
-            m.action('Recall', () => handleUpdateStatus(w.id, 'recalled'), { icon: <XCircle size={12} /> }),
-          ]
-        : []),
-      m.separator(),
-      m.copy('Copy warrant #', w.warrant_number),
-      m.copy('Copy subject', w.subject_name),
-      m.copyId(w.id),
-      ...(w.subject_person_id
-        ? [
-            m.go('Person record', `/records?tab=persons&personId=${w.subject_person_id}`, <FileText size={12} />),
-            m.go('Arrest history', `/records?tab=arrests&personId=${w.subject_person_id}`, <FileText size={12} />),
-          ]
-        : []),
-      m.separator(),
-      ...(isArchived
-        ? [m.action('Unarchive', () => handleUnarchive(w.id), { icon: <RotateCcw size={12} /> })]
-        : [m.action('Archive', () => handleArchive(w.id), { icon: <Archive size={12} /> })]),
-      m.action('Delete', () => setDeletingWarrant(w), { icon: <Trash2 size={12} />, danger: true }),
-    ];
   };
 
   // ============================================================
@@ -1576,29 +1067,20 @@ export default function WarrantsPage() {
   useEffect(() => { document.title = 'Warrants \u2014 RMPG Flex'; }, []);
 
   // Keyboard shortcut: Escape — smart cascade. Closes the smallest open
-  // modal first (top of stack), not all at once. Order: bulk confirms →
-  // archive confirm → delete confirm → Utah detail → person profile →
-  // serve → form modal.
+  // modal first (top of stack), not all at once. Order: Utah detail →
+  // person profile → form modal. (Bulk confirms / archive confirm / delete
+  // confirm / serve modal are now owned by WarrantsListTab and handle their
+  // own Escape dismissal via ConfirmDialog / the modal's own close handler.)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (bulkUpdateConfirmOpen) { e.stopPropagation(); setBulkUpdateConfirmOpen(false); return; }
-      if (bulkArchiveConfirmOpen) { e.stopPropagation(); setBulkArchiveConfirmOpen(false); return; }
-      if (bulkPrintConfirmOpen) { e.stopPropagation(); setBulkPrintConfirmOpen(false); return; }
-      if (archiveConfirmOpen) { e.stopPropagation(); setArchiveConfirmOpen(false); setArchiveTargetId(null); return; }
-      if (deletingWarrant) { e.stopPropagation(); setDeletingWarrant(null); return; }
       if (utahDetailWarrant) { e.stopPropagation(); setUtahDetailWarrant(null); return; }
       if (personProfileOpen) { e.stopPropagation(); setPersonProfileOpen(false); return; }
-      if (serveModalOpen) { e.stopPropagation(); setServeModalOpen(false); return; }
       if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingWarrant(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [
-    bulkUpdateConfirmOpen, bulkArchiveConfirmOpen, bulkPrintConfirmOpen,
-    archiveConfirmOpen, deletingWarrant, utahDetailWarrant, personProfileOpen,
-    serveModalOpen, formOpen,
-  ]);
+  }, [utahDetailWarrant, personProfileOpen, formOpen]);
 
   // Keyboard shortcut: N → open "New Warrant" form (mirrors Dispatch / FI).
   // Suppressed while typing in an input/textarea/contenteditable, while any
@@ -1615,7 +1097,7 @@ export default function WarrantsPage() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (t.isContentEditable) return;
       }
-      if (formOpen || serveModalOpen || personProfileOpen || utahDetailWarrant || deletingWarrant || archiveConfirmOpen) return;
+      if (formOpen || personProfileOpen || utahDetailWarrant) return;
       if (activeTab !== 'warrants') return;
       e.preventDefault();
       openNewForm();
@@ -1623,29 +1105,18 @@ export default function WarrantsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab, isAdminOrManager]);
+  }, [formOpen, personProfileOpen, utahDetailWarrant, activeTab, isAdminOrManager]);
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
+    // h-full, not absolute inset-0: <main> in Layout.tsx isn't a positioned
+    // ancestor, so `absolute inset-0` escaped it entirely and painted over
+    // the whole viewport — hiding the top nav toolbar completely on this
+    // page. Every sibling page (RecordsPage, DispatchPage, ...) uses h-full.
+    <div className="h-full flex flex-col overflow-hidden bg-surface-deep">
       {/* ---- TITLE BAR ---- */}
       <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        {activeTab === 'warrants' && !showArchived && isAdminOrManager && (
-          <button type="button" onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
-            <Plus className="w-3 h-3" /> New Warrant
-          </button>
-        )}
-        {activeTab === 'warrants' && (
-          <button type="button"
-            onClick={() => { setShowArchived(!showArchived); setPage(1); }}
-            className={`toolbar-btn text-[9px] ${showArchived ? 'text-amber-400' : ''}`}
-            title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
-          >
-            <Archive className="w-3 h-3" />
-            {showArchived ? 'Showing Archived' : 'Archives'}
-          </button>
-        )}
         {activeTab === 'sources' && (isGodMode || isAdminOrManager) && (
           <>
             <button type="button"
@@ -1755,7 +1226,7 @@ export default function WarrantsPage() {
                 onChange={(e) => setDashSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && dashSearch.trim()) {
-                    setSearchQuery(dashSearch.trim());
+                    listTabRef.current?.setSearchQuery(dashSearch.trim());
                     setActiveTab('warrants');
                   }
                 }}
@@ -2037,700 +1508,23 @@ export default function WarrantsPage() {
       {/* ================================================================
           TAB 2: WARRANTS (Unified List)
          ================================================================ */}
-      {activeTab === 'warrants' && (
-        <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
-          {/* LEFT: Warrant List */}
-          <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
-            {/* Filters (thin bar) */}
-            <div className={`flex ${isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-[#1a1a1a] bg-[#080808]`}>
-              <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                <input id="ff-warrantspage-4"
-                  type="text"
-                  className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
-                  placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { setDebouncedSearch(searchQuery); setPage(1); } }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                />
-                {searchQuery && (
-                  <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
-                    <X className="w-3.5 h-3.5" />
-                  </IconButton>
-                )}
-              </div>
-              <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
-                <select id="ff-warrantspage-5"
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
-                  value={filterStatus}
-                  onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                >
-                  <option value="">All Status</option>
-                  {WARRANT_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-                <select id="ff-warrantspage-6"
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
-                  value={filterType}
-                  onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                >
-                  <option value="">All Types</option>
-                  {WARRANT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-                <select id="ff-warrantspage-7"
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
-                  value={filterSeverity}
-                  onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                >
-                  <option value="">All Severity</option>
-                  {OFFENSE_LEVELS.map((l) => (
-                    <option key={l.value} value={l.value}>{l.label}</option>
-                  ))}
-                </select>
-                {/* Court filter */}
-                <input id="ff-warrantspage-8"
-                  type="text"
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
-                  placeholder="Court..."
-                  value={filterCourt}
-                  onChange={(e) => { setFilterCourt(e.target.value); setPage(1); }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                />
-                {/* Source filter */}
-                <select id="ff-warrantspage-9"
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
-                  value={filterSource}
-                  onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
-                  style={isMobile ? { minHeight: 44 } : undefined}
-                >
-                  <option value="">All Sources</option>
-                  <option value="manual">Local</option>
-                  <option value="utah_api">Utah API</option>
-                  <option value="scraper">Scraped</option>
-                </select>
-              </div>
-            </div>
+      <WarrantsListTab
+        ref={listTabRef}
+        isVisible={activeTab === 'warrants'}
+        user={user}
+        isAdminOrManager={isAdminOrManager}
+        isGodMode={isGodMode}
+        canManageWarrants={canManageWarrants}
+        isMobile={isMobile}
+        navigate={navigate}
+        initialPersonId={initialPersonId}
+        initialWarrantId={pendingWarrantIdRef.current}
+        formOpen={formOpen}
+        onOpenNewForm={openNewForm}
+        onOpenEditForm={openEditForm}
+        onOpenPersonProfile={openPersonProfile}
+      />
 
-            {/* Filter chips bar (Phase 1) */}
-            <div className="flex flex-wrap gap-1.5 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
-              <FilterChip active={!anyFilterActive} onClick={clearAllFilters}>All</FilterChip>
-              <FilterChip active={filterPriority} onClick={() => { setFilterPriority(v => !v); setPage(1); }}>High priority</FilterChip>
-              <FilterChip active={filterSinceWeek} onClick={() => { setFilterSinceWeek(v => !v); setPage(1); }}>New this week</FilterChip>
-              <FilterChip active={filterMatches} onClick={() => { setFilterMatches(v => !v); setPage(1); }}>Matches our person</FilterChip>
-              <select id="ff-warrantspage-10"
-                value={filterStateChip}
-                onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
-                className="select-dark text-xs"
-                style={{ minHeight: 26 }}
-              >
-                <option value="">By state</option>
-                <option value="UT">UT</option>
-                <option value="NV">NV</option>
-                <option value="WY">WY</option>
-                <option value="CO">CO</option>
-                <option value="CA">CA</option>
-                <option value="TX">TX</option>
-                <option value="AZ">AZ</option>
-                <option value="NM">NM</option>
-                <option value="ID">ID</option>
-              </select>
-              <FilterChip active={filterFederal} onClick={() => { setFilterFederal(v => !v); setPage(1); }}>Federal only</FilterChip>
-              <FilterChip active={filterArchivedChip} onClick={() => { setFilterArchivedChip(v => !v); setPage(1); }}>Show archived</FilterChip>
-            </div>
-
-            {/* Person filter indicator */}
-            {filterPersonId && (
-              <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/50 text-brand-300 text-xs flex items-center gap-2">
-                <User className="w-3 h-3" />
-                <span>Filtered by person #{filterPersonId}</span>
-                <button type="button" onClick={() => { setFilterPersonId(null); setPage(1); }} className="ml-auto text-brand-400 hover:text-rmpg-100 text-[10px] underline">Clear filter</button>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-3 h-3" /> {error}
-                <IconButton onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
-              </div>
-            )}
-
-            {/* Batch Actions Bar */}
-            {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
-              <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
-                <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
-                <select id="ff-warrantspage-11" value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
-                  <option value="">Set Status...</option>
-                  <option value="served">Served</option>
-                  <option value="recalled">Recalled</option>
-                  <option value="quashed">Quashed</option>
-                  <option value="expired">Expired</option>
-                </select>
-                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
-                  {batchSubmitting ? 'Updating...' : 'Apply'}
-                </button>
-                <span className="mx-1 text-rmpg-600">|</span>
-                <button type="button" onClick={handleBulkPrintPacket} className="toolbar-btn text-[10px] px-2 py-0.5">Print packet PDF</button>
-                <button type="button" onClick={handleBulkReview} className="toolbar-btn text-[10px] px-2 py-0.5">Mark reviewed</button>
-                <button type="button" onClick={handleBulkArchive} className="toolbar-btn text-[10px] px-2 py-0.5">Archive</button>
-                <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
-              </div>
-            )}
-
-            {/* Table */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
-              {loading ? (
-                <div className="flex items-center justify-center h-full text-rmpg-400">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
-                </div>
-              ) : warrants.length === 0 ? (
-                (() => {
-                  // Differentiate "no data yet" from "filter/search returned
-                  // nothing" — the operator needs to know whether to broaden
-                  // the search or to create the first record.
-                  const hasActiveFilter =
-                    !!searchQuery || !!filterStatus || !!filterType ||
-                    !!filterSource || !!filterCourt || !!filterSeverity ||
-                    !!filterPersonId || filterPriority || filterSinceWeek ||
-                    filterMatches || !!filterStateChip || filterFederal ||
-                    filterArchivedChip;
-                  if (showArchived) {
-                    return (
-                      <EmptyState
-                        icon={Gavel}
-                        title="No archived warrants"
-                        description={hasActiveFilter ? 'Try clearing filters to see all archived warrants.' : 'Nothing has been archived yet.'}
-                      />
-                    );
-                  }
-                  if (hasActiveFilter) {
-                    return (
-                      <EmptyState
-                        icon={Search}
-                        title="No warrants match your filters"
-                        description="Try clearing filters or broadening the search."
-                      />
-                    );
-                  }
-                  return (
-                    <EmptyState
-                      icon={Gavel}
-                      title="No warrants on file"
-                      description="Create a new warrant to get started."
-                      action={isAdminOrManager ? { label: 'New Warrant', onClick: openNewForm } : undefined}
-                    />
-                  );
-                })()
-              ) : isMobile ? (
-                <div>
-                  {warrants.map((w) => (
-                    <button type="button"
-                      key={w.id}
-                      onClick={() => fetchWarrantDetail(w.id)}
-                      onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
-                      className={`w-full text-left px-3 py-3 border-b border-rmpg-700/50 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
-                      style={{ minHeight: 56 }}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-mono font-bold text-rmpg-100">{w.warrant_number || '-'}</span>
-                        <div className="flex items-center gap-1">
-                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                            {(w.type || 'WARRANT').toUpperCase()}
-                          </span>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {formatEnumValue(w.status)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
-                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
-                      <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${toDisplayLabel(w.offense_level)}` : ''}
-                        {w.source ? ` \u2022 ${w.source}` : ''}
-                      </div>
-                      {/* UPGRADE 42: Expiration warning highlight */}
-                      {w.expires_at && w.status === 'active' && (() => {
-                        const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                        if (daysLeft < 0) return <div className="text-[9px] text-red-400 font-bold mt-0.5 flex items-center gap-1"><AlertTriangle size={9} /> EXPIRED {Math.abs(daysLeft)}d ago</div>;
-                        if (daysLeft <= 30) return <div className="text-[9px] text-amber-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={9} /> Expires in {daysLeft}d</div>;
-                        return null;
-                      })()}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <table className="table-dark">
-                  <thead className="sticky top-0 z-10 bg-surface-deep">
-                    <tr>
-                      {(isGodMode || isAdminOrManager) && (
-                        <th style={{ width: 30 }}>
-                          <input id="ff-warrantspage-12" type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
-                        </th>
-                      )}
-                      <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
-                      <th style={{ width: 80 }} className="cursor-pointer select-none" onClick={() => toggleSort('priority')}>
-                        Priority {sortKey === 'priority' && (sortOrder === 'desc' ? '↓' : '↑')}
-                      </th>
-                      <th style={{ width: 60 }} className="cursor-pointer select-none" onClick={() => toggleSort('age')}>
-                        Age {sortKey === 'age' && (sortOrder === 'desc' ? '↓' : '↑')}
-                      </th>
-                      <th style={{ width: 90 }} className="cursor-pointer select-none" onClick={() => toggleSort('freshness')}>
-                        Freshness {sortKey === 'freshness' && (sortOrder === 'desc' ? '↓' : '↑')}
-                      </th>
-                      <th style={{ width: 50 }}>Source</th>
-                      <th style={{ width: 80 }}>Status</th>
-                      <th style={{ width: 120 }}>Warrant #</th>
-                      <th>Subject</th>
-                      <th style={{ width: 80 }}>Type</th>
-                      <th>Charge</th>
-                      <th style={{ width: 80 }}>Severity</th>
-                      <th style={{ width: 90 }}>Court</th>
-                      <th style={{ width: 80 }}>Bail</th>
-                      <th style={{ width: 60 }}>Attempts</th>
-                      <th style={{ width: 95 }}>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {warrants.map((w) => (
-                      <tr
-                        key={w.id}
-                        onClick={() => fetchWarrantDetail(w.id)}
-                        onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
-                        className={`cursor-pointer hover:bg-surface-raised/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
-                      >
-                        {(isGodMode || isAdminOrManager) && (
-                          <td onClick={e => e.stopPropagation()}>
-                            <input id="ff-warrantspage-13" type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
-                          </td>
-                        )}
-                        <td className="text-center">
-                          {w.matches_person ? <span className="text-amber-400" title="Matches our person">★</span> : null}
-                        </td>
-                        <td>
-                          <span title={`Priority score: ${w.priority_score ?? 'N/A'}/100 (${priorityBucket(w.priority_score)})`} className={`inline-block px-1.5 py-0.5 text-[9px] uppercase font-bold border ${priorityChipClass(priorityBucket(w.priority_score))}`}>
-                            {priorityBucket(w.priority_score)}
-                          </span>
-                        </td>
-                        <td className="text-xs text-rmpg-300 font-mono">{formatAge(w.age_days)}</td>
-                        <td className="text-xs">
-                          <span className="mr-1">{freshnessIcon(freshnessClass(w.freshness_days))}</span>
-                          <span className="text-rmpg-400 font-mono">{formatAge(w.freshness_days)}</span>
-                        </td>
-                        <td className="text-xs font-mono text-rmpg-300">{stateFromSource(w.source)}</td>
-                        <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {formatEnumValue(w.status)}
-                          </span>
-                          {w.expires_at && w.status === 'active' && (() => {
-                            const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                            if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
-                            if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
-                            return null;
-                          })()}
-                        </td>
-                        <td className="font-mono text-xs text-rmpg-100 font-bold">{w.warrant_number || '-'}</td>
-                        <td className="text-xs">
-                          <div className="flex items-center gap-2">
-                            {w.subject_photo_url ? (
-                              <img src={w.subject_photo_url} alt="" className="w-6 h-6 rounded-sm object-cover border border-rmpg-600" />
-                            ) : null}
-                            <button type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (w.subject_person_id) openPersonProfile(w.subject_person_id);
-                              }}
-                              className={`text-rmpg-200 ${w.subject_person_id ? 'hover:text-brand-300 cursor-pointer' : ''}`}
-                            >
-                              {w.subject_name || <span className="text-rmpg-500">Unknown</span>}
-                            </button>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                            {(() => { const Icon = TYPE_ICONS[w.type] || TYPE_ICONS.other; return <Icon className="w-3 h-3" />; })()}
-                            {(w.type || 'WARRANT').toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{chargesFromJson(w.charge_description)}</td>
-                        <td>
-                          {w.offense_level ? (
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
-                              {w.offense_level.toUpperCase()}
-                            </span>
-                          ) : <span className="text-rmpg-500">-</span>}
-                        </td>
-                        <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
-                        <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
-                        <td className="text-center">
-                          {w.service_attempt_count > 0 ? (
-                            <span className="text-amber-400 font-mono">{w.service_attempt_count}</span>
-                          ) : (
-                            <span className="text-rmpg-500">&mdash;</span>
-                          )}
-                        </td>
-                        <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Pagination (thin) */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-2 py-[2px] border-t border-[#1a1a1a] bg-[#080808]">
-                <span className={`${isMobile ? 'text-xs' : 'text-[9px]'} text-rmpg-500 font-mono tabular-nums`}>
-                  {page}/{totalPages} &middot; {totalCount}
-                </span>
-                <div className="flex gap-1">
-                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px] disabled:opacity-40">Prev</button>
-                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px] disabled:opacity-40">Next</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: Warrant Detail */}
-          <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-rmpg-700 bg-[var(--grid-header-bg)]`}>
-              <Gavel className="w-3 h-3 text-brand-400" />
-              <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest">Warrant Detail</span>
-              <span className="flex-1" />
-              {isMobile && selectedWarrant && (
-                <button type="button" onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
-              )}
-              <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
-              {selectedWarrant && !selectedWarrant.archived_at && (
-                <>
-                  {selectedWarrant.status === 'active' && canManageWarrants && (
-                    <>
-                      <button type="button" onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
-                        <CheckCircle className="w-3 h-3" /> Serve
-                      </button>
-                      <button type="button" onClick={() => openEditForm(selectedWarrant)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
-                        <Edit className="w-3 h-3" /> Edit
-                      </button>
-                      <button type="button" onClick={() => handleUpdateStatus(selectedWarrant.id, 'recalled')} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
-                        <XCircle className="w-3 h-3" /> Recall
-                      </button>
-                    </>
-                  )}
-                  {selectedWarrant.status !== 'active' && isAdminOrManager && (
-                    <>
-                      <button type="button" onClick={() => { setArchiveTargetId(selectedWarrant.id); setArchiveConfirmOpen(true); }} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
-                        <Archive className="w-3 h-3" /> Archive
-                      </button>
-                      <button type="button" onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={isMobile ? { minHeight: 48 } : undefined}>
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
-              {selectedWarrant?.archived_at && isAdminOrManager && (
-                <button type="button" onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
-                  <RotateCcw className="w-3 h-3" /> Unarchive
-                </button>
-              )}
-            </div>
-
-            {selectedWarrant ? (
-              <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
-                {/* Header */}
-                <div className="panel-beveled p-3">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h2 className="text-lg font-bold text-rmpg-100 font-mono">{selectedWarrant.warrant_number}</h2>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[selectedWarrant.type] || TYPE_COLORS.other}`}>
-                          {(selectedWarrant.type || 'WARRANT').toUpperCase()} WARRANT
-                        </span>
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
-                          {formatEnumValue(selectedWarrant.status)}
-                        </span>
-                        {selectedWarrant.offense_level && (
-                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
-                            {selectedWarrant.offense_level.toUpperCase()}
-                          </span>
-                        )}
-                        {selectedWarrant.archived_at && (
-                          <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border bg-amber-900/40 text-amber-300 border-amber-700/50">
-                            ARCHIVED
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {selectedWarrant.bail_amount != null && selectedWarrant.bail_amount > 0 && (
-                      <div className="text-right">
-                        <span className="text-[9px] text-rmpg-500 uppercase">Bail</span>
-                        <div className="text-sm font-bold text-green-400 font-mono">{formatCurrency(selectedWarrant.bail_amount)}</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Statute + Charge */}
-                  {(selectedWarrant as any).statute_citation && (
-                    <div className="mb-2">
-                      <span className="text-[10px] text-[var(--brand-gold)] uppercase font-bold tracking-wider">Statute</span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-brand-900/30 text-brand-300 border border-brand-700/40 text-xs font-mono font-bold">
-                          <Scale className="w-3 h-3" />
-                          {(selectedWarrant as any).statute_citation}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="mb-3">
-                    <span className="text-[10px] text-[var(--brand-gold)] uppercase font-bold tracking-wider">Charge Description</span>
-                    <p className="text-sm text-rmpg-100 mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
-                  </div>
-
-                  {/* Dates row (compact) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
-                    <div>
-                      <span className="text-rmpg-500 text-[9px]">Entered</span>
-                      <div className="text-rmpg-300">{formatDateTime(selectedWarrant.created_at)}</div>
-                      <div className="text-rmpg-500 text-[9px]">{selectedWarrant.entered_by_name || 'Unknown'}</div>
-                    </div>
-                    {selectedWarrant.expires_at && (
-                      <div>
-                        <span className="text-rmpg-500 text-[9px]">Expires</span>
-                        <div className="text-amber-400">{formatDate(selectedWarrant.expires_at)}</div>
-                      </div>
-                    )}
-                    {selectedWarrant.served_at && (
-                      <div>
-                        <span className="text-rmpg-500 text-[9px]">Served</span>
-                        <div className="text-green-400">{formatDateTime(selectedWarrant.served_at)}</div>
-                        {selectedWarrant.served_by_name && <div className="text-rmpg-500 text-[9px]">{selectedWarrant.served_by_name}</div>}
-                        {selectedWarrant.served_location && (
-                          <div className="text-rmpg-500 text-[9px] flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-2.5 h-2.5" /> {selectedWarrant.served_location}
-                            <ViewOnMapLink address={selectedWarrant.served_location} label={selectedWarrant.subject_name || undefined} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Subject Info */}
-                {selectedWarrant.subject_name && (
-                  <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <User className="w-4 h-4 text-[var(--brand-gold)]" /> Subject Information
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1.5 text-[11px]">
-                      <div>
-                        <span className="text-rmpg-400">Name</span>
-                        <div className="text-rmpg-100 font-bold">{selectedWarrant.subject_name}</div>
-                      </div>
-                      {selectedWarrant.subject_dob && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">DOB</span>
-                          <div className="text-rmpg-300">{formatDate(selectedWarrant.subject_dob)}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_gender && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Gender</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_gender}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_race && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Race</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_race}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_height && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Height</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_height}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_weight && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Weight</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_weight}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_hair_color && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Hair</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_hair_color}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_eye_color && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Eyes</span>
-                          <div className="text-rmpg-300">{selectedWarrant.subject_eye_color}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.subject_address && (
-                        <div className="col-span-2">
-                          <span className="text-rmpg-500 text-[9px]">Address</span>
-                          <div className="text-rmpg-300 flex items-center gap-1.5">
-                            {selectedWarrant.subject_address}
-                            <ViewOnMapLink address={selectedWarrant.subject_address} label={selectedWarrant.subject_name || undefined} />
-                          </div>
-                          <div className="mt-1">
-                            <JurisdictionLookup address={selectedWarrant.subject_address} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {selectedWarrant.subject_person_id && (
-                      <div className="flex gap-2 flex-wrap mt-3">
-                        <button type="button" onClick={() => navigate(`/records?tab=persons&personId=${selectedWarrant.subject_person_id}`)}
-                          className="toolbar-btn text-[9px]"><User className="w-3 h-3" /> View Record</button>
-                        <button type="button" onClick={() => navigate(`/dispatch?personId=${selectedWarrant.subject_person_id}`)}
-                          className="toolbar-btn text-[9px]"><Activity className="w-3 h-3" /> View Calls</button>
-                        <button type="button" onClick={() => navigate(`/records?tab=arrests&personId=${selectedWarrant.subject_person_id}`)}
-                          className="toolbar-btn text-[9px]"><Shield className="w-3 h-3" /> View Arrests</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* NSOPW Status — nationwide SOR cross-reference for the
-                    warrant subject. Auto-fired when the warrant was created;
-                    confirmed/possible hits flow through screening_hits and
-                    surface here as the primary SOR retention pane. */}
-                {selectedWarrant.subject_person_id && (
-                  <WarrantNsopwStatus personId={selectedWarrant.subject_person_id} />
-                )}
-
-                {/* Court Info */}
-                {(selectedWarrant.issuing_court || selectedWarrant.issuing_judge) && (
-                  <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <Gavel className="w-4 h-4 text-[var(--brand-gold)]" /> Court Information
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                      {selectedWarrant.issuing_court && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Issuing Court</span>
-                          <div className="text-rmpg-300">{selectedWarrant.issuing_court}</div>
-                        </div>
-                      )}
-                      {selectedWarrant.issuing_judge && (
-                        <div>
-                          <span className="text-rmpg-500 text-[9px]">Issuing Judge</span>
-                          <div className="text-rmpg-200">{selectedWarrant.issuing_judge}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {selectedWarrant.notes && (
-                  <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest mb-2">Notes</h3>
-                    <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedWarrant.notes}</p>
-                  </div>
-                )}
-
-                {/* Activity Log */}
-                {selectedWarrant.activity && selectedWarrant.activity.length > 0 && (
-                  <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <Clock className="w-4 h-4 text-[var(--brand-gold)]" /> Activity Log
-                    </h3>
-                    <div className="space-y-1">
-                      {selectedWarrant.activity.map((a) => (
-                        <div key={a.id} className="flex items-start gap-1.5 text-[10px]">
-                          <span className="text-rmpg-600 whitespace-nowrap font-mono tabular-nums">{formatDateTime(a.created_at)}</span>
-                          <span className="text-rmpg-400">{a.details}</span>
-                          <span className="text-rmpg-600 ml-auto whitespace-nowrap">{a.user_name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Phase 1: Source / Provenance */}
-                {(selectedWarrant as any).source_scraper_name && (
-                  <CollapsibleSection title="Source / Provenance" defaultOpen={false}>
-                    <div className="text-xs space-y-1 p-2">
-                      <div>Scraper: <span className="text-rmpg-200">{(selectedWarrant as any).source_scraper_name}</span></div>
-                      <div>State: <span className="text-rmpg-200">{(selectedWarrant as any).source_state || stateFromSource(selectedWarrant.source)}</span></div>
-                      {(selectedWarrant as any).source_url && (
-                        <div>URL: <a href={(selectedWarrant as any).source_url} target="_blank" rel="noreferrer" className="text-amber-400 underline">link</a></div>
-                      )}
-                      <div>Last refreshed: {(selectedWarrant as any).last_scraped_at ? formatDateTime((selectedWarrant as any).last_scraped_at) : '—'}</div>
-                    </div>
-                  </CollapsibleSection>
-                )}
-
-                {/* Phase 1: RMPG Encounters */}
-                {Array.isArray((selectedWarrant as any).rmpg_encounters) && (selectedWarrant as any).rmpg_encounters.length > 0 && (
-                  <CollapsibleSection
-                    title="RMPG Encounters"
-                    count={(selectedWarrant as any).rmpg_encounters.length}
-                    defaultOpen={false}
-                  >
-                    <div className="p-2">
-                      {(selectedWarrant as any).rmpg_encounters.slice(0, 20).map((e: any, i: number) => (
-                        <div key={i} className="text-xs py-1 border-b border-rmpg-700">
-                          <span className="text-rmpg-400">{e.date ? formatDate(e.date) : '—'}</span>
-                          <span className="text-rmpg-200 ml-2">{e.context}</span>
-                          {e.property && <span className="text-rmpg-500 ml-2">— {e.property}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-                )}
-
-                {/* Phase 1: Known Associates & Vehicles */}
-                {((Array.isArray((selectedWarrant as any).known_associates) && (selectedWarrant as any).known_associates.length > 0) ||
-                  (Array.isArray((selectedWarrant as any).known_vehicles) && (selectedWarrant as any).known_vehicles.length > 0)) && (
-                  <CollapsibleSection title="Known Associates & Vehicles" defaultOpen={false}>
-                    <div className="p-2 space-y-1">
-                      {(selectedWarrant as any).known_associates?.map((a: any, i: number) => (
-                        <div key={`a${i}`} className="text-xs text-rmpg-200">{a.name} <span className="text-rmpg-500">({a.relationship || '—'})</span></div>
-                      ))}
-                      {(selectedWarrant as any).known_vehicles?.map((v: any, i: number) => (
-                        <div key={`v${i}`} className="text-xs text-rmpg-200 font-mono">{v.plate} <span className="text-rmpg-500">{v.description}</span></div>
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-                )}
-
-                {/* Linked Emails (autolinker + manual) */}
-                <LinkedEmailsSection entityType="warrant" entityId={selectedWarrant.id} />
-                <EmailedDocuments recordType="warrant" recordId={selectedWarrant.id} />
-
-                {/* Phase 1: Print PDF action */}
-                <button
-                  type="button"
-                  onClick={() => handlePrintWarrantPdf(selectedWarrant.id)}
-                  className="toolbar-btn toolbar-btn-primary w-full mt-3 flex items-center justify-center gap-2"
-                >
-                  <Printer className="w-3 h-3" /> Print PDF
-                </button>
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-rmpg-400">
-                <div className="text-center">
-                  <img src="/rmpg flex.png" alt="RMPG" className="w-20 h-20 mx-auto mb-4 opacity-15" draggable={false} />
-                  <Gavel className="w-8 h-8 mx-auto mb-2 text-rmpg-500" />
-                  <p className="text-sm">Select a warrant to view details</p>
-                  <p className="text-xs text-rmpg-500 mt-1">or create a new warrant</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ================================================================
           TAB: SEARCH ALL (Unified Cross-Source)
@@ -3176,10 +1970,11 @@ export default function WarrantsPage() {
                   </button>
                   <button
                     type="button"
-                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30"
-                    disabled={!autoPollStatus?.flaggedPersons?.length}
+                    className="toolbar-btn text-[10px] bg-red-900/20 text-red-400 border-red-700/40 hover:bg-red-900/30 disabled:opacity-50"
+                    disabled={!autoPollStatus?.flaggedPersons?.length || boloPrinting}
                     onClick={async () => {
                       if (!autoPollStatus?.flaggedPersons?.length) return;
+                      setBoloPrinting(true);
                       try {
                         const { fetchPdfBranding, setActiveBranding, loadPdfAssets } = await import('../utils/pdfGenerator');
                         const branding = await fetchPdfBranding();
@@ -3275,10 +2070,13 @@ export default function WarrantsPage() {
                         setTimeout(() => URL.revokeObjectURL(url), 1000);
                       } catch (err) {
                         console.error('BOLO PDF generation failed:', err);
+                        addToast(err instanceof Error ? `BOLO generation failed: ${err.message}` : 'BOLO generation failed', 'error');
+                      } finally {
+                        setBoloPrinting(false);
                       }
                     }}
                   >
-                    <Printer className="w-3 h-3" /> Print BOLO
+                    {boloPrinting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />} Print BOLO
                   </button>
                   <div className="flex items-center gap-1 ml-2 border-l border-surface-border pl-2">
                     <span className="text-[9px] text-rmpg-500 uppercase tracking-wider mr-1">Sort:</span>
@@ -3700,6 +2498,8 @@ export default function WarrantsPage() {
                         <thead className="sticky top-0 z-10 bg-surface-deep">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
+                            <th className="text-left px-2 py-1">State</th>
+                            <th className="text-left px-2 py-1">County</th>
                             <th className="text-center px-2 py-1">Status</th>
                             <th className="text-right px-2 py-1">Active</th>
                             <th className="text-right px-2 py-1">Total</th>
@@ -4182,100 +2982,6 @@ export default function WarrantsPage() {
         saveLabel={editingWarrant ? 'Update Warrant' : 'Create Warrant'}
       />
 
-      {/* SERVE MODAL */}
-      {serveModalOpen && selectedWarrant && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
-          <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
-            <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
-              <h2 id={serveTitleId} className="text-sm font-bold text-rmpg-100">Serve Warrant</h2>
-              <IconButton onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close serve modal"><X className="w-4 h-4" /></IconButton>
-            </div>
-            <div className="p-4 space-y-4">
-              <p className="text-xs text-rmpg-300">
-                Mark warrant <span className="font-bold text-rmpg-100 font-mono">{selectedWarrant.warrant_number}</span> as served?
-              </p>
-              <div>
-                <label htmlFor="ff-warrantspage-33" className="field-label">Location Served (optional)</label>
-                <input id="ff-warrantspage-33"
-                  type="text"
-                  className="input-dark text-xs w-full min-h-[36px]"
-                  value={serveLocation}
-                  onChange={(e) => setServeLocation(e.target.value)}
-                  placeholder="e.g. 123 Main St, Salt Lake City"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setServeModalOpen(false)} className="toolbar-btn text-xs">Cancel</button>
-                <button type="button" onClick={handleServe} disabled={serving} className="toolbar-btn toolbar-btn-primary text-xs">
-                  {serving ? <Loader2 className="w-3 h-3 animate-spin mr-1" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                  Confirm Served
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MOBILE FAB */}
-      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && isAdminOrManager && (
-        <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
-          <Plus className="w-6 h-6" />
-        </IconButton>
-      )}
-
-      {/* DELETE CONFIRM */}
-      <ConfirmDialog
-        isOpen={deletingWarrant !== null}
-        onClose={() => setDeletingWarrant(null)}
-        onConfirm={handleDelete}
-        title="Delete Warrant"
-        message={`Are you sure you want to permanently delete warrant "${deletingWarrant?.warrant_number}"? This action cannot be undone.`}
-        confirmLabel="Delete"
-        confirmVariant="danger"
-        isLoading={deleteLoading}
-      />
-
-      {/* BULK STATUS-UPDATE CONFIRM (replaces native confirm) */}
-      <ConfirmDialog
-        isOpen={bulkUpdateConfirmOpen}
-        onClose={() => setBulkUpdateConfirmOpen(false)}
-        onConfirm={performBatchUpdate}
-        title="Update Warrant Status"
-        message={`Update ${batchSelected.size} warrant${batchSelected.size === 1 ? '' : 's'} to "${batchStatus}"?`}
-        confirmLabel="Update"
-        isLoading={batchSubmitting}
-      />
-
-      {/* BULK ARCHIVE CONFIRM (replaces native confirm) */}
-      <ConfirmDialog
-        isOpen={bulkArchiveConfirmOpen}
-        onClose={() => setBulkArchiveConfirmOpen(false)}
-        onConfirm={performBulkArchive}
-        title="Archive Warrants"
-        message={`Archive ${batchSelected.size} warrant${batchSelected.size === 1 ? '' : 's'}? Archived warrants can be restored later.`}
-        confirmLabel="Archive"
-      />
-
-      {/* SINGLE ARCHIVE CONFIRM (detail panel toolbar) */}
-      <ConfirmDialog
-        isOpen={archiveConfirmOpen}
-        onClose={() => { setArchiveConfirmOpen(false); setArchiveTargetId(null); }}
-        onConfirm={performArchive}
-        title="Archive Warrant"
-        message="Archive this warrant? It can be restored later."
-        confirmLabel="Archive"
-      />
-
-      {/* BULK PRINT-PACKET CONFIRM (replaces native confirm; >50 warrants) */}
-      <ConfirmDialog
-        isOpen={bulkPrintConfirmOpen}
-        onClose={() => setBulkPrintConfirmOpen(false)}
-        onConfirm={performBulkPrintPacket}
-        title="Print Warrant Packet"
-        message={`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`}
-        confirmLabel="Print Packet"
-      />
-
       {/* ================================================================
           UTAH WARRANT DETAIL MODAL
          ================================================================ */}
@@ -4383,6 +3089,9 @@ export default function WarrantsPage() {
                     <div className="mt-3">
                       <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Offense / Charges</span>
                       <div className="font-mono text-rmpg-100 mt-0.5 text-xs whitespace-pre-wrap">{chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || '—'}</div>
+                      <LegalDataHunterValidateButton
+                        charge={chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || ''}
+                      />
                     </div>
                   )}
                 </div>

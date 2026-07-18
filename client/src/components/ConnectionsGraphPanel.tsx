@@ -4,6 +4,7 @@ import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';
 import { humanizeRelationship, linkSentence } from '../utils/recordLinks';
 import { recordTypeLabel } from '../utils/recordTypeLabel';
+import { NODE_COLORS, NODE_RADIUS } from '../utils/connectionsGraphStyle';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -11,7 +12,7 @@ interface GraphNode {
   id: string;
   type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence' | 'case' | 'incident'
       | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job'
-      | 'call' | 'report' | 'intel_report';
+      | 'call' | 'report' | 'intel_report' | 'alpr_sighting';
   label: string;
   /** Original-case label for prose (label itself is uppercased for the node). */
   rawLabel?: string;
@@ -30,46 +31,6 @@ interface GraphEdge {
   /** Humanized relationship ("Owner") for the edge tooltip sentence. */
   relationship?: string;
 }
-
-// ── Color map per node type ──────────────────────────────────
-
-const NODE_COLORS: Record<string, string> = {
-  person: '#d4a017',
-  incident: '#f59e0b',
-  vehicle: '#10b981',
-  property: '#8b5cf6',
-  business: '#f59e0b',
-  evidence: '#ef4444',
-  case: '#d4a017',
-  warrant: '#dc2626',
-  citation: '#fbbf24',
-  arrest: '#ef4444',
-  field_interview: '#64748b',
-  trespass_order: '#a855f7',
-  serve_job: '#14b8a6',
-  call: '#22d3ee',
-  report: '#ec4899',
-  intel_report: '#e879f9',
-};
-
-const NODE_RADIUS: Record<string, number> = {
-  person: 28,
-  incident: 18,
-  vehicle: 16,
-  property: 16,
-  business: 16,
-  evidence: 16,
-  case: 16,
-  warrant: 18,
-  citation: 16,
-  arrest: 18,
-  field_interview: 14,
-  trespass_order: 16,
-  serve_job: 16,
-  call: 18,
-  report: 14,
-  intel_report: 18,
-};
 
 // ── Force simulation (simple spring + repulsion) ─────────────
 
@@ -134,13 +95,18 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const svgRef = useRef<SVGSVGElement>(null);
 
   const fetchGraph = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({ type: 'person', id: String(personId), depth: '1' });
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
       const data = await apiFetch<{ nodes: any[]; edges: any[] }>(
-        `/connections/graph?type=person&id=${personId}&depth=1`
+        `/connections/graph?${params}`
       );
       const centerX = 300, centerY = 200;
       const newNodes: GraphNode[] = (data?.nodes || []).map((n, i) => {
@@ -190,7 +156,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [personId, personName]);
+  }, [personId, personName, dateFrom, dateTo]);
 
   useEffect(() => { fetchGraph(); }, [fetchGraph]);
 
@@ -206,6 +172,23 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
       defaultOpen={false}
     >
       <div className="relative">
+        <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
+            aria-label="Filter from date"
+          />
+          <span className="text-rmpg-500 text-xs">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100"
+            aria-label="Filter to date"
+          />
+        </div>
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}

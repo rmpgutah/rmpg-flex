@@ -18,8 +18,12 @@
 //                                      (auth via ?token=<JWT>)
 //
 // Storage layout in R2 (bucket: env.UPLOADS):
-//   bodycam-videos/<uuid>             finished video (referenced by
-//                                     bodycam_videos.file_path)
+//   bodycam-videos/<uuid>/original.<ext>   finished video (referenced by
+//                                           bodycam_videos.file_path)
+//   bodycam-videos/<uuid>/thumbnail.jpg    client-captured frame (see
+//                                           POST /:id/thumbnail below)
+//   bodycam-videos/<uuid>/redacted.mp4     optional redaction export
+//                                           (see src/routes/redactions.ts)
 //
 // KV session layout (24-h TTL):
 //   bodycam-upload:<r2-multipart-uploadId> → JSON UploadSession
@@ -30,14 +34,32 @@ import {
   READ_ALL_ROLES,
   WRITE_ROLES,
   getActor,
+  ensureBodycamArtifactColumns,
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
 import { verifySignedResource } from '../../utils/signedAccess';
+import { transcribeTransmission } from '../../utils/aiDispatcher';
+import { tryParseModelJson } from '../../utils/serveIntakeExtract';
+import { aggregateAnalysis, type FrameAnalysis } from '../../utils/bodycamAiAnalysis';
+import { parseDeepScanFrame, type DetectorSample, type RawDeepScanDetection } from '../../utils/redactionDeepScan';
+import { log } from '../../utils/logger';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
 const UPLOAD_SESSION_PREFIX = 'bodycam-upload:';
 const UPLOAD_SESSION_TTL = 86400; // 24 h
+
+// Best-effort file extension from a mime type or filename, defaulting to
+// mp4 (the overwhelming majority of BWC hardware exports H.264/mp4).
+function extFromMime(mimeType: string, fileName?: string): string {
+  const fromName = fileName?.match(/\.([a-zA-Z0-9]+)$/)?.[1];
+  if (fromName) return fromName.toLowerCase();
+  const map: Record<string, string> = {
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+    'video/x-matroska': 'mkv', 'video/3gpp': '3gp',
+  };
+  return map[mimeType.toLowerCase()] || 'mp4';
+}
 
 interface UploadSession {
   r2Key: string;
@@ -86,8 +108,9 @@ bodycamVideosRouter.post('/', async (c) => {
       return c.json({ error: 'Cannot upload for another officer' }, 403);
     }
 
-    const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
     const mimeType = file.type || 'video/mp4';
+    const videoUuid = crypto.randomUUID();
+    const r2Key = `${UPLOAD_KEY_PREFIX}${videoUuid}/original.${extFromMime(mimeType, (file as File).name)}`;
 
     await c.env.UPLOADS.put(r2Key, file.stream(), {
       httpMetadata: { contentType: mimeType },
@@ -162,7 +185,8 @@ bodycamVideosRouter.post('/upload-init', async (c) => {
       return c.json({ error: 'totalChunks must be a positive integer' }, 400);
     }
 
-    const r2Key = `${UPLOAD_KEY_PREFIX}${crypto.randomUUID()}`;
+    const videoUuid = crypto.randomUUID();
+    const r2Key = `${UPLOAD_KEY_PREFIX}${videoUuid}/original.${extFromMime(mimeType, fileName)}`;
     const mp = await c.env.UPLOADS.createMultipartUpload(r2Key, {
       httpMetadata: { contentType: mimeType },
     });
@@ -455,6 +479,468 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
     return new Response(obj.body, { status: 200, headers });
   } catch (err) {
     console.error('GET /personnel/bodycam-videos/:id/stream failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/thumbnail — client-captured JPEG frame for a video.
+// The client canvas-captures a frame after upload completes (no
+// server-side transcoding — Workers can't run ffmpeg) and posts it
+// here as multipart. Non-blocking on the upload flow: a failure here
+// leaves the video usable with no thumbnail (client falls back to a
+// generic icon).
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/thumbnail', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const image = form.get('thumbnail') as unknown as File | string | null;
+    if (!image || typeof image === 'string' || !(image instanceof Blob)) {
+      return c.json({ error: 'thumbnail file is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number; file_path: string | null }>(
+      db, 'SELECT id, file_path FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!row.file_path) return c.json({ error: 'Video has no source file' }, 400);
+
+    // Derive the artifact prefix from the original's key: "<prefix><uuid>/original.<ext>".
+    const prefix = row.file_path.replace(/\/original\.[a-zA-Z0-9]+$/, '');
+    const thumbKey = `${prefix}/thumbnail.jpg`;
+
+    await c.env.UPLOADS.put(thumbKey, image.stream(), {
+      httpMetadata: { contentType: 'image/jpeg' },
+    });
+    await execute(db, "UPDATE bodycam_videos SET thumbnail_path = ?, updated_at = datetime('now') WHERE id = ?", thumbKey, id);
+
+    return c.json({ success: true, thumbnail_path: thumbKey });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /:id/thumbnail — serve the stored JPEG. Same auth pattern as
+// GET /:id/stream (signed-URL OR bearer/query-token + officer scope).
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.get('/:id/thumbnail', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'bodycam-thumb', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    const actor = getActor(c);
+    if (!signedOk && !actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number; thumbnail_path: string | null }>(
+      db, 'SELECT officer_id, thumbnail_path FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!signedOk && actor && !READ_ALL_ROLES.has(actor.role) && row.officer_id !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    if (!row.thumbnail_path) return c.json({ error: 'No thumbnail' }, 404);
+
+    const obj = await c.env.UPLOADS.get(row.thumbnail_path);
+    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=3600',
+      },
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id/thumbnail failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/detections — client-side auto face/plate scan results.
+// The client runs the SAME scanClip() engine RedactionStudio uses,
+// automatically after upload (fire-and-forget, non-blocking). This
+// route stores the region JSON + counts and, ONLY if the video is
+// still at its default 'routine' classification, bumps it to
+// 'flagged' as a redact-before-sharing signal. It never downgrades
+// an already-set classification.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/detections', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const body = await c.req.json<{ regions?: unknown[] }>().catch(() => null);
+    if (!body || !Array.isArray(body.regions)) {
+      return c.json({ error: 'regions array is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number; classification: string | null }>(
+      db, 'SELECT id, classification FROM bodycam_videos WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const plateCount = body.regions.filter((r: any) => r?.kind === 'plate').length;
+    const faceCount = body.regions.filter((r: any) => r?.kind === 'face').length;
+    const regionsJson = JSON.stringify(body.regions);
+
+    const shouldFlag = (plateCount > 0 || faceCount > 0) && row.classification === 'routine';
+    if (shouldFlag) {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, classification = 'flagged', updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    } else {
+      await execute(db,
+        "UPDATE bodycam_videos SET detected_plate_count = ?, detected_face_count = ?, detection_regions_json = ?, updated_at = datetime('now') WHERE id = ?",
+        plateCount, faceCount, regionsJson, id);
+    }
+
+    return c.json({ success: true, detected_plate_count: plateCount, detected_face_count: faceCount, flagged: shouldFlag });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/detections failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/transcribe — client-extracted audio track, transcribed via
+// the SAME Whisper helper the AI radio dispatcher uses
+// (transcribeTransmission(), @cf/openai/whisper-large-v3-turbo). The
+// client extracts audio client-side (captureStream + MediaRecorder,
+// audio-only) after upload completes and posts it here, fire-and-forget.
+// Best-effort: a transcription failure (null result) simply leaves
+// `transcript` unset — no retry, matches the existing radio-transcription
+// failure contract.
+// ────────────────────────────────────────────────────────────
+bodycamVideosRouter.post('/:id/transcribe', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const audio = form.get('audio') as unknown as File | string | null;
+    if (!audio || typeof audio === 'string' || !(audio instanceof Blob)) {
+      return c.json({ error: 'audio file is required' }, 400);
+    }
+    // ~50MB — generous for even a long clip's audio-only track (bodycam clips
+    // can run many minutes, unlike the short radio PTT bursts this helper was
+    // originally built for); guards against buffering an oversized blob into
+    // memory and hitting the isolate's memory ceiling (OOM).
+    const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
+    if (audio.size > MAX_AUDIO_BYTES) {
+      return c.json({ error: 'Audio file too large for transcription', maxBytes: MAX_AUDIO_BYTES }, 413);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    const audioBytes = new Uint8Array(await audio.arrayBuffer());
+    const transcript = await transcribeTransmission(c.env.AI, audioBytes);
+    if (!transcript) {
+      return c.json({ success: true, transcribed: false });
+    }
+
+    await execute(db, "UPDATE bodycam_videos SET transcript = ?, updated_at = datetime('now') WHERE id = ?", transcript, id);
+    return c.json({ success: true, transcribed: true, transcript });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/transcribe failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/analyze — on-demand AI object detection/identification.
+// Client samples frames from the already-loaded player and posts them
+// here (NOT automatic on upload — this calls a paid vision model per
+// frame, unlike the free client-side thumbnail/plate/face detection).
+// Every finding is a "potential, review required" signal — this route
+// must never write to classification/retention_status or trigger any
+// action; it only stores a JSON blob the UI renders as review aids.
+//
+// Do NOT extend this route (or the prompt below) to attempt deception
+// detection, voice stress analysis, or "anxiety analysis" in any form —
+// see docs/superpowers/specs/2026-07-14-bodycam-ai-object-detection-design.md's
+// "Explicit scope boundary" section. That is a deliberate, permanent
+// exclusion, not an oversight to be filled in later.
+// ────────────────────────────────────────────────────────────
+const ANALYSIS_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const ANALYSIS_MAX_FRAMES = 20;
+// A single JPEG video frame should be well under this; guards against a
+// caller posting arbitrarily large blobs (each one is expanded via
+// Array.from(bytes), which is heavier than the raw bytes) — mirrors the
+// MAX_AUDIO_BYTES cap on the sibling /:id/transcribe route above.
+const MAX_FRAME_BYTES = 5 * 1024 * 1024;
+const VALID_SAFETY_FLAGS = new Set(['weapon_draw', 'running', 'struggle']);
+
+const ANALYSIS_PROMPT = `You are assisting a human reviewer of body-worn camera footage. Look at this single video frame and return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
+{
+  "weapon_present": boolean,
+  "weapon_confidence": number (0 to 1),
+  "weapon_type": string or null (e.g. "firearm", "knife"),
+  "vehicle_present": boolean,
+  "vehicle_description": string or null (brief: type/color, e.g. "dark sedan"),
+  "scene_type": string or null (brief label, e.g. "traffic stop", "foot pursuit", "interview"),
+  "force_indicators": boolean (true if the frame shows what looks like physical struggle/force),
+  "force_confidence": number (0 to 1),
+  "officer_safety_flags": string[] (any of: "weapon_draw", "running", "struggle" — empty array if none)
+}
+Only set a boolean true if you have reasonable visual evidence in THIS frame. This is a triage aid for a human reviewer, not a final determination — when uncertain, prefer lower confidence over a false positive.`;
+
+bodycamVideosRouter.post('/:id/analyze', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const timestampsRaw = form.get('timestamps');
+    let timestamps: number[];
+    try {
+      timestamps = JSON.parse(String(timestampsRaw));
+      if (!Array.isArray(timestamps)) throw new Error('not an array');
+    } catch {
+      return c.json({ error: 'timestamps must be a JSON array' }, 400);
+    }
+
+    const frameEntries = form.getAll('frame') as unknown as (File | string)[];
+    const frames = frameEntries.filter((f): f is File => typeof f !== 'string' && f instanceof Blob);
+    if (frames.length === 0) return c.json({ error: 'at least one frame is required' }, 400);
+    if (frames.length !== timestamps.length) {
+      return c.json({ error: 'frame count must match timestamps count' }, 400);
+    }
+    if (frames.length > ANALYSIS_MAX_FRAMES) {
+      return c.json({ error: `too many frames (max ${ANALYSIS_MAX_FRAMES})` }, 400);
+    }
+
+    const db = getDb(c.env);
+    await ensureBodycamArtifactColumns(db);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Sequential, not Promise.all — stays within Workers AI concurrent-
+    // request limits (see design spec). A ~20-frame analysis takes tens
+    // of seconds; the client shows a progress indicator, not a spinner.
+    const results: FrameAnalysis[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      const timestamp = Number(timestamps[i]) || 0;
+      try {
+        if (frame.size > MAX_FRAME_BYTES) {
+          console.warn(`bodycam analyze: frame at ${timestamp}s exceeds ${MAX_FRAME_BYTES} bytes, skipping`);
+          continue;
+        }
+        const bytes = new Uint8Array(await frame.arrayBuffer());
+        const out: any = await c.env.AI.run(ANALYSIS_VISION_MODEL as any, {
+          image: Array.from(bytes),
+          prompt: ANALYSIS_PROMPT,
+          max_tokens: 512,
+          temperature: 0.1,
+        } as any);
+        const parsed = tryParseModelJson(out);
+        results.push({
+          timestamp,
+          weapon_present: !!parsed.weapon_present,
+          weapon_confidence: Math.min(1, Math.max(0, Number(parsed.weapon_confidence) || 0)),
+          weapon_type: typeof parsed.weapon_type === 'string' ? parsed.weapon_type : null,
+          vehicle_present: !!parsed.vehicle_present,
+          vehicle_description: typeof parsed.vehicle_description === 'string' ? parsed.vehicle_description : null,
+          scene_type: typeof parsed.scene_type === 'string' ? parsed.scene_type : null,
+          force_indicators: !!parsed.force_indicators,
+          force_confidence: Math.min(1, Math.max(0, Number(parsed.force_confidence) || 0)),
+          officer_safety_flags: Array.isArray(parsed.officer_safety_flags)
+            ? parsed.officer_safety_flags.filter((x: unknown) => typeof x === 'string' && VALID_SAFETY_FLAGS.has(x))
+            : [],
+        });
+      } catch (frameErr) {
+        // Best-effort per frame — one bad frame doesn't fail the whole analysis.
+        console.warn(`bodycam analyze: frame at ${timestamp}s failed:`, frameErr);
+      }
+    }
+
+    if (results.length === 0 && frames.length > 0) {
+      console.warn(`bodycam analyze: all ${frames.length} frame(s) failed for video ${id}`);
+      return c.json({ error: 'AI analysis failed for all frames — try again' }, 502);
+    }
+
+    const analysis = aggregateAnalysis(results, new Date().toISOString());
+    await execute(db, "UPDATE bodycam_videos SET ai_analysis_json = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(analysis), id);
+
+    log.info('Bodycam AI analysis completed', {
+      videoId: id, framesRequested: frames.length, framesAnalyzed: results.length,
+      weaponDetected: !!analysis.weapon, forceDetected: !!analysis.force_indicators,
+    });
+
+    return c.json({ success: true, frames_analyzed: results.length, frames_requested: frames.length, analysis });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/analyze failed:', err);
+    return dbErrorResponse(c, err, 'Failed');
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /:id/deep-scan — on-demand, higher-accuracy face/plate detection
+// for Redaction Studio, using the same vision model as /:id/analyze but
+// prompted for bounding boxes instead of scene findings. Opt-in per clip
+// (or per time range) — NOT automatic, since this calls a paid Workers AI
+// model per frame. Results are NOT persisted server-side; they flow
+// straight into the client's in-memory region list (same as the free
+// client-side scan) and only get saved when the operator exports/saves,
+// exactly like manually-drawn boxes today.
+// ────────────────────────────────────────────────────────────
+const DEEP_SCAN_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+// Kept low relative to /:id/analyze's 20-frame cap: deep-scan's heavier
+// bounding-box prompt + double max_tokens (1024 vs 512) means each frame
+// costs more time, and both routes share the same 180s client timeout.
+const DEEP_SCAN_MAX_FRAMES = 18;
+// Mirrors ANALYSIS's MAX_FRAME_BYTES cap on the sibling /:id/analyze route.
+const DEEP_SCAN_MAX_FRAME_BYTES = 5 * 1024 * 1024;
+// Bounds a single frame's AI call so one anomalously slow frame can't
+// consume the whole 180s client-side request budget.
+const DEEP_SCAN_FRAME_AI_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
+const DEEP_SCAN_PROMPT = `You are assisting a human reviewer redacting body-worn camera footage for privacy. Look at this single video frame and identify every human FACE and every vehicle LICENSE PLATE visible, including partially visible or angled ones. Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
+{
+  "detections": [
+    { "kind": "face" | "plate", "box": [x, y, w, h], "confidence": number (0 to 1) }
+  ]
+}
+"box" is the bounding box in FRACTIONAL coordinates (0 to 1) relative to the frame — x,y is the top-left corner, w,h is width/height as a fraction of the frame's total width/height. Include every distinct face and plate you can see, even small or partially obscured ones — this is for privacy redaction, so err toward including a lower-confidence detection rather than omitting one. If nothing is visible, return {"detections": []}.`;
+
+bodycamVideosRouter.post('/:id/deep-scan', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    const timestampsRaw = form.get('timestamps');
+    let timestamps: number[];
+    try {
+      timestamps = JSON.parse(String(timestampsRaw));
+      if (!Array.isArray(timestamps)) throw new Error('not an array');
+    } catch {
+      return c.json({ error: 'timestamps must be a JSON array' }, 400);
+    }
+
+    const frameEntries = form.getAll('frame') as unknown as (File | string)[];
+    const frames = frameEntries.filter((f): f is File => typeof f !== 'string' && f instanceof Blob);
+    if (frames.length === 0) return c.json({ error: 'at least one frame is required' }, 400);
+    if (frames.length !== timestamps.length) {
+      return c.json({ error: 'frame count must match timestamps count' }, 400);
+    }
+    if (frames.length > DEEP_SCAN_MAX_FRAMES) {
+      return c.json({ error: `too many frames (max ${DEEP_SCAN_MAX_FRAMES})` }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Sequential, not Promise.all — same Workers AI concurrency rationale
+    // as /:id/analyze.
+    const samples: DetectorSample[] = [];
+    let framesAnalyzed = 0;
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      const timestamp = Number(timestamps[i]) || 0;
+      try {
+        if (frame.size > DEEP_SCAN_MAX_FRAME_BYTES) {
+          console.warn(`bodycam deep-scan: frame at ${timestamp}s exceeds ${DEEP_SCAN_MAX_FRAME_BYTES} bytes, skipping`);
+          continue;
+        }
+        const bytes = new Uint8Array(await frame.arrayBuffer());
+        const out: any = await withTimeout(
+          c.env.AI.run(DEEP_SCAN_VISION_MODEL as any, {
+            image: Array.from(bytes),
+            prompt: DEEP_SCAN_PROMPT,
+            max_tokens: 1024,
+            temperature: 0.1,
+          } as any),
+          DEEP_SCAN_FRAME_AI_TIMEOUT_MS,
+          `deep-scan frame at ${timestamp}s`,
+        );
+        const parsed = tryParseModelJson(out);
+        const rawDetections: RawDeepScanDetection[] = Array.isArray(parsed?.detections) ? parsed.detections : [];
+        samples.push(...parseDeepScanFrame(rawDetections, timestamp));
+        framesAnalyzed++;
+      } catch (frameErr) {
+        // Best-effort per frame — one bad frame doesn't fail the whole scan.
+        console.warn(`bodycam deep-scan: frame at ${timestamp}s failed:`, frameErr);
+      }
+    }
+
+    if (framesAnalyzed === 0 && frames.length > 0) {
+      console.warn(`bodycam deep-scan: all ${frames.length} frame(s) failed for video ${id}`);
+      return c.json({ error: 'Deep scan failed for all frames — try again' }, 502);
+    }
+
+    log.info('Bodycam deep scan completed', {
+      videoId: id, framesRequested: frames.length, framesAnalyzed,
+      faceDetections: samples.filter((s) => s.kind === 'face').length,
+      plateDetections: samples.filter((s) => s.kind === 'plate').length,
+    });
+
+    return c.json({ success: true, frames_analyzed: framesAnalyzed, frames_requested: frames.length, samples });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/deep-scan failed:', err);
     return dbErrorResponse(c, err, 'Failed');
   }
 });

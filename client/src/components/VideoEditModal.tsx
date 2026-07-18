@@ -10,6 +10,7 @@ import { Video } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { BodyCamVideo, VideoClassification, VideoRetention } from '../types';
+import { toDatetimeLocalValue } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
 export interface BodyCamVideoEditData {
@@ -72,7 +73,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         classification: video.classification || 'routine',
         case_number: video.case_number || '',
         retention_status: video.retention_status || 'active',
-        recorded_at: video.recorded_at ? video.recorded_at.slice(0, 16) : '',
+        recorded_at: toDatetimeLocalValue(video.recorded_at),
         notes: video.notes || '',
       };
       setForm(init);

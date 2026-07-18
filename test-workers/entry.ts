@@ -1,10 +1,12 @@
-// Minimal test worker for the Workers (Miniflare) vitest pool. Mounts ONLY the
-// ALPR router with an injected operational user — real auth is applied per-prefix
-// in src/index.ts (not inside the router), so the router itself is testable in
-// isolation without booting the full app + its Durable Objects.
+// Minimal test worker for the Workers (Miniflare) vitest pool. Mounts routers
+// with an injected operational user — real auth is applied per-prefix in
+// src/index.ts (not inside the router), so routers are testable in isolation
+// without booting the full app + its Durable Objects.
 import { Hono } from 'hono';
 import alpr from '../src/routes/alpr';
 import redactions from '../src/routes/redactions';
+import { bodycamVideosRouter } from '../src/routes/personnel/bodyCameras';
+import '../src/routes/personnel/bodyCameraUploads'; // attaches handlers to bodycamVideosRouter
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -15,5 +17,6 @@ app.use('*', async (c, next) => {
 });
 app.route('/api/alpr', alpr);
 app.route('/api/redactions', redactions);
+app.route('/api/personnel/bodycam-videos', bodycamVideosRouter);
 
 export default app;

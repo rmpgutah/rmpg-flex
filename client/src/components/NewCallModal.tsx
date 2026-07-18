@@ -3,6 +3,7 @@ import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronU
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
+import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -369,11 +370,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         historicalFields.disposition = formData.historical_disposition;
       }
       // Pass individual status timestamps if provided
-      if (formData.historical_dispatched_at) historicalFields.dispatched_at = `${formData.historical_dispatched_at}:00`;
-      if (formData.historical_enroute_at) historicalFields.enroute_at = `${formData.historical_enroute_at}:00`;
-      if (formData.historical_onscene_at) historicalFields.onscene_at = `${formData.historical_onscene_at}:00`;
-      if (formData.historical_cleared_at) historicalFields.cleared_at = `${formData.historical_cleared_at}:00`;
-      if (formData.historical_closed_at) historicalFields.closed_at = `${formData.historical_closed_at}:00`;
+      if (formData.historical_dispatched_at) historicalFields.dispatched_at = mtDatetimeLocalToUtc(formData.historical_dispatched_at);
+      if (formData.historical_enroute_at) historicalFields.enroute_at = mtDatetimeLocalToUtc(formData.historical_enroute_at);
+      if (formData.historical_onscene_at) historicalFields.onscene_at = mtDatetimeLocalToUtc(formData.historical_onscene_at);
+      if (formData.historical_cleared_at) historicalFields.cleared_at = mtDatetimeLocalToUtc(formData.historical_cleared_at);
+      if (formData.historical_closed_at) historicalFields.closed_at = mtDatetimeLocalToUtc(formData.historical_closed_at);
     }
 
     setIsSubmitting(true);

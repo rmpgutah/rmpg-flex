@@ -125,6 +125,7 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user') as { id: number; role: string };
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -140,6 +141,10 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
     if (status && LEAVE_STATUSES.has(status)) {
       where.push('lr.status = ?');
       params.push(status);
+    }
+    if (type && LEAVE_TYPES.has(type)) {
+      where.push('lr.type = ?');
+      params.push(type);
     }
 
     const sql = `
@@ -246,7 +251,7 @@ hr.get('/leave/balances', requireRole(...ALL_ROLES), async (c) => {
 
     const officers = await query<{ id: number; full_name: string }>(
       db,
-      `SELECT id, full_name FROM users WHERE ${officerWhere} ORDER BY full_name`,
+      `SELECT id, full_name FROM users u WHERE ${officerWhere} ORDER BY full_name`,
       ...officerParams
     );
 
@@ -446,6 +451,8 @@ hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user');
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
+    const severity = c.req.query('severity');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -457,6 +464,8 @@ hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
       where.push('dr.officer_id = ?'); params.push(Number(officerId));
     }
     if (status && DISC_STATUSES.has(status)) { where.push('dr.status = ?'); params.push(status); }
+    if (type && DISC_TYPES.has(type)) { where.push('dr.type = ?'); params.push(type); }
+    if (severity && DISC_SEVERITIES.has(severity)) { where.push('dr.severity = ?'); params.push(severity); }
 
     const sql = `
       SELECT dr.*, o.full_name AS officer_name, i.full_name AS issuer_name
@@ -616,6 +625,7 @@ hr.get('/reviews', requireRole(...ALL_ROLES), async (c) => {
     const user = c.get('user') as { id: number; role: string };
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
+    const type = c.req.query('type');
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -629,6 +639,10 @@ hr.get('/reviews', requireRole(...ALL_ROLES), async (c) => {
     if (status && REVIEW_STATUSES.has(status)) {
       where.push('pr.status = ?');
       params.push(status);
+    }
+    if (type && REVIEW_TYPES.has(type)) {
+      where.push('pr.type = ?');
+      params.push(type);
     }
 
     const sql = `

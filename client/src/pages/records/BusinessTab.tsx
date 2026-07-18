@@ -24,6 +24,9 @@ import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
 import { useAssessorLookup } from '../../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from '../../components/AssessorSuggestionPanel';
+import { JurisdictionButton } from '../../components/JurisdictionButton';
+import { RecordPhotoGallery } from '../../components/RecordPhotoGallery';
+import { ParcelDetailDrawer } from '../../components/ParcelDetailDrawer';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -508,6 +511,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     employee_count: initial?.employee_count || '',
     annual_revenue: initial?.annual_revenue || '',
     notes: initial?.notes || '',
+    // Server-only field (not on the Business type), applied via the
+    // never-clobber assessor patch — seeded here so ParcelDetailDrawer
+    // shows for an already-applied record on open, and stays current
+    // immediately after a fresh Apply without reopening the form.
+    parcel_number: (initial as any)?.parcel_number || '',
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -549,6 +557,14 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     }
   }, [recordId, assessor]);
 
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = (address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
+
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
@@ -569,8 +585,13 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={e => set('address', e.target.value)}
-              onBlur={e => assessor.lookup(e.target.value)}
+              onBlur={e => assessor.lookup(fullAddress(e.target.value))}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={fullAddress(form.address)} recordType="business" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -622,6 +643,19 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       <FormSection title="Notes" icon={FileText}>
         <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
       </FormSection>
+
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="business" recordId={recordId} />
+          {form.parcel_number && (
+            <div className="mt-2">
+              {/* form (not initial) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={form.parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
 
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>

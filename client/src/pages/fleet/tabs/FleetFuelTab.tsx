@@ -1,7 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
+import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
+import { apiFetch } from '../../../hooks/useApi';
 
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
@@ -195,6 +199,30 @@ export default function FleetFuelTab({
 }: Props) {
   // Count flagged entries so we can label the Audit button + gate visibility
   const flaggedCount = fuelLogs.filter((l: any) => !!l.flags).length;
+
+  const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  useEffect(() => {
+    const ids = fuelLogs.map((l) => Number(l.id));
+    if (!ids.length) { setConflicts(new Map()); return; }
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=fleet_fuel_log&ids=${ids.join(',')}`)
+      .then((r) => {
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r?.conflicts ?? []) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+          });
+        }
+        setConflicts(map);
+      })
+      .catch(() => {});
+  }, [fuelLogs]);
+
   return (
     <div className="p-4 space-y-3">
       {/* Summary Stats — Top Row */}
@@ -356,6 +384,9 @@ export default function FleetFuelTab({
                     {(log.is_full_tank === 0 || log.is_full_tank === false) && (
                       <span className="px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30">Partial</span>
                     )}
+                    {conflicts.get(Number(log.id))?.map((c) => (
+                      <FleetioConflictBadge key={c.id} conflict={c} compact />
+                    ))}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                     <span className="flex items-center gap-0.5">
