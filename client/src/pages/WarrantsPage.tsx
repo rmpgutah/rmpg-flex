@@ -3,6 +3,7 @@ import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
+import LegalDataHunterValidateButton from '../components/LegalDataHunterValidateButton';
 import {
   AlertTriangle, Plus, Search, CheckCircle, Clock,
   Loader2, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
@@ -3088,6 +3089,9 @@ export default function WarrantsPage() {
                     <div className="mt-3">
                       <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-wider">Offense / Charges</span>
                       <div className="font-mono text-rmpg-100 mt-0.5 text-xs whitespace-pre-wrap">{chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || '—'}</div>
+                      <LegalDataHunterValidateButton
+                        charge={chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || ''}
+                      />
                     </div>
                   )}
                 </div>
