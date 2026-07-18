@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Grid3X3, Bell } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { useClock } from '../../hooks/useClock';
+import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -32,6 +33,38 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  const { user } = useAuth();
+  const [onDuty, setOnDuty] = useState<boolean | null>(null);
+  const [clockBusy, setClockBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ active: boolean }>('/personnel/time/mine/active')
+      .then(res => { if (!cancelled) setOnDuty(res.active); })
+      .catch(() => { if (!cancelled) setOnDuty(false); });
+    return () => { cancelled = true; };
+  }, [launcherOpen]);
+
+  const handleClockToggle = useCallback(async () => {
+    if (!user?.id || clockBusy) return;
+    setClockBusy(true);
+    try {
+      await apiFetch(onDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
+        method: 'POST',
+        body: JSON.stringify({ officer_id: user.id }),
+      });
+      setOnDuty(v => !v);
+    } catch { /* toast handled by apiFetch's shared error interceptor */ }
+    setClockBusy(false);
+    setLauncherOpen(false);
+  }, [onDuty, clockBusy, user]);
+
+  const quickActions = useMemo(() => ([
+    { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
+    { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => { navigate('/dispatch?newCall=1'); setLauncherOpen(false); } },
+    { key: 'new-incident', label: 'New Incident', icon: FileWarning, onClick: () => { navigate('/incidents?newIncident=1'); setLauncherOpen(false); } },
+  ]), [onDuty, handleClockToggle, navigate]);
+
   const searchResults = useMemo(() => {
     if (!query.trim()) return icons;
     const q = query.toLowerCase();
@@ -57,6 +90,22 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               placeholder="Search modules…"
               className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
             />
+            {!query.trim() && (
+              <div style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                {quickActions.map(action => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    onClick={action.onClick}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-surface-hover"
+                    style={{ color: 'var(--brand-400)' }}
+                  >
+                    <action.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {searchResults.slice(0, 20).map(fn => (
               <button
                 key={fn.path}
