@@ -41,9 +41,20 @@ jobs:
       # if a migration's DDL never actually landed (wrangler swallowed the
       # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
       # emergency hotfixes where schema drift is intentional.
+      #
+      # timeout-minutes: the script shells out to `wrangler d1 execute
+      # --remote` once per expected table/column (500+ round-trips at
+      # ~1.3s each), so a full run can approach the job's own 10-minute
+      # cap. Since this step is already continue-on-error, a timeout here
+      # just skips it (as if drift-checking were inconclusive) rather than
+      # blocking Apply D1 migrations / Deploy Worker / Deploy client below —
+      # which is what happened on 2026-07-18 when re-enabling this step
+      # (after a long-dead missing-executable-bit no-op) ate the whole job
+      # budget and cancelled every deploy for ~10 minutes straight.
       - name: Schema drift check (remote D1)
         if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
         continue-on-error: true
+        timeout-minutes: 3
         run: DB_MODE=remote scripts/check-migration-drift.sh
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
