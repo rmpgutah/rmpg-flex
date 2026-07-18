@@ -114,6 +114,7 @@ interface Props {
   onEditCost: (category: CostCategory, record: any) => void;
   onDeleteCost: (category: CostCategory, record: any) => void;
   onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
+  onViewAllWorkOrders: () => void;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -275,7 +276,7 @@ export default function FleetDetailPanel({
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
   onEditFuel, onDeleteFuel,
-  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets,
+  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets, onViewAllWorkOrders,
   onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
@@ -532,6 +533,8 @@ export default function FleetDetailPanel({
         )}
         {activeTab === 'costs' && (
           <FleetCostsTab
+            vehicleId={detail.id}
+            onViewAllWorkOrders={onViewAllWorkOrders}
             loans={loans}
             insurance={insurancePolicies}
             accessories={accessories}

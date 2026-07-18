@@ -1567,6 +1567,12 @@ export default function FleetPage() {
             )}
             <FleetDetailPanel
               detail={detail}
+              onViewAllWorkOrders={() => {
+                setWorkOrdersVehicleFilter(Number(detail.id));
+                setSelectedId(null);
+                setDetail(null);
+                setViewMode('work_orders');
+              }}
               maintenance={maintenance}
               fuelLogs={fuelLogs}
               fuelSummary={fuelSummary}
