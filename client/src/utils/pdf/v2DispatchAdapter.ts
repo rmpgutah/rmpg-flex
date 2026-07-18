@@ -18,6 +18,8 @@
 // Same pattern as c0f34f20 (pdfStaticMap), pdfImageHelpers.ts,
 // and warrantPacket.ts. Now uses raw fetch + localStorage JWT.
 
+import type { PdfSignatureBundle } from '../pdfIntegrity';
+
 // Isolated fetch — mirrors the getAuthToken + fetch pattern from
 // pdfImageHelpers.ts & pdfIntegrity.ts, but inlined here to keep
 // the v2 adapter self-contained (no shared fetch util yet).
@@ -55,13 +57,6 @@ export interface V2DispatchOptions {
   identifier?: string;
 }
 
-interface SignPayloadResponse {
-  algorithm: 'Ed25519';
-  signature: string;
-  publicKey: string;
-  signedAt: string;
-}
-
 /**
  * Best-effort: ask the server to sign a canonical payload hash.
  * Returns null on 503 (signing not configured) so callers can
@@ -70,9 +65,9 @@ interface SignPayloadResponse {
  */
 async function signPayload(
   formKey: string, caseNumber: string, payloadHash: string,
-): Promise<SignPayloadResponse | null> {
+): Promise<PdfSignatureBundle | null> {
   try {
-    const res = await isolatedFetch<SignPayloadResponse>(`${API_BASE}/api/pdf-tools/sign-payload`, {
+    const res = await isolatedFetch<PdfSignatureBundle>(`${API_BASE}/api/pdf-tools/sign-payload`, {
       method: 'POST',
       body: JSON.stringify({ formKey, caseNumber, payloadHash }),
     });
@@ -134,9 +129,9 @@ async function prepareCitationDispatch(opts: V2DispatchOptions) {
     caseNumber,
     signature: signResp
       ? {
-          algorithm: signResp.algorithm,
-          signature: signResp.signature,
-          publicKey: signResp.publicKey,
+          ed25519: signResp.ed25519,
+          mlDsa87: signResp.mlDsa87,
+          slhDsa256f: signResp.slhDsa256f,
           signedAt: signResp.signedAt,
           payloadHash: hash,
         }
