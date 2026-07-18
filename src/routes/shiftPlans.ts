@@ -34,7 +34,27 @@ const sp = new Hono<Env>();
 // `/api/auth/login` (see PR #627 incident). Same pattern the geocode
 // router uses post-#627: register here, mark the registry entry
 // `auth: 'public'`.
-sp.use('*', authMiddleware);
+//
+// ⚠️  Scope this to the exact sub-paths this router owns — NOT `'*'`.
+// A router-internal `sp.use('*', mw)` merges through `app.route('/api',
+// sp)` into the parent app's route table as a genuinely global
+// `/api/*` pattern (same blanket-block #627 was about, just registered
+// from this call site instead of index.ts — see geocode.ts's matching
+// comment for the Hono internals). Because this router mounts before
+// other bare-`/api` public routers (mobileCfs, downloads, stubs'
+// diagnostics/updates mounts), a bare `'*'` here silently 401'd all of
+// them (found 2026-07-18 wiring mobile rate limiting — see
+// test-workers/mobileAuthRouting.test.ts). List every literal path +
+// its `/*` glob (Hono's glob doesn't match the bare path — same
+// gotcha documented in routesConfig.ts's file header).
+sp.use('/shift-plans', authMiddleware);
+sp.use('/shift-plans/*', authMiddleware);
+sp.use('/shift-swaps', authMiddleware);
+sp.use('/shift-swaps/*', authMiddleware);
+sp.use('/admin/shift-swaps', authMiddleware);
+sp.use('/shift-overtime', authMiddleware);
+sp.use('/staffing-levels', authMiddleware);
+sp.use('/shift-notifications', authMiddleware);
 
 // ── Helpers ─────────────────────────────────────────────────
 

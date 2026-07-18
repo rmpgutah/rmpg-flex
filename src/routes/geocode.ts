@@ -33,7 +33,22 @@ const geocode = new Hono<Env>();
 // in. (Incident 2026-05-24: that's exactly what happened to the
 // admin recovery flow.) Move the auth concern inside so the registry
 // can keep this entry as `public` without leaving the routes open.
-geocode.use('*', authMiddleware);
+//
+// ⚠️  Scope this to the paths this router actually owns — NOT `'*'`.
+// Hono's `app.route('/api', geocode)` merges a router-internal
+// `geocode.use('*', mw)` into the PARENT app's flat route table as a
+// genuinely global `/api/*` pattern (verified against hono-base.js:
+// `.route()` calls `subApp.#addRoute(r.method, r.path, ...)` where
+// `subApp._basePath` is already the merged '/api' prefix, so the '*'
+// becomes '/api/*'). That's indistinguishable from registering
+// `app.use('/api/*', authMiddleware)` directly in index.ts — the exact
+// blanket-block this router exists to avoid. Because this router is
+// registered before other bare-`/api`-adjacent public routers
+// (mobileCfs, stubs' diagnostics/updates mounts, downloads), a bare
+// `'*'` here silently 401'd all of them (found 2026-07-18 while
+// wiring mobile rate limiting — see test-workers/mobileAuthRouting.test.ts).
+geocode.use('/geocode/*', authMiddleware);
+geocode.use('/integrations/mapbox/client-token', authMiddleware);
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';

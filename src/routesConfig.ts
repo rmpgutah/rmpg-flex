@@ -642,13 +642,20 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // level — `required` would make the auth loop register
   // `app.use('/api/*', authMiddleware)`, blanket-blocking every
   // /api/* path including /api/auth/login. Auth is enforced INSIDE
-  // each router via `router.use('*', authMiddleware)`.
+  // each router, scoped to the literal sub-paths it owns (e.g.
+  // `router.use('/geocode/*', authMiddleware)`) — NOT `router.use('*',
+  // ...)`. A bare `'*'` here merges through `.route()` into a genuinely
+  // global `/api/*` pattern on the PARENT app (same blanket-block this
+  // comment warns about, just from a different call site), which
+  // 401'd every OTHER public bare-/api router registered after it
+  // (mobileCfs, downloads, stubs' diagnostics/updates) until fixed
+  // 2026-07-18 — see the in-router comments in geocode.ts/shiftPlans.ts.
   { prefix: '/api', router: geocode, auth: 'public',
     note: 'Serves /api/geocode/* and /api/integrations/mapbox/client-token. See src/routes/geocode.ts for the in-router auth setup.' },
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
-    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page. Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
+    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open). Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
