@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
 import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
 import { signTriple } from '../src/utils/pdfSign';
@@ -94,6 +94,62 @@ describe('signTriple', () => {
     const slhPub = Uint8Array.from(atob(result.slhDsa256f.publicKey), (c) => c.charCodeAt(0));
     const slhSig = Uint8Array.from(atob(result.slhDsa256f.signature), (c) => c.charCodeAt(0));
     expect(slh_dsa_sha2_256f.verify(slhSig, tamperedMessage, slhPub)).toBe(false);
+  });
+});
+
+describe('logCryptoKeyEvent (via signTriple cache-miss)', () => {
+  function makeMockDb() {
+    const run = vi.fn(async () => ({ success: true }));
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn((_sql: string) => ({ bind }));
+    return { prepare, bind, run };
+  }
+
+  it('logs a crypto_key_events INSERT OR IGNORE on the first call for a new secret', async () => {
+    const mockDb = makeMockDb();
+    const env = { JWT_SECRET: 'audit-test-secret-1', DB: mockDb } as unknown as Bindings;
+    await signTriple(env, 'x', 'y', 'a'.repeat(64));
+    expect(mockDb.prepare).toHaveBeenCalledTimes(1);
+    expect(mockDb.prepare.mock.calls[0][0]).toContain('INSERT OR IGNORE INTO crypto_key_events');
+    expect(mockDb.bind).toHaveBeenCalledWith(
+      expect.any(String),
+      'pdf-sig-v2',
+      JSON.stringify(['Ed25519', 'ML-DSA-87', 'SLH-DSA-256f']),
+    );
+    expect(mockDb.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT log again on a second signTriple call with the same secret (cache-hit)', async () => {
+    const mockDb = makeMockDb();
+    const env = { JWT_SECRET: 'audit-test-secret-2', DB: mockDb } as unknown as Bindings;
+    await signTriple(env, 'x', 'y', 'a'.repeat(64));
+    await signTriple(env, 'x', 'y', 'b'.repeat(64));
+    expect(mockDb.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a D1 failure without throwing or failing the signing call', async () => {
+    const failingDb = {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => ({ run: vi.fn(async () => { throw new Error('D1 down'); }) })),
+      })),
+    };
+    const env = { JWT_SECRET: 'audit-test-secret-3', DB: failingDb } as unknown as Bindings;
+    const result = await signTriple(env, 'x', 'y', 'a'.repeat(64));
+    expect(result.ed25519.signature).toBeTruthy();
+  });
+
+  it('waitUntil-wraps the audit write when a ctx is provided', async () => {
+    const mockDb = makeMockDb();
+    const waitUntil = vi.fn();
+    const env = { JWT_SECRET: 'audit-test-secret-4', DB: mockDb } as unknown as Bindings;
+    await signTriple(env, 'x', 'y', 'a'.repeat(64), { waitUntil });
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs without a DB binding at all (existing tests with no DB in their env stub must keep passing)', async () => {
+    const env = { JWT_SECRET: 'audit-test-secret-5' } as unknown as Bindings;
+    const result = await signTriple(env, 'x', 'y', 'a'.repeat(64));
+    expect(result.ed25519.signature).toBeTruthy();
   });
 });
 
