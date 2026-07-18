@@ -136,6 +136,22 @@ interface Props {
   onClose: () => void;
 }
 
+// fleet_maintenance rows carry the real DB columns (type/performed_at/mileage_at_service),
+// not the legacy service_type/service_date/odometer_reading names the PDF's
+// FleetMaintenanceEntry contract uses — map field-by-field rather than passing rows through.
+export function mapMaintenanceLogsForPdf(maintenance: FleetMaintenance[]) {
+  return maintenance.map((m: any) => ({
+    service_date: m.performed_at,
+    service_type: m.type,
+    description: m.description,
+    cost: m.cost,
+    odometer_reading: m.mileage_at_service,
+    vendor: m.vendor,
+    labor_cost: m.labor_cost,
+    service_tasks: m.service_tasks,
+  }));
+}
+
 // ── Fleet Print Menu (dropdown to select report type) ──
 function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   detail: FleetVehicle;
@@ -193,16 +209,7 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
       cost_per_mile: fuelSummary.cost_per_mile,
       fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
     } : undefined,
-    maintenance_logs: maintenance.map((m: any) => ({
-      service_date: m.service_date,
-      service_type: m.service_type,
-      description: m.description,
-      cost: m.cost,
-      odometer_reading: m.odometer_reading,
-      vendor: m.vendor,
-      labor_cost: m.labor_cost,
-      service_tasks: m.service_tasks,
-    })),
+    maintenance_logs: mapMaintenanceLogsForPdf(maintenance),
   });
 
   const handleDirectPdf = async (key: string) => {
