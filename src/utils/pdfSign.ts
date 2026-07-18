@@ -31,6 +31,28 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+// HKDF-Expand (RFC 5869) — derives arbitrary-length, domain-separated key
+// material from the same root secret used by deriveEd25519Seed, WITHOUT
+// touching that function's formula (see file header). `label` must be
+// unique per algorithm so a break in one derived seed reveals nothing
+// about the others.
+async function deriveHkdfSeed(env: Bindings, label: string, byteLength: number): Promise<Uint8Array> {
+  const material = env.PDF_SIGNING_KEY?.trim() || env.JWT_SECRET;
+  const ikm = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(material), 'HKDF', false, ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(), info: new TextEncoder().encode(label) },
+    ikm,
+    byteLength * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+// Test-only export — removed once signTriple()'s own tests cover this
+// behavior end-to-end (Task 5).
+export const deriveHkdfSeedForTest = deriveHkdfSeed;
+
 // Per-isolate cache of the imported signing key, re-imported if the seed source
 // changes (keyed by a hash of the seed).
 let cachedSigningKey: { seedHash: string; key: CryptoKey } | null = null;

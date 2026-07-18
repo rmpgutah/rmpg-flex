@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
 import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
+import { deriveHkdfSeedForTest } from '../src/utils/pdfSign';
+import type { Bindings } from '../src/types';
 
 // Benchmarked on 2026-07-18 (dev machine, @noble/post-quantum 0.6.1):
 //   ml_dsa87:            keygen ~15ms, sign ~14ms,  verify ~5ms
@@ -42,5 +44,36 @@ describe('@noble/post-quantum — library sanity', () => {
     const { publicKey, secretKey } = slh_dsa_sha2_256f.keygen(seed);
     const sig = slh_dsa_sha2_256f.sign(new TextEncoder().encode('original'), secretKey);
     expect(slh_dsa_sha2_256f.verify(sig, new TextEncoder().encode('tampered'), publicKey)).toBe(false);
+  });
+});
+
+describe('deriveHkdfSeedForTest', () => {
+  const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
+
+  it('derives the requested byte length', async () => {
+    const seed32 = await deriveHkdfSeedForTest(env, 'label-a', 32);
+    const seed96 = await deriveHkdfSeedForTest(env, 'label-a', 96);
+    expect(seed32.length).toBe(32);
+    expect(seed96.length).toBe(96);
+  });
+
+  it('is deterministic for the same env + label', async () => {
+    const a = await deriveHkdfSeedForTest(env, 'label-a', 32);
+    const b = await deriveHkdfSeedForTest(env, 'label-a', 32);
+    expect(Array.from(a)).toEqual(Array.from(b));
+  });
+
+  it('produces different bytes for different labels (domain separation)', async () => {
+    const a = await deriveHkdfSeedForTest(env, 'label-a', 32);
+    const b = await deriveHkdfSeedForTest(env, 'label-b', 32);
+    expect(Array.from(a)).not.toEqual(Array.from(b));
+  });
+
+  it('prefers PDF_SIGNING_KEY over JWT_SECRET when both are set', async () => {
+    const envWithBoth = { JWT_SECRET: 'jwt-value', PDF_SIGNING_KEY: 'dGVzdC1wZGYtc2lnbmluZy1rZXk=' } as unknown as Bindings;
+    const envJwtOnly = { JWT_SECRET: 'jwt-value' } as unknown as Bindings;
+    const a = await deriveHkdfSeedForTest(envWithBoth, 'label-a', 32);
+    const b = await deriveHkdfSeedForTest(envJwtOnly, 'label-a', 32);
+    expect(Array.from(a)).not.toEqual(Array.from(b));
   });
 });
