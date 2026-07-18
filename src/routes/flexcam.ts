@@ -309,7 +309,8 @@ flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const manifest = buildCourtManifest({ request: req, chunks, links, custody });
   const payloadHash = await manifestPayloadHash(manifest);
   const caseRef = links.find((l) => l.entity_type === 'incident' || l.entity_type === 'case');
-  const signed = await signTriple(c.env, `flexcam:${req.evidence_number ?? id}`, caseRef ? `${caseRef.entity_type}:${caseRef.entity_id}` : '', payloadHash);
+  const ctx = (() => { try { return c.executionCtx; } catch { return undefined; } })();
+  const signed = await signTriple(c.env, `flexcam:${req.evidence_number ?? id}`, caseRef ? `${caseRef.entity_type}:${caseRef.entity_id}` : '', payloadHash, ctx);
   await logCustody(db, { requestId: id, action: 'exported', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), detail: { payloadHash } });
   return c.json({ manifest, payloadHash, ...signed });
 });

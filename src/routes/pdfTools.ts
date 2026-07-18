@@ -104,7 +104,8 @@ pdfTools.post('/sign-payload', async (c) => {
       return c.json({ error: 'payloadHash must be a 64-char lowercase SHA-256 hex string' }, 400);
     }
 
-    const signed = await signTriple(c.env, formKey, caseNumber, payloadHash);
+    const ctx = (() => { try { return c.executionCtx; } catch { return undefined; } })();
+    const signed = await signTriple(c.env, formKey, caseNumber, payloadHash, ctx);
 
     return c.json({
       ...signed,
