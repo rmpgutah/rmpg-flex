@@ -58,6 +58,12 @@ import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
 import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
+import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
+import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
+import { useMapboxPursuitSegments } from '../../hooks/useMapboxPursuitSegments';
+import { useSpeedZoneStats } from './hooks/useSpeedZoneStats';
+import SpeedAnalyticsPanel from './components/SpeedAnalyticsPanel';
+import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
 import { useMapboxResponseTime } from '../../hooks/useMapboxResponseTime';
 import { useMapboxSafetyZones } from '../../hooks/useMapboxSafetyZones';
@@ -360,6 +366,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, [heatmap, heatmapMode, refreshHeatmapPoints]);
 
   const incidentsLayer = useMapboxIncidents(mapLoaded ? mapRef.current : null);
+  const speedHeatmap = useMapboxSpeedHeatmap(mapLoaded ? mapRef.current : null);
+  const speedViolationsLayer = useMapboxSpeedViolations(mapLoaded ? mapRef.current : null);
+  const pursuitSegmentsLayer = useMapboxPursuitSegments(mapLoaded ? mapRef.current : null);
+  const [speedHeatmapEnabled, setSpeedHeatmapEnabled] = useState(false);
+  const [speedViolationsEnabled, setSpeedViolationsEnabled] = useState(false);
+  const [pursuitSegmentsEnabled, setPursuitSegmentsEnabled] = useState(false);
+  const [speedAnalyticsPanelOpen, setSpeedAnalyticsPanelOpen] = useState(false);
+  const [speedGraphUnit, setSpeedGraphUnit] = useState<{ unitId: number; callSign: string } | null>(null);
+  const speedZoneStats = useSpeedZoneStats(8, speedAnalyticsPanelOpen);
+  speedViolationsLayer.setOnSelectUnit((unitId, callSign) => setSpeedGraphUnit({ unitId, callSign }));
   const coverageGaps = useMapboxCoverageGaps(mapLoaded ? mapRef.current : null);
   const responseTime = useMapboxResponseTime(mapLoaded ? mapRef.current : null);
   const safetyZones = useMapboxSafetyZones(mapLoaded ? mapRef.current : null);
@@ -393,6 +409,27 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     if (incidentsEnabled) incidentsLayer.fetchIncidents();
     else incidentsLayer.clear();
   }, [incidentsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!speedHeatmapEnabled) { speedHeatmap.clear(); return; }
+    speedHeatmap.fetchHeatmap(8);
+    const t = setInterval(() => speedHeatmap.fetchHeatmap(8), 60_000);
+    return () => clearInterval(t);
+  }, [speedHeatmapEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!speedViolationsEnabled) { speedViolationsLayer.clear(); return; }
+    speedViolationsLayer.fetchViolations(4);
+    const t = setInterval(() => speedViolationsLayer.fetchViolations(4), 30_000);
+    return () => clearInterval(t);
+  }, [speedViolationsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pursuitSegmentsEnabled) { pursuitSegmentsLayer.clear(); return; }
+    pursuitSegmentsLayer.fetchSegments(4);
+    const t = setInterval(() => pursuitSegmentsLayer.fetchSegments(4), 30_000);
+    return () => clearInterval(t);
+  }, [pursuitSegmentsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!coverageGapsEnabled || !mapRef.current) { if (!coverageGapsEnabled) coverageGaps.clear(); return; }
@@ -1002,6 +1039,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'safety-zones', label: 'Safety Zones', active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), color: '#c81e1e', description: 'Risk-weighted call clusters', loading: safetyZones.loading },
         { id: 'call-history', label: 'Call History', active: historyCallsEnabled, onToggle: () => setHistoryCallsEnabled((v) => !v), color: '#64d264', description: 'Past 30 days of calls', loading: historyCalls.loading },
         { id: 'repeat-addresses', label: 'Repeat Addresses', active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), color: '#64d264', description: 'Locations with 3+ calls', loading: repeatAddresses.loading },
+        { id: 'speed-heatmap', label: 'Speed Heatmap', active: speedHeatmapEnabled, onToggle: () => setSpeedHeatmapEnabled((v) => !v), color: '#f97316', description: 'GPS speed density', loading: speedHeatmap.loading },
+        { id: 'speed-violations', label: 'Speed Violations', active: speedViolationsEnabled, onToggle: () => setSpeedViolationsEnabled((v) => !v), color: '#ef4444', description: 'Recent high-speed events — click a marker for the speed graph', loading: speedViolationsLayer.loading },
+        { id: 'pursuit-segments', label: 'Pursuit Tracks', active: pursuitSegmentsEnabled, onToggle: () => setPursuitSegmentsEnabled((v) => !v), color: '#dc2626', description: 'Recent vehicle/foot pursuit paths', loading: pursuitSegmentsLayer.loading },
         { id: 'gps-replay', label: 'GPS Replay', active: activeFloatingTool === 'gps-replay', onToggle: () => setActiveFloatingTool((v) => v === 'gps-replay' ? null : 'gps-replay'), color: '#22c55e', description: 'Scrub a unit\'s GPS history on a timeline' },
         { id: 'nav-overlay', label: 'Point-to-Point Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
       ],
@@ -1014,6 +1054,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'inspect', label: 'Feature Inspector', active: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
         { id: 'coverage-gaps', label: 'Coverage Gaps', active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), color: '#f08228', description: 'Response-time gap grid', loading: coverageGaps.loading },
         { id: 'response-time', label: 'Response Time by Beat', active: responseTimeEnabled, onToggle: () => setResponseTimeEnabled((v) => !v), color: '#4caf50', description: '30-day avg response time (historical)', loading: responseTime.loading },
+        { id: 'speed-analytics', label: 'Speed Analytics Panel', active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), color: '#f97316', description: 'Per-beat speed stats + coverage timeline', loading: speedZoneStats.loading },
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
         { id: 'ruler', label: 'Ruler', active: activeFloatingTool === 'ruler', onToggle: () => setActiveFloatingTool((v) => v === 'ruler' ? null : 'ruler'), color: '#d4a017', description: 'Multi-point distance measurement' },
         { id: 'buffer-ring', label: 'Buffer Ring', active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring'), color: '#f08228', description: 'Radius rings around a point' },
@@ -1069,7 +1110,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, districtHierarchy, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation, snapshot, placesSearch, directionsPanel, mapBookmarks, multiStopPanelOpen, incidentsEnabled, incidentsLayer.loading, coverageGapsEnabled, coverageGaps.loading, responseTimeEnabled, responseTime.loading, safetyZonesEnabled, safetyZones.loading, historyCallsEnabled, historyCalls.loading, heatmapMode, populateAndToggleHeatmap, identifyEnabled, tilequery.loading, repeatAddressesEnabled, repeatAddresses.loading, activeFloatingTool, scaleEnabled, fullscreenEnabled, minimapOpen, speedHeatmapEnabled, speedHeatmap.loading, speedViolationsEnabled, speedViolationsLayer.loading, pursuitSegmentsEnabled, pursuitSegmentsLayer.loading, speedAnalyticsPanelOpen, speedZoneStats.loading]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1850,6 +1891,23 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             }}
           />
         </div>
+      )}
+
+      {speedAnalyticsPanelOpen && (
+        <SpeedAnalyticsPanel
+          zoneStats={speedZoneStats.zoneStats}
+          coverage={speedZoneStats.coverage}
+          loading={speedZoneStats.loading}
+          onClose={() => setSpeedAnalyticsPanelOpen(false)}
+        />
+      )}
+      {speedGraphUnit && (
+        <SpeedGraphOverlay
+          unitId={speedGraphUnit.unitId}
+          callSign={speedGraphUnit.callSign}
+          hours={4}
+          onClose={() => setSpeedGraphUnit(null)}
+        />
       )}
 
       {streetViewTarget && (
