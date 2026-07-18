@@ -10,6 +10,7 @@ import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
 import { log } from '../../utils/logger';
 import { parseZoneFeatures, pointInAnyPolygon, diffZoneMembership } from '../../utils/geofenceZones';
+import { identifyBeat } from '../../utils/geofence';
 import { broadcastAll } from '../ws';
 
 const gps = new Hono<Env>();
@@ -834,6 +835,131 @@ gps.get('/speed-heatmap', async (c) => {
        ORDER BY avg_speed DESC LIMIT 500`, hours);
     return c.json(rows);
   } catch (err) { log.error('[gps] GET /speed-heatmap failed', {}, err); return c.json([]); }
+});
+
+// GET /dispatch/gps/zone-speed-stats?hours=N — speed stats per beat.
+// Classifies breadcrumbs into beats via the same R2 geofence used by dispatch
+// (identifyBeat), then aggregates. Beat lookup is a single small-table query,
+// not per-breadcrumb — only the point-in-polygon classification runs per row.
+gps.get('/zone-speed-stats', async (c) => {
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+  try {
+    const db = getDb(c.env);
+    const [breadcrumbs, beatRows] = await Promise.all([
+      query<{ latitude: number; longitude: number; speed: number }>(db,
+        `SELECT latitude, longitude, speed
+           FROM gps_breadcrumbs
+          WHERE recorded_at >= datetime('now', '-' || ? || ' hours')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+            AND speed IS NOT NULL AND speed > 0.2
+          ORDER BY recorded_at DESC LIMIT 20000`, hours),
+      query<{ beat_code: string; beat_name: string | null; zone_code: string; zone_name: string | null; sector_name: string | null }>(db,
+        `SELECT db.beat_code, db.beat_name, dz.zone_code, dz.zone_name, ds.sector_name
+           FROM dispatch_beats db
+           JOIN dispatch_zones dz ON dz.id = db.zone_id
+           JOIN dispatch_sectors ds ON ds.id = dz.sector_id`),
+    ]);
+
+    const beatInfo = new Map(beatRows.map((b) => [`${b.zone_code}|${b.beat_code}`, b]));
+    const stats = new Map<string, { zone_code: string; beat_code: string; speeds: number[] }>();
+
+    for (const bc of breadcrumbs) {
+      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
+      if (!hit) continue;
+      const key = `${hit.zone_code}|${hit.beat_code}`;
+      let entry = stats.get(key);
+      if (!entry) { entry = { zone_code: hit.zone_code, beat_code: hit.beat_code, speeds: [] }; stats.set(key, entry); }
+      entry.speeds.push(bc.speed);
+    }
+
+    const result = [...stats.values()].map(({ zone_code, beat_code, speeds }) => {
+      speeds.sort((a, b) => a - b);
+      const sum = speeds.reduce((s, v) => s + v, 0);
+      const p95Idx = Math.min(Math.floor(speeds.length * 0.95), speeds.length - 1);
+      const info = beatInfo.get(`${zone_code}|${beat_code}`);
+      return {
+        beat_id: beat_code,
+        beat_name: info?.beat_name || beat_code,
+        beat_code,
+        zone_name: info?.zone_name || zone_code,
+        sector_name: info?.sector_name || '',
+        avg_speed: Math.round((sum / speeds.length) * 10) / 10,
+        max_speed: Math.round(speeds[speeds.length - 1] * 10) / 10,
+        p95_speed: Math.round(speeds[p95Idx] * 10) / 10,
+        point_count: speeds.length,
+      };
+    }).sort((a, b) => b.point_count - a.point_count);
+
+    return c.json(result);
+  } catch (err) { log.error('[gps] GET /zone-speed-stats failed', {}, err); return c.json([]); }
+});
+
+// GET /dispatch/gps/coverage-timeline?hours=N&interval=N — beat coverage
+// (unique units + avg speed) bucketed into time intervals, for the map's
+// coverage timeline panel.
+gps.get('/coverage-timeline', async (c) => {
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+  const intervalMin = Math.min(Math.max(parseInt(c.req.query('interval') || '30', 10) || 30, 10), 120);
+  try {
+    const db = getDb(c.env);
+    const [breadcrumbs, beatRows] = await Promise.all([
+      query<{ unit_id: number; latitude: number; longitude: number; speed: number | null; recorded_at: string }>(db,
+        `SELECT unit_id, latitude, longitude, speed, recorded_at
+           FROM gps_breadcrumbs
+          WHERE recorded_at >= datetime('now', '-' || ? || ' hours')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL AND unit_id IS NOT NULL
+          ORDER BY recorded_at ASC LIMIT 20000`, hours),
+      query<{ beat_code: string; beat_name: string | null; zone_code: string }>(db,
+        `SELECT db.beat_code, db.beat_name, dz.zone_code
+           FROM dispatch_beats db
+           JOIN dispatch_zones dz ON dz.id = db.zone_id`),
+    ]);
+    const beatNames = new Map(beatRows.map((b) => [`${b.zone_code}|${b.beat_code}`, b.beat_name || b.beat_code]));
+
+    const now = Date.now();
+    const startMs = now - hours * 3_600_000;
+    const intervalMs = intervalMin * 60_000;
+    const bucketCount = Math.ceil((now - startMs) / intervalMs);
+    const buckets: { start: number; end: number; beats: Map<string, { units: Set<number>; speeds: number[] }> }[] =
+      Array.from({ length: bucketCount }, (_, i) => ({
+        start: startMs + i * intervalMs,
+        end: startMs + (i + 1) * intervalMs,
+        beats: new Map(),
+      }));
+
+    for (const bc of breadcrumbs) {
+      const t = Date.parse(bc.recorded_at.endsWith('Z') ? bc.recorded_at : bc.recorded_at + 'Z');
+      if (!Number.isFinite(t)) continue;
+      const idx = Math.floor((t - startMs) / intervalMs);
+      if (idx < 0 || idx >= buckets.length) continue;
+
+      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
+      if (!hit) continue;
+      const key = `${hit.zone_code}|${hit.beat_code}`;
+      const bucket = buckets[idx];
+      let entry = bucket.beats.get(key);
+      if (!entry) { entry = { units: new Set(), speeds: [] }; bucket.beats.set(key, entry); }
+      entry.units.add(bc.unit_id);
+      if (bc.speed != null && bc.speed > 0.2) entry.speeds.push(bc.speed);
+    }
+
+    const distinctBeats = new Set<string>();
+    const intervals = buckets.map((b) => ({
+      start: new Date(b.start).toISOString(),
+      end: new Date(b.end).toISOString(),
+      zones: [...b.beats.entries()].map(([key, { units, speeds }]) => {
+        distinctBeats.add(key);
+        return {
+          beat_id: key,
+          beat_name: beatNames.get(key) || key.split('|')[1],
+          unit_count: units.size,
+          avg_speed: speeds.length ? Math.round((speeds.reduce((s, v) => s + v, 0) / speeds.length) * 10) / 10 : null,
+        };
+      }),
+    }));
+
+    return c.json({ intervals, total_beats: distinctBeats.size });
+  } catch (err) { log.error('[gps] GET /coverage-timeline failed', {}, err); return c.json({ intervals: [], total_beats: 0 }); }
 });
 
 // GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units
