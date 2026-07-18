@@ -56,19 +56,40 @@ describe('apiRateLimit — wired into the real app', () => {
     expect(body).toEqual({ error: 'Too many requests. Slow down and try again shortly.', code: 'RATE_LIMITED' });
   });
 
-  it('does not rate-limit a user whose bucket is fresh', async () => {
+  it('the SAME user/route only starts returning 429 after their bucket is pre-seeded at the limit', async () => {
     const db = getDb(env as unknown as { DB: D1Database });
     await execute(db,
-      `INSERT INTO users (username, role, full_name, status) VALUES ('rate-limit-fresh-test', 'admin', 'Fresh Test', 'active')`);
-    const user = await db.prepare(`SELECT id FROM users WHERE username = 'rate-limit-fresh-test'`).first<{ id: number }>();
-    const token = await mintAccessToken(user!.id, 'admin', 'rate-limit-fresh-test');
+      `INSERT INTO users (username, role, full_name, status) VALUES ('rate-limit-differential-test', 'admin', 'Differential Test', 'active')`);
+    const user = await db.prepare(`SELECT id FROM users WHERE username = 'rate-limit-differential-test'`).first<{ id: number }>();
+    const token = await mintAccessToken(user!.id, 'admin', 'rate-limit-differential-test');
 
-    const res = await app.request(
+    // First request: bucket is fresh (nothing pre-seeded). Whatever this
+    // route's own downstream handler does in this test's isolated D1
+    // (200, 404, 500 — it doesn't matter), the rate limiter itself must
+    // not be the thing blocking it.
+    const before = await app.request(
       '/api/warrants/scrapers',
       { headers: { authorization: `Bearer ${token}` } },
       testEnv(),
     );
+    expect(before.status).not.toBe(429);
 
-    expect(res.status).not.toBe(429);
+    // Now pre-seed the SAME user's bucket at the limit and repeat the
+    // identical request. Only the KV state changed — if the response now
+    // flips to 429 with the rate limiter's exact body, that's directly
+    // attributable to apiRateLimit, not to anything about the route itself
+    // (which just returned a non-429 status for this exact same user a
+    // moment ago).
+    const windowStart = currentWindowStart(300);
+    await env.KV.put(`rl:api:user:${user!.id}:${windowStart}`, '600', { expirationTtl: 600 });
+
+    const after = await app.request(
+      '/api/warrants/scrapers',
+      { headers: { authorization: `Bearer ${token}` } },
+      testEnv(),
+    );
+    expect(after.status).toBe(429);
+    const afterBody = await after.json();
+    expect(afterBody).toEqual({ error: 'Too many requests. Slow down and try again shortly.', code: 'RATE_LIMITED' });
   });
 });
