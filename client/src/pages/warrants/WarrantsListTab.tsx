@@ -35,6 +35,7 @@ import ViewOnMapLink from '../../components/ViewOnMapLink';
 import JurisdictionLookup from '../../components/JurisdictionLookup';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import WarrantNsopwStatus from '../../components/WarrantNsopwStatus';
+import LegalDataHunterValidateButton from '../../components/LegalDataHunterValidateButton';
 import LinkedEmailsSection from '../../components/LinkedEmailsSection';
 import EmailedDocuments from '../../components/EmailedDocuments';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -1165,6 +1166,11 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 <div className="mb-3">
                   <span className="text-[10px] text-[var(--brand-gold)] uppercase font-bold tracking-wider">Charge Description</span>
                   <p className="text-sm text-rmpg-100 mt-0.5">{chargesFromJson(selectedWarrant.charge_description)}</p>
+                  <LegalDataHunterValidateButton
+                    charge={chargesFromJson(selectedWarrant.charge_description)}
+                    state={selectedWarrant.source_state ?? undefined}
+                    warrantId={selectedWarrant.id}
+                  />
                 </div>
 
                 {/* Dates row (compact) */}
