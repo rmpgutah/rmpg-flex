@@ -26,6 +26,8 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { verifySignedResource } from '../utils/signedAccess';
+import { getDecrypted } from '../utils/encryptedR2';
+import { sliceByteRange } from '../utils/byteRange';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -243,26 +245,22 @@ rt.get('/transmissions/:id/audio', async (c) => {
     }
   }
 
-  const obj = r2Range
-    ? await c.env.UPLOADS.get(key, { range: r2Range })
-    : await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Recording not found' }, 404);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  if (!decrypted) return c.json({ error: 'Recording not found' }, 404);
 
-  const totalSize = obj.size;
+  const sliced = sliceByteRange(decrypted.bytes, rangeHeader ? { start: rangeStart, end: rangeEnd } : null);
   const headers: Record<string, string> = {
-    'Content-Type': obj.httpMetadata?.contentType || 'audio/webm',
+    'Content-Type': decrypted.httpMetadata?.contentType || 'audio/webm',
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=31536000, immutable',
   };
-  if (r2Range) {
-    const start = rangeStart;
-    const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
-    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
-    headers['Content-Length'] = String(end - start + 1);
-    return new Response(obj.body, { status: 206, headers });
+  if (rangeHeader) {
+    headers['Content-Range'] = `bytes ${sliced.start}-${sliced.end}/${sliced.total}`;
+    headers['Content-Length'] = String(sliced.data.length);
+    return new Response(sliced.data, { status: 206, headers });
   }
-  headers['Content-Length'] = String(totalSize);
-  return new Response(obj.body, { status: 200, headers });
+  headers['Content-Length'] = String(sliced.data.length);
+  return new Response(sliced.data, { status: 200, headers });
 });
 
 // ── Recordings (per-user bookmarks) ───────────────────────────
