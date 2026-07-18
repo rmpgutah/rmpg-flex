@@ -6,7 +6,7 @@ import { POPOUT_PAGES, openPageWindow } from '../utils/windowManager';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent, pushRecent } from '../utils/navFavorites';
-import { useNavBadges } from '../hooks/useNavBadges';
+import { useNavBadges, type NavBadges } from '../hooks/useNavBadges';
 
 
 export default function ModuleDirectoryPage() {
@@ -404,7 +404,7 @@ export default function ModuleDirectoryPage() {
     const Icon = fn.icon;
     const isFavorite = favorites.has(fn.path);
     const canPopOut = POPOUT_PAGES[fn.path] !== undefined;
-    const badgeValue = fn.badgeKey ? badges[fn.badgeKey] : undefined;
+    const badgeValue = fn.badgeKey ? badges[fn.badgeKey as keyof NavBadges] : undefined;
 
     return (
       <div
