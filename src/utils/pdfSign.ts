@@ -172,6 +172,7 @@ export interface AlgorithmSignature {
  *  so a cryptanalytic break in any one algorithm family alone doesn't
  *  compromise document authenticity. */
 export interface PdfSignTripleResult {
+  algorithmVersion: 'pdf-sig-v2';
   signedAt: string;
   keyId: string;
   ed25519: AlgorithmSignature;
@@ -194,6 +195,7 @@ export async function signTriple(
   const slhDsaSig = slh_dsa_sha2_256f.sign(message, keys.slhDsaSecretKey);
 
   return {
+    algorithmVersion: ALGORITHM_VERSION,
     signedAt: new Date().toISOString(), // new-date-ok
     keyId: keys.keyId,
     ed25519: { signature: bytesToBase64(new Uint8Array(ed25519SigBuf)), publicKey: bytesToBase64(keys.ed25519PublicKey) },

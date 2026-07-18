@@ -73,6 +73,7 @@ describe('signTriple', () => {
     expect(slh_dsa_sha2_256f.verify(slhSig, message, slhPub)).toBe(true);
 
     expect(result.keyId).toMatch(/^[0-9a-f]{16}$/);
+    expect(result.algorithmVersion).toBe('pdf-sig-v2');
     expect(new Date(result.signedAt).toISOString()).toBe(result.signedAt);
   });
 
