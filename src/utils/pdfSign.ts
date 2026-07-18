@@ -31,6 +31,11 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+function base64UrlToBytes(b64url: string): Uint8Array {
+  const pad = b64url.length % 4 === 2 ? '==' : b64url.length % 4 === 3 ? '=' : '';
+  return base64ToBytes(b64url.replace(/-/g, '+').replace(/_/g, '/') + pad);
+}
+
 // HKDF-Expand (RFC 5869) — derives arbitrary-length, domain-separated key
 // material from the same root secret used by deriveEd25519Seed, WITHOUT
 // touching that function's formula (see file header). `label` must be
@@ -53,10 +58,6 @@ async function deriveHkdfSeed(env: Bindings, label: string, byteLength: number):
 // behavior end-to-end (Task 5).
 export const deriveHkdfSeedForTest = deriveHkdfSeed;
 
-// Per-isolate cache of the imported signing key, re-imported if the seed source
-// changes (keyed by a hash of the seed).
-let cachedSigningKey: { seedHash: string; key: CryptoKey } | null = null;
-
 async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   const provisioned = env.PDF_SIGNING_KEY?.trim();
   if (provisioned) {
@@ -69,7 +70,15 @@ async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', material));
 }
 
-export async function getPdfSigningKey(env: Bindings): Promise<{ key: CryptoKey; keyId: string }> {
+interface CachedEd25519Key {
+  seedHash: string;
+  key: CryptoKey;
+  ed25519PublicKey: Uint8Array;
+}
+
+let cachedEd25519: CachedEd25519Key | null = null;
+
+async function getSigningKeys(env: Bindings): Promise<{ key: CryptoKey; keyId: string; ed25519PublicKey: Uint8Array }> {
   const seed = await deriveEd25519Seed(env);
   const seedHashBuf = await crypto.subtle.digest('SHA-256', seed);
   const seedHashBytes = new Uint8Array(seedHashBuf);
@@ -77,23 +86,39 @@ export async function getPdfSigningKey(env: Bindings): Promise<{ key: CryptoKey;
   // keyId = first 8 bytes of the seed hash (hex) — lets a verifier identify the
   // signing key without exposing it.
   const keyId = Array.from(seedHashBytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (cachedSigningKey && cachedSigningKey.seedHash === seedHash) {
-    return { key: cachedSigningKey.key, keyId };
+
+  if (cachedEd25519 && cachedEd25519.seedHash === seedHash) {
+    return { key: cachedEd25519.key, keyId, ed25519PublicKey: cachedEd25519.ed25519PublicKey };
   }
+
   const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + 32);
   pkcs8.set(ED25519_PKCS8_PREFIX, 0);
   pkcs8.set(seed, ED25519_PKCS8_PREFIX.length);
-  const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
-  cachedSigningKey = { seedHash, key };
-  return { key, keyId };
+  // extractable: true (was false) — needed to export the public key below.
+  // Safe: this is a server-held key derived from a secret we already
+  // control; exporting the PUBLIC half leaks nothing the derivation
+  // formula doesn't already make computable by anyone holding the secret.
+  const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
+  // @cloudflare/workers-types types exportKey() as Promise<ArrayBuffer | JsonWebKey> for
+  // every format string (unlike lib.dom.d.ts, it doesn't overload on the 'jwk' literal),
+  // so a cast is needed here — runtime shape is unaffected, format:'jwk' always returns JsonWebKey.
+  const jwk = (await crypto.subtle.exportKey('jwk', key)) as JsonWebKey;
+  if (!jwk.x) throw new Error('Ed25519 JWK export missing public key (x)');
+  const ed25519PublicKey = base64UrlToBytes(jwk.x);
+
+  cachedEd25519 = { seedHash, key, ed25519PublicKey };
+  return { key, keyId, ed25519PublicKey };
 }
+
+// Test-only export — removed in Task 5 once signTriple()'s tests cover this.
+export const getPdfSigningKeyForTest = getSigningKeys;
 
 /** Sign a (formKey | caseNumber | payloadHash) triple — identical message format to
  *  POST /api/pdf-tools/sign-payload, so client/src/utils/pdfIntegrity.ts verifies it. */
 export async function signTriple(
   env: Bindings, formKey: string, caseNumber: string, payloadHash: string,
 ): Promise<{ signature: string; signedAt: string; algorithm: 'Ed25519'; keyId: string }> {
-  const { key, keyId } = await getPdfSigningKey(env);
+  const { key, keyId } = await getSigningKeys(env);
   const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
   const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
   return { signature: bytesToBase64(new Uint8Array(sigBuf)), signedAt: new Date().toISOString(), algorithm: 'Ed25519', keyId }; // new-date-ok

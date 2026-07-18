@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
 import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
-import { deriveHkdfSeedForTest } from '../src/utils/pdfSign';
+import { deriveHkdfSeedForTest, getPdfSigningKeyForTest } from '../src/utils/pdfSign';
 import type { Bindings } from '../src/types';
 
 // Benchmarked on 2026-07-18 (dev machine, @noble/post-quantum 0.6.1):
@@ -75,5 +75,37 @@ describe('deriveHkdfSeedForTest', () => {
     const a = await deriveHkdfSeedForTest(envWithBoth, 'label-a', 32);
     const b = await deriveHkdfSeedForTest(envJwtOnly, 'label-a', 32);
     expect(Array.from(a)).not.toEqual(Array.from(b));
+  });
+});
+
+describe('getPdfSigningKeyForTest — Ed25519', () => {
+  const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
+
+  it('exports a 32-byte Ed25519 public key that verifies a signature made with the private key', async () => {
+    const { key, ed25519PublicKey } = await getPdfSigningKeyForTest(env);
+    expect(ed25519PublicKey.length).toBe(32);
+    const msg = new TextEncoder().encode('hello');
+    const sigBuf = await crypto.subtle.sign('Ed25519', key, msg);
+    const pubKey = await crypto.subtle.importKey('raw', ed25519PublicKey, { name: 'Ed25519' }, false, ['verify']);
+    expect(await crypto.subtle.verify('Ed25519', pubKey, sigBuf, msg)).toBe(true);
+  });
+
+  it('re-derives the exact same keyId across separate calls (deterministic)', async () => {
+    const a = await getPdfSigningKeyForTest(env);
+    const b = await getPdfSigningKeyForTest(env);
+    expect(a.keyId).toBe(b.keyId);
+    expect(Array.from(a.ed25519PublicKey)).toEqual(Array.from(b.ed25519PublicKey));
+  });
+
+  it('BACKWARD COMPAT: keyId for a known JWT_SECRET matches the pre-PQC value', async () => {
+    // Golden value captured from the ORIGINAL getPdfSigningKey() (before this
+    // plan), to prove deriveEd25519Seed()'s formula — and therefore every
+    // already-issued signature's verifiability — is unchanged. Computed by
+    // running the exact pre-change derivation formula (SHA-256(secret|
+    // 'rmpg-pdf-ed25519-v1') -> seed -> SHA-256(seed) -> first 8 bytes hex)
+    // against the fixed secret below. Never hand-edit this value — if this
+    // test ever needs to change, something broke backward compatibility.
+    const { keyId } = await getPdfSigningKeyForTest({ JWT_SECRET: 'golden-test-secret-do-not-change' } as unknown as Bindings);
+    expect(keyId).toBe('867c4da05488c3a2');
   });
 });
