@@ -119,6 +119,16 @@ export default function DesktopIconGrid({
               type="button"
               onClick={(e) => handleIconClick(fn, e)}
               onPointerDown={viewMode === 'grid' ? (e) => onIconPointerDown(fn, e) : undefined}
+              onDragOver={fn.path === '/records' ? (e) => e.preventDefault() : undefined}
+              onDrop={fn.path === '/records' ? (e) => {
+                e.preventDefault();
+                try {
+                  const payload = JSON.parse(e.dataTransfer.getData('application/json'));
+                  if (payload?.type === 'person' && payload.id) {
+                    openWindow(`/records?personId=${payload.id}`, 'Records');
+                  }
+                } catch { /* ignore malformed drag payloads */ }
+              } : undefined}
               style={
                 viewMode === 'grid'
                   ? { position: 'absolute', left: pos.x, top: pos.y, width: ICON_SIZE + 24, outline: isSelected ? '1px solid var(--brand-400)' : 'none' }
