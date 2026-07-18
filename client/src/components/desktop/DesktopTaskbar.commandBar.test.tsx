@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const apiFetchMock = vi.fn();
@@ -90,13 +90,27 @@ describe('DesktopTaskbar — command bar quick actions', () => {
     await waitFor(() => expect(screen.getByText('Clock In')).toBeInTheDocument());
     const clockButton = screen.getByText('Clock In');
 
-    // Fire both clicks back-to-back without awaiting in between, so both
-    // handleClockToggle invocations run before the first click's
-    // setClockBusy(true) re-render has a chance to commit — this is what
-    // makes the `clockBusy` state check alone insufficient and forces the
-    // synchronous useRef guard to do the real work.
-    fireEvent.click(clockButton);
-    fireEvent.click(clockButton);
+    // Two separate `fireEvent.click(...)` statements each get wrapped in
+    // their own act() by React Testing Library, which flushes the pending
+    // setClockBusy(true) state update and commits a re-render — with a
+    // fresh handleClockToggle closure reading clockBusy === true — BEFORE
+    // the second statement runs. That means the `clockBusy` state guard
+    // alone already blocks the second click in that shape of test, and the
+    // race the ref exists to prevent never actually manifests (confirmed:
+    // temporarily removing `|| clockToggleInFlightRef.current` from the
+    // guard in DesktopTaskbar.tsx and rerunning a two-`fireEvent.click`
+    // version of this test still passed).
+    //
+    // Firing both native `.click()` calls inside a SINGLE synchronous
+    // `act(() => { ... })` block avoids that intermediate flush: React only
+    // commits/re-renders once the act() callback returns, so both
+    // invocations run synchronously back-to-back against the SAME
+    // pre-update closure — both reading stale `clockBusy === false` — which
+    // is exactly the race `clockToggleInFlightRef` exists to close.
+    act(() => {
+      clockButton.click();
+      clockButton.click();
+    });
 
     resolveClockIn?.();
     await waitFor(() => expect(apiFetchMock.mock.calls.filter(c => c[0] === '/personnel/time/clock-in').length).toBe(1));
