@@ -14,13 +14,16 @@ export interface DesktopIconGridProps {
   groups: DesktopGroup[];
   onCreateGroup: (memberPaths: string[], label: string) => void;
   onUngroup: (groupId: string) => void;
+  iconSize: 'small' | 'medium' | 'large';
+  viewMode: 'grid' | 'list';
 }
 
-const ICON_SIZE = 64;
+const ICON_SIZE_PX: Record<'small' | 'medium' | 'large', number> = { small: 40, medium: 64, large: 88 };
 
 export default function DesktopIconGrid({
-  icons, positions, onReposition, onUnpin, groups = [], onCreateGroup, onUngroup,
+  icons, positions, onReposition, onUnpin, groups = [], onCreateGroup, onUngroup, iconSize, viewMode,
 }: DesktopIconGridProps) {
+  const ICON_SIZE = ICON_SIZE_PX[iconSize];
   const navigate = useNavigate();
   const { openWindow } = useDesktopWindows();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
@@ -74,8 +77,8 @@ export default function DesktopIconGrid({
   }, [selected, onCreateGroup]);
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
-      {groups.map(group => (
+    <div style={viewMode === 'grid' ? { position: 'absolute', inset: 0 } : { position: 'relative' }}>
+      {viewMode === 'grid' && groups.map(group => (
         <ContextMenu
           key={group.id}
           items={[{ label: 'Ungroup', onClick: () => onUngroup(group.id) }]}
@@ -115,12 +118,13 @@ export default function DesktopIconGrid({
             <button
               type="button"
               onClick={(e) => handleIconClick(fn, e)}
-              onPointerDown={(e) => onIconPointerDown(fn, e)}
-              style={{
-                position: 'absolute', left: pos.x, top: pos.y, width: ICON_SIZE + 24,
-                outline: isSelected ? '1px solid var(--brand-400)' : 'none',
-              }}
-              className="flex flex-col items-center gap-1 p-1 text-center"
+              onPointerDown={viewMode === 'grid' ? (e) => onIconPointerDown(fn, e) : undefined}
+              style={
+                viewMode === 'grid'
+                  ? { position: 'absolute', left: pos.x, top: pos.y, width: ICON_SIZE + 24, outline: isSelected ? '1px solid var(--brand-400)' : 'none' }
+                  : { width: '100%', outline: isSelected ? '1px solid var(--brand-400)' : 'none' }
+              }
+              className={viewMode === 'grid' ? 'flex flex-col items-center gap-1 p-1 text-center' : 'flex items-center gap-2 px-2 py-1 text-left'}
             >
               <div
                 className="flex items-center justify-center"

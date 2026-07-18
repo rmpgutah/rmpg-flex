@@ -32,6 +32,8 @@ function renderGrid(overrides: Partial<React.ComponentProps<typeof DesktopIconGr
     groups: [],
     onCreateGroup: vi.fn(),
     onUngroup: vi.fn(),
+    iconSize: 'medium' as const,
+    viewMode: 'grid' as const,
     ...overrides,
   };
   render(<MemoryRouter><DesktopWindowManagerProvider><DesktopIconGrid {...props} /></DesktopWindowManagerProvider></MemoryRouter>);
@@ -97,6 +99,8 @@ function renderRestoredGrid(overrides: Partial<React.ComponentProps<typeof Deskt
     groups: [],
     onCreateGroup: vi.fn(),
     onUngroup: vi.fn(),
+    iconSize: 'medium' as const,
+    viewMode: 'grid' as const,
     ...overrides,
   };
   let windowsSnapshot: DesktopWindowState[] = [];
@@ -140,5 +144,47 @@ describe('DesktopIconGrid — v1 launcher behavior (restored coverage)', () => {
     fireEvent.contextMenu(screen.getByText('Impound'));
     fireEvent.click(screen.getByText('Unpin'));
     expect(props.onUnpin).toHaveBeenCalledWith('/impound');
+  });
+});
+
+describe('DesktopIconGrid — icon size + list view', () => {
+  it('scales the icon tile with iconSize', () => {
+    const { rerender } = render(
+      <MemoryRouter><DesktopWindowManagerProvider>
+        <DesktopIconGrid
+          icons={ICONS} positions={{}} onReposition={vi.fn()} onUnpin={vi.fn()}
+          groups={[]} onCreateGroup={vi.fn()} onUngroup={vi.fn()}
+          iconSize="small" viewMode="grid"
+        />
+      </DesktopWindowManagerProvider></MemoryRouter>,
+    );
+    const smallTile = screen.getByText('Dispatch').closest('button')!.querySelector('div')!;
+    expect(smallTile).toHaveStyle({ width: '40px' });
+
+    rerender(
+      <MemoryRouter><DesktopWindowManagerProvider>
+        <DesktopIconGrid
+          icons={ICONS} positions={{}} onReposition={vi.fn()} onUnpin={vi.fn()}
+          groups={[]} onCreateGroup={vi.fn()} onUngroup={vi.fn()}
+          iconSize="large" viewMode="grid"
+        />
+      </DesktopWindowManagerProvider></MemoryRouter>,
+    );
+    const largeTile = screen.getByText('Dispatch').closest('button')!.querySelector('div')!;
+    expect(largeTile).toHaveStyle({ width: '88px' });
+  });
+
+  it('renders compact rows instead of absolutely-positioned tiles in list view', () => {
+    render(
+      <MemoryRouter><DesktopWindowManagerProvider>
+        <DesktopIconGrid
+          icons={ICONS} positions={{}} onReposition={vi.fn()} onUnpin={vi.fn()}
+          groups={[]} onCreateGroup={vi.fn()} onUngroup={vi.fn()}
+          iconSize="medium" viewMode="list"
+        />
+      </DesktopWindowManagerProvider></MemoryRouter>,
+    );
+    const button = screen.getByText('Dispatch').closest('button')!;
+    expect(button).not.toHaveStyle({ position: 'absolute' });
   });
 });
