@@ -22,7 +22,7 @@
 // warns on stderr — never blocks, never produces a weaker result.
 // ============================================================
 
-import { webcrypto } from 'node:crypto';
+import { randomBytes, webcrypto } from 'node:crypto';
 
 const QRNG_URL = 'https://qrng.anu.edu.au/API/jsonI.php';
 const QRNG_TIMEOUT_MS = 5000;
@@ -72,4 +72,13 @@ export async function combineEntropy(localBytes, qrngBytes, byteLength) {
     byteLength * 8,
   );
   return new Uint8Array(bits);
+}
+
+/** Draw local CSPRNG bytes, attempt the QRNG mix, and return the final
+ *  key plus whether the QRNG source was actually used. */
+export async function generateQuantumKey(byteLength) {
+  const localBytes = new Uint8Array(randomBytes(byteLength));
+  const qrngBytes = await fetchQrngBytes(byteLength);
+  const combined = await combineEntropy(localBytes, qrngBytes, byteLength);
+  return { combined, qrngUsed: qrngBytes !== null };
 }

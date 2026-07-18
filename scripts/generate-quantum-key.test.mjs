@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { parseQrngResponse, fetchQrngBytes, combineEntropy } from './generate-quantum-key.mjs';
+import { parseQrngResponse, fetchQrngBytes, combineEntropy, generateQuantumKey } from './generate-quantum-key.mjs';
 import { vi } from 'vitest';
 
 describe('parseQrngResponse', () => {
@@ -114,5 +114,38 @@ describe('combineEntropy', () => {
     const qrng = new Uint8Array(96).fill(4);
     const result = await combineEntropy(local, qrng, 96);
     expect(result.length).toBe(96);
+  });
+});
+
+describe('generateQuantumKey', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports qrngUsed: true and returns byteLength bytes on QRNG success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ success: true, data: Array.from({ length: 32 }, (_, i) => i), length: 32, type: 'uint8' }),
+      { status: 200 },
+    )));
+    const { combined, qrngUsed } = await generateQuantumKey(32);
+    expect(qrngUsed).toBe(true);
+    expect(combined.length).toBe(32);
+  });
+
+  it('reports qrngUsed: false and still returns byteLength bytes on QRNG failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    const { combined, qrngUsed } = await generateQuantumKey(32);
+    expect(qrngUsed).toBe(false);
+    expect(combined.length).toBe(32);
+  });
+
+  it('produces different output across two calls even with the same QRNG response (local bytes differ each time)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ success: true, data: Array.from({ length: 32 }, (_, i) => i), length: 32, type: 'uint8' }),
+      { status: 200 },
+    )));
+    const a = await generateQuantumKey(32);
+    const b = await generateQuantumKey(32);
+    expect(Array.from(a.combined)).not.toEqual(Array.from(b.combined));
   });
 });
