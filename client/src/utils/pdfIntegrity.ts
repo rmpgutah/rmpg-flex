@@ -115,17 +115,26 @@ export function clearActivePayloadHash(): void {
   activePayloadHash = '';
 }
 
-// ── Signature state (Phase D — Ed25519 over payload hash + form context) ──
+// ── Signature state (Phase D — triple-algorithm signing over payload hash + form context) ──
 
-export interface PdfSignatureBundle {
-  /** Base64 Ed25519 signature (88 chars). */
+export interface AlgorithmSignature {
+  /** Base64 signature. */
   signature: string;
-  /** Base64 SPKI DER public key — printed on trailer for offline verification. */
+  /** Base64 raw public key — printed/embedded for offline verification. */
   publicKey: string;
-  /** ISO 8601 timestamp the signature was minted at (server clock). */
+}
+
+/** Triple-algorithm signature bundle — Ed25519 (classical), ML-DSA-87
+ *  (FIPS 204, CNSA 2.0 lattice-based PQC), and SLH-DSA-SHA2-256f (FIPS
+ *  205, CNSA 2.0 hash-based PQC). All three sign the same message so a
+ *  cryptanalytic break in any one algorithm family doesn't compromise
+ *  document authenticity. */
+export interface PdfSignatureBundle {
   signedAt: string;
-  /** Always 'Ed25519' today; future algorithms may bind via this field. */
-  algorithm: 'Ed25519';
+  keyId: string;
+  ed25519: AlgorithmSignature;
+  mlDsa87: AlgorithmSignature;
+  slhDsa256f: AlgorithmSignature;
 }
 
 let activeSignature: PdfSignatureBundle | undefined;
@@ -141,11 +150,11 @@ export function clearActiveSignature(): void {
 }
 
 /**
- * Fetch an Ed25519 signature from the server for the current
- * payload hash. Returns null on graceful failures (server has
- * no keypair configured, network error, non-200 response) so
- * callers can continue rendering an UNSIGNED trailer instead
- * of failing the whole PDF generation.
+ * Fetch the triple-algorithm signature bundle from the server for the
+ * current payload hash. Returns null on graceful failures (server has
+ * no keypair configured, network error, non-200 response, or a
+ * malformed body) so callers can continue rendering an UNSIGNED
+ * trailer instead of failing the whole PDF generation.
  */
 export async function fetchPdfSignature(
   formKey: string,
@@ -169,12 +178,13 @@ export async function fetchPdfSignature(
     });
     if (!res.ok) return null;
     const json = await res.json();
-    if (!json || typeof json.signature !== 'string') return null;
+    if (!json || typeof json.ed25519?.signature !== 'string') return null;
     return {
-      signature: json.signature,
-      publicKey: json.publicKey,
       signedAt: json.signedAt,
-      algorithm: 'Ed25519',
+      keyId: json.keyId,
+      ed25519: json.ed25519,
+      mlDsa87: json.mlDsa87,
+      slhDsa256f: json.slhDsa256f,
     };
   } catch {
     return null;
