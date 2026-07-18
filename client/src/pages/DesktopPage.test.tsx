@@ -91,4 +91,19 @@ describe('DesktopPage', () => {
     expect(screen.queryByLabelText('Open app launcher')).not.toBeInTheDocument();
     expect(screen.queryByText('Dispatch Console')).not.toBeInTheDocument();
   });
+
+  it('opens the settings popover with icon size, sort, wallpaper, accent, and reset controls', () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+    fireEvent.click(screen.getByText('Widget settings'));
+    expect(screen.getByText('Icon Size')).toBeInTheDocument();
+    expect(screen.getByText('Reset to Default')).toBeInTheDocument();
+  });
+
+  it('right-click "New sticky note" adds a note to the canvas', () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+    fireEvent.click(screen.getByText('New sticky note'));
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+  });
 });
