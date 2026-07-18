@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useClock } from '../../../hooks/useClock';
 import { apiFetch } from '../../../hooks/useApi';
+import { safeTimeStr } from '../../../utils/dateUtils';
 
 export default function DesktopClockWidget() {
   const { time, date } = useClock();
@@ -20,7 +21,7 @@ export default function DesktopClockWidget() {
       <div className="text-[20px] font-mono" style={{ color: 'var(--text-primary)' }}>{time}</div>
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{date}</div>
       <div className="mt-2 text-[10px] font-semibold" style={{ color: active ? 'var(--brand-400)' : 'var(--text-muted)' }}>
-        {active === null ? '…' : active ? `On Duty since ${clockIn ? new Date(clockIn).toLocaleTimeString() : ''}` : 'Off Duty'}
+        {active === null ? '…' : active ? `On Duty since ${safeTimeStr(clockIn, '')}` : 'Off Duty'}
       </div>
     </div>
   );
