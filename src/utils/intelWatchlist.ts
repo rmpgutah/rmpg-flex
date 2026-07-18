@@ -7,6 +7,12 @@
 // existing notifications table for the watcher — surfaces in the
 // notifications inbox/bell with no new delivery plumbing.
 //
+// Warrant watches (entity_type='warrant') are handled separately from
+// person/vehicle: instead of one hits-based notification, up to THREE
+// independent alerts can fire per sweep — status change, expiring soon,
+// and subject encountered (which reuses hitsForPerson against the
+// warrant's subject_person_id, but is labeled with warrant context).
+//
 // Each watch is try/catch-isolated; the sweep can never throw out of
 // the cron. last_alert_at only advances when hits were found (or stays
 // fresh on no-hit to bound the scan window via COALESCE in queries).
@@ -14,14 +20,17 @@
 
 import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
-import { query, execute } from './db';
+import { query, queryFirst, execute } from './db';
 
 interface WatchRow {
   id: number; entity_type: string; entity_id: number;
   reason: string | null; added_by: number; last_alert_at: string | null;
+  last_known_status: string | null; expiry_alerted_at: string | null;
 }
 
 interface Hit { kind: string; label: string }
+
+const EXPIRY_WARNING_DAYS = 7;
 
 async function hitsForPerson(db: D1Database, personId: number, since: string): Promise<Hit[]> {
   const hits: Hit[] = [];
@@ -78,12 +87,86 @@ async function entityLabel(db: D1Database, type: string, id: number): Promise<st
   return `${type} #${id}`;
 }
 
+interface WarrantRow {
+  status: string;
+  warrant_number: string | null;
+  subject_person_id: number | null;
+  subject_name: string | null;
+  expires_at: string | null;
+  expiry_date: string | null;
+}
+
+// Runs the three warrant-specific checks for one watch, inserting 0-3
+// notification rows directly (each independently, unlike the single
+// hits-based insert used for person/vehicle watches below). Returns the
+// number of alerts fired, so the caller's total count stays accurate.
+async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number> {
+  const warrant = await queryFirst<WarrantRow>(db,
+    'SELECT status, warrant_number, subject_person_id, subject_name, expires_at, expiry_date FROM warrants WHERE id = ?',
+    w.entity_id);
+  if (!warrant) return 0; // warrant was deleted since the watch was created
+  const label = warrant.warrant_number || `#${w.entity_id}`;
+  let alerts = 0;
+
+  // 1. Status change
+  if (w.last_known_status != null && warrant.status !== w.last_known_status) {
+    await execute(db,
+      `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+       VALUES ('warrant_watch_hit', 'high', ?, ?, 'warrant', ?, ?, 0, datetime('now'))`,
+      `WARRANT ${label} STATUS CHANGED`,
+      `Warrant ${label} status changed: ${w.last_known_status} → ${warrant.status}${w.reason ? ` (watch reason: ${w.reason})` : ''}`,
+      w.entity_id, w.added_by);
+    alerts++;
+  }
+  if (warrant.status !== w.last_known_status) {
+    await execute(db, `UPDATE intel_watchlist SET last_known_status = ? WHERE id = ?`, warrant.status, w.id);
+  }
+
+  // 2. Expiring soon (one-time)
+  const expiresAt = warrant.expires_at ?? warrant.expiry_date;
+  if (warrant.status === 'active' && expiresAt && !w.expiry_alerted_at) {
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isNaN(expiresAtMs)) {
+      const daysUntil = Math.ceil((expiresAtMs - Date.now()) / 86400000);
+      if (daysUntil >= 0 && daysUntil <= EXPIRY_WARNING_DAYS) {
+        await execute(db,
+          `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+           VALUES ('warrant_watch_hit', 'high', ?, ?, 'warrant', ?, ?, 0, datetime('now'))`,
+          `WARRANT ${label} EXPIRING SOON`,
+          `Warrant ${label} expires in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`,
+          w.entity_id, w.added_by);
+        await execute(db, `UPDATE intel_watchlist SET expiry_alerted_at = datetime('now') WHERE id = ?`, w.id);
+        alerts++;
+      }
+    }
+  }
+
+  // 3. Subject encountered — reuses hitsForPerson, labeled with warrant context
+  if (warrant.subject_person_id != null) {
+    const since = w.last_alert_at || new Date(0).toISOString();
+    const hits = await hitsForPerson(db, warrant.subject_person_id, since);
+    if (hits.length) {
+      const detail = hits.map((h) => `${h.kind}: ${h.label}`).join('; ');
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('warrant_watch_hit', 'high', ?, ?, 'warrant', ?, ?, 0, datetime('now'))`,
+        `WARRANT ${label} SUBJECT ENCOUNTERED`,
+        `Subject of warrant #${label} (${warrant.subject_name || 'unknown'}) appeared in new activity — ${detail}`,
+        w.entity_id, w.added_by);
+      await execute(db, `UPDATE intel_watchlist SET last_alert_at = datetime('now') WHERE id = ?`, w.id);
+      alerts++;
+    }
+  }
+
+  return alerts;
+}
+
 export async function sweepWatchlist(db: D1Database): Promise<number> {
   let alerts = 0;
   let watches: WatchRow[] = [];
   try {
     watches = await query<WatchRow>(db,
-      'SELECT id, entity_type, entity_id, reason, added_by, last_alert_at FROM intel_watchlist WHERE active = 1 LIMIT 200');
+      'SELECT id, entity_type, entity_id, reason, added_by, last_alert_at, last_known_status, expiry_alerted_at FROM intel_watchlist WHERE active = 1 LIMIT 200');
   } catch (err: any) {
     // Table missing on live = migration drift; stay silent beyond one log.
     log.error('[intel-watchlist] sweep skipped', { error: err?.message });
@@ -91,6 +174,10 @@ export async function sweepWatchlist(db: D1Database): Promise<number> {
   }
   for (const w of watches) {
     try {
+      if (w.entity_type === 'warrant') {
+        alerts += await processWarrantWatch(db, w);
+        continue;
+      }
       const since = w.last_alert_at || new Date(0).toISOString();
       const hits = w.entity_type === 'vehicle'
         ? await hitsForVehicle(db, w.entity_id, since)
