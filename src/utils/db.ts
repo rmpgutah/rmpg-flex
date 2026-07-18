@@ -345,5 +345,16 @@ export async function ensureJurisdictionAndPhotoColumns(db: D1Database): Promise
   } catch {
     // Race or pre-existing table — tolerated by design (CLAUDE.md rule #5).
   }
-  _jurisdictionPhotoColumnsEnsured = await columnExists(db, 'businesses', 'jurisdiction_override');
+  // Only cache success once every column AND the property_photos table are
+  // actually confirmed present — a partial failure (e.g. property_photos
+  // creation raced/failed while the column ALTERs succeeded) must leave the
+  // flag false so the next call in this isolate retries the missing pieces,
+  // rather than permanently skipping reconciliation for the isolate's life.
+  const columnsOk = await Promise.all(
+    COLUMNS.map(([table, col]) => columnExists(db, table, col)),
+  ).then((results) => results.every(Boolean));
+  const propertyPhotosOk = await db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'property_photos'`,
+  ).first().then((row) => row !== null).catch(() => false);
+  _jurisdictionPhotoColumnsEnsured = columnsOk && propertyPhotosOk;
 }

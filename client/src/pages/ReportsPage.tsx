@@ -1191,7 +1191,12 @@ export default function ReportsPage() {
 
   // Compute stats
   const stats = {
-    totalCalls: incidentsData?.total || 0,
+    // Was `incidentsData?.total` — identical to incidentsFiled below, so the
+    // KPI ribbon showed "Total Calls" and "Incidents Filed" as the same
+    // number (both 0) while the "This Week vs Last Week" panel correctly
+    // showed real call volume from a different endpoint. responseTimesData
+    // already carries a real per-range call count; use that instead.
+    totalCalls: responseTimesData?.overall?.totalCalls || 0,
     incidentsFiled: incidentsData?.total || 0,
     avgResponse: responseTimesData?.overall?.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`

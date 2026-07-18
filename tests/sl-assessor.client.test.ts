@@ -25,6 +25,18 @@ describe('parseAddressComponents', () => {
     const comps = parseAddressComponents('10846 S Indigo Sky WY');
     expect(comps.street_type).toBe('WY');
   });
+
+  // Regression: callers now pass a full "street, city, state zip" address
+  // (needed so resolveCountyFromAddress can route by city/ZIP) — this must
+  // parse identically to a bare street, not glue the city/state/zip onto
+  // street_name and guarantee a false "no match".
+  test('strips a city/state/zip suffix before parsing the street', () => {
+    const comps = parseAddressComponents('10846 South Indigo Sky Way, South Jordan, UT 84009');
+    expect(comps.street_Num).toBe('10846');
+    expect(comps.street_dir).toBe('S');
+    expect(comps.street_name).toBe('INDIGO SKY');
+    expect(comps.street_type).toBe('WY');
+  });
 });
 
 describe('buildQueryUrl', () => {

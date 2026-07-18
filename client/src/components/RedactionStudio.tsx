@@ -4,12 +4,13 @@
 // redacted MP4 (canvas + ffmpeg.wasm), upload it to /api/redactions with a
 // custody record, and download it.
 import { useMemo, useRef, useState } from 'react';
-import { X, Loader2, ScanSearch, ShieldOff, Download, Square, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Loader2, ScanSearch, ShieldOff, Download, Square, Trash2, AlertTriangle, Sparkles } from 'lucide-react';
 import { apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { scanClip } from '../utils/redaction/scanClip';
 import { loadFaceDetector } from '../utils/redaction/detectFaces';
 import { renderRedacted } from '../utils/redaction/renderRedacted';
-import { activeRegionsAt, interpBox, type RedactionRegion, type RedactionKind, type RedactionStyle } from '../utils/redaction/regions';
+import { activeRegionsAt, interpBox, mergeSamples, type RedactionRegion, type RedactionKind, type RedactionStyle, type DetectorSample as RegionDetectorSample } from '../utils/redaction/regions';
+import { sampleFramesForDeepScan, type DetectorSample as DeepScanDetectorSample } from '../utils/videoDeepScan';
 
 const KIND_COLOR: Record<RedactionKind, string> = { plate: '#22d3ee', face: '#f472b6', person: '#a3e635', manual: '#d4a017' };
 
@@ -35,6 +36,8 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
   // offline, CDN down…). Faces were NOT scanned — operators must be told so
   // they don't trust an under-redacted clip with bystander faces still visible.
   const [faceModelFailed, setFaceModelFailed] = useState(false);
+  const [deepScan, setDeepScan] = useState<{ busy: boolean; done: number; total: number } | null>(null);
+  const [deepScanError, setDeepScanError] = useState<string | null>(null);
 
   const natW = nat?.w || 1280, natH = nat?.h || 720;
 
@@ -52,6 +55,38 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
       setFaceModelFailed(!faceModel);
     } catch (e: any) { setErr(e?.message || 'Scan failed'); }
     setScan({ busy: false, frac: 1 });
+  };
+
+  const runDeepScan = async () => {
+    const v = videoRef.current; if (!v || deepScan?.busy) return;
+    if (source !== 'bodycam') { setDeepScanError('Deep Scan is only available for body-cam videos right now.'); return; }
+    setDeepScan({ busy: true, done: 0, total: 0 }); setDeepScanError(null);
+    try {
+      const frames = await sampleFramesForDeepScan(v, {
+        onProgress: (done, total) => setDeepScan({ busy: true, done, total }),
+      });
+      if (frames.length === 0) {
+        setDeepScanError('Could not capture any frames from this video.');
+        return;
+      }
+      const fd = new FormData();
+      frames.forEach((f) => fd.append('frame', f.blob, `frame_${f.timestamp}.jpg`));
+      fd.append('timestamps', JSON.stringify(frames.map((f) => f.timestamp)));
+      // Sized for up to 30 sequential per-frame Workers AI calls — same
+      // rationale as VideoPlayer.tsx's /:id/analyze timeout override.
+      const result = await apiPostForm<{ samples: DeepScanDetectorSample[] }>(
+        `/personnel/bodycam-videos/${eventId}/deep-scan`,
+        fd,
+        { timeoutMs: 180_000 },
+      );
+      const asRegionSamples: RegionDetectorSample[] = result.samples.map((s) => ({ kind: s.kind, box: s.box, t: s.t }));
+      const found = mergeSamples(asRegionSamples, { scanInterval: 2 }).map((r) => ({ ...r, style, strength, source: 'deep-scan' as const }));
+      setRegions((rs) => [...rs, ...found]);
+    } catch (e: any) {
+      setDeepScanError(e?.message || 'Deep scan failed');
+    } finally {
+      setDeepScan(null);
+    }
   };
 
   const toggleKind = (kind: RedactionKind, on: boolean) =>
@@ -132,6 +167,20 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
             {scan.busy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning… {Math.round(scan.frac * 100)}%</> : <><ScanSearch className="w-3.5 h-3.5" /> Auto-detect plates + faces</>}
           </button>
 
+          {source === 'bodycam' && (
+            <button
+              onClick={runDeepScan}
+              disabled={!!deepScan?.busy}
+              title="Higher-accuracy AI scan for faces/plates the fast pass may have missed — samples 2s intervals from the current playhead, up to 18 frames (~36 seconds of footage)"
+              className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-purple-500/60 text-purple-300 hover:bg-purple-950/30 disabled:opacity-60"
+            >
+              {deepScan?.busy
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Deep scanning… {deepScan.total ? `frame ${deepScan.done} of ${deepScan.total}` : ''}</>
+                : <><Sparkles className="w-3.5 h-3.5" /> Deep Scan (from playhead)</>}
+            </button>
+          )}
+          {deepScanError && <div className="text-[10px] text-red-400">{deepScanError}</div>}
+
           {faceModelFailed && (
             <div role="alert" className="flex items-start gap-1.5 px-2 py-1.5 border border-amber-600/60 bg-amber-950/30 text-[10px] text-amber-300 leading-snug">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
@@ -163,7 +212,10 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
           <div className="border-t border-border-default pt-2 max-h-40 overflow-auto space-y-1">
             {regions.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-2">
-                <span className="truncate" style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>
+                <span className="truncate flex items-center gap-1">
+                  <span style={{ color: KIND_COLOR[r.kind] }}>{r.kind} · {r.tStart.toFixed(1)}–{r.tEnd.toFixed(1)}s</span>
+                  {r.source === 'deep-scan' && <span className="text-[8px] px-1 py-px border border-purple-500/60 text-purple-300 uppercase tracking-wide shrink-0">Deep</span>}
+                </span>
                 <button onClick={() => removeRegion(r.id)} aria-label="Delete region" className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}

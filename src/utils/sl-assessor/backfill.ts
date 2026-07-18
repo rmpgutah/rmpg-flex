@@ -71,15 +71,18 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
     .bind(row.id).run();
 
   const table = row.record_type === 'business' ? 'businesses' : 'properties';
-  const rec = await db.prepare(`SELECT id, address, jurisdiction_override FROM ${table} WHERE id = ?`).bind(row.record_id).first<{ id: number; address: string; jurisdiction_override: string | null }>();
+  const rec = await db.prepare(`SELECT id, address, city, jurisdiction_override FROM ${table} WHERE id = ?`).bind(row.record_id).first<{ id: number; address: string; city: string | null; jurisdiction_override: string | null }>();
   if (!rec || !rec.address || !/\d/.test(rec.address)) {
     await db.prepare(`UPDATE assessor_backfill_jobs SET status = 'unfetchable', completed_at = datetime('now') WHERE id = ?`).bind(row.id).run();
     return true;
   }
+  // County resolution needs a city to route correctly (a bare street
+  // substring-matches unreliably — see router.ts) — append it when present.
+  const fullAddress = rec.city ? `${rec.address}, ${rec.city}` : rec.address;
 
   let matches: ParcelSummary[];
   try {
-    matches = await dispatchSearchByAddress(env, rec.address, rec.jurisdiction_override);
+    matches = await dispatchSearchByAddress(env, fullAddress, rec.jurisdiction_override);
   } catch (e: any) {
     const retry = row.retry_count + 1;
     if (retry >= 3) {
@@ -97,7 +100,7 @@ async function processOneJob(env: Env['Bindings']): Promise<boolean> {
     let parcel = await getCached<any>({ KV: env.KV }, cacheKeyParcel(parcelNo));
     if (!parcel) {
       try {
-        const county = resolveEffectiveCounty(rec.address, rec.jurisdiction_override);
+        const county = resolveEffectiveCounty(fullAddress, rec.jurisdiction_override);
         parcel = await dispatchGetParcel(env, parcelNo, county);
       }
       catch { /* detail fetch failed — still mark parcel_number to prevent requeue */ }

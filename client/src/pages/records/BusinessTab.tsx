@@ -511,6 +511,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     employee_count: initial?.employee_count || '',
     annual_revenue: initial?.annual_revenue || '',
     notes: initial?.notes || '',
+    // Server-only field (not on the Business type), applied via the
+    // never-clobber assessor patch — seeded here so ParcelDetailDrawer
+    // shows for an already-applied record on open, and stays current
+    // immediately after a fresh Apply without reopening the form.
+    parcel_number: (initial as any)?.parcel_number || '',
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -552,6 +557,14 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     }
   }, [recordId, assessor]);
 
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = (address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
+
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
@@ -572,11 +585,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={e => set('address', e.target.value)}
-              onBlur={e => assessor.lookup(e.target.value)}
+              onBlur={e => assessor.lookup(fullAddress(e.target.value))}
             />
             {form.address.trim() && (
               <div className="mt-1">
-                <JurisdictionButton address={form.address} recordType="business" recordId={recordId} />
+                <JurisdictionButton address={fullAddress(form.address)} recordType="business" recordId={recordId} />
               </div>
             )}
             <AssessorSuggestionPanel
@@ -634,9 +647,11 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       {recordSaved && (
         <FormSection title="Photos & Assessor Detail" icon={FileText}>
           <RecordPhotoGallery recordType="business" recordId={recordId} />
-          {(initial as any)?.parcel_number && (
+          {form.parcel_number && (
             <div className="mt-2">
-              <ParcelDetailDrawer parcelNumber={(initial as any).parcel_number} />
+              {/* form (not initial) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={form.parcel_number} />
             </div>
           )}
         </FormSection>

@@ -51,6 +51,52 @@ async function sha256Hex(input: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Trusted devices ("remember this device for 30 days") ─────
+// The client (AuthContext.verify2FA/verifyWebAuthn + LoginPage's "Trust this
+// device" checkbox) has always sent deviceFingerprint/trustDevice on 2FA
+// verification and deviceFingerprint on every /login — but nothing ever read
+// them, so checking the box was a complete no-op: `trusted_devices` (schema
+// present, zero writers) never got a row, and /login never checked it, so
+// 2FA fired every single time regardless. Wired up here in three places:
+// trustDeviceIfRequested() (called after a 2FA/WebAuthn verify when the user
+// opted in) and the lookup in /login below (skips the 2FA branch entirely
+// when the presented fingerprint matches an unexpired trusted row).
+const TRUST_DEVICE_DURATION = '+30 days';
+
+function deviceNameFromUserAgent(ua: string): string {
+  if (/ipad/i.test(ua)) return 'iPad';
+  if (/iphone/i.test(ua)) return 'iPhone';
+  if (/android/i.test(ua)) return 'Android device';
+  if (/macintosh|mac os x/i.test(ua)) return 'Mac';
+  if (/windows/i.test(ua)) return 'Windows PC';
+  if (/linux/i.test(ua)) return 'Linux device';
+  return 'Unknown device';
+}
+
+async function trustDeviceIfRequested(
+  c: any, db: any, userId: number, deviceFingerprint: unknown, trustDevice: unknown,
+): Promise<void> {
+  if (!trustDevice || typeof deviceFingerprint !== 'string' || !deviceFingerprint) return;
+  try {
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || '';
+    const ua = c.req.header('user-agent') || '';
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?', userId, deviceFingerprint);
+    if (existing) {
+      await execute(db,
+        `UPDATE trusted_devices SET trusted_until = datetime('now', ?), last_used_at = datetime('now'), ip_address = ? WHERE id = ?`,
+        TRUST_DEVICE_DURATION, ip, existing.id);
+    } else {
+      await execute(db,
+        `INSERT INTO trusted_devices (user_id, device_fingerprint, device_name, ip_address, trusted_until, last_used_at)
+         VALUES (?, ?, ?, ?, datetime('now', ?), datetime('now'))`,
+        userId, deviceFingerprint, deviceNameFromUserAgent(ua), ip, TRUST_DEVICE_DURATION);
+    }
+  } catch (err) {
+    console.error('trustDeviceIfRequested failed:', err); // non-fatal — login already succeeded
+  }
+}
+
 // Claims carry BOTH userId (camelCase — legacy middleware REQUIRES it, see
 // legacy middleware/auth.ts:51 `if (!decoded.userId ...)`) and user_id (snake —
 // this Worker's middleware reads `user_id ?? userId`), so a token verifies on
@@ -203,7 +249,26 @@ auth.post('/login', async (c) => {
     // tokens after the second factor checks out.
     const exempt = await queryFirst<{ totp_exempt: number | null }>(
       db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
-    if (user.totp_enabled && !exempt?.totp_exempt) {
+
+    // A previously-trusted device (see trustDeviceIfRequested) skips the 2FA
+    // gate entirely for its 30-day window — refresh last_used_at so an
+    // actively-used device doesn't expire out from under someone.
+    let deviceTrusted = false;
+    if (typeof deviceFingerprint === 'string' && deviceFingerprint) {
+      try {
+        const trusted = await queryFirst<{ id: number }>(
+          db,
+          `SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > datetime('now')`,
+          user.id, deviceFingerprint,
+        );
+        if (trusted) {
+          deviceTrusted = true;
+          await execute(db, `UPDATE trusted_devices SET last_used_at = datetime('now') WHERE id = ?`, trusted.id).catch(() => undefined);
+        }
+      } catch { /* table absent on an unmigrated local DB — treat as not trusted */ }
+    }
+
+    if (user.totp_enabled && !exempt?.totp_exempt && !deviceTrusted) {
       const now = Math.floor(Date.now() / 1000);
       const tempToken = await sign(
         { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
@@ -332,7 +397,9 @@ auth.post('/login/verify-2fa', async (c) => {
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
     const { user } = resolved;
-    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+    const { code, deviceFingerprint, trustDevice } = await c.req.json<{
+      code?: string; deviceFingerprint?: string; trustDevice?: boolean;
+    }>().catch(() => ({} as any));
 
     if (!user.totp_secret_enc) {
       return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
@@ -346,6 +413,7 @@ auth.post('/login/verify-2fa', async (c) => {
     if (!(await verifyTotpCode(secretB32, code || ''))) {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
+    await trustDeviceIfRequested(c, db, user.id, deviceFingerprint, trustDevice);
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('verify-2fa failed:', err);
@@ -610,6 +678,230 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   }
 });
 
+// ── Forgot password (security-question recovery) ─────────────
+// Three-step anonymous flow the LoginPage "Forgot password?" panel already
+// speaks: username → 3 security-question answers → new password. Backed by
+// `user_security_questions` (one row per user, answers bcrypt-hashed same as
+// user passwords). None of these three endpoints existed before — every
+// account's "Forgot password?" click dead-ended on a fetch to a route that
+// 404'd, silently swallowed by the client's catch block as "Unable to
+// connect." Users must first set up their questions from the Security tab
+// (PUT /auth/security-questions below) — there is no other seed path.
+const FORGOT_PW_TOKEN_TTL_SECONDS = 10 * 60; // 10m — long enough to answer 3 questions, short enough to limit exposure
+
+// POST /auth/forgot-password — { username } → { hasQuestions, questions? }
+// Never reveals whether the username exists: unknown user and
+// user-without-questions both fall through to the same
+// `hasQuestions: false` response the client already renders as a generic
+// "contact your administrator" message.
+auth.post('/forgot-password', async (c) => {
+  try {
+    const { username } = await c.req.json<{ username?: string }>().catch(() => ({} as any));
+    if (!username) return c.json({ hasQuestions: false });
+
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `forgot-pw:ip:${ip}`, 20, 300),
+      rateLimitAllow(c.env.KV, `forgot-pw:user:${uname}`, 10, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      return c.json({ error: 'Too many attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string }>(
+      db, `SELECT id, status FROM users WHERE username = ?`, username);
+    if (!user || user.status !== 'active') return c.json({ hasQuestions: false });
+
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, `SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?`, user.id);
+    if (!sq) return c.json({ hasQuestions: false });
+
+    return c.json({ hasQuestions: true, questions: [sq.question_1, sq.question_2, sq.question_3] });
+  } catch (err) {
+    console.error('forgot-password failed:', err);
+    return c.json({ hasQuestions: false });
+  }
+});
+
+// POST /auth/forgot-password/verify — { username, answers: string[3] } →
+// { success, tempToken } on a match of all three (case-insensitive, the
+// client already lowercases before sending — trimmed here to match how
+// answers are hashed at setup time).
+auth.post('/forgot-password/verify', async (c) => {
+  try {
+    const { username, answers } = await c.req.json<{ username?: string; answers?: string[] }>().catch(() => ({} as any));
+    if (!username || !Array.isArray(answers) || answers.length !== 3) {
+      return c.json({ error: 'Username and all three answers are required' }, 400);
+    }
+
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `forgot-pw-verify:ip:${ip}`, 15, 300),
+      rateLimitAllow(c.env.KV, `forgot-pw-verify:user:${uname}`, 8, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      return c.json({ error: 'Too many attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE username = ?`, username);
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'One or more answers are incorrect.' }, 401);
+    }
+
+    const sq = await queryFirst<{ answer_1_hash: string; answer_2_hash: string; answer_3_hash: string }>(
+      db, `SELECT answer_1_hash, answer_2_hash, answer_3_hash FROM user_security_questions WHERE user_id = ?`, user.id);
+    if (!sq) return c.json({ error: 'One or more answers are incorrect.' }, 401);
+
+    const hashes = [sq.answer_1_hash, sq.answer_2_hash, sq.answer_3_hash];
+    const allMatch = hashes.every((h, i) => compareSync(String(answers[i] ?? '').trim().toLowerCase(), h));
+    if (!allMatch) return c.json({ error: 'One or more answers are incorrect.' }, 401);
+
+    // Bind the token to the password_hash it was issued against — a JWT
+    // can't be revoked server-side, so /reset re-checks this hash matches
+    // what's currently on the row. A successful reset changes password_hash,
+    // which makes every other outstanding token for this user (including a
+    // captured/replayed copy of this one) fail that check. Without this, the
+    // 10-minute token was reusable to reset the password over and over.
+    const pwh = await sha256Hex(user.password_hash);
+    const now = Math.floor(Date.now() / 1000);
+    const tempToken = await sign(
+      { sub: String(user.id), userId: user.id, type: 'pwd_reset', pwh, iat: now, exp: now + FORGOT_PW_TOKEN_TTL_SECONDS },
+      c.env.JWT_SECRET,
+    );
+    return c.json({ success: true, tempToken });
+  } catch (err) {
+    console.error('forgot-password/verify failed:', err);
+    return c.json({ error: 'Verification failed' }, 500);
+  }
+});
+
+// POST /auth/forgot-password/reset — { tempToken, newPassword } → { success }.
+// Also retires every active session for the account, matching the intent of
+// a "someone other than the logged-in user may have just proven identity a
+// different way" reset, and forces `must_change_password = 0` since the
+// value just set IS the freshly-chosen password.
+auth.post('/forgot-password/reset', async (c) => {
+  try {
+    const { tempToken, newPassword } = await c.req.json<{ tempToken?: string; newPassword?: string }>().catch(() => ({} as any));
+    if (!tempToken || !newPassword) {
+      return c.json({ error: 'Reset token and new password are required' }, 400);
+    }
+    const policyErr = validateNewPassword(newPassword);
+    if (policyErr) return c.json({ error: policyErr }, 400);
+
+    let payload: any;
+    try {
+      payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
+    } catch {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+    if (payload?.type !== 'pwd_reset' || payload?.userId == null) {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE id = ?`, payload.userId);
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'User not found or inactive' }, 401);
+    }
+    // Single-use enforcement: the token was minted against the password_hash
+    // at /verify time. If it's changed since (this token already used, or
+    // the password was changed some other way), reject the replay.
+    if (payload.pwh !== (await sha256Hex(user.password_hash))) {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+
+    const newHash = hashSync(newPassword, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
+                          password_changed_at = datetime('now'),
+                          updated_at = datetime('now')
+       WHERE id = ?`,
+      newHash, user.id,
+    );
+    await execute(db, `UPDATE sessions SET is_active = 0 WHERE user_id = ?`, user.id);
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('forgot-password/reset failed:', err);
+    return c.json({ error: 'Failed to reset password' }, 500);
+  }
+});
+
+// ── Security questions setup (authenticated) ──────────────────
+// The forgot-password flow above has no seed path of its own — a user must
+// configure their three questions/answers here (from a logged-in session)
+// before "Forgot password?" can ever succeed for that account.
+
+auth.get('/security-questions', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, `SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?`, c.get('userId'));
+    return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
+  } catch (err) {
+    console.error('GET security-questions failed:', err);
+    return c.json({ error: 'Failed to load security questions' }, 500);
+  }
+});
+
+auth.put('/security-questions', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      currentPassword?: string;
+      questions?: string[]; answers?: string[];
+    }>().catch(() => ({} as any));
+    const { currentPassword, questions, answers } = body;
+
+    if (!currentPassword) return c.json({ error: 'Current password is required' }, 400);
+    if (!Array.isArray(questions) || questions.length !== 3 || questions.some((q) => !q?.trim())) {
+      return c.json({ error: 'All three questions are required' }, 400);
+    }
+    if (!Array.isArray(answers) || answers.length !== 3 || answers.some((a) => !a?.trim())) {
+      return c.json({ error: 'All three answers are required' }, 400);
+    }
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    // Re-authenticate — this endpoint quietly enables a full account
+    // takeover path (forgot-password/reset), so it gets the same
+    // password-reconfirmation gate as changing the password itself.
+    const user = await queryFirst<any>(db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!user || !compareSync(currentPassword, user.password_hash)) {
+      return c.json({ error: 'Current password is incorrect' }, 401);
+    }
+
+    const answerHashes = answers.map((a) => hashSync(a.trim().toLowerCase(), 12));
+    await execute(
+      db,
+      `INSERT INTO user_security_questions
+         (user_id, question_1, answer_1_hash, question_2, answer_2_hash, question_3, answer_3_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET
+         question_1 = excluded.question_1, answer_1_hash = excluded.answer_1_hash,
+         question_2 = excluded.question_2, answer_2_hash = excluded.answer_2_hash,
+         question_3 = excluded.question_3, answer_3_hash = excluded.answer_3_hash,
+         updated_at = datetime('now')`,
+      userId,
+      questions[0].trim(), answerHashes[0],
+      questions[1].trim(), answerHashes[1],
+      questions[2].trim(), answerHashes[2],
+    );
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT security-questions failed:', err);
+    return c.json({ error: 'Failed to save security questions' }, 500);
+  }
+});
+
 auth.get('/password-policy', (c) => {
   return c.json({
     minLength: 8,
@@ -816,6 +1108,37 @@ auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
     db,
     'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?',
     sessionId,
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
+// GET /auth/security/trusted-devices — devices that skip 2FA for 30 days
+// (see trustDeviceIfRequested near the top of this file). Backs
+// TrustedDevicesList.tsx, which has called this since it shipped — the
+// route never existed, so the panel always rendered "No trusted devices"
+// regardless of how many times someone checked "Trust this device."
+auth.get('/security/trusted-devices', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT id, device_name, ip_address, trusted_until, last_used_at, created_at
+       FROM trusted_devices
+      WHERE user_id = ? AND trusted_until > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/security/trusted-devices/:id — revoke trust; scoped to
+// user_id so a user can only revoke their own devices.
+auth.delete('/security/trusted-devices/:id', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  await execute(
+    db,
+    'DELETE FROM trusted_devices WHERE id = ? AND user_id = ?',
+    c.req.param('id'),
     c.get('userId'),
   );
   return c.json({ success: true });
@@ -1473,6 +1796,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
 
     const body = await c.req.json<{
       challengeId?: string; response?: AuthenticationResponseJSON;
+      deviceFingerprint?: string; trustDevice?: boolean;
     }>().catch(() => ({} as any));
     if (!body?.challengeId || !body.response) {
       return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
@@ -1516,6 +1840,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
     await execute(db,
       `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
+    await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {

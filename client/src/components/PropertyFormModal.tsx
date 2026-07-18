@@ -210,6 +210,14 @@ export default function PropertyFormModal({
     }
   }, [recordId, assessor, setForm]);
 
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = useCallback((address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', '), [form.city, form.state, form.zip]);
+
   useEffect(() => {
     if (isOpen) {
       if (editingProperty) {
@@ -264,7 +272,11 @@ export default function PropertyFormModal({
           zone_id: (editingProperty as any).zone_id || '',
           beat_id: (editingProperty as any).beat_id || '',
         };
-        setForm(initial);
+        // parcel_number isn't a declared PropertyFormData field (server-only,
+        // applied via the never-clobber assessor patch) — seed it here too so
+        // ParcelDetailDrawer shows for an already-applied record on open, not
+        // just immediately after a fresh Apply in this session.
+        setForm({ ...initial, parcel_number: (editingProperty as any).parcel_number || '' } as any);
         snapshot();
       } else {
         setForm(EMPTY_FORM);
@@ -346,14 +358,19 @@ export default function PropertyFormModal({
                   longitude: (addr.longitude as any) ?? prev.longitude,
                 }));
                 // Trigger Assessor lookup on the picked street so the suggestion
-                // panel below the input populates immediately.
-                assessor.lookup(street);
+                // panel below the input populates immediately. Use the addr
+                // object's city/state/zip directly rather than `form` (which
+                // hasn't re-rendered with the setForm call above yet) so
+                // resolveCountyFromAddress has what it needs on the first try.
+                const cityStateZip = [addr.city, [addr.state, addr.zip].filter(Boolean).join(' ')]
+                  .filter(Boolean).join(', ');
+                assessor.lookup(cityStateZip ? `${street}, ${cityStateZip}` : street);
               }}
-              onResolveTyped={(v) => { assessor.lookup(v); }}
+              onResolveTyped={(v) => { assessor.lookup(fullAddress(v)); }}
             />
             {form.address.trim() && (
               <div className="mt-1">
-                <JurisdictionButton address={form.address} recordType="property" recordId={recordId} />
+                <JurisdictionButton address={fullAddress(form.address)} recordType="property" recordId={recordId} />
               </div>
             )}
             <AssessorSuggestionPanel
@@ -835,9 +852,11 @@ export default function PropertyFormModal({
       {recordSaved && (
         <FormSection title="Photos & Assessor Detail" icon={FileText}>
           <RecordPhotoGallery recordType="property" recordId={recordId} />
-          {(editingProperty as any)?.parcel_number && (
+          {(form as any)?.parcel_number && (
             <div className="mt-2">
-              <ParcelDetailDrawer parcelNumber={(editingProperty as any).parcel_number} />
+              {/* form (not editingProperty) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={(form as any).parcel_number} />
             </div>
           )}
         </FormSection>

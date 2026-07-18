@@ -5,6 +5,15 @@ node_modules/
 
 # Vite build output (deploy.yml rebuilds this; never track it)
 client/dist/
+/dist/
+
+# Local SQLite scratch DBs
+*.db
+*.db-journal
+
+# Claude Code / tool session artifacts (per-worktree, not committed)
+.claire/
+.playwright-mcp/
 
 # Claude Code tooling (per-worktree, not committed)
 .claude/
