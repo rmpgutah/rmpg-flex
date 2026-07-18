@@ -639,8 +639,9 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
           {err ? (
             <div className="px-3 py-2 rounded-sm border border-red-500/40 text-red-300 text-xs">{err}</div>
           ) : null}
-          <Field label="Vehicle *">
+          <Field label="Vehicle *" htmlFor="wo-vehicle">
             <select
+              id="wo-vehicle"
               className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
@@ -773,20 +774,6 @@ export default function WorkOrderFormModal({ vehicles, onClose, onCreated }: Pro
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10px] text-rmpg-400 uppercase tracking-wide mb-0.5">{label}</div>
-      {children}
-    </div>
-  );
-}
-```
-
-Note: the test uses `screen.getByLabelText(/vehicle \*/i)` — this works because `Field`'s label text ("Vehicle *") is the nearest preceding text to the `<select>`; Testing Library's `getByLabelText` falls back to `aria-labelledby`-less proximity only if there's a real `<label>` association. Since `Field` renders a plain `<div>` (not a `<label>`), the test instead needs `getByRole('combobox')` scoped by position, OR `Field` needs to render an actual `<label htmlFor>`. **Fix before running Step 2**: change `Field` to accept an `id` and render `<label htmlFor={id}>`, and pass matching `id`s on the `Vehicle` select. Apply this change now as part of Step 3 (not a separate step) — see the corrected `Field` and `Vehicle` field below.
-
-```tsx
-// Corrected Field + Vehicle field (replaces the two blocks above with the same names)
 function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
@@ -797,27 +784,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
 }
 ```
 
-```tsx
-// Vehicle field, updated to wire id/htmlFor:
-<Field label="Vehicle *" htmlFor="wo-vehicle">
-  <select
-    id="wo-vehicle"
-    className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
-    value={vehicleId}
-    onChange={(e) => setVehicleId(e.target.value)}
-    aria-required
-  >
-    <option value="">— select vehicle —</option>
-    {vehicles.map((v) => (
-      <option key={v.id} value={v.id}>
-        {v.vehicle_number ?? v.vehicle_name ?? `Vehicle ${v.id}`}
-      </option>
-    ))}
-  </select>
-</Field>
-```
-
-(The other `<Field>` usages don't need `htmlFor` — the test only queries the Vehicle field by label.)
+Note: `Field` renders a real `<label htmlFor>`, and the `Vehicle` field above passes matching `id="wo-vehicle"`/`htmlFor="wo-vehicle"` — that association is what makes the test's `screen.getByLabelText(/vehicle \*/i)` resolve to the `<select>`. The other `<Field>` usages omit `htmlFor` (harmless — `<label htmlFor={undefined}>` just renders an unassociated label) since the test only queries the Vehicle field by label.
 
 - [ ] **Step 4: Run test to verify it passes**
 
