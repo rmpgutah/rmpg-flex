@@ -16,7 +16,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { configFromEnv, resolveCitation, searchLegislation } from '../utils/legalDataHunter/client';
 import { LdhConfigError, LdhError } from '../utils/legalDataHunter/errors';
