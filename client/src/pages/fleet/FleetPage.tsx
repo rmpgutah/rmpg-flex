@@ -26,6 +26,9 @@ import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_F
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
+import FleetVendorsTab from './tabs/FleetVendorsTab';
+import FleetWorkOrdersTab from './tabs/FleetWorkOrdersTab';
+import FleetServiceTab from './tabs/FleetServiceTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -123,7 +126,8 @@ export default function FleetPage() {
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
-  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service'>('dashboard');
+  const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -1488,6 +1492,39 @@ export default function FleetPage() {
                 >
                   <FileText size={10} /> Analysis Reports
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('work_orders')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'work_orders' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'work_orders' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Work Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('vendors')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'vendors' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'vendors' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Vendors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('service')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'service' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'service' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Service
+                </button>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {viewMode === 'dashboard' ? (
@@ -1507,11 +1544,17 @@ export default function FleetPage() {
                       </div>
                     )}
                   </>
-                ) : (
+                ) : viewMode === 'analysis' ? (
                   <FleetAnalysisFormsTab
                     vehicles={vehicles}
                     vehicleNumberById={vehicleNumberById}
                   />
+                ) : viewMode === 'work_orders' ? (
+                  <FleetWorkOrdersTab initialVehicleId={workOrdersVehicleFilter ?? undefined} />
+                ) : viewMode === 'vendors' ? (
+                  <FleetVendorsTab />
+                ) : (
+                  <FleetServiceTab />
                 )}
               </div>
             </div>
