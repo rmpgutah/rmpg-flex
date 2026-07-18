@@ -72,7 +72,7 @@ function WidgetFrame({
   );
 }
 
-export default function DesktopWidgetPanel({ widgets, catalog, onMoveWidget, onAdjustWidget }: DesktopWidgetPanelProps) {
+export default function DesktopWidgetPanel({ widgets = [], catalog, onMoveWidget, onAdjustWidget }: DesktopWidgetPanelProps) {
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }}>
