@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Gauge } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface SpeedGraphOverlayProps {
   unitId: number;
@@ -141,10 +142,10 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
   );
 }
 
-/** Format ISO timestamp to HH:MM local time */
+/** Format a server timestamp (naive UTC or ISO) to HH:MM local time */
 function formatTime(isoStr: string): string {
   try {
-    const d = new Date(isoStr);
+    const d = parseTimestamp(isoStr);
     if (isNaN(d.getTime())) return '--:--';
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   } catch {

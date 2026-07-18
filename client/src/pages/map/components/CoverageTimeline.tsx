@@ -7,6 +7,7 @@
 
 import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CoverageTimelineData } from '../hooks/useSpeedZoneStats';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface CoverageTimelineProps {
   data: CoverageTimelineData | null;
@@ -14,9 +15,9 @@ interface CoverageTimelineProps {
   onToggle: () => void;
 }
 
-/** Format HH:MM from ISO timestamp */
+/** Format HH:MM from a server timestamp (naive UTC or ISO) */
 function fmtTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseTimestamp(iso);
   const h = d.getHours();
   const m = d.getMinutes();
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
