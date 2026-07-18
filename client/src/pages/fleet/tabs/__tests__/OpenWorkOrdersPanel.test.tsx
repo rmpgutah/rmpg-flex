@@ -7,7 +7,9 @@ import { apiFetch } from '../../../../hooks/useApi';
 const mockedApiFetch = vi.mocked(apiFetch);
 
 describe('OpenWorkOrdersPanel', () => {
-  beforeEach(() => mockedApiFetch.mockReset());
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+  });
 
   it('fetches open work orders scoped to the vehicle and lists them', async () => {
     mockedApiFetch.mockResolvedValue({ count: 1, data: [{ id: 1, status: 'open', number: 'WO-1', summary: 'Brake check', opened_at: '2026-07-01' }] });
