@@ -84,7 +84,7 @@ export default function MapOverlaysPanel({ overlays, groups, open, onClose, clas
       className={`flex flex-col ${className}`}
       style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', borderRadius: 2 }}
     >
-      <PanelTitleBar title="MAP TOOLS" icon={Layers} statusLed="amber" />
+      <PanelTitleBar title="MAP TOOLS" icon={Layers} statusLed="amber" onClose={onClose} />
 
       {/* Tabs */}
       <div role="tablist" className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>

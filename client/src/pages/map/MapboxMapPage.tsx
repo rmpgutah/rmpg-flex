@@ -1919,11 +1919,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       )}
 
       {/* Layers Panel */}
-      <MapOverlaysPanel
-        open={layersPanelOpen}
-        onClose={() => setLayersPanelOpen(false)}
-        groups={layerGroups}
-      />
+      {layersPanelOpen && (
+        <div className="absolute top-16 right-3 z-30 w-[320px] max-h-[70vh]">
+          <MapOverlaysPanel
+            open={layersPanelOpen}
+            onClose={() => setLayersPanelOpen(false)}
+            groups={layerGroups}
+          />
+        </div>
+      )}
 
       {/* Map Style Selector */}
       <div className="absolute bottom-14 left-3 z-20">
