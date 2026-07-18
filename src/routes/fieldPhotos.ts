@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
 
 const fieldPhotos = new Hono<Env>();
 
@@ -81,11 +82,11 @@ fieldPhotos.post('/', async (c) => {
   const ext = file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg';
   const key = `field-photos/${crypto.randomUUID()}${ext}`;
 
-  await c.env.UPLOADS.put(key, await file.arrayBuffer(), {
+  const db = getDb(c.env);
+  await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type },
   });
 
-  const db = getDb(c.env);
   await ensureTable(db);
   const r = await execute(db,
     `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
@@ -133,11 +134,11 @@ fieldPhotos.get('/file/*', async (c) => {
   if (!key.startsWith('field-photos/') || key.includes('..')) {
     return c.json({ error: 'Invalid key' }, 400);
   }
-  const obj = await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Not found' }, 404);
-  return new Response(obj.body, {
+  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  if (!result) return c.json({ error: 'Not found' }, 404);
+  return new Response(result.bytes, {
     headers: {
-      'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+      'Content-Type': result.httpMetadata?.contentType || 'image/jpeg',
       'Cache-Control': 'private, max-age=3600',
     },
   });
@@ -158,6 +159,7 @@ fieldPhotos.delete('/:id', async (c) => {
     db, 'SELECT r2_key, officer_id FROM field_photos WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found' }, 404);
   await c.env.UPLOADS.delete(row.r2_key);
+  await deleteEncryptionKey(db, row.r2_key);
   await execute(db, 'DELETE FROM field_photos WHERE id = ?', id);
   await recordAudit(c, { action: 'FIELD_PHOTO_DELETE', entityType: 'field_photo', entityId: id, details: `Deleted field photo ${row.r2_key} (officer ${row.officer_id})`, actorId: user.id });
   return c.json({ success: true });
