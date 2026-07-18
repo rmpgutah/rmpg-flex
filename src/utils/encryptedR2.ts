@@ -139,7 +139,16 @@ export async function getDecrypted(
 }
 
 /** Crypto-shred: permanently destroy the ability to decrypt one file,
- *  without touching the R2 object or any other file's key. */
+ *  without touching the R2 object or any other file's key.
+ *
+ *  WARNING: fieldPhotos.ts's `GET /file/*` route falls back to serving an
+ *  object's raw R2 bytes whenever it has no key row here — that fallback
+ *  exists for pre-encryption legacy uploads and assumes standalone
+ *  crypto-shredding (calling this function WITHOUT also deleting the R2
+ *  object) never happens. If you call this on its own, leaving the R2
+ *  object in place, that route will serve the shredded object's raw
+ *  ciphertext bytes instead of a clean 404. Always delete the R2 object
+ *  in the same operation when you actually intend to shred. */
 export async function deleteEncryptionKey(db: D1Database, key: string): Promise<void> {
   await db.prepare('DELETE FROM file_encryption_keys WHERE r2_key = ?').bind(key).run();
 }
