@@ -29,9 +29,9 @@ const POST_EOF_BEGIN = '%RMPG_SIDECAR_BEGIN ';
 const POST_EOF_END = ' RMPG_SIDECAR_END%';
 
 export interface SidecarSignature {
-  algorithm: 'Ed25519';
-  publicKey: string;
-  signature: string;
+  ed25519: { signature: string; publicKey: string };
+  mlDsa87: { signature: string; publicKey: string };
+  slhDsa256f: { signature: string; publicKey: string };
   signedAt: string;
   payloadHash: string;
 }
