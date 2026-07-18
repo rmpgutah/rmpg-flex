@@ -290,7 +290,7 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
 // uses it to decide whether to emit a 'warrant_found' notification — we only
 // want to alert on the transition into our view, not on every steady-state
 // re-confirmation every 4 hours.
-async function recordWarrant(
+export async function recordWarrant(
   db: D1Database,
   w: FetchedWarrant,
   localPersonId: number | null,
