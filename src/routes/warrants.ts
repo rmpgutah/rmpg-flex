@@ -10,7 +10,7 @@ import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { log } from '../utils/logger';
-import { runUtahWarrantScan, runUtahWarrantCheckForPerson } from '../utils/utahWarrantPoller';
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant } from '../utils/utahWarrantPoller';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
@@ -376,6 +376,32 @@ warrants.post('/search-all', async (c) => {
     const wantLocal = !body.source || body.source === 'local';
     const wantUtah = !body.source || body.source === 'utah';
     const wantScraped = !body.source || body.source === 'scraped';
+
+    // The `utah_warrants` table is only a CACHE, populated by the background
+    // cron poller for the ~50 persons/run it happens to check — it does NOT
+    // reflect a live call to warrants.utah.gov. A name typed into Search All
+    // that isn't already a local D1 person the cron polled would silently
+    // return zero Utah hits even when the live API has real data for that
+    // name. When both first and last name are given, run a live on-demand
+    // check first (same fetchWarrantsForPerson/recordWarrant path already
+    // used by POST /warrants/check/:personId) so freshly-found warrants are
+    // persisted into utah_warrants BEFORE the cache SELECT below runs —
+    // the subsequent query then naturally includes them via the upsert.
+    if (wantUtah && body.firstName && body.lastName) {
+      try {
+        const liveWarrants = await fetchWarrantsForPerson({
+          id: 0,
+          first_name: body.firstName,
+          middle_name: null,
+          last_name: body.lastName,
+          dob: body.dob ?? null,
+        });
+        for (const w of liveWarrants) await recordWarrant(db, w, null);
+      } catch (err) {
+        log.error('warrants/search-all: live utah fetch failed', { traceId },
+          err instanceof Error ? err : new Error(String(err)));
+      }
+    }
 
     const [local, utah] = await Promise.all([
       wantLocal
