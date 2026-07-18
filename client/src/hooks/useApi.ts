@@ -515,7 +515,7 @@ async function presignAttachmentUpload(
   file: File,
   entityType?: string,
   entityId?: string | number,
-): Promise<{ file_id: string; upload_url: string; key: string }> {
+): Promise<{ file_id: string; upload_url: string; key: string } | { ok: false; code: string }> {
   return apiFetch('/uploads/presign', {
     method: 'POST',
     body: JSON.stringify({
@@ -539,7 +539,17 @@ export async function apiUploadFileDirect(
   entityId?: string | number,
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<any> {
-  const { file_id: fileId, upload_url: uploadUrl } = await presignAttachmentUpload(file, entityType, entityId);
+  const presign = await presignAttachmentUpload(file, entityType, entityId);
+  // R2 direct-upload credentials aren't configured yet (server's established
+  // "unset secret → 200 { ok: false, code: 'not_configured' }" convention —
+  // never a 4xx/5xx, so apiFetch's !res.ok branch never fires). Fall back to
+  // the existing Worker-proxied multipart path instead of PUTing to an
+  // undefined upload_url, per the design spec's rollout requirement.
+  if ((presign as { ok?: false }).ok === false) {
+    const [result] = await apiUploadFilesMultipart([file], entityType, entityId);
+    return result;
+  }
+  const { file_id: fileId, upload_url: uploadUrl } = presign as { file_id: string; upload_url: string; key: string };
   await putFileDirect(uploadUrl, file, onProgress);
   return completeAttachmentUpload(fileId);
 }

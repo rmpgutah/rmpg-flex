@@ -48,4 +48,25 @@ describe('apiUploadFileDirect', () => {
     await expect(apiUploadFileDirect(file())).rejects.toThrow(/Direct upload failed/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('falls back to the multipart upload path when presign is not_configured', async () => {
+    // R2 credentials unset — presign follows this repo's "unset secret → 200
+    // { ok: false, code: 'not_configured' }" convention (not a 4xx/5xx), so
+    // apiFetch returns it as a successful 200 body.
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: 'not_configured' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ file_id: 'mp-1', original_name: 'clip.mp4' }]), {
+        status: 201, headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const result = await apiUploadFileDirect(file(), 'bodycam_video', 42);
+
+    expect(result).toEqual({ file_id: 'mp-1', original_name: 'clip.mp4' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/api/uploads/presign'), expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/uploads', expect.objectContaining({ method: 'POST' }));
+    expect(putSpy).not.toHaveBeenCalled();
+  });
 });
