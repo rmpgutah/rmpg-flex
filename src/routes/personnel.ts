@@ -735,6 +735,24 @@ personnel.get('/time', async (c) => {
   }
 });
 
+// ── GET /personnel/time/mine/active — self-only: am I currently clocked in?
+// Unlike GET /time (requireTimeWriter-gated), this never exposes another
+// officer's entry — officer_id is always the caller's own userId.
+personnel.get('/time/mine/active', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.get('userId') as number | undefined;
+    if (!officerId) return c.json({ error: 'unauthorized' }, 401);
+    const entry = await queryFirst(db,
+      `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`,
+      officerId);
+    return c.json({ active: !!entry, entry: entry ?? null });
+  } catch (err) {
+    console.error('GET /personnel/time/mine/active failed:', err);
+    return dbErrorResponse(c, err, 'Failed to load active shift');
+  }
+});
+
 // ── POST /personnel/time/clock-in — officer self-service or dispatch-initiated clock in
 personnel.post('/time/clock-in', async (c) => {
   try {
