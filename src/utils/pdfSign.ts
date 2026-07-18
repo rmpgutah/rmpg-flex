@@ -38,6 +38,39 @@ function base64UrlToBytes(b64url: string): Uint8Array {
   return base64ToBytes(b64url.replace(/-/g, '+').replace(/_/g, '/') + pad);
 }
 
+// Minimal shape (not the full @cloudflare/workers-types ExecutionContext) —
+// avoids a generic-param mismatch, mirrors src/utils/logger.ts's logErrorToDb.
+interface ExecCtx {
+  waitUntil(p: Promise<unknown>): void;
+}
+
+const ALGORITHM_VERSION = 'pdf-sig-v2';
+const SIGNING_ALGORITHMS = ['Ed25519', 'ML-DSA-87', 'SLH-DSA-256f'];
+
+/** Log the first time a given signing key set is observed, to
+ *  crypto_key_events — an automatic audit trail of when the key changed.
+ *  INSERT OR IGNORE (key_id UNIQUE) makes this race-safe under concurrent
+ *  isolate cold-starts. Never throws — a missing table or D1 outage must
+ *  never block or fail an actual signing request. Mirrors
+ *  src/utils/logger.ts's logErrorToDb() exactly. */
+async function logCryptoKeyEvent(db: D1Database, keyId: string, ctx?: ExecCtx): Promise<void> {
+  const work = (async () => {
+    try {
+      await db.prepare(
+        'INSERT OR IGNORE INTO crypto_key_events (key_id, algorithm_version, algorithms) VALUES (?, ?, ?)',
+      ).bind(keyId, ALGORITHM_VERSION, JSON.stringify(SIGNING_ALGORITHMS)).run();
+    } catch {
+      // Table may not exist yet (migration not applied), or a D1 hiccup —
+      // audit logging must never block or fail an actual signing request.
+    }
+  })();
+  if (ctx) {
+    ctx.waitUntil(work);
+  } else {
+    void work;
+  }
+}
+
 // HKDF-Expand (RFC 5869) — derives arbitrary-length, domain-separated key
 // material from the same root secret used by deriveEd25519Seed, WITHOUT
 // touching that function's formula (see file header). `label` must be
@@ -80,7 +113,7 @@ interface CachedSigningKeys {
 
 let cachedKeys: CachedSigningKeys | null = null;
 
-async function getSigningKeys(env: Bindings): Promise<{
+async function getSigningKeys(env: Bindings, ctx?: ExecCtx): Promise<{
   ed25519Key: CryptoKey; keyId: string; ed25519PublicKey: Uint8Array;
   mlDsaPublicKey: Uint8Array; mlDsaSecretKey: Uint8Array;
   slhDsaPublicKey: Uint8Array; slhDsaSecretKey: Uint8Array;
@@ -122,6 +155,7 @@ async function getSigningKeys(env: Bindings): Promise<{
   const { publicKey: slhDsaPublicKey, secretKey: slhDsaSecretKey } = slh_dsa_sha2_256f.keygen(slhDsaSeed);
 
   cachedKeys = { seedHash, ed25519Key, ed25519PublicKey, mlDsaPublicKey, mlDsaSecretKey, slhDsaPublicKey, slhDsaSecretKey };
+  logCryptoKeyEvent(env.DB, keyId, ctx);
   return { ...cachedKeys, keyId };
 }
 
@@ -138,6 +172,7 @@ export interface AlgorithmSignature {
  *  so a cryptanalytic break in any one algorithm family alone doesn't
  *  compromise document authenticity. */
 export interface PdfSignTripleResult {
+  algorithmVersion: 'pdf-sig-v2';
   signedAt: string;
   keyId: string;
   ed25519: AlgorithmSignature;
@@ -150,9 +185,9 @@ export interface PdfSignTripleResult {
  *  Ed25519 signatures issued before this change remain verifiable
  *  against the same deterministically-derived key. */
 export async function signTriple(
-  env: Bindings, formKey: string, caseNumber: string, payloadHash: string,
+  env: Bindings, formKey: string, caseNumber: string, payloadHash: string, ctx?: ExecCtx,
 ): Promise<PdfSignTripleResult> {
-  const keys = await getSigningKeys(env);
+  const keys = await getSigningKeys(env, ctx);
   const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
 
   const ed25519SigBuf = await crypto.subtle.sign('Ed25519', keys.ed25519Key, message);
@@ -160,6 +195,7 @@ export async function signTriple(
   const slhDsaSig = slh_dsa_sha2_256f.sign(message, keys.slhDsaSecretKey);
 
   return {
+    algorithmVersion: ALGORITHM_VERSION,
     signedAt: new Date().toISOString(), // new-date-ok
     keyId: keys.keyId,
     ed25519: { signature: bytesToBase64(new Uint8Array(ed25519SigBuf)), publicKey: bytesToBase64(keys.ed25519PublicKey) },

@@ -129,6 +129,7 @@ async function prepareCitationDispatch(opts: V2DispatchOptions) {
     caseNumber,
     signature: signResp
       ? {
+          algorithmVersion: signResp.algorithmVersion,
           ed25519: signResp.ed25519,
           mlDsa87: signResp.mlDsa87,
           slhDsa256f: signResp.slhDsa256f,

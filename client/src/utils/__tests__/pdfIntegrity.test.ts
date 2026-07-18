@@ -114,6 +114,7 @@ describe('active state setters', () => {
 
   it('signature round-trips', () => {
     const bundle = {
+      algorithmVersion: 'pdf-sig-v2' as const,
       signedAt: '2026-04-01T00:00:00Z',
       keyId: 'abcd1234',
       ed25519: { signature: 'edSigB64', publicKey: 'edPubB64' },
@@ -149,6 +150,7 @@ describe('fetchPdfSignature', () => {
 
   it('parses a 200 response into a PdfSignatureBundle', async () => {
     const serverBody = {
+      algorithmVersion: 'pdf-sig-v2',
       signedAt: '2026-04-01T00:00:00Z',
       keyId: 'abcd1234',
       ed25519: { signature: 'edSigB64', publicKey: 'edPubB64' },
@@ -162,6 +164,7 @@ describe('fetchPdfSignature', () => {
     )));
     const result = await fetchPdfSignature('incident', 'INC-1', 'a'.repeat(64));
     expect(result).toEqual({
+      algorithmVersion: serverBody.algorithmVersion,
       signedAt: serverBody.signedAt,
       keyId: serverBody.keyId,
       ed25519: serverBody.ed25519,

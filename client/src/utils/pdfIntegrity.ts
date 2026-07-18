@@ -130,6 +130,7 @@ export interface AlgorithmSignature {
  *  cryptanalytic break in any one algorithm family doesn't compromise
  *  document authenticity. */
 export interface PdfSignatureBundle {
+  algorithmVersion: 'pdf-sig-v2';
   signedAt: string;
   keyId: string;
   ed25519: AlgorithmSignature;
@@ -180,6 +181,7 @@ export async function fetchPdfSignature(
     const json = await res.json();
     if (!json || typeof json.ed25519?.signature !== 'string') return null;
     return {
+      algorithmVersion: json.algorithmVersion,
       signedAt: json.signedAt,
       keyId: json.keyId,
       ed25519: json.ed25519,
