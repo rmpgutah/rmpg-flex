@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import FleetVendorsTab from '../FleetVendorsTab';
 
@@ -7,7 +7,14 @@ import { apiFetch } from '../../../../hooks/useApi';
 const mockedApiFetch = vi.mocked(apiFetch);
 
 describe('FleetVendorsTab', () => {
-  beforeEach(() => mockedApiFetch.mockReset());
+  beforeEach(() => {
+    mockedApiFetch.mockReset();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('shows a loading state, then renders vendor rows sorted by price', async () => {
     mockedApiFetch.mockResolvedValue([
@@ -39,5 +46,12 @@ describe('FleetVendorsTab', () => {
     mockedApiFetch.mockResolvedValue([]);
     render(<FleetVendorsTab />);
     await waitFor(() => expect(screen.getByText(/no fuel vendors on file/i)).toBeInTheDocument());
+  });
+
+  it('shows an error message when the fetch fails', async () => {
+    mockedApiFetch.mockRejectedValue(new Error('Network error'));
+    render(<FleetVendorsTab />);
+    await waitFor(() => expect(screen.getByText(/failed to load vendors/i)).toBeInTheDocument());
+    expect(screen.getByText(/network error/i)).toBeInTheDocument();
   });
 });
