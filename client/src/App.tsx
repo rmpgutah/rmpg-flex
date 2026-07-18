@@ -75,7 +75,6 @@ const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
-const FleetShell = lazyRetry(() => import('./pages/fleet/v2/FleetShell'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
@@ -544,18 +543,10 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
-            {/* === Fleet UI cutover (PR 7'c) ===
-                 /fleet now serves the v2 Fleet.io-style shell.
-                 /fleet-legacy keeps the old UI mounted for ≥7 days as the
-                 escape hatch — operators hit it when they need a feature
-                 the new shell doesn't have yet. The legacy mount + old
-                 FleetPage code are removed in PR 7'd after the second
-                 7-day soak. The /fleet/v2/* parallel mount is kept for
-                 one cycle as a redirect target (anyone with a bookmark
-                 hitting /fleet/v2 still lands on the new UI). */}
-            <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
-            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
-            <Route path="/fleet-legacy" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            {/* /fleet serves the v1 tab-based UI permanently — the v2
+                Fleet.io-style shell was retired 2026-07-17 (see
+                docs/superpowers/specs/2026-07-17-fleet-v1-restoration-foundation-design.md). */}
+            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
