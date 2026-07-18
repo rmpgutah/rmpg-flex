@@ -19,7 +19,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
-import { authMiddleware } from './middleware/auth';
+import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
@@ -112,6 +112,8 @@ for (const m of ROUTE_REGISTRY) {
 for (const prefix of authPrefixes) {
   app.use(prefix, authMiddleware);
   app.use(`${prefix}/*`, authMiddleware);
+  app.use(prefix, readOnlyRoleGuard);
+  app.use(`${prefix}/*`, readOnlyRoleGuard);
 }
 
 // Mount routers in declared order — Hono dispatches in registration
