@@ -246,15 +246,36 @@ rt.get('/transmissions/:id/audio', async (c) => {
   }
 
   const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
-  if (!decrypted) return c.json({ error: 'Recording not found' }, 404);
 
-  const sliced = sliceByteRange(decrypted.bytes, rangeHeader ? { start: rangeStart, end: rangeEnd } : null);
+  // getDecrypted() returns null both for "object never existed" and for
+  // "object exists, no file_encryption_keys row" — the latter is exactly
+  // what every radio-audio/ object looks like today, since VoiceHubDO only
+  // started calling putEncrypted in a previous task on this branch. Fall
+  // back to a raw R2 read so historical recordings stay servable instead of
+  // permanently 404ing (same pattern as fieldPhotos.ts's `GET /file/*`).
+  let bytes: Uint8Array;
+  let contentType: string | undefined;
+  if (decrypted) {
+    bytes = decrypted.bytes;
+    contentType = decrypted.httpMetadata?.contentType;
+  } else {
+    const legacy = await c.env.UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'Recording not found' }, 404);
+    bytes = new Uint8Array(await legacy.arrayBuffer());
+    contentType = legacy.httpMetadata?.contentType;
+  }
+
+  // Only treat the Range header as present if it actually matched the
+  // supported `bytes=start-end` / `bytes=start-` form. RFC 7233: an
+  // unparseable Range header must be treated as absent — plain 200, full
+  // body, no Content-Range — not a 206 with a bogus 0-{total-1} range.
+  const sliced = sliceByteRange(bytes, r2Range ? { start: rangeStart, end: rangeEnd } : null);
   const headers: Record<string, string> = {
-    'Content-Type': decrypted.httpMetadata?.contentType || 'audio/webm',
+    'Content-Type': contentType || 'audio/webm',
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=31536000, immutable',
   };
-  if (rangeHeader) {
+  if (r2Range) {
     headers['Content-Range'] = `bytes ${sliced.start}-${sliced.end}/${sliced.total}`;
     headers['Content-Length'] = String(sliced.data.length);
     return new Response(sliced.data, { status: 206, headers });
