@@ -56,10 +56,6 @@ async function deriveHkdfSeed(env: Bindings, label: string, byteLength: number):
   return new Uint8Array(bits);
 }
 
-// Test-only export — removed once signTriple()'s own tests cover this
-// behavior end-to-end (Task 5).
-export const deriveHkdfSeedForTest = deriveHkdfSeed;
-
 async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   const provisioned = env.PDF_SIGNING_KEY?.trim();
   if (provisioned) {
@@ -129,16 +125,45 @@ async function getSigningKeys(env: Bindings): Promise<{
   return { ...cachedKeys, keyId };
 }
 
-// Test-only export — removed in Task 5 once signTriple()'s tests cover this.
-export const getPdfSigningKeyForTest = getSigningKeys;
+export interface AlgorithmSignature {
+  /** Base64 signature. */
+  signature: string;
+  /** Base64 raw public key — required for offline verification. */
+  publicKey: string;
+}
 
-/** Sign a (formKey | caseNumber | payloadHash) triple — identical message format to
- *  POST /api/pdf-tools/sign-payload, so client/src/utils/pdfIntegrity.ts verifies it. */
+/** Triple-algorithm signature bundle: Ed25519 (classical), ML-DSA-87
+ *  (FIPS 204, CNSA 2.0 lattice-based PQC), and SLH-DSA-SHA2-256f (FIPS
+ *  205, CNSA 2.0 hash-based PQC). All three sign the identical message
+ *  so a cryptanalytic break in any one algorithm family alone doesn't
+ *  compromise document authenticity. */
+export interface PdfSignTripleResult {
+  signedAt: string;
+  keyId: string;
+  ed25519: AlgorithmSignature;
+  mlDsa87: AlgorithmSignature;
+  slhDsa256f: AlgorithmSignature;
+}
+
+/** Sign a (formKey | caseNumber | payloadHash) triple with all three
+ *  algorithms. Identical message format to the pre-PQC version, so
+ *  Ed25519 signatures issued before this change remain verifiable
+ *  against the same deterministically-derived key. */
 export async function signTriple(
   env: Bindings, formKey: string, caseNumber: string, payloadHash: string,
-): Promise<{ signature: string; signedAt: string; algorithm: 'Ed25519'; keyId: string }> {
-  const { ed25519Key, keyId } = await getSigningKeys(env);
+): Promise<PdfSignTripleResult> {
+  const keys = await getSigningKeys(env);
   const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
-  const sigBuf = await crypto.subtle.sign('Ed25519', ed25519Key, message);
-  return { signature: bytesToBase64(new Uint8Array(sigBuf)), signedAt: new Date().toISOString(), algorithm: 'Ed25519', keyId }; // new-date-ok
+
+  const ed25519SigBuf = await crypto.subtle.sign('Ed25519', keys.ed25519Key, message);
+  const mlDsaSig = ml_dsa87.sign(message, keys.mlDsaSecretKey);
+  const slhDsaSig = slh_dsa_sha2_256f.sign(message, keys.slhDsaSecretKey);
+
+  return {
+    signedAt: new Date().toISOString(), // new-date-ok
+    keyId: keys.keyId,
+    ed25519: { signature: bytesToBase64(new Uint8Array(ed25519SigBuf)), publicKey: bytesToBase64(keys.ed25519PublicKey) },
+    mlDsa87: { signature: bytesToBase64(mlDsaSig), publicKey: bytesToBase64(keys.mlDsaPublicKey) },
+    slhDsa256f: { signature: bytesToBase64(slhDsaSig), publicKey: bytesToBase64(keys.slhDsaPublicKey) },
+  };
 }

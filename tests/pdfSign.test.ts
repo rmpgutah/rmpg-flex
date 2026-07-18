@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
 import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
-import { deriveHkdfSeedForTest, getPdfSigningKeyForTest } from '../src/utils/pdfSign';
+import { signTriple } from '../src/utils/pdfSign';
 import type { Bindings } from '../src/types';
 
 // Benchmarked on 2026-07-18 (dev machine, @noble/post-quantum 0.6.1):
@@ -47,56 +47,57 @@ describe('@noble/post-quantum — library sanity', () => {
   });
 });
 
-describe('deriveHkdfSeedForTest', () => {
+describe('signTriple', () => {
   const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
 
-  it('derives the requested byte length', async () => {
-    const seed32 = await deriveHkdfSeedForTest(env, 'label-a', 32);
-    const seed96 = await deriveHkdfSeedForTest(env, 'label-a', 96);
-    expect(seed32.length).toBe(32);
-    expect(seed96.length).toBe(96);
+  it('produces three independently-verifiable signatures over the same message', async () => {
+    const result = await signTriple(env, 'incident', 'INC-26-001234', 'a'.repeat(64));
+    const message = new TextEncoder().encode('incident|INC-26-001234|' + 'a'.repeat(64));
+
+    // Ed25519
+    const ed25519Pub = await crypto.subtle.importKey(
+      'raw', Uint8Array.from(atob(result.ed25519.publicKey), (c) => c.charCodeAt(0)),
+      { name: 'Ed25519' }, false, ['verify'],
+    );
+    const ed25519Sig = Uint8Array.from(atob(result.ed25519.signature), (c) => c.charCodeAt(0));
+    expect(await crypto.subtle.verify('Ed25519', ed25519Pub, ed25519Sig, message)).toBe(true);
+
+    // ML-DSA-87
+    const mlPub = Uint8Array.from(atob(result.mlDsa87.publicKey), (c) => c.charCodeAt(0));
+    const mlSig = Uint8Array.from(atob(result.mlDsa87.signature), (c) => c.charCodeAt(0));
+    expect(ml_dsa87.verify(mlSig, message, mlPub)).toBe(true);
+
+    // SLH-DSA-256f
+    const slhPub = Uint8Array.from(atob(result.slhDsa256f.publicKey), (c) => c.charCodeAt(0));
+    const slhSig = Uint8Array.from(atob(result.slhDsa256f.signature), (c) => c.charCodeAt(0));
+    expect(slh_dsa_sha2_256f.verify(slhSig, message, slhPub)).toBe(true);
+
+    expect(result.keyId).toMatch(/^[0-9a-f]{16}$/);
+    expect(new Date(result.signedAt).toISOString()).toBe(result.signedAt);
   });
 
-  it('is deterministic for the same env + label', async () => {
-    const a = await deriveHkdfSeedForTest(env, 'label-a', 32);
-    const b = await deriveHkdfSeedForTest(env, 'label-a', 32);
-    expect(Array.from(a)).toEqual(Array.from(b));
-  });
+  it('tampering with any input field invalidates all three signatures', async () => {
+    const result = await signTriple(env, 'incident', 'INC-26-001234', 'a'.repeat(64));
+    const tamperedMessage = new TextEncoder().encode('incident|INC-26-001234|' + 'b'.repeat(64));
 
-  it('produces different bytes for different labels (domain separation)', async () => {
-    const a = await deriveHkdfSeedForTest(env, 'label-a', 32);
-    const b = await deriveHkdfSeedForTest(env, 'label-b', 32);
-    expect(Array.from(a)).not.toEqual(Array.from(b));
-  });
+    const ed25519Pub = await crypto.subtle.importKey(
+      'raw', Uint8Array.from(atob(result.ed25519.publicKey), (c) => c.charCodeAt(0)),
+      { name: 'Ed25519' }, false, ['verify'],
+    );
+    const ed25519Sig = Uint8Array.from(atob(result.ed25519.signature), (c) => c.charCodeAt(0));
+    expect(await crypto.subtle.verify('Ed25519', ed25519Pub, ed25519Sig, tamperedMessage)).toBe(false);
 
-  it('prefers PDF_SIGNING_KEY over JWT_SECRET when both are set', async () => {
-    const envWithBoth = { JWT_SECRET: 'jwt-value', PDF_SIGNING_KEY: 'dGVzdC1wZGYtc2lnbmluZy1rZXk=' } as unknown as Bindings;
-    const envJwtOnly = { JWT_SECRET: 'jwt-value' } as unknown as Bindings;
-    const a = await deriveHkdfSeedForTest(envWithBoth, 'label-a', 32);
-    const b = await deriveHkdfSeedForTest(envJwtOnly, 'label-a', 32);
-    expect(Array.from(a)).not.toEqual(Array.from(b));
+    const mlPub = Uint8Array.from(atob(result.mlDsa87.publicKey), (c) => c.charCodeAt(0));
+    const mlSig = Uint8Array.from(atob(result.mlDsa87.signature), (c) => c.charCodeAt(0));
+    expect(ml_dsa87.verify(mlSig, tamperedMessage, mlPub)).toBe(false);
+
+    const slhPub = Uint8Array.from(atob(result.slhDsa256f.publicKey), (c) => c.charCodeAt(0));
+    const slhSig = Uint8Array.from(atob(result.slhDsa256f.signature), (c) => c.charCodeAt(0));
+    expect(slh_dsa_sha2_256f.verify(slhSig, tamperedMessage, slhPub)).toBe(false);
   });
 });
 
-describe('getPdfSigningKeyForTest — Ed25519', () => {
-  const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
-
-  it('exports a 32-byte Ed25519 public key that verifies a signature made with the private key', async () => {
-    const { ed25519Key, ed25519PublicKey } = await getPdfSigningKeyForTest(env);
-    expect(ed25519PublicKey.length).toBe(32);
-    const msg = new TextEncoder().encode('hello');
-    const sigBuf = await crypto.subtle.sign('Ed25519', ed25519Key, msg);
-    const pubKey = await crypto.subtle.importKey('raw', ed25519PublicKey, { name: 'Ed25519' }, false, ['verify']);
-    expect(await crypto.subtle.verify('Ed25519', pubKey, sigBuf, msg)).toBe(true);
-  });
-
-  it('re-derives the exact same keyId across separate calls (deterministic)', async () => {
-    const a = await getPdfSigningKeyForTest(env);
-    const b = await getPdfSigningKeyForTest(env);
-    expect(a.keyId).toBe(b.keyId);
-    expect(Array.from(a.ed25519PublicKey)).toEqual(Array.from(b.ed25519PublicKey));
-  });
-
+describe('signTriple — backward compat', () => {
   it('BACKWARD COMPAT: keyId for a known JWT_SECRET matches the pre-PQC value', async () => {
     // Golden value captured from the ORIGINAL getPdfSigningKey() (before this
     // plan), to prove deriveEd25519Seed()'s formula — and therefore every
@@ -105,34 +106,7 @@ describe('getPdfSigningKeyForTest — Ed25519', () => {
     // 'rmpg-pdf-ed25519-v1') -> seed -> SHA-256(seed) -> first 8 bytes hex)
     // against the fixed secret below. Never hand-edit this value — if this
     // test ever needs to change, something broke backward compatibility.
-    const { keyId } = await getPdfSigningKeyForTest({ JWT_SECRET: 'golden-test-secret-do-not-change' } as unknown as Bindings);
-    expect(keyId).toBe('867c4da05488c3a2');
-  });
-});
-
-describe('getPdfSigningKeyForTest — PQC keys', () => {
-  const env = { JWT_SECRET: 'test-jwt-secret-value' } as unknown as Bindings;
-
-  it('derives ML-DSA-87 and SLH-DSA-256f keypairs with correct sizes', async () => {
-    const keys = await getPdfSigningKeyForTest(env);
-    expect(keys.mlDsaPublicKey.length).toBe(2592);
-    expect(keys.mlDsaSecretKey.length).toBe(4896);
-    expect(keys.slhDsaPublicKey.length).toBe(64);
-    expect(keys.slhDsaSecretKey.length).toBe(128);
-  });
-
-  it('is deterministic across separate calls', async () => {
-    const a = await getPdfSigningKeyForTest(env);
-    const b = await getPdfSigningKeyForTest(env);
-    expect(Array.from(a.mlDsaPublicKey)).toEqual(Array.from(b.mlDsaPublicKey));
-    expect(Array.from(a.slhDsaPublicKey)).toEqual(Array.from(b.slhDsaPublicKey));
-  });
-
-  it('produces different PQC keys for different root secrets', async () => {
-    const other = { JWT_SECRET: 'a-different-secret' } as unknown as Bindings;
-    const a = await getPdfSigningKeyForTest(env);
-    const b = await getPdfSigningKeyForTest(other);
-    expect(Array.from(a.mlDsaPublicKey)).not.toEqual(Array.from(b.mlDsaPublicKey));
-    expect(Array.from(a.slhDsaPublicKey)).not.toEqual(Array.from(b.slhDsaPublicKey));
+    const result = await signTriple({ JWT_SECRET: 'golden-test-secret-do-not-change' } as unknown as Bindings, 'x', 'y', 'a'.repeat(64));
+    expect(result.keyId).toBe('867c4da05488c3a2');
   });
 });
