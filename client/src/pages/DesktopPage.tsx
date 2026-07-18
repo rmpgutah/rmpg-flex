@@ -1,8 +1,9 @@
 // client/src/pages/DesktopPage.tsx
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites } from '../utils/navFavorites';
-import { useUserPreferences } from '../context/UserPreferencesContext';
+import { useUserPreferences, type UserPreferences } from '../context/UserPreferencesContext';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { DEFAULT_WALLPAPER_ID, DESKTOP_WALLPAPERS } from '../data/desktopWallpapers';
@@ -33,9 +34,16 @@ function WindowLayer() {
   return <>{windows.map(w => <FloatingWindow key={w.id} win={w} />)}</>;
 }
 
-export default function DesktopPage() {
+// Does the actual desktop rendering/state work. Only mounted once the real
+// user preferences have loaded (see DesktopPage below) — its one-shot useState
+// initializers below read `prefs` synchronously on first render, so `prefs`
+// must already be the REAL server-loaded value by the time this mounts, never
+// the still-default value UserPreferencesProvider starts with while its own
+// fetch is in flight. Otherwise the debounced save effect a few lines down
+// would silently PUT default-derived state back to the server on the user's
+// very next interaction, clobbering their real saved cross-device layout.
+function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
   const { user } = useAuth();
-  const { prefs, reload } = useUserPreferences();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -144,7 +152,7 @@ export default function DesktopPage() {
             ) : (
               <DesktopIconGrid icons={pinnedIcons} positions={positions} onReposition={handleReposition} onUnpin={handleUnpin} />
             )}
-            <DesktopWidgetPanel enabledWidgets={enabledWidgets} />
+            <DesktopWidgetPanel enabledWidgets={enabledWidgets} catalog={allFunctions} />
             <WindowLayer />
           </DesktopWallpaper>
         </div>
@@ -159,4 +167,22 @@ export default function DesktopPage() {
       )}
     </DesktopWindowManagerProvider>
   );
+}
+
+// Top-level route component. Gates DesktopPageInner's mount on the real
+// preferences fetch resolving — see the comment on DesktopPageInner above for
+// why: its one-shot state initializers must never see the still-default
+// `prefs` UserPreferencesProvider starts with.
+export default function DesktopPage() {
+  const { prefs, reload, isLoading } = useUserPreferences();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  return <DesktopPageInner prefs={prefs} reload={reload} />;
 }

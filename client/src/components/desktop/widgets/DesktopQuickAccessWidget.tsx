@@ -1,19 +1,28 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { NAV_CATEGORIES } from '../../../data/navCatalog';
+import type { NavFunction } from '../../../data/navCatalog';
 import { loadFavorites, loadRecent } from '../../../utils/navFavorites';
 
-export default function DesktopQuickAccessWidget() {
+export interface DesktopQuickAccessWidgetProps {
+  // Role-filtered catalog, threaded down from DesktopPage's `allFunctions`
+  // (mirrors ModuleDirectoryPage's visibleCategories filter). Must NOT fall
+  // back to importing NAV_CATEGORIES directly — that would bypass the
+  // adminOnly/CLIENT_VIEWER_BLOCKED/CONTRACT_MANAGER_BLOCKED filtering that
+  // every other module-surfacing path in this feature (icon grid, taskbar
+  // launcher) already goes through.
+  catalog: NavFunction[];
+}
+
+export default function DesktopQuickAccessWidget({ catalog }: DesktopQuickAccessWidgetProps) {
   const navigate = useNavigate();
-  const allFunctions = useMemo(() => NAV_CATEGORIES.flatMap(cat => cat.functions), []);
   const favorites = useMemo(() => {
     const favSet = loadFavorites();
-    return allFunctions.filter(fn => favSet.has(fn.path));
-  }, [allFunctions]);
+    return catalog.filter(fn => favSet.has(fn.path));
+  }, [catalog]);
   const recent = useMemo(() => {
     const recentPaths = loadRecent();
-    return recentPaths.map(p => allFunctions.find(fn => fn.path === p)).filter(Boolean).slice(0, 5) as typeof allFunctions;
-  }, [allFunctions]);
+    return recentPaths.map(p => catalog.find(fn => fn.path === p)).filter(Boolean).slice(0, 5) as NavFunction[];
+  }, [catalog]);
 
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 220 }}>

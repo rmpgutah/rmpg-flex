@@ -7,8 +7,16 @@ const apiFetchMock = vi.fn().mockResolvedValue({});
 vi.mock('../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
 
 const mockPrefs = { desktop_layout_json: null, desktop_wallpaper: 'blue-silver-default', desktop_widgets_json: null };
+
+// `useUserPreferences` is mocked as a hoisted vi.fn() (rather than a fixed
+// return value) so individual tests can override its return per-call — this
+// is what lets the "still loading" test below exercise the isLoading:true
+// branch of DesktopPage without touching the other tests' isLoading:false
+// default (see Finding 1 of the 2026-07-18 final review: DesktopPage used to
+// seed its one-shot state from `prefs` before the real async fetch resolved).
+const { mockUseUserPreferences } = vi.hoisted(() => ({ mockUseUserPreferences: vi.fn() }));
 vi.mock('../context/UserPreferencesContext', () => ({
-  useUserPreferences: () => ({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null }),
+  useUserPreferences: () => mockUseUserPreferences(),
 }));
 
 // DesktopPage calls useAuth() (for role-based catalog filtering); without a
@@ -29,6 +37,8 @@ describe('DesktopPage', () => {
     sessionStorage.clear();
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValue({});
+    mockUseUserPreferences.mockReset();
+    mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: false, error: null });
   });
 
   it('auto-populates the icon grid from current favorites on first load', async () => {
@@ -60,5 +70,17 @@ describe('DesktopPage', () => {
       const putCall = apiFetchMock.mock.calls.find(c => c[1]?.method === 'PUT');
       expect(putCall).toBeUndefined(); // no change made yet — proves save is change-triggered, not on every render
     });
+  });
+
+  it('shows a loading placeholder while preferences are still loading, instead of seeding state from defaults', () => {
+    saveFavorites(new Set(['/dispatch']));
+    mockUseUserPreferences.mockReturnValue({ prefs: mockPrefs, reload: vi.fn(), isLoading: true, error: null });
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    // Loading placeholder is present...
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+    // ...and none of the real desktop shell (which would have seeded its
+    // one-shot state from the still-default prefs) has mounted yet.
+    expect(screen.queryByLabelText('Open app launcher')).not.toBeInTheDocument();
+    expect(screen.queryByText('Dispatch Console')).not.toBeInTheDocument();
   });
 });
