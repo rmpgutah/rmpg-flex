@@ -1494,7 +1494,7 @@ export default function FleetPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('work_orders')}
+                  onClick={() => { setWorkOrdersVehicleFilter(null); setViewMode('work_orders'); }}
                   className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
                   style={{
                     color: viewMode === 'work_orders' ? '#d4a017' : '#888',
