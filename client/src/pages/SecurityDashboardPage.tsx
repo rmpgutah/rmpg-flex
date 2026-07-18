@@ -84,7 +84,15 @@ export default function SecurityDashboardPage() {
       ]);
       if (s) setStatus(s);
       if (lh) setLoginHistory(lh.data || []);
-      if (t) setThreats(t.data || []);
+      // API returns raw {id, type, username, ip, reason, timestamp} rows — no
+      // description/severity/ip_address fields exist server-side, so build
+      // them here rather than rendering blank text for every threat entry.
+      if (t) setThreats((t.data || []).map((raw: any) => ({
+        ...raw,
+        description: raw.description || [raw.username, (raw.reason || '').replace(/_/g, ' ')].filter(Boolean).join(' — '),
+        severity: raw.severity || (raw.reason === 'user_not_found' ? 'high' : 'medium'),
+        ip_address: raw.ip_address || raw.ip,
+      })));
       if (bi) setBlockedIps(bi.data || []);
       if (pc) setPasswordCompliance(pc);
       if (sa) setSessionAnalytics(sa);

@@ -65,6 +65,7 @@ import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
+import oidc from './routes/oidc';
 import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
@@ -111,6 +112,7 @@ import arrests from './routes/arrests';
 import assessor from './routes/assessor';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
+import accreditations from './routes/accreditations';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
 import analytics from './routes/analytics';
@@ -126,6 +128,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import legalDataHunter from './routes/legalDataHunter';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
@@ -210,6 +213,7 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+import propertyPhotos from './routes/property/photos';
 import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
@@ -218,6 +222,7 @@ import downloads from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
+import navFavorites from './routes/navFavorites';
 import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
@@ -236,7 +241,6 @@ import mapbox from './routes/mapbox';
 // Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
-import mapboxTelemetry from './routes/mapboxTelemetry';
 // Driving events — powers the Dashcam AI Console. Was never mounted, causing
 // every /api/driving-events/* call to 404 (ForensicDashcamPlayer, etc.).
 import drivingEvents from './routes/drivingEvents';
@@ -278,6 +282,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Public ─────────────────────────────────────────────────
   { prefix: '/api/health', router: health, auth: 'public' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
+  { prefix: '/api/oidc', router: oidc, auth: 'public',
+    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC). Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
@@ -431,6 +437,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
+  { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
+    note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
@@ -451,6 +459,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
     note: 'Nav trip logging: auto-detect vehicle movement, breadcrumb trails, take-home vehicle support' },
+  { prefix: '/api/nav/favorites', router: navFavorites, auth: 'required',
+    note: 'Saved/favorite navigation destinations (nav_favorites table, mig 0181). CRUD scoped to owning user.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/pawn', router: pawn, auth: 'required',
@@ -518,6 +528,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
   { prefix: '/api/accreditation', router: accreditation, auth: 'required',
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
+  { prefix: '/api/accreditations', router: accreditations, auth: 'required',
+    note: 'AccreditationsPage.tsx backend (officer certification tracking, distinct from /api/accreditation standards and /api/training certs) — the page 404d on every call since it shipped; never mounted before.' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
@@ -578,6 +590,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+  { prefix: '/api/property-photos', router: propertyPhotos, auth: 'required' },
 
   // ── Field photos (mobile camera portal /field-camera) ───────
   // Stamped evidence photos: overlay burned client-side, R2-backed.
@@ -613,13 +626,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // table (migration 0078). Ported from legacy Express handler.
   { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
     note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
-
-  // ── Mapbox telemetry sink (public; longer prefix wins) ─────
-  // Registered BEFORE /api/mapbox so the trie matches this prefix first.
-  // mapboxLoader points mapboxgl.config.EVENTS_URL here so SDK POSTs land
-  // on a 204 instead of events.mapbox.com (which some operator networks block).
-  { prefix: '/api/mapbox/events', router: mapboxTelemetry, auth: 'public',
-    note: 'Mapbox SDK telemetry sink — POST /v2 returns 204, swallows the payload' },
 
   // ── Mapbox server-side proxy ───────────────────────────────
   // Backs client/src/utils/mapboxServices.ts (geocode/directions/isochrone/
@@ -677,10 +683,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // /api/comms stubs mount so it owns the whole /bolos subtree (Hono runs the
   // first-registered matching handler). bolosRouter defines /active, /check,
   // and /stats (see dispatch/extensions.ts) — the stubs.ts copies of those
-  // were dead code and have been removed. ⚠️ :id/archive, :id/unarchive,
-  // auto-archive, and expire-check are NOT implemented anywhere and 404 —
-  // see task_ea67239c for expire-check; archive/unarchive/auto-archive are
-  // still an open gap (CommunicationsPage.tsx ~L738-1572).
+  // were dead code and have been removed. :id/archive, :id/unarchive,
+  // auto-archive, and expire-check are all implemented in
+  // dispatch/extensions.ts (archived_at column, migration 0177) — this
+  // comment previously said they 404'd; that gap has since been closed.
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },

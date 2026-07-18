@@ -18,15 +18,17 @@ interface Props {
   todayYmd: string;
   /** Deep-link highlight: auto-scroll to this slot and ring it on first render. */
   highlightSlotId?: number;
+  /** Highlight an officer lane row */
+  highlightOfficerId?: number;
   onSlotClick?: (slot: ScheduleSlot) => void;
+  /** Right-click on a slot chip — parent opens the shared context menu. */
+  onSlotContextMenu?: (slot: ScheduleSlot, e: React.MouseEvent) => void;
   onSlotDrop?: (slot: ScheduleSlot, target: { date: string; officer_id: number | null }) => void;
   onQueueDrop?: (queueId: number, target: { date: string; officer_id: number | null }) => void;
   /** admin/manager only — gate dismiss (DELETE) icon on chip */
   onSlotDismiss?: (slot: ScheduleSlot) => void;
   /** admin/manager only — gate unassign (PATCH officer→null) icon on chip */
   onSlotUnassign?: (slot: ScheduleSlot) => void;
-  /** Highlight lane for a given officer id */
-  highlightOfficerId?: number;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -45,7 +47,7 @@ function formatHeader(ymd: string): string {
 
 export default function OfficerLaneTimeline({
   anchorYmd, mode, slots, officers, todayYmd,
-  highlightSlotId, highlightOfficerId, onSlotClick, onSlotDrop, onQueueDrop,
+  highlightSlotId, highlightOfficerId, onSlotClick, onSlotContextMenu, onSlotDrop, onQueueDrop,
   onSlotDismiss, onSlotUnassign,
 }: Props) {
   const days = useMemo(() => extendRange(anchorYmd, mode), [anchorYmd, mode]);
@@ -156,6 +158,12 @@ export default function OfficerLaneTimeline({
                         draggable
                         onDragStart={handleDragStart(slot)}
                         onClick={() => onSlotClick?.(slot)}
+                        onContextMenu={(e) => {
+                          if (!onSlotContextMenu) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSlotContextMenu(slot, e);
+                        }}
                         className={`${TIER_CLASSES[tier]} relative rounded-[2px] px-1 py-0.5 mb-0.5 text-[10px] cursor-grab active:cursor-grabbing${isHighlighted ? ' ring-1 ring-brand-400' : ''}`}
                       >
                         <div className="flex items-center justify-between gap-1">

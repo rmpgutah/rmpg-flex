@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
 import { toDisplayLabel } from '../utils/formatters';
 
@@ -112,10 +112,11 @@ export default function IntelBulletinsPage() {
 
   async function handleSubmit() {
     try {
+      const payload = { ...form, expires_at: form.expires_at ? mtDatetimeLocalToUtc(form.expires_at) : form.expires_at };
       if (editingBulletin) {
-        await apiFetch(`/intel-bulletins/${editingBulletin.id}`, { method: 'PUT', body: JSON.stringify(form), headers: { 'Content-Type': 'application/json' } });
+        await apiFetch(`/intel-bulletins/${editingBulletin.id}`, { method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
       } else {
-        await apiFetch('/intel-bulletins', { method: 'POST', body: JSON.stringify(form), headers: { 'Content-Type': 'application/json' } });
+        await apiFetch('/intel-bulletins', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
       }
       setShowCreateModal(false);
       setEditingBulletin(null);
@@ -149,7 +150,7 @@ export default function IntelBulletinsPage() {
       description: b.description, suspect_name: b.suspect_name || '',
       suspect_description: b.suspect_description || '',
       vehicle_description: b.vehicle_description || '',
-      location: b.location || '', expires_at: b.expires_at || '',
+      location: b.location || '', expires_at: toDatetimeLocalValue(b.expires_at),
     });
     setEditingBulletin(b);
     setShowCreateModal(true);

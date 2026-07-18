@@ -69,7 +69,7 @@ import { useToast } from '../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
@@ -2991,7 +2991,7 @@ export default function IncidentsPage() {
 
               fd.forEach((v, k) => {
                 if (!v || k === 'officer_select_id' || k === 'manual_officer_id') return;
-                data[k] = v;
+                data[k] = (k === 'arrived_at' || k === 'departed_at') ? mtDatetimeLocalToUtc(String(v)) : v;
               });
 
               if (!officerId) {

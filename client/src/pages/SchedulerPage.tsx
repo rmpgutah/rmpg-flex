@@ -15,7 +15,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import type { EventClickArg, EventDropArg } from '@fullcalendar/core';
+import type { DatesSetArg, EventClickArg, EventDropArg } from '@fullcalendar/core';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
 import { useToast } from '../components/ToastProvider';
@@ -228,7 +228,7 @@ export default function SchedulerPage() {
           eventClick={handleEventClick}
           eventStartEditable
           eventDurationEditable={false}
-          datesSet={(arg) => {
+          datesSet={(arg: DatesSetArg) => {
             const start = arg.startStr.slice(0, 10);
             const end = arg.endStr.slice(0, 10);
             if (start !== rangeStart) setRangeStart(start);

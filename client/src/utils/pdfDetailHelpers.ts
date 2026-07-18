@@ -65,18 +65,47 @@ export function addQuickReferenceBanner(
   doc.setLineWidth(BORDER.TABLE_ROW);
   doc.line(margin, startY + bannerH, margin + cw, startY + bannerH);
 
-  // Primary text — large, bold, white on dark
+  // Pre-compute pill geometry FIRST (measure only, don't draw yet) so the
+  // primary text can be truncated to leave room for it — previously the
+  // primary text drew unclipped before the pill existed, so a long value
+  // (e.g. a long hyphenated subject name) ran straight through/under the
+  // pill instead of stopping short of it (2026-07-13 fix, visually
+  // confirmed on a PERSON RECORD quick-reference banner).
   const textX = margin + accentW + SPACING.CONTENT_INSET + 1;
+  let pillLeftEdge = margin + cw;
+  let pillLabelW = 0;
+  if (cfg.pill && cfg.pill.label) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    pillLabelW = doc.getTextWidth(cfg.pill.label) + 4;
+    pillLeftEdge = margin + cw - pillLabelW - 2;
+  }
+
+  // Primary text — large, bold, white on dark, truncated with an ellipsis
+  // if it would otherwise run into the pill (or off the banner entirely
+  // when there's no pill).
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_QUICK_REF_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   // [Improvement 53] Vertically centered primary text using cap-height math
   const primaryCapH = FONT.SIZE_QUICK_REF_PRIMARY * 0.35;
   const primaryTextY = startY + (bannerH + primaryCapH) / 2;
-  doc.text(sanitizePdfText(cfg.primary || ''), textX, primaryTextY);
+  const primaryMaxW = Math.max(20, pillLeftEdge - textX - 2);
+  let primaryText = sanitizePdfText(cfg.primary || '');
+  if (doc.getTextWidth(primaryText) > primaryMaxW) {
+    while (primaryText.length > 1 && doc.getTextWidth(primaryText + '…') > primaryMaxW) {
+      primaryText = primaryText.slice(0, -1);
+    }
+    primaryText += '…';
+  }
+  doc.text(primaryText, textX, primaryTextY);
+  // Measured width of the actual rendered (possibly truncated) primary
+  // text — used below to place the secondary identifier right after it
+  // instead of at a fixed 50%-of-content-width offset, which let a long
+  // primary value run into the secondary text (2026-07-13 fix).
+  const primaryTextW = doc.getTextWidth(primaryText);
 
-  // Pre-compute pill geometry so the secondary text can be width-clipped
-  let pillLeftEdge = margin + cw;
+  // Now actually draw the pill on top of the (already-clipped) primary text.
   if (cfg.pill && cfg.pill.label) {
     const pillBg: [number, number, number] = cfg.pill.tone === 'high'
       ? [60, 60, 60]   // neutralized 2026-05-30 (was red)
@@ -85,23 +114,21 @@ export function addQuickReferenceBanner(
         : cfg.pill.tone === 'inactive'
           ? [110, 110, 110]
           : [100, 100, 100]; // neutralized (was green)
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    const labelW = doc.getTextWidth(cfg.pill.label) + 4;
-    const pillX = margin + cw - labelW - 2;
-    pillLeftEdge = pillX;
+    const pillX = margin + cw - pillLabelW - 2;
     // [Improvement 54] Pill vertically centered in banner
     const pillH = 4.2;
     const pillY = startY + (bannerH - pillH) / 2;
     doc.setFillColor(pillBg[0], pillBg[1], pillBg[2]);
-    doc.roundedRect(pillX, pillY, labelW, pillH, 0.5, 0.5, 'F');
+    doc.roundedRect(pillX, pillY, pillLabelW, pillH, 0.5, 0.5, 'F');
     // [Improvement 55] Pill outline for definition on photocopies
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(BORDER.PILL_OUTLINE);
-    doc.roundedRect(pillX, pillY, labelW, pillH, 0.5, 0.5);
+    doc.roundedRect(pillX, pillY, pillLabelW, pillH, 0.5, 0.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     const pillCapH = 7 * 0.35;
-    doc.text(cfg.pill.label, pillX + labelW / 2, pillY + (pillH + pillCapH) / 2, { align: 'center' });
+    doc.text(cfg.pill.label, pillX + pillLabelW / 2, pillY + (pillH + pillCapH) / 2, { align: 'center' });
   }
 
   // Secondary identifier — small, muted, clipped to avoid pill overlap
@@ -109,7 +136,11 @@ export function addQuickReferenceBanner(
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED); // light-medium grey sub-heading on the dark bar
-    const secondaryX = textX + cw * 0.5;
+    // Anchor after the primary text's measured width (min 50% of content
+    // width so short primaries still leave the secondary text roughly
+    // where operators expect it), not a fixed offset that ignored how
+    // wide the primary text actually rendered.
+    const secondaryX = Math.max(textX + primaryTextW + 4, textX + cw * 0.5);
     const maxSecondaryW = Math.max(20, pillLeftEdge - secondaryX - 2);
     const lines = doc.splitTextToSize(sanitizePdfText(cfg.secondary), maxSecondaryW) as string[];
     doc.text(lines[0] || '', secondaryX, primaryTextY);
@@ -378,11 +409,17 @@ export function drawThreatPostureBand(
   doc.text(labelText, tx, startY + 6.4);
   const labelW = doc.getTextWidth(labelText);
 
+  let contextW = 0;
   if (cfg.context) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(ctxColor[0], ctxColor[1], ctxColor[2]);
-    doc.text(sanitizePdfText(cfg.context), tx + labelW + 3, startY + 6.4);
+    const contextText = sanitizePdfText(cfg.context);
+    doc.text(contextText, tx + labelW + 3, startY + 6.4);
+    // Measured, not a fixed 40mm guess — a long context string (e.g. a
+    // multi-charge description) could run past a hardcoded budget and
+    // collide with the flag chips packed in from the right (2026-07-13 fix).
+    contextW = doc.getTextWidth(contextText);
   }
 
   // ── Right block: contributing-flag chips, packed right-to-left so the
@@ -394,7 +431,7 @@ export function drawThreatPostureBand(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
     let edge = margin + cw - 2;               // right inner edge
-    const minLeft = tx + labelW + (cfg.context ? 40 : 6); // don't crowd label
+    const minLeft = tx + labelW + (cfg.context ? 3 + contextW + 4 : 6); // don't crowd label/context
     let shown = 0;
     for (const raw of cfg.flags) {
       const chipLabel = sanitizePdfText(raw);
@@ -853,36 +890,8 @@ export function addInlineKeyValue(
   return y + 3.5;
 }
 
-// [Improvement 75] VOID watermark — distinct from CONFIDENTIAL and DRAFT,
-// uses red X pattern for voided documents (citations, warrants).
-
-export function addVoidWatermark(doc: jsPDF): void {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  doc.saveGraphicsState();
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 0.10 }));
-  doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setTextColor(COLOR.WATERMARK_VOID[0], COLOR.WATERMARK_VOID[1], COLOR.WATERMARK_VOID[2]);
-
-  const cx = pageWidth / 2;
-  const cy = pageHeight / 2;
-
-  // Large "VOID" text
-  doc.setFontSize(80);
-  doc.text('VOID', cx, cy, { align: 'center', angle: 45 });
-
-  // Diagonal cross lines
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 0.06 }));
-  doc.setDrawColor(COLOR.WATERMARK_VOID[0], COLOR.WATERMARK_VOID[1], COLOR.WATERMARK_VOID[2]);
-  doc.setLineWidth(2);
-  doc.line(15, 15, pageWidth - 15, pageHeight - 15);
-  doc.line(pageWidth - 15, 15, 15, pageHeight - 15);
-
-  doc.restoreGraphicsState();
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
-}
+// [Improvement 75] VOID watermark — moved to pdfGenerator.ts (2026-07-13)
+// so checkPageBreak() there can call it directly on continuation pages
+// without an import cycle. Re-exported here for any existing importers.
+export { addVoidWatermark } from './pdfGenerator';
 

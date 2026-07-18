@@ -66,7 +66,8 @@ const OPERATIONAL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatc
 const VALID_TYPES = [
   'person', 'vehicle', 'property', 'business', 'evidence', 'case', 'incident',
   'warrant', 'citation', 'arrest', 'field_interview', 'trespass_order',
-  'serve_job', 'call', 'report', 'intel_report',
+  'serve_job', 'call', 'report', 'intel_report', 'alpr_sighting',
+  'forensic_case', 'forensic_exhibit',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -176,6 +177,33 @@ async function loadNode(
           metadata: { grade, threat_level: r.threat_level || 'low', handling_code: r.handling_code || '', intel: true },
         };
       }
+      case 'alpr_sighting': {
+        // Positive id = alpr_captures row; negative id = vehicle_sightings
+        // row (negated to avoid colliding with alpr_captures' own
+        // independent, overlapping AUTOINCREMENT sequence — both tables
+        // start at 1, so without this encoding an alpr_sighting node could
+        // silently resolve to the WRONG table's row of the same id).
+        if (id > 0) {
+          const cap = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM alpr_captures WHERE id = ?', id);
+          return {
+            label: cap ? `${cap.plate || '?'} (${cap.state || '?'}) — ${cap.location_text || 'unknown location'}` : `ALPR Sighting #${id}`,
+            metadata: cap || {},
+          };
+        }
+        const sighting = await queryFirst<any>(db, 'SELECT plate, state, location_text, lat, lng, created_at FROM vehicle_sightings WHERE id = ?', -id);
+        return {
+          label: sighting ? `${sighting.plate || '?'} (${sighting.state || '?'}) — ${sighting.location_text || 'unknown location'}` : `ALPR Sighting #${-id}`,
+          metadata: sighting || {},
+        };
+      }
+      case 'forensic_case': {
+        const fc = await queryFirst<any>(db, 'SELECT lab_number, title, status, received_date FROM forensic_cases WHERE id = ?', id);
+        return { label: fc ? `${fc.lab_number || ''} — ${fc.title || ''}`.trim() || `Forensic Case #${id}` : `Forensic Case #${id}`, metadata: fc || {} };
+      }
+      case 'forensic_exhibit': {
+        const fe = await queryFirst<any>(db, 'SELECT exhibit_number, description, disposition FROM forensic_exhibits WHERE id = ?', id);
+        return { label: fe ? `${fe.exhibit_number || ''} — ${fe.description || ''}`.trim() || `Exhibit #${id}` : `Exhibit #${id}`, metadata: fe || {} };
+      }
       default:
         return { label: `${type} #${id}`, metadata: {} };
     }
@@ -219,6 +247,24 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
     }
   } catch (err: any) {
     console.error('[Connections] record_links query error:', err?.message);
+  }
+
+  // forensic_case_entity_links — same bidirectional pattern as record_links
+  // above, but a separate table (shipped in the forensics government-
+  // standard PR) rather than the generic cross-link table.
+  try {
+    for (const r of await query<any>(db,
+      `SELECT forensic_case_id, entity_type, entity_id, relationship FROM forensic_case_entity_links
+       WHERE (entity_type = ? AND entity_id = ?)`, type, id,
+    )) add('forensic_case', r.forensic_case_id, r.relationship || 'linked', 'forensic_case_entity_links');
+
+    if (type === 'forensic_case') {
+      for (const r of await query<any>(db,
+        `SELECT entity_type, entity_id, relationship FROM forensic_case_entity_links WHERE forensic_case_id = ?`, id,
+      )) add(r.entity_type, r.entity_id, r.relationship || 'linked', 'forensic_case_entity_links');
+    }
+  } catch (err: any) {
+    console.error('[Connections] forensic_case_entity_links error:', (err as Error)?.message);
   }
 
   // 2. Type-specific junction / FK traversal
@@ -300,6 +346,34 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
         for (const r of await query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id))
           add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
+        // ALPR sightings for this vehicle — capped at 20 most recent so a
+        // frequently-scanned plate can't flood this node's edge count the
+        // way MAX_NODES caps the graph overall.
+        try {
+          // vehicle_record_ids is a JSON.stringify'd number array with no
+          // spaces (e.g. "[1,23]" — see src/routes/alpr.ts finalizeCapture).
+          // A bare substring match on the id would also hit "[15]"/"[21]"/
+          // "[123]" for id=1, so anchor to element boundaries: the id must
+          // be the whole array ("[1]"), the first element ("[1,%"), the
+          // last element ("%,1]"), or a middle element ("%,1,%").
+          const idStr = String(id);
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE (
+               vehicle_record_ids = '[' || ? || ']'
+               OR vehicle_record_ids LIKE '[' || ? || ',%'
+               OR vehicle_record_ids LIKE '%,' || ? || ']'
+               OR vehicle_record_ids LIKE '%,' || ? || ',%'
+             ) ORDER BY created_at DESC LIMIT 20`,
+            idStr, idStr, idStr, idStr,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (vehicle) edges error:', err?.message); }
+        try {
+          // Negate the id — see loadNode's case 'alpr_sighting' for why
+          // vehicle_sightings rows must not share the alpr_captures id space.
+          for (const r of await query<any>(db,
+            `SELECT id FROM vehicle_sightings WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', -r.id, 'alpr_capture', 'vehicle_sightings');
+        } catch (err: any) { console.error('[Connections] vehicle_sightings edges error:', err?.message); }
         break;
       }
 
@@ -322,6 +396,11 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         // incident_links: manual cross-references added via IncidentsPage "Link Record" form
         for (const r of await query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id))
           if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE incident_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (incident) edges error:', err?.message); }
         break;
       }
 
@@ -345,6 +424,11 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
           add('serve_job', r.id, 'serve_from_call', 'serve_queue');
         for (const r of await query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id))
           add('business', r.business_id, r.role || 'involved', 'call_businesses');
+        try {
+          for (const r of await query<any>(db,
+            `SELECT id FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT 20`, id,
+          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        } catch (err: any) { console.error('[Connections] alpr_captures (call) edges error:', err?.message); }
         break;
       }
 
@@ -459,6 +543,12 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
         }
         break;
       }
+
+      case 'forensic_case': {
+        for (const r of await query<any>(db, 'SELECT id FROM forensic_exhibits WHERE forensic_case_id = ?', id))
+          add('forensic_exhibit', r.id, 'exhibit_of', 'forensic_exhibits');
+        break;
+      }
     }
   } catch (err: any) {
     console.error(`[Connections] junction query error (${type}#${id}):`, err?.message);
@@ -489,6 +579,8 @@ async function buildGraph(
   seedType: string,
   seedId: number,
   maxDepth = 2,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<{ nodes: GNode[]; edges: GEdge[] }> {
   const nodeMap = new Map<string, GNode>();
   const edgeSet = new Set<string>();
@@ -545,7 +637,73 @@ async function buildGraph(
     }
   }
 
-  return { nodes: Array.from(nodeMap.values()), edges };
+  let nodes = Array.from(nodeMap.values());
+  if (dateFrom || dateTo) {
+    nodes = await filterNodesByDateRange(db, nodes, dateFrom, dateTo);
+    const keptKeys = new Set(nodes.map((n) => n.id));
+    const filteredEdges = edges.filter((e) => keptKeys.has(e.source) && keptKeys.has(e.target));
+    return { nodes, edges: filteredEdges };
+  }
+  return { nodes, edges };
+}
+
+// Batches by type (one query per type present in the node set, using an
+// IN(...) clause) rather than one query per node — avoids the N+1 pattern
+// a prior code review flagged in similar per-row hash-lookup code.
+// Nodes whose type has no DATE_FIELD entry (person/vehicle/property/...)
+// always pass through unfiltered.
+async function filterNodesByDateRange(
+  db: D1Database, nodes: GNode[], dateFrom?: string, dateTo?: string,
+): Promise<GNode[]> {
+  const byType = new Map<string, number[]>();
+  for (const n of nodes) {
+    if (!DATE_FIELD[n.type]) continue;
+    // alpr_sighting nodes with a negative entityId are vehicle_sightings
+    // rows (negated to avoid colliding with alpr_captures' own id space —
+    // see loadNode's case 'alpr_sighting'). Route them to their own pass
+    // below instead of batching them against alpr_captures.
+    if (n.type === 'alpr_sighting' && n.entityId < 0) continue;
+    byType.set(n.type, [...(byType.get(n.type) || []), n.entityId]);
+  }
+  const inRange = new Set<string>();
+  for (const [type, ids] of byType) {
+    const table = TIMELINE_TABLE[type];
+    const col = DATE_FIELD[type];
+    if (!table) continue;
+    try {
+      const ph = ids.map(() => '?').join(',');
+      const conditions: string[] = [`id IN (${ph})`];
+      const params: unknown[] = [...ids];
+      if (dateFrom) { conditions.push(`${col} >= ?`); params.push(dateFrom); }
+      if (dateTo) { conditions.push(`${col} <= ?`); params.push(dateTo); }
+      const rows = await query<{ id: number }>(db, `SELECT id FROM ${table} WHERE ${conditions.join(' AND ')}`, ...params);
+      for (const r of rows) inRange.add(`${type}-${r.id}`);
+    } catch (err) {
+      console.error(`[Connections] date-filter ${type} error:`, (err as Error)?.message);
+    }
+  }
+
+  // Separate pass for vehicle_sightings-sourced alpr_sighting nodes
+  // (negative entityId). Query vehicle_sightings directly using the real
+  // (un-negated) id, but record the inRange key using the SAME nodeKey
+  // format (`${type}-${id}`) the graph builder used, i.e. with the
+  // negative id — GNode.id is literally `alpr_sighting--${realId}`.
+  const vsIds = nodes.filter((n) => n.type === 'alpr_sighting' && n.entityId < 0).map((n) => -n.entityId);
+  if (vsIds.length) {
+    try {
+      const ph = vsIds.map(() => '?').join(',');
+      const conditions: string[] = [`id IN (${ph})`];
+      const params: unknown[] = [...vsIds];
+      if (dateFrom) { conditions.push(`created_at >= ?`); params.push(dateFrom); }
+      if (dateTo) { conditions.push(`created_at <= ?`); params.push(dateTo); }
+      const rows = await query<{ id: number }>(db, `SELECT id FROM vehicle_sightings WHERE ${conditions.join(' AND ')}`, ...params);
+      for (const r of rows) inRange.add(`alpr_sighting-${-r.id}`);
+    } catch (err) {
+      console.error(`[Connections] date-filter alpr_sighting(vehicle_sightings) error:`, (err as Error)?.message);
+    }
+  }
+
+  return nodes.filter((n) => !DATE_FIELD[n.type] || inRange.has(n.id));
 }
 
 // ── Shortest-path BFS ────────────────────────────────────────
@@ -616,6 +774,104 @@ async function findShortestPath(
 
 const operational = requireRole(...OPERATIONAL_ROLES);
 
+// ═══════════════════════════════════════════════════════════════
+// MAP OVERLAY — read-only detail views, NOT graph nodes (see design
+// spec non-goals: GPS breadcrumbs are too high-volume to graph 1:1).
+// Registered before /graph, /path, /search, /timeline, /investigations
+// (none of which match a 3-segment /:type/:id/<suffix> path), so there
+// is no shadowing risk in either direction.
+// ═══════════════════════════════════════════════════════════════
+
+// GET /:type/:id/gps-track?date_from=&date_to= — for a person node,
+// resolves their assigned units (units.officer_id) and returns
+// gps_breadcrumbs for those units. For a call node, returns breadcrumbs
+// where current_call_id matches. Any other type returns an empty array
+// rather than an error, keeping the map panel silent for node types
+// with no GPS relevance.
+connections.get('/:type/:id/gps-track', operational, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const type = c.req.param('type');
+    const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const dateFrom = c.req.query('date_from');
+    const dateTo = c.req.query('date_to');
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (type === 'person') {
+      conditions.push('officer_id = ?');
+      params.push(id);
+    } else if (type === 'call') {
+      conditions.push('current_call_id = ?');
+      params.push(id);
+    } else {
+      return c.json({ data: [] });
+    }
+    if (dateFrom) { conditions.push('recorded_at >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('recorded_at <= ?'); params.push(dateTo); }
+
+    const rows = await query<{ latitude: number; longitude: number; recorded_at: string }>(
+      db,
+      `SELECT latitude, longitude, recorded_at FROM gps_breadcrumbs WHERE ${conditions.join(' AND ')} ORDER BY recorded_at ASC LIMIT 2000`,
+      ...params,
+    );
+    return c.json({ data: rows.map((r) => ({ lat: r.latitude, lng: r.longitude, recorded_at: r.recorded_at })) });
+  } catch (err) {
+    console.error('[Connections] gps-track error:', (err as Error)?.message);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /:type/:id/geo-points?date_from=&date_to= — for vehicle/call/
+// incident nodes, returns ALPR capture lat/lng as pins (source: 'alpr').
+connections.get('/:type/:id/geo-points', operational, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const type = c.req.param('type');
+    const id = Number(c.req.param('id'));
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const dateFrom = c.req.query('date_from');
+    const dateTo = c.req.query('date_to');
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (type === 'vehicle') {
+      // Boundary-anchored match against the JSON.stringify'd array in
+      // vehicle_record_ids (same pattern already used for alpr_captures
+      // in findConnections' vehicle branch — an unanchored LIKE would
+      // also match "[15]"/"[21]" for id=1).
+      conditions.push(`(
+        vehicle_record_ids = '[' || ? || ']'
+        OR vehicle_record_ids LIKE '[' || ? || ',%'
+        OR vehicle_record_ids LIKE '%,' || ? || ']'
+        OR vehicle_record_ids LIKE '%,' || ? || ',%'
+      )`);
+      params.push(String(id), String(id), String(id), String(id));
+    } else if (type === 'call') {
+      conditions.push('call_id = ?');
+      params.push(id);
+    } else if (type === 'incident') {
+      conditions.push('incident_id = ?');
+      params.push(id);
+    } else {
+      return c.json({ data: [] });
+    }
+    if (dateFrom) { conditions.push('created_at >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('created_at <= ?'); params.push(dateTo); }
+
+    const rows = await query<{ lat: number; lng: number; created_at: string; plate: string }>(
+      db,
+      `SELECT lat, lng, created_at, plate FROM alpr_captures WHERE ${conditions.join(' AND ')} AND lat IS NOT NULL ORDER BY created_at DESC LIMIT 500`,
+      ...params,
+    );
+    return c.json({ data: rows.map((r) => ({ lat: r.lat, lng: r.lng, source: 'alpr', label: r.plate, recorded_at: r.created_at })) });
+  } catch (err) {
+    console.error('[Connections] geo-points error:', (err as Error)?.message);
+    return c.json({ data: [] });
+  }
+});
+
 // GET /graph?type=person&id=123&depth=2
 connections.get('/graph', operational, async (c) => {
   const type = c.req.query('type');
@@ -633,7 +889,9 @@ connections.get('/graph', operational, async (c) => {
   }
 
   const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
-  const graph = await buildGraph(getDb(c.env), type, Number(id), maxDepth);
+  const dateFrom = c.req.query('date_from') || undefined;
+  const dateTo = c.req.query('date_to') || undefined;
+  const graph = await buildGraph(getDb(c.env), type, Number(id), maxDepth, dateFrom, dateTo);
   await audit(c, 'SEARCH', 'record_link', Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
   return c.json(graph);
 });
@@ -650,8 +908,11 @@ connections.get('/path', operational, async (c) => {
   }
   if (!VALID_TYPES.includes(fromType)) return c.json({ error: `Invalid fromType. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
   if (!VALID_TYPES.includes(toType)) return c.json({ error: `Invalid toType. Must be one of: ${VALID_TYPES.join(', ')}` }, 400);
-  if (isNaN(Number(fromId)) || Number(fromId) < 1 || isNaN(Number(toId)) || Number(toId) < 1) {
-    return c.json({ error: 'fromId and toId must be positive integers' }, 400);
+  // alpr_sighting ids may be negative — vehicle_sightings rows are encoded
+  // as -id to avoid colliding with alpr_captures' own id space (see
+  // loadNode's case 'alpr_sighting'). So only reject 0/NaN, not negatives.
+  if (!Number.isInteger(Number(fromId)) || Number(fromId) === 0 || !Number.isInteger(Number(toId)) || Number(toId) === 0) {
+    return c.json({ error: 'fromId and toId must be nonzero integers' }, 400);
   }
 
   const result = await findShortestPath(getDb(c.env), fromType, Number(fromId), toType, Number(toId));
@@ -745,7 +1006,19 @@ const TIMELINE_QUERY: Record<string, string> = {
 const TIMELINE_TABLE: Record<string, string> = {
   incident: 'incidents', call: 'calls_for_service', citation: 'citations', warrant: 'warrants',
   arrest: 'arrest_records', field_interview: 'field_interviews', trespass_order: 'trespass_orders',
-  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports',
+  case: 'cases', evidence: 'evidence', intel_report: 'intel_reports', alpr_sighting: 'alpr_captures',
+};
+
+// Canonical "when did this happen" column per node type, for date-range
+// filtering. Deliberately a SUBSET of VALID_TYPES — person/vehicle/
+// property/business/etc. have no single occurrence date, so they're
+// never filtered by range (an investigator shouldn't lose a person from
+// the graph just because they're time-filtering incidents).
+const DATE_FIELD: Record<string, string> = {
+  incident: 'occurred_date', call: 'created_at', citation: 'violation_date',
+  warrant: 'issued_date', arrest: 'booking_date', field_interview: 'created_at',
+  trespass_order: 'effective_date', case: 'created_at', evidence: 'created_at',
+  intel_report: 'disseminated_at', alpr_sighting: 'created_at',
 };
 
 connections.get('/timeline', operational, async (c) => {

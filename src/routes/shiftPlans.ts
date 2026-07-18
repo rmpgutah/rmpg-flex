@@ -234,6 +234,20 @@ sp.get('/shift-plans', async (c) => {
   return c.json(rows.map(parseAssignments));
 });
 
+// GET /shift-plans/templates — list reusable shift pattern templates
+// Registered before /shift-plans/:id so this literal path isn't shadowed by the param route.
+sp.get('/shift-plans/templates', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<any>(db, 'SELECT * FROM shift_plan_templates ORDER BY name ASC');
+  for (const r of rows) {
+    try { r.pattern = typeof r.pattern_json === 'string' ? JSON.parse(r.pattern_json) : (r.pattern_json || []); }
+    catch { r.pattern = []; }
+  }
+  return c.json({ count: rows.length, data: rows });
+});
+
 sp.get('/shift-plans/:id', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied }, 403);
@@ -555,19 +569,6 @@ sp.get('/shift-notifications', async (c) => {
 // ─────────────────────────────────────────────────────────────
 // Shift Plan Templates
 // ─────────────────────────────────────────────────────────────
-
-// GET /shift-plans/templates — list reusable shift pattern templates
-sp.get('/shift-plans/templates', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<any>(db, 'SELECT * FROM shift_plan_templates ORDER BY name ASC');
-  for (const r of rows) {
-    try { r.pattern = typeof r.pattern_json === 'string' ? JSON.parse(r.pattern_json) : (r.pattern_json || []); }
-    catch { r.pattern = []; }
-  }
-  return c.json({ count: rows.length, data: rows });
-});
 
 // POST /shift-plans/templates — create a new template
 sp.post('/shift-plans/templates', async (c) => {

@@ -145,9 +145,25 @@ export function AssessorSuggestionPanel({
             />
             <div className="flex-1">
               <div className="font-mono">{p.parcel_number}  <span className="font-sans text-rmpg-200">{p.owner_of_record ?? '—'}</span></div>
-              <div className="text-rmpg-400">
-                {p.situs_address ?? '—'} · {fmtSqft(p.land_sqft)} · {fmtMoney(p.total_market_value)}
-              </div>
+              {p.recorded_document_url ? (
+                <div className="text-rmpg-400">
+                  {p.recorded_document_type && (
+                    <span className="mr-1 font-semibold">{p.recorded_document_type}</span>
+                  )}
+                  <a
+                    href={p.recorded_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-brand-400 underline">
+                    View recorded document
+                  </a>
+                </div>
+              ) : (
+                <div className="text-rmpg-400">
+                  {p.situs_address ?? '—'} · {fmtSqft(p.land_sqft)} · {fmtMoney(p.total_market_value)}
+                </div>
+              )}
             </div>
           </label>
         ))}

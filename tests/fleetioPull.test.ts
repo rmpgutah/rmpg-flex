@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction } from '../src/utils/fleetio/pull';
+import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buildFuelLogInsertFromFleetio } from '../src/utils/fleetio/pull';
 import type { FleetioVehicle } from '../src/utils/fleetio/types';
 import type { LocalVehicleForMatch } from '../src/utils/fleetio/pull';
 
@@ -101,5 +101,23 @@ describe('decideMatchAction', () => {
     // run matching the same local row via a shared VIN/plate/name.
     expect(decideMatchAction(1, new Set([1]))).toBe('conflict');
     expect(decideMatchAction(2, new Set([1, 2, 3]))).toBe('conflict');
+  });
+});
+
+describe('buildFuelLogInsertFromFleetio', () => {
+  it('maps date/gallons/cost and derives cost_per_gallon', () => {
+    const row = buildFuelLogInsertFromFleetio({ id: 900, vehicle_id: 501, date: '2026-07-01', liters: null, us_gallons: 12.5, cost: 43.75 });
+    expect(row).toEqual({ fuel_date: '2026-07-01', gallons: 12.5, total_cost: 43.75, cost_per_gallon: 3.5 });
+  });
+
+  it('nulls out cost_per_gallon when gallons is missing or zero', () => {
+    expect(buildFuelLogInsertFromFleetio({ id: 1, vehicle_id: 1, date: '2026-07-01', liters: null, us_gallons: null, cost: 43.75 }).cost_per_gallon).toBeNull();
+    expect(buildFuelLogInsertFromFleetio({ id: 1, vehicle_id: 1, date: '2026-07-01', liters: null, us_gallons: 0, cost: 43.75 }).cost_per_gallon).toBeNull();
+  });
+
+  it('nulls out cost_per_gallon when cost is missing', () => {
+    const row = buildFuelLogInsertFromFleetio({ id: 1, vehicle_id: 1, date: '2026-07-01', liters: null, us_gallons: 12.5, cost: null });
+    expect(row.cost_per_gallon).toBeNull();
+    expect(row.gallons).toBe(12.5);
   });
 });

@@ -635,9 +635,17 @@ body.fx-noise::after {
   body.fx-bloom * { text-shadow: none; }
 }
 
-/* Table row entrance animation (staggered) */
+/* Table row entrance animation (staggered). No `both` — same
+   transform-containing-block trap as page-fade-in/stagger-* (see notes
+   above), and here it's worse: it would apply to nearly every data-table
+   row app-wide, many of which render a "..." row-action menu as a
+   position:fixed dropdown. `<tr>` can't use margin (table rows ignore it
+   per the CSS box model), so instead of substituting a margin-based
+   translate, just drop the fill-mode — the row's resting style is already
+   opacity:1 without it, so this is visually identical once the animation
+   ends. */
 .table-dark tbody tr {
-  animation: fade-in 0.2s ease-out both;
+  animation: fade-in 0.2s ease-out;
 }
 
 /* Smooth hover glow for interactive panels */
@@ -4361,17 +4369,22 @@ html:not(.theme-light) {
    Feature 22: Page transition animations
    ═══════════════════════════════════════════════════════════════ */
 @keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  /* End on transform:none — NOT translateY(0). With animation-fill-mode:both
-     the final keyframe persists forever, and translateY(0) computes to
-     matrix(1,0,0,1,0,0): a non-none transform STILL establishes a containing
-     block for position:fixed descendants. That trapped every fixed modal
-     (.fixed.inset-0.z-50) inside this scrollable, below-the-nav content area
-     instead of the viewport, so tall modals slid their title bar under the
-     sticky top nav and the window-chrome buttons (minimize/maximize/close)
-     became partly/fully unclickable. transform:none clears the containing
-     block at rest while still animating the 4px slide-in. */
-  to { opacity: 1; transform: none; }
+  /* Opacity only — NOT transform, NOT margin-top. Ending a transform
+     keyframe on `none` does NOT stop the element from being a
+     fixed-position containing block: per spec, ANY element that is the
+     target of a CSS animation on the transform property establishes a
+     containing block for position:fixed descendants for as long as that
+     animation is associated with the element — independent of the
+     resolved value. With animation-fill-mode:both that association never
+     expires, so a transform-based slide-in permanently traps every fixed
+     modal (.fixed.inset-0, e.g. DocumentViewer's print/preview overlay)
+     inside this scrollable, below-the-nav content area instead of the
+     viewport. A margin-top slide sidesteps that trap but forces a layout
+     reflow every frame since .spm-page is a flex item in a fixed-height
+     column; dropping the slide and animating opacity alone stays fully
+     GPU-composited and avoids both problems. */
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .animate-page-enter {
   animation: page-fade-in 0.2s ease-out both;
@@ -5549,7 +5562,12 @@ a:focus-visible {
 }
 
 /* --- 13. FORM INPUT GLOBAL CONSISTENCY ---
-   Force ALL form controls to Spillman CAD input style. */
+   Force ALL form controls to Spillman CAD input style.
+   Wrapped in :where() (zero specificity) so this blanket reset never outranks
+   a component/utility class like .pl-7 — without it, the plain type-selector's
+   specificity beat icon-padding utilities and clobbered every search-icon
+   input's left padding app-wide (icon overlapped the placeholder text). */
+:where(
 input[type="text"],
 input[type="number"],
 input[type="email"],
@@ -5561,7 +5579,8 @@ input[type="date"],
 input[type="datetime-local"],
 input[type="time"],
 textarea,
-select {
+select
+) {
   border-radius: 2px !important;
   font-size: 12px;
   background: var(--surface-sunken) !important;

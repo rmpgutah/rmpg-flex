@@ -7,7 +7,7 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor } from './pdfGenerator';
 import { getCachedSealBase64 } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import {
@@ -507,18 +507,28 @@ export function drawFormSection(
   const sectionStartY = curY;
 
   if (useBanner) {
-    // ── Flat section banner (matches openAutoSection flat style) ──
-    // Black title + thin full-width rule below — no dark fill bar.
+    // ── Filled gray section banner (matches openAutoSection) ──
+    // Was flat black-text-and-rule; openAutoSection moved to a filled
+    // gray bar (resolveSectionAccentColor severity hierarchy) on
+    // 2026-07-13, but this sideTab/topBanner mode — a separate renderer
+    // used by e.g. every record type's META section via sideTab: { label:
+    // 'META' } — was never updated to match, so META visibly reverted to
+    // the old flat style on every generated PDF while every other section
+    // got the new fill. Bringing it in line here.
+    const accentRgb = resolveSectionAccentColor(config.sideTab.label);
+    doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+    doc.rect(gridX, curY, gridW, bannerH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     const textY = curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
     doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET, textY);
-    const bannerRuleY = curY + bannerH - 0.6;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    const bannerRuleY = curY + bannerH;
+    doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(gridX, bannerRuleY, gridX + gridW, bannerRuleY);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
   }
 
@@ -2028,18 +2038,26 @@ export function drawMugshotFrame(
     doc.text('NO PHOTO', x + w / 2, imgY + h / 2, { align: 'center' });
   }
 
-  // ORI watermark overlay (subtle, diagonal)
+  // ORI watermark overlay (subtle, diagonal). White fill only at 12%
+  // opacity was legible on a dark mugshot but effectively invisible on a
+  // light one (light skin tone / bright backdrop) since nothing anchored
+  // its edges — inconsistent with the neutral-gray, always-visible
+  // watermark convention used everywhere else in this file (2026-07-13
+  // fix). Fill white + stroke dark so the glyph edges stay visible
+  // regardless of the underlying photo's brightness.
   if (meta.agencyOri && imgBase64) {
     // @ts-expect-error jsPDF GState
-    doc.setGState(new doc.GState({ opacity: 0.12 }));
+    doc.setGState(new doc.GState({ opacity: 0.22 }));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(255, 255, 255);
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.15);
     doc.text(
       sanitizePdfText(meta.agencyOri),
       x + w / 2,
       imgY + h / 2,
-      { align: 'center', angle: -30 },
+      { align: 'center', angle: -30, renderingMode: 'fillThenStroke' },
     );
     // @ts-expect-error jsPDF GState
     doc.setGState(new doc.GState({ opacity: 1.0 }));

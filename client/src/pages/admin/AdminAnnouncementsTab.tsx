@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
-import { formatDateTime } from '../../utils/dateUtils';
+import { formatDateTime, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -105,8 +105,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     setEditing(a);
     setForm({
       title: a.title, body: a.body, type: a.type, priority: a.priority,
-      target_roles: a.target_roles || '[]', starts_at: a.starts_at || '',
-      expires_at: a.expires_at || '', is_active: a.is_active,
+      target_roles: a.target_roles || '[]', starts_at: toDatetimeLocalValue(a.starts_at),
+      expires_at: toDatetimeLocalValue(a.expires_at), is_active: a.is_active,
     });
     setShowForm(true);
   };
@@ -120,8 +120,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     try {
       const body = {
         ...form,
-        starts_at: form.starts_at || null,
-        expires_at: form.expires_at || null,
+        starts_at: form.starts_at ? mtDatetimeLocalToUtc(form.starts_at) : null,
+        expires_at: form.expires_at ? mtDatetimeLocalToUtc(form.expires_at) : null,
       };
       if (editing) {
         await apiFetch(`/admin/announcements/${editing.id}`, { method: 'PUT', body: JSON.stringify(body) });

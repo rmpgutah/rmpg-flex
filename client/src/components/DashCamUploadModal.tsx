@@ -5,6 +5,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
 import AddressAutocomplete from './AddressAutocomplete';
+import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
 interface FleetVehicle {
@@ -121,7 +122,7 @@ export default function DashCamUploadModal({
     if (unitId) formData.append('unit_id', unitId);
     formData.append('classification', classification);
     if (duration != null) formData.append('duration_seconds', String(duration));
-    if (recordedAt) formData.append('recorded_at', recordedAt);
+    if (recordedAt) formData.append('recorded_at', mtDatetimeLocalToUtc(recordedAt));
     if (speedMph) formData.append('speed_mph', speedMph);
     if (latitude) formData.append('latitude', latitude);
     if (longitude) formData.append('longitude', longitude);

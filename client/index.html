@@ -124,7 +124,48 @@
       </div>
       <style>#pre-splash{transition:opacity .3s}@keyframes sl{0%{transform:translateX(-48px)}100%{transform:translateX(140px)}}</style>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script id="rmpg-entry" type="module" src="/src/main.tsx"></script>
+    <script>
+      // Entry-graph stale-chunk safety net — covers what chunkRetry.ts (in
+      // utils/chunkRetry.ts, wired up inside main.tsx) CANNOT: a failure in
+      // one of main.tsx's own STATIC imports (e.g. AuthContext, split into
+      // its own chunk by the bundler). During back-to-back Cloudflare Pages
+      // deploys, the CDN can serve an index.html whose entry module still
+      // points at an asset hash a newer deploy already rotated out; the
+      // failed chunk request gets Pages' SPA-fallback HTML instead of JS,
+      // which fails module parsing.
+      //
+      // That failure happens WHILE the entry module graph is still resolving
+      // — before a single line of main.tsx's own body has run — so the
+      // `unhandledrejection` listener chunkRetry.ts installs never gets
+      // wired up, and the "Initializing" splash is stranded forever with no
+      // error and no recovery path (confirmed live 2026-07-13, mid a rapid
+      // deploy sequence: assets/AuthContext-*.js 404'd as "Stale chunk (HTML
+      // fallback)" and the app never mounted, no console error visible).
+      //
+      // Per spec, a module <script>'s `error` event fires for a failure
+      // ANYWHERE in its static import tree, not just the top-level file —
+      // so listening here catches this class of failure uniformly. Mirrors
+      // chunkRetry.ts's bounded one-reload-per-30s guard, using the SAME
+      // sessionStorage key so the two paths can't loop against each other.
+      (function () {
+        var el = document.getElementById('rmpg-entry');
+        if (!el) return;
+        el.addEventListener('error', function () {
+          try {
+            var KEY = 'rmpg_chunk_reload';
+            var WINDOW_MS = 30000;
+            var raw = sessionStorage.getItem(KEY);
+            var lastAt = raw ? parseInt(raw, 10) : null;
+            if (lastAt !== null && isNaN(lastAt)) lastAt = null;
+            if (lastAt === null || Date.now() - lastAt > WINDOW_MS) {
+              sessionStorage.setItem(KEY, String(Date.now()));
+              window.location.reload();
+            }
+          } catch (e) { /* sessionStorage unavailable — nothing more we can do here */ }
+        });
+      })();
+    </script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->
   </body>
 </html>

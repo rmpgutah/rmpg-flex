@@ -63,7 +63,6 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminPersonIntelTab from './admin/AdminPersonIntelTab';
 import AdminCloudflareTab from './admin/AdminCloudflareTab';
-import { AdminFleetV2HealthTab } from './admin/AdminFleetV2HealthTab';
 import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
 import AdminFleetioDirectoryTab from './admin/AdminFleetioDirectoryTab';
 import AdminInspectionTemplatesTab from './admin/AdminInspectionTemplatesTab';
@@ -248,7 +247,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -275,7 +274,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -473,6 +472,7 @@ export default function AdminPage() {
         certifications: data.certifications,
         notes: data.notes,
         profile_image: data.profile_image,
+        sso_enabled: data.sso_enabled === '1' ? 1 : 0,
       };
 
       if (editingUser) {
@@ -720,12 +720,6 @@ export default function AdminPage() {
       ],
     },
     {
-      category: 'AI & Intelligence',
-      tabs: [
-        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
-      ],
-    },
-    {
       category: 'Communications',
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
@@ -759,7 +753,6 @@ export default function AdminPage() {
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
-        { id: 'fleet_v2_health', label: 'Fleet V2 Health', icon: Activity },
         { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
         { id: 'fleetio_directory', label: 'Fleet.io Vendors/Parts', icon: Package },
         { id: 'inspection_templates', label: 'Inspection Templates', icon: ClipboardList },
@@ -1152,10 +1145,6 @@ export default function AdminPage() {
             error={error}
             setError={setError}
           />
-        )}
-
-        {activeTab === 'fleet_v2_health' && (
-          <AdminFleetV2HealthTab />
         )}
 
         {activeTab === 'fleetio_health' && (

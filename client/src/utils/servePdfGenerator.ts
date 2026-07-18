@@ -25,6 +25,7 @@ import {
   formSectionPageBreak,
   sanitizePdfText,
   finalizePoliceReport,
+  resolveSectionAccentColor,
 } from './pdfGenerator';
 import { lookupPsoCode, formatCodeFull } from '../constants/processServiceCodes';
 import {
@@ -33,6 +34,7 @@ import {
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
   getProportionalColumns, getCapHeight,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
@@ -174,16 +176,17 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, boxH);
 
-  // Flat header: black title + thin rule below.
+  // Filled gray header bar — matches openAutoSection's styling (2026-07-13
+  // fix) so the notary block reads consistently with every other section
+  // on the affidavit instead of the old flat black-text-and-rule look.
   const barH = SPACING.SECTION_HEADER_H;
+  const notaryAccentRgb = resolveSectionAccentColor('NOTARY PUBLIC');
+  doc.setFillColor(notaryAccentRgb[0], notaryAccentRgb[1], notaryAccentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
-  const notRuleY = y + barH - 0.6;
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.line(LAYOUT.PAGE_MARGIN, notRuleY, LAYOUT.PAGE_MARGIN + cw, notRuleY);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + (barH + getCapHeight(FONT.SIZE_SECTION_TITLE)) / 2);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   let ny = y + barH + SPACING.LG + 2;
@@ -671,13 +674,25 @@ export function serveResultLabel(result: string): string {
   }
 }
 
-export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promise<jsPDF> {
+export interface NoticeOfAttemptOptions {
+  /** 'mobile' (default) renders for the Brother PJ-700/800 in-vehicle thermal
+   *  printer: adds a 6mm top safe-zone so the leading-edge dead zone doesn't
+   *  clip the NIBRS header. Notice of Attempt is generated and printed in the
+   *  field by process servers, never from a desk laser printer, so this
+   *  document always defaults to mobile — pass 'office' explicitly to
+   *  override for the rare desk-print case. See RecordPdfOptions in
+   *  recordPdfGenerator.ts for the same pattern used elsewhere. */
+  printTarget?: PrintTarget;
+}
+
+export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options: NoticeOfAttemptOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  applyPrintTarget(doc, options.printTarget ?? 'mobile');
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     timeZone: 'America/Denver',
@@ -825,6 +840,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     }
     y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    // Extra clearance before the next section's header bar — the table's own
+    // last-row separator line sits right on top of closeAutoSection's gold
+    // border (SECTION_BOTTOM_PAD + SECTION_GAP is only ~1.1mm), so without
+    // this the two lines read as a doubled rule crammed against the
+    // "IMPORTANT NOTICE" header bar below (2026-07-13 visual fix).
+    y += SPACING.SM;
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
@@ -1063,9 +1084,9 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   }
 
   // ── Summary Statistics ──
-  const served = data.jobs.filter(j => j.result.toLowerCase() === 'served').length;
-  const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => j.result.toLowerCase().includes(s))).length;
-  const pending = data.jobs.filter(j => j.result.toLowerCase() === 'pending').length;
+  const served = data.jobs.filter(j => (j.result || '').toLowerCase() === 'served').length;
+  const failed = data.jobs.filter(j => ['failed', 'unable'].some(s => (j.result || '').toLowerCase().includes(s))).length;
+  const pending = data.jobs.filter(j => (j.result || '').toLowerCase() === 'pending').length;
 
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Summary Statistics', y); y = sec.contentY;

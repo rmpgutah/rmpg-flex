@@ -6,6 +6,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import RichTextArea from './RichTextArea';
+import { mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import {
   Upload, X, ChevronDown, ChevronRight, Check, AlertCircle, Film, Plus,
   ArrowLeft, ArrowRight, Loader2, Copy,
@@ -325,7 +326,7 @@ export default function DashCamUploadWizard({
         if (entry.unitId) formData.append('unit_id', entry.unitId);
         formData.append('classification', entry.classification);
         if (entry.duration != null) formData.append('duration_seconds', String(entry.duration));
-        if (entry.recordedAt) formData.append('recorded_at', entry.recordedAt);
+        if (entry.recordedAt) formData.append('recorded_at', mtDatetimeLocalToUtc(entry.recordedAt));
         if (entry.speedMph) formData.append('speed_mph', entry.speedMph);
         if (entry.latitude) formData.append('latitude', entry.latitude);
         if (entry.longitude) formData.append('longitude', entry.longitude);

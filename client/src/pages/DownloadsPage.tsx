@@ -73,6 +73,10 @@ export default function DownloadsPage() {
   const [fetchError, setFetchError] = useState(false);
   const [activeTab, setActiveTab] = useState<Platform>(recommended);
   const [searchParams, setSearchParams] = useSearchParams();
+  // Dial Connect's icon is hosted on a separate domain (dialer.rmpgutah.us) and
+  // depends on a concurrently-shipping PWA deploy, so it may 404 — fall back to
+  // a bundled lucide icon rather than showing a broken-image glyph.
+  const [dialConnectIconFailed, setDialConnectIconFailed] = useState(false);
 
   // Refs used by the N shortcut to programmatically click the active download link.
   const downloadRefs = useRef<Record<Platform, HTMLAnchorElement | null>>({
@@ -318,6 +322,54 @@ export default function DownloadsPage() {
             })}
           </div>
         )}
+
+        {/* Dial Connect — a separate product, not another RMPG Flex platform build */}
+        <div
+          className="flex items-center justify-between gap-4 p-4 mb-8"
+          style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+        >
+          <div className="flex items-center gap-3">
+            {dialConnectIconFailed ? (
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}
+              >
+                <Smartphone className="w-5 h-5" style={{ color: 'var(--brand-gold)' }} />
+              </div>
+            ) : (
+              <img
+                src="https://dialer.rmpgutah.us/icons/icon-192.png"
+                alt="Dial Connect"
+                className="w-10 h-10 rounded-full"
+                style={{ objectFit: 'contain' }}
+                onError={() => setDialConnectIconFailed(true)}
+              />
+            )}
+            <div>
+              <h4 className="text-sm font-bold text-rmpg-100 mb-1">Dial Connect</h4>
+              <p className="text-xs text-rmpg-500">
+                E911 dispatch companion &mdash; install as an app on any device.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://dialer.rmpgutah.us"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
+            style={{
+              background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+              border: '1px solid var(--brand-gold)',
+              color: 'var(--brand-gold)',
+              borderRadius: 2,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-raised) 100%)'; e.currentTarget.style.borderColor = 'rgb(var(--brand-gold-400-rgb))'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)'; e.currentTarget.style.borderColor = 'var(--brand-gold)'; }}
+          >
+            Open Dial Connect
+            <ChevronRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
 
         {/* Web App Banner */}
         <div

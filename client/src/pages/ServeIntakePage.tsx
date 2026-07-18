@@ -48,6 +48,13 @@ interface UploadedFile {
   size?: number;          // bytes (File.size)
   pages?: number;         // PDF page count (pdfjs numPages); undefined for images
   lastModified?: number;  // File.lastModified epoch ms
+  // Set when the server-side field-extraction call for this PDF (scanPdfOcr)
+  // failed or timed out. `status` alone can't signal this: it's set to
+  // 'extracted' at upload time purely from whether pdfjs found a text layer
+  // client-side, before scanPdfOcr's async server round-trip even starts, so
+  // a later server-side failure previously left the checkmark showing green
+  // with zero indication the fields were never actually extracted.
+  ocrScanFailed?: boolean;
 }
 
 // A PDF whose pdfjs text layer yields fewer than this many characters is
@@ -327,7 +334,12 @@ export default function ServeIntakePage() {
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocrPreview, setOcrPreview] = useState<OcrScanResult | null>(null);
-  const [editingFields, setEditingFields] = useState<Record<string, string>>({});
+  // Tracks which field keys are currently showing an edit input in the OCR
+  // Extraction Review modal (true = editing). The actual value being typed
+  // lives in `editOverrides` (the same state that feeds `field_overrides` on
+  // submit) — this used to be its own disconnected Record<string,string>
+  // that nothing ever read back out, so edits made here silently vanished.
+  const [editingFields, setEditingFields] = useState<Record<string, boolean>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
   // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
@@ -565,14 +577,21 @@ export default function ServeIntakePage() {
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
+        return;
+      }
       const scanResult: OcrScanResult = await resp.json();
       if (scanResult?.fields) {
         setFiles(prev => prev.map(f =>
           f.file === file ? { ...f, ocrResult: scanResult } : f,
         ));
       }
-    } catch { /* best-effort pre-fill — silent on error */ }
+    } catch {
+      // Network/timeout failure — still surface it rather than silently
+      // leaving a false-positive "extracted" checkmark (see ocrScanFailed doc).
+      setFiles(prev => prev.map(f => f.file === file ? { ...f, ocrScanFailed: true } : f));
+    }
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
@@ -1038,7 +1057,11 @@ export default function ServeIntakePage() {
                   {(f.ocrResult.confidence * 100).toFixed(0)}%
                 </span>
               )}
-              {f.status === 'extracted' ? (
+              {f.ocrScanFailed ? (
+                <span title="Server-side field extraction failed or timed out — verify/enter this document's fields manually">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                </span>
+              ) : f.status === 'extracted' ? (
                 <CheckCircle className="w-3.5 h-3.5 text-green-500" />
               ) : (
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
@@ -1241,19 +1264,20 @@ export default function ServeIntakePage() {
                           {(field.confidence * 100).toFixed(0)}%
                         </span>
                       </div>
-                      {editingFields[key] !== undefined ? (
+                      {editingFields[key] ? (
                         <input id="ff-serveintakepage-2"
                           type="text"
-                          value={editingFields[key]}
-                          onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
+                          value={editOverrides[key] ?? field.value}
+                          onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                          onBlur={() => setEditingFields(prev => ({ ...prev, [key]: false }))}
                           className="w-full bg-surface-overlay border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-rmpg-100 truncate">{field.value}</span>
+                          <span className="text-xs text-rmpg-100 truncate">{editOverrides[key] ?? field.value}</span>
                           <IconButton
-                            onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
+                            onClick={() => setEditingFields(prev => ({ ...prev, [key]: true }))}
                             aria-label={`Edit ${key}`}
                             className="text-rmpg-500 hover:text-brand-400 flex-shrink-0"
                           >

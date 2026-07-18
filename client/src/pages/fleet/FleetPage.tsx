@@ -7,7 +7,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
-import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
+import { parseTimestamp, safeDateStr, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -26,6 +26,9 @@ import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_F
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
+import FleetVendorsTab from './tabs/FleetVendorsTab';
+import FleetWorkOrdersTab from './tabs/FleetWorkOrdersTab';
+import FleetServiceTab from './tabs/FleetServiceTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -123,7 +126,8 @@ export default function FleetPage() {
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
-  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis'>('dashboard');
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis' | 'work_orders' | 'vendors' | 'service'>('dashboard');
+  const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -474,8 +478,8 @@ export default function FleetPage() {
         status: vehicleForm.status,
         current_mileage: vehicleForm.current_mileage ? parseInt(vehicleForm.current_mileage, 10) : null,
         next_service_mileage: vehicleForm.next_service_mileage ? parseInt(vehicleForm.next_service_mileage, 10) : null,
-        insurance_expiry: vehicleForm.insurance_expiry || null,
-        registration_expiry: vehicleForm.registration_expiry || null,
+        insurance_expiry: vehicleForm.insurance_expiry ? mtDatetimeLocalToUtc(vehicleForm.insurance_expiry) : null,
+        registration_expiry: vehicleForm.registration_expiry ? mtDatetimeLocalToUtc(vehicleForm.registration_expiry) : null,
         equipment: equipArr,
         notes: vehicleForm.notes.trim() || null,
       };
@@ -508,8 +512,8 @@ export default function FleetPage() {
         labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
-        performed_at: maintForm.performed_at || nowLocalISO(),
-        next_due_date: maintForm.next_due_date || null,
+        performed_at: mtDatetimeLocalToUtc(maintForm.performed_at || nowLocalISO()),
+        next_due_date: maintForm.next_due_date ? mtDatetimeLocalToUtc(maintForm.next_due_date) : null,
         next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
         service_tasks: maintForm.service_tasks.trim() || null,
         notes: maintForm.notes.trim() || null,
@@ -536,7 +540,7 @@ export default function FleetPage() {
     setSaving(true);
     try {
       const payload = {
-        fuel_date: fuelForm.fuel_date,
+        fuel_date: mtDatetimeLocalToUtc(fuelForm.fuel_date),
         gallons: parseFloat(fuelForm.gallons),
         cost_per_gallon: fuelForm.cost_per_gallon ? parseFloat(fuelForm.cost_per_gallon) : null,
         total_cost: fuelForm.total_cost ? parseFloat(fuelForm.total_cost) : null,
@@ -574,7 +578,7 @@ export default function FleetPage() {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
         inspector_name: (inspectionForm.inspector_name || '').trim(),
-        inspection_date: inspectionForm.inspection_date,
+        inspection_date: mtDatetimeLocalToUtc(inspectionForm.inspection_date),
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
         items: inspectionForm.items,
@@ -1488,6 +1492,39 @@ export default function FleetPage() {
                 >
                   <FileText size={10} /> Analysis Reports
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { setWorkOrdersVehicleFilter(null); setViewMode('work_orders'); }}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'work_orders' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'work_orders' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Work Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('vendors')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'vendors' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'vendors' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Vendors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('service')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'service' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'service' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Service
+                </button>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {viewMode === 'dashboard' ? (
@@ -1507,11 +1544,17 @@ export default function FleetPage() {
                       </div>
                     )}
                   </>
-                ) : (
+                ) : viewMode === 'analysis' ? (
                   <FleetAnalysisFormsTab
                     vehicles={vehicles}
                     vehicleNumberById={vehicleNumberById}
                   />
+                ) : viewMode === 'work_orders' ? (
+                  <FleetWorkOrdersTab initialVehicleId={workOrdersVehicleFilter ?? undefined} />
+                ) : viewMode === 'vendors' ? (
+                  <FleetVendorsTab />
+                ) : (
+                  <FleetServiceTab />
                 )}
               </div>
             </div>
@@ -1524,6 +1567,12 @@ export default function FleetPage() {
             )}
             <FleetDetailPanel
               detail={detail}
+              onViewAllWorkOrders={() => {
+                setWorkOrdersVehicleFilter(Number(detail.id));
+                setSelectedId(null);
+                setDetail(null);
+                setViewMode('work_orders');
+              }}
               maintenance={maintenance}
               fuelLogs={fuelLogs}
               fuelSummary={fuelSummary}

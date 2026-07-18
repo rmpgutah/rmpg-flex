@@ -10,6 +10,9 @@ import { formatPhoneInput } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import { useAssessorLookup } from '../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
+import { JurisdictionButton } from './JurisdictionButton';
+import { RecordPhotoGallery } from './RecordPhotoGallery';
+import { ParcelDetailDrawer } from './ParcelDetailDrawer';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
@@ -207,6 +210,14 @@ export default function PropertyFormModal({
     }
   }, [recordId, assessor, setForm]);
 
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = useCallback((address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', '), [form.city, form.state, form.zip]);
+
   useEffect(() => {
     if (isOpen) {
       if (editingProperty) {
@@ -261,7 +272,11 @@ export default function PropertyFormModal({
           zone_id: (editingProperty as any).zone_id || '',
           beat_id: (editingProperty as any).beat_id || '',
         };
-        setForm(initial);
+        // parcel_number isn't a declared PropertyFormData field (server-only,
+        // applied via the never-clobber assessor patch) — seed it here too so
+        // ParcelDetailDrawer shows for an already-applied record on open, not
+        // just immediately after a fresh Apply in this session.
+        setForm({ ...initial, parcel_number: (editingProperty as any).parcel_number || '' } as any);
         snapshot();
       } else {
         setForm(EMPTY_FORM);
@@ -343,11 +358,21 @@ export default function PropertyFormModal({
                   longitude: (addr.longitude as any) ?? prev.longitude,
                 }));
                 // Trigger Assessor lookup on the picked street so the suggestion
-                // panel below the input populates immediately.
-                assessor.lookup(street);
+                // panel below the input populates immediately. Use the addr
+                // object's city/state/zip directly rather than `form` (which
+                // hasn't re-rendered with the setForm call above yet) so
+                // resolveCountyFromAddress has what it needs on the first try.
+                const cityStateZip = [addr.city, [addr.state, addr.zip].filter(Boolean).join(' ')]
+                  .filter(Boolean).join(', ');
+                assessor.lookup(cityStateZip ? `${street}, ${cityStateZip}` : street);
               }}
-              onResolveTyped={(v) => { assessor.lookup(v); }}
+              onResolveTyped={(v) => { assessor.lookup(fullAddress(v)); }}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={fullAddress(form.address)} recordType="property" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -795,7 +820,6 @@ export default function PropertyFormModal({
             placeholder="How to access the property, key locations, entry points"
             value={form.access_instructions}
             onChange={handleChange}
-            maxLength={10}
           />
         </FormField>
       </FormSection>
@@ -824,6 +848,19 @@ export default function PropertyFormModal({
           </label>
         </div>
       </FormSection>
+
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="property" recordId={recordId} />
+          {(form as any)?.parcel_number && (
+            <div className="mt-2">
+              {/* form (not editingProperty) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={(form as any).parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
     </FormModal>
   );
 }

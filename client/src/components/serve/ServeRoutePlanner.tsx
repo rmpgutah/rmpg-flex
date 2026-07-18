@@ -490,9 +490,23 @@ export default function ServeRoutePlanner({
       let totalDistM = 0;
       let totalDurS = 0;
       let allGeometries: any[] = [];
+      // Running position for nearest-neighbor ordering — carries from one
+      // cluster's last stop into the next, same as the offline fallback.
+      let runningPosition = currentLocation;
 
-      for (const cluster of clusters) {
-        const isFirstCluster = clusters.indexOf(cluster) === 0;
+      for (let ci = 0; ci < clusters.length; ci++) {
+        const isFirstCluster = ci === 0;
+        // The Directions API (unlike the Optimization/Trip API) only scores
+        // distance/duration for waypoints in the order given — it does NOT
+        // reorder them. Clusters were only geographic buckets with no
+        // in-cluster ordering, so without this, "Optimize Route" summed up
+        // new distance/time totals but left the stop sequence unchanged.
+        // Nearest-neighbor-order each cluster first (mirrors the offline
+        // fallback below) so the Directions call — and the resulting stop
+        // list — actually reflects an optimized route.
+        const { ordered: orderedCluster } = nearestNeighborOrder(clusters[ci], runningPosition);
+        const cluster = orderedCluster;
+
         const origin = isFirstCluster && currentLocation
           ? [currentLocation.lng, currentLocation.lat] as [number, number]
           : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!] as [number, number];
@@ -523,6 +537,7 @@ export default function ServeRoutePlanner({
         }
 
         allOrderedStops.push(...cluster);
+        runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
       }
 
       // Render route on map

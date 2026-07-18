@@ -86,3 +86,20 @@ export function useSpeedLimit(lat: number | null, lng: number | null): SpeedLimi
 
   return { limitMph, buffer: 7 };
 }
+
+export const OVER_SPEED_COOLDOWN_MS = 60000;
+
+/** Whether an over-speed alert should fire now, given the last time one fired.
+ *  Pure function so it's cheaply testable without mocking timers/hooks. */
+export function shouldFireOverSpeedAlert(
+  speedMph: number,
+  limitMph: number | null,
+  thresholdMph: number,
+  lastFiredAt: number | null,
+  nowMs: number,
+): boolean {
+  if (limitMph == null) return false;
+  if (speedMph < limitMph + thresholdMph) return false;
+  if (lastFiredAt != null && nowMs - lastFiredAt < OVER_SPEED_COOLDOWN_MS) return false;
+  return true;
+}

@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Shield,
   ShieldCheck,
-  ShieldOff,
   RefreshCw,
   Camera,
   Trash2,
@@ -27,7 +26,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
-import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
@@ -153,22 +151,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [prefsMsg, setPrefsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // 2FA / Security
-  const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
-  const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
-  const [qrDataUrl, setQrDataUrl] = useState('');
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [setupCode, setSetupCode] = useState('');
-  const [disablePassword, setDisablePassword] = useState('');
-  const [securityBusy, setSecurityBusy] = useState(false);
-  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [securityView, setSecurityView] = useState<'main' | 'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('main');
+  const [securityView, setSecurityView] = useState<'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('overview');
 
   // WebAuthn / Security Keys
-  const [webauthnStatus, setWebauthnStatus] = useState<{
-    enabled: boolean;
-    credentialCount: number;
-    credentials: { id: number; device_name: string; created_at: string; device_type: string }[];
-  } | null>(null);
   const [webauthnBusy, setWebauthnBusy] = useState(false);
   const [webauthnMsg, setWebauthnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
@@ -180,6 +165,15 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [regenPassword, setRegenPassword] = useState('');
   const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
   const [regenError, setRegenError] = useState('');
+
+  // Security questions ("Forgot password?" recovery setup)
+  const [sqConfigured, setSqConfigured] = useState<boolean | null>(null);
+  const [sqEditing, setSqEditing] = useState(false);
+  const [sqQuestions, setSqQuestions] = useState<string[]>(['', '', '']);
+  const [sqAnswers, setSqAnswers] = useState<string[]>(['', '', '']);
+  const [sqCurrentPassword, setSqCurrentPassword] = useState('');
+  const [sqBusy, setSqBusy] = useState(false);
+  const [sqMsg, setSqMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Body scroll lock — prevent background scrolling when modal is open.
   // Position/top/width + scroll-position preservation now live inside
@@ -381,24 +375,21 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         .catch(() => setSessions([]));
     }
     if (isOpen && activeTab === 'security') {
-      setSecurityMsg(null);
-      setSetupStep('idle');
-      setSetupCode('');
-      setDisablePassword('');
-      setSecurityView('main');
-      apiFetch<any>('/auth/totp/status')
-        .then(data => setTotpStatus(data))
-        .catch(() => setTotpStatus(null));
-      apiFetch<any>('/auth/webauthn/status')
-        .then(data => setWebauthnStatus(data))
-        .catch(() => setWebauthnStatus(null));
       apiFetch<any>('/auth/2fa/status')
         .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
         .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
+      apiFetch<any>('/auth/security-questions')
+        .then(data => setSqConfigured(!!data.configured))
+        .catch((err) => { console.warn('[UserProfileModal] fetch security questions status failed:', err); setSqConfigured(null); });
       setSecurityView('overview');
       setRegenCodes(null);
       setRegenPassword('');
       setRegenError('');
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg(null);
     }
     if (isOpen && activeTab === 'preferences' && !prefsLoaded) {
       apiFetch<UserPreferences>('/user/preferences')
@@ -481,71 +472,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     } catch { /* silent */ }
   };
 
-  // ── 2FA Handlers ─────────────────────────────────
-  const handleStartSetup = async () => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      // The Worker returns otpauthUrl (it doesn't render images); generate
-      // the QR client-side with the bundled `qrcode` package.
-      let qr = data.qrCodeDataUrl as string | null;
-      if (!qr && data.otpauthUrl) {
-        const QRCode = (await import('qrcode')).default;
-        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
-      }
-      setQrDataUrl(qr || '');
-      setBackupCodes(data.backupCodes || []);
-      setSetupStep('qr');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to start 2FA setup' });
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleVerifySetup = async (code: string) => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
-        method: 'POST',
-        body: JSON.stringify({ code }),
-      });
-      // Backup codes are minted at VERIFY time (single reveal) — without
-      // capturing them here the "backups" step rendered an empty list.
-      if (Array.isArray(verifyRes?.backupCodes)) setBackupCodes(verifyRes.backupCodes);
-      setSetupStep('backups');
-      setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Invalid verification code' });
-      setSetupCode('');
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleDisable2FA = async () => {
-    if (!disablePassword) return;
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      await apiFetch<any>('/auth/totp/disable', {
-        method: 'POST',
-        body: JSON.stringify({ password: disablePassword }),
-      });
-      setTotpStatus(prev => prev ? { ...prev, enabled: false } : { enabled: false, required: false });
-      setSetupStep('idle');
-      setDisablePassword('');
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to disable 2FA' });
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
   const initials = `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase();
 
   const tabs = [
@@ -572,6 +498,32 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setRegenError(err?.message || 'Failed to regenerate codes');
     }
     setRegenLoading(false);
+  };
+
+  const handleSaveSecurityQuestions = async () => {
+    if (!sqCurrentPassword) return;
+    if (sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())) return;
+    setSqBusy(true);
+    setSqMsg(null);
+    try {
+      await apiFetch<any>('/auth/security-questions', {
+        method: 'PUT',
+        body: JSON.stringify({
+          currentPassword: sqCurrentPassword,
+          questions: sqQuestions,
+          answers: sqAnswers,
+        }),
+      });
+      setSqConfigured(true);
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg({ type: 'success', text: 'Security questions saved. You can now use "Forgot password?" on the login screen.' });
+    } catch (err: any) {
+      setSqMsg({ type: 'error', text: err?.message || 'Failed to save security questions' });
+    }
+    setSqBusy(false);
   };
 
   return (
@@ -1197,212 +1149,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </>
           )}
 
-          {activeTab === 'security' && (
-            <>
-              {/* Security sub-view navigation */}
-              {securityView !== 'main' && (
-                <button type="button"
-                  onClick={() => setSecurityView('main')}
-                  className="text-[10px] mb-3 flex items-center gap-1"
-                  style={{ color: '#888888' }}
-                >
-                  &larr; Back to Security
-                </button>
-              )}
-
-              {securityView === 'devices' && <TrustedDevicesList />}
-              {securityView === 'history' && <LoginHistoryTable />}
-              {securityView === 'keys' && <SecurityKeyManager />}
-
-              {securityView === 'main' && (
-              <>
-              {/* Security overview card */}
-              <div className="mb-3">
-                <SecurityStatusCard />
-              </div>
-
-              {/* Status indicator */}
-              <div
-                className="flex items-center gap-3 p-3 mb-3"
-                style={{
-                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(220, 38, 38, 0.08)',
-                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#991b1b'}`,
-                }}
-              >
-                {totpStatus?.enabled ? (
-                  <ShieldCheck style={{ width: 20, height: 20, color: '#4ade80' }} />
-                ) : (
-                  <ShieldOff style={{ width: 20, height: 20, color: '#ef7a7a' }} />
-                )}
-                <div>
-                  <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
-                    {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
-                  </div>
-                  <div className="text-[9px] text-rmpg-500">
-                    {totpStatus?.enabled
-                      ? 'Your account is protected with authenticator app verification.'
-                      : totpStatus?.required
-                        ? 'Your role requires 2FA. Please enable it immediately.'
-                        : 'Add an extra layer of security to your account.'}
-                  </div>
-                </div>
-              </div>
-
-              {securityMsg && (
-                <div className={`flex items-center gap-2 px-3 py-2 text-xs mb-3 ${securityMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
-                  {securityMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
-                  {securityMsg.text}
-                </div>
-              )}
-
-              {/* ── Idle: Enable / Disable buttons ──────── */}
-              {setupStep === 'idle' && !totpStatus?.enabled && (
-                <button type="button"
-                  onClick={handleStartSetup}
-                  disabled={securityBusy}
-                  className="btn-primary w-full"
-                >
-                  <ShieldCheck style={{ width: 12, height: 12 }} />
-                  {securityBusy ? 'Setting up...' : 'Enable Two-Factor Authentication'}
-                </button>
-              )}
-
-              {setupStep === 'idle' && totpStatus?.enabled && (
-                <button type="button"
-                  onClick={() => { setSetupStep('disabling'); setSecurityMsg(null); }}
-                  className="btn-danger w-full"
-                >
-                  <ShieldOff style={{ width: 12, height: 12 }} />
-                  Disable Two-Factor Authentication
-                </button>
-              )}
-
-              {/* ── Step 1: Show QR Code ────────────────── */}
-              {setupStep === 'qr' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Step 1: Scan QR Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
-                  </p>
-                  <div className="flex justify-center py-2">
-                    {qrDataUrl && (
-                      <img
-                        src={qrDataUrl}
-                        alt="TOTP QR Code"
-                        style={{ width: 200, height: 200, imageRendering: 'pixelated' }}
-                        draggable={false}
-                      />
-                    )}
-                  </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
-                    Step 2: Enter Verification Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter the 6-digit code from your authenticator app to verify setup.
-                  </p>
-                  <TotpCodeInput
-                    value={setupCode}
-                    onChange={setSetupCode}
-                    onComplete={handleVerifySetup}
-                    disabled={securityBusy}
-                    error={securityMsg?.type === 'error'}
-                  />
-                  {securityBusy && (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                                        className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
-                    onMouseEnter={e => { e.currentTarget.style.color = '#aaaaaa'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                  >
-                    Cancel Setup
-                  </button>
-                </div>
-              )}
-
-              {/* ── Step 3: Show Backup Codes ──────────── */}
-              {setupStep === 'backups' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Recovery Codes
-                  </div>
-                  <BackupCodesDisplay
-                    codes={backupCodes}
-                    onAcknowledge={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                  />
-                </div>
-              )}
-
-              {/* ── Disable 2FA: Re-enter password ─────── */}
-              {setupStep === 'disabling' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Confirm Disable
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter your password to confirm disabling two-factor authentication.
-                  </p>
-                  <input id="ff-userprofilemodal-21"
-                    type="password" autoComplete="new-password"
-                    value={disablePassword}
-                    onChange={e => setDisablePassword(e.target.value)}
-                    className="input-dark"
-                    placeholder="Current password"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button type="button"
-                      onClick={() => { setSetupStep('idle'); setSecurityMsg(null); setDisablePassword(''); }}
-                      className="btn-secondary flex-1"
-                    >
-                      Cancel
-                    </button>
-                    <button type="button"
-                      onClick={handleDisable2FA}
-                      disabled={securityBusy || !disablePassword}
-                      className="btn-danger flex-1"
-                    >
-                      <ShieldOff style={{ width: 12, height: 12 }} />
-                      {securityBusy ? 'Disabling...' : 'Disable 2FA'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <button type="button"
-                  onClick={() => setSecurityView('keys')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                  style={{ color: '#d97706', borderColor: '#d97706' }}
-                >
-                  Security Keys
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('devices')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Trusted Devices
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('history')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Login History
-                </button>
-              </div>
-              </>
-              )}
-            </>
-          )}
-
           {activeTab === 'sessions' && (
             <>
               <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#888888' }}>
@@ -1488,8 +1234,105 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     )}
                   </div>
 
+                  {/* Security questions — "Forgot password?" recovery setup */}
+                  <div className="panel-beveled p-3" style={{ background: "var(--surface-sunken)" }}>
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
+                      Password Recovery Questions
+                    </h3>
+
+                    {sqMsg && (
+                      <div className={`flex items-center gap-2 px-3 py-2 text-[10px] mb-3 ${sqMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                        {sqMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                        {sqMsg.text}
+                      </div>
+                    )}
+
+                    {!sqEditing ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className={`led-dot ${sqConfigured ? 'led-green' : 'led-red'}`} />
+                          <span style={{ color: sqConfigured ? '#22c55e' : '#ef4444' }}>
+                            {sqConfigured ? 'Recovery questions are set up' : 'Recovery questions are not set up'}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-rmpg-500">
+                          {sqConfigured
+                            ? 'Answering these lets you reset your password from the login screen without an administrator.'
+                            : 'Without these, "Forgot password?" cannot recover your account — an administrator must reset it manually.'}
+                        </p>
+                        <button type="button"
+                          onClick={() => {
+                            setSqEditing(true);
+                            setSqMsg(null);
+                            setSqQuestions(['', '', '']);
+                            setSqAnswers(['', '', '']);
+                            setSqCurrentPassword('');
+                          }}
+                          className="toolbar-btn w-full h-7 text-[10px] uppercase tracking-wider"
+                        >
+                          {sqConfigured ? 'Update Recovery Questions' : 'Set Up Recovery Questions'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="space-y-1">
+                            <label htmlFor={`ff-userprofilemodal-sq-q${i}`} className="field-label">
+                              Question {i + 1}
+                            </label>
+                            <input id={`ff-userprofilemodal-sq-q${i}`}
+                              type="text"
+                              value={sqQuestions[i]}
+                              onChange={e => setSqQuestions(prev => prev.map((q, idx) => idx === i ? e.target.value : q))}
+                              className="input-dark"
+                              placeholder="e.g. What was your first pet's name?"
+                            />
+                            <input id={`ff-userprofilemodal-sq-a${i}`}
+                              type="text" autoComplete="off"
+                              value={sqAnswers[i]}
+                              onChange={e => setSqAnswers(prev => prev.map((a, idx) => idx === i ? e.target.value : a))}
+                              className="input-dark"
+                              placeholder="Answer"
+                            />
+                          </div>
+                        ))}
+                        <div className="space-y-1 pt-1">
+                          <label htmlFor="ff-userprofilemodal-sq-pw" className="field-label">Current Password</label>
+                          <input id="ff-userprofilemodal-sq-pw"
+                            type="password" autoComplete="new-password"
+                            value={sqCurrentPassword}
+                            onChange={e => setSqCurrentPassword(e.target.value)}
+                            className="input-dark"
+                            placeholder="Confirm it's you"
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button type="button"
+                            onClick={() => { setSqEditing(false); setSqMsg(null); }}
+                            className="btn-secondary flex-1"
+                          >
+                            Cancel
+                          </button>
+                          <button type="button"
+                            onClick={handleSaveSecurityQuestions}
+                            disabled={sqBusy || !sqCurrentPassword || sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())}
+                            className="btn-primary flex-1"
+                          >
+                            {sqBusy ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Quick links */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="button"
+                      onClick={() => setSecurityView('keys')}
+                      className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
+                    >
+                      Security Keys
+                    </button>
                     <button type="button"
                       onClick={() => setSecurityView('devices')}
                       className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1503,6 +1346,19 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       Login History
                     </button>
                   </div>
+                </div>
+              )}
+
+              {securityView === 'keys' && (
+                <div>
+                  <button type="button"
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#888888' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <SecurityKeyManager />
                 </div>
               )}
 

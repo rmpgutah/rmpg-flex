@@ -74,6 +74,9 @@ function routeDistance(points: RoutePoint[]): number {
  *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
  *  safe to call at the top of the read + start paths. */
 const STALE_ACTIVE_MIN = 10;
+// Reaps both 'active' and 'paused' trips — a paused trip whose resume event
+// never fires (missed websocket message, app closed at the station) is
+// treated the same as a stale active one: closed out, not left orphaned.
 async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
   await execute(db,
     `UPDATE nav_trip_log
@@ -82,7 +85,7 @@ async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: numbe
          duration_seconds = CAST((julianday(COALESCE(updated_at, start_time)) - julianday(start_time)) * 86400 AS INTEGER),
          notes = COALESCE(notes, '') || ' [auto-closed: stale active trip — no update in ${STALE_ACTIVE_MIN}+ min]',
          updated_at = datetime('now','localtime')
-     WHERE officer_id = ? AND status = 'active'
+     WHERE officer_id = ? AND status IN ('active', 'paused')
        AND COALESCE(updated_at, start_time) < datetime('now','localtime','-${STALE_ACTIVE_MIN} minutes')`,
     userId);
 }
@@ -104,7 +107,7 @@ nav.get('/trip/current', async (c) => {
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
        LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
-       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active')
+       WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active','paused')
        ORDER BY ntl.start_time DESC LIMIT 1`,
       userId);
     if (!trip) return c.json({ trip: null });
@@ -138,12 +141,16 @@ nav.post('/trip/start', async (c) => {
       `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
-    // Prevent duplicate active trips (a genuinely fresh active trip still blocks —
-    // you're already on one; stale ones were just auto-closed above)
-    const existing = await queryFirst<{ id: number }>(db,
-      `SELECT id FROM nav_trip_log WHERE officer_id = ? AND status = 'active' LIMIT 1`, userId);
+    // Prevent duplicate active/paused trips (a genuinely fresh active trip still
+    // blocks — you're already on one; stale ones were just auto-closed above).
+    // 'paused' is included for the same reason GET /trip/current's IN-list and
+    // closeStaleActiveTrips now include it: a trip dwelling at a station
+    // geofence is still the officer's one trip in progress — without this an
+    // officer paused at the station could start a second, concurrent trip.
+    const existing = await queryFirst<{ id: number; status: string }>(db,
+      `SELECT id, status FROM nav_trip_log WHERE officer_id = ? AND status IN ('active', 'paused') LIMIT 1`, userId);
     if (existing) {
-      return c.json({ error: 'Active trip already exists', trip_id: existing.id }, 409);
+      return c.json({ error: `${existing.status === 'paused' ? 'Paused' : 'Active'} trip already exists`, trip_id: existing.id }, 409);
     }
 
     // Determine vehicle: explicit > take-home > unit assignment
@@ -220,6 +227,56 @@ nav.put('/trip/:id/confirm', async (c) => {
   } catch (err) {
     console.error('[nav] PUT /trip/:id/confirm failed:', err);
     return c.json({ error: 'Failed to confirm trip' }, 500);
+  }
+});
+
+// ── PUT /nav/trip/:id/pause — pause an active trip (e.g. station geofence enter)
+nav.put('/trip/:id/pause', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'active') return c.json({ error: `Trip is ${trip.status}, not active` }, 400);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'paused' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/pause failed:', err);
+    return c.json({ error: 'Failed to pause trip' }, 500);
+  }
+});
+
+// ── PUT /nav/trip/:id/resume — resume a paused trip (e.g. station geofence exit)
+nav.put('/trip/:id/resume', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const tripId = Number(c.req.param('id'));
+    if (!tripId || isNaN(tripId)) return c.json({ error: 'Invalid trip id' }, 400);
+
+    const trip = await queryFirst<{ id: number; officer_id: number; status: string }>(db,
+      'SELECT id, officer_id, status FROM nav_trip_log WHERE id = ?', tripId);
+    if (!trip) return c.json({ error: 'Trip not found' }, 404);
+    if (trip.officer_id !== userId) return c.json({ error: 'Not authorized' }, 403);
+    if (trip.status !== 'paused') return c.json({ error: `Trip is ${trip.status}, not paused` }, 400);
+
+    await execute(db,
+      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now','localtime')
+       WHERE id = ?`, tripId);
+
+    return c.json({ success: true, status: 'active' });
+  } catch (err) {
+    console.error('[nav] PUT /trip/:id/resume failed:', err);
+    return c.json({ error: 'Failed to resume trip' }, 500);
   }
 });
 
@@ -449,6 +506,25 @@ nav.get('/trip/history', async (c) => {
   }
 });
 
+// ── GET /nav/trip/check-take-home — whether user has a take-home vehicle
+// Registered before /trip/:id so this literal path isn't shadowed by the param route.
+nav.get('/trip/check-take-home', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+
+    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
+      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
+
+    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
+
+    return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
+  } catch (err) {
+    console.error('[nav] GET /trip/check-take-home failed:', err);
+    return c.json({ error: 'Failed to check take-home status' }, 500);
+  }
+});
+
 // ── GET /nav/trip/:id — single trip with route points
 nav.get('/trip/:id', async (c) => {
   try {
@@ -476,24 +552,6 @@ nav.get('/trip/:id', async (c) => {
   } catch (err) {
     console.error('[nav] GET /trip/:id failed:', err);
     return c.json({ error: 'Failed to fetch trip' }, 500);
-  }
-});
-
-// ── GET /nav/trip/check-take-home — whether user has a take-home vehicle
-nav.get('/trip/check-take-home', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const userId = c.get('userId') as number;
-
-    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
-      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
-
-    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
-
-    return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
-  } catch (err) {
-    console.error('[nav] GET /trip/check-take-home failed:', err);
-    return c.json({ error: 'Failed to check take-home status' }, 500);
   }
 });
 

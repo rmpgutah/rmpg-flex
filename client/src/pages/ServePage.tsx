@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useToast } from '../components/ToastProvider';
 import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
@@ -47,7 +48,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
-import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { applyRmpgBasemap, getThemeColorRgb } from '../utils/mapboxBasemap';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -142,6 +143,7 @@ export default function ServePage() {
   // Honored once on mount; the param is stripped so a manual refresh does
   // not re-select. A miss raises a toast pointing at the current filter.
   const [searchParams, setSearchParams] = useSearchParams();
+  const routerNavigate = useNavigate();
   // ── Core state ──────────────────────────────────────────────────────
   const initialDateParam = searchParams.get('date');
   const initialTabParam = searchParams.get('tab') as Tab | null;
@@ -215,83 +217,97 @@ export default function ServePage() {
   const [successRates, setSuccessRates] = useState<any>(null);
 
   // ── Notice of Attempt to Serve (unsuccessful-attempt notice) ──
-  // Builds the professional notice from the job's real serve_attempts and opens
-  // the rendered PDF. Distinct from the Affidavit of Non-Service: this is an
-  // unsworn notice to leave at the address / send to the recipient or client.
+  // Fetches the job's real serve_attempts and maps them into the shape the
+  // PDF generator expects. Distinct from the Affidavit of Non-Service: this
+  // is an unsworn notice to leave at the address / send to the recipient or
+  // client. Extracted from the old handleNoticeOfAttempt so both the
+  // download/edit flow AND the new preview-modal flow (which regenerates
+  // the doc every time the office/mobile toggle changes) share one source
+  // of truth instead of duplicating the attempt-filtering logic.
+  const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
+    // GET /:id returns the job row + its serve_attempts (joined w/ officer).
+    const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
+    const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+      .filter(Boolean).join(', ');
+    // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
+    // both the legacy result enum AND the new disposition_code: a PS/05.*
+    // code is a completed service (Personal), so its attempt shouldn't
+    // appear on the "non-service" notice. Same for PS/10.* (Substitute)
+    // and PS/20.* (Posted, when the queue is `served`).
+    const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+    const attempts = (job.attempts || [])
+      .filter((a) => {
+        if ((a.result || '').toLowerCase() === 'served') return false;
+        const code = String((a as any).disposition_code || '').toUpperCase();
+        if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
+        return true;
+      })
+      .map((a, i) => {
+        const ts = a.attempt_at || a.created_at || null;
+        const at = ts ? parseTimestamp(ts) : null;
+        const resultText = (a as any).disposition_code || a.result || 'other';
+        return {
+          number: a.attempt_number ?? i + 1,
+          date: at && !isNaN(at.getTime())
+            ? (() => {
+                const p = (n: number) => String(n).padStart(2, '0');
+                return `${p(at.getMonth() + 1)}/${p(at.getDate())}/${at.getFullYear()}`;
+              })()
+            : '',
+          time: at && !isNaN(at.getTime())
+            ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+            : '',
+          result: resultText,
+          notes: a.notes || '',
+          gpsLat: a.latitude ?? null,
+          gpsLng: a.longitude ?? null,
+        };
+      });
+    if (attempts.length === 0) {
+      setFetchError('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
+      return null;
+    }
+    const latestAttempt = (job.attempts || [])[(job.attempts || []).length - 1] || {};
+    const nextAttemptNote = (job as any).next_attempt_note
+      || (job.status === 'failed'
+            ? undefined
+            : 'A further attempt may be made; contact our office to arrange service.');
+    return {
+      noticeDate: (() => {
+        const d = new Date();
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`;
+      })(),
+      caseNumber: job.case_number || '',
+      agencyRefNumber: `JOB-${job.id}`,
+      courtName: job.court_name || 'N/A',
+      jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
+      serverName: user?.full_name || user?.username || 'Process Server',
+      serverBadge: user?.badge_number || '',
+      serverCompany: 'Rocky Mountain Protective Group',
+      serverPhone: '(385) 436-3370',
+      signature: latestAttempt.signature_data || undefined,
+      recipientName: job.recipient_name,
+      recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
+      documentType: job.document_type,
+      clientName: job.client_name || undefined,
+      attorneyName: job.attorney_name || undefined,
+      attempts,
+      nextAttemptNote,
+      filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf`,
+    } as import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string };
+  };
+
   const handleNoticeOfAttempt = async (jobId: number, editBeforePrint?: boolean) => {
     try {
-      // GET /:id returns the job row + its serve_attempts (joined w/ officer).
-      const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
-        .filter(Boolean).join(', ');
-      // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
-      // both the legacy result enum AND the new disposition_code: a PS/05.*
-      // code is a completed service (Personal), so its attempt shouldn't
-      // appear on the "non-service" notice. Same for PS/10.* (Substitute)
-      // and PS/20.* (Posted, when the queue is `served`).
-      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
-      const attempts = (job.attempts || [])
-        .filter((a) => {
-          if ((a.result || '').toLowerCase() === 'served') return false;
-          const code = String((a as any).disposition_code || '').toUpperCase();
-          if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
-          return true;
-        })
-        .map((a, i) => {
-          const ts = a.attempt_at || a.created_at || null;
-          const at = ts ? parseTimestamp(ts) : null;
-          const resultText = (a as any).disposition_code || a.result || 'other';
-          return {
-            number: a.attempt_number ?? i + 1,
-            date: at && !isNaN(at.getTime())
-              ? (() => {
-                  const p = (n: number) => String(n).padStart(2, '0');
-                  return `${p(at.getMonth() + 1)}/${p(at.getDate())}/${at.getFullYear()}`;
-                })()
-              : '',
-            time: at && !isNaN(at.getTime())
-              ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-              : '',
-            result: resultText,
-            notes: a.notes || '',
-            gpsLat: a.latitude ?? null,
-            gpsLng: a.longitude ?? null,
-          };
-        });
-      if (attempts.length === 0) {
-        setFetchError('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
-        return;
-      }
-      const latestAttempt = (job.attempts || [])[(job.attempts || []).length - 1] || {};
-      const nextAttemptNote = (job as any).next_attempt_note
-        || (job.status === 'failed'
-              ? undefined
-              : 'A further attempt may be made; contact our office to arrange service.');
+      const data = await buildNoticeOfAttemptData(jobId);
+      if (!data) return;
+      const { filename, ...noticeData } = data;
       const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
-      const pdf = await generateNoticeOfAttempt({
-        noticeDate: (() => {
-          const d = new Date();
-          const p = (n: number) => String(n).padStart(2, '0');
-          return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()}`;
-        })(),
-        caseNumber: job.case_number || '',
-        agencyRefNumber: `JOB-${job.id}`,
-        courtName: job.court_name || 'N/A',
-        jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
-        serverName: user?.full_name || user?.username || 'Process Server',
-        serverBadge: user?.badge_number || '',
-        serverCompany: 'Rocky Mountain Protective Group',
-        serverPhone: '(385) 436-3370',
-        signature: latestAttempt.signature_data || undefined,
-        recipientName: job.recipient_name,
-        recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
-        documentType: job.document_type,
-        clientName: job.client_name || undefined,
-        attorneyName: job.attorney_name || undefined,
-        attempts,
-        nextAttemptNote,
-      });
-      const filename = `Notice-of-Attempt-${job.case_number || job.id}.pdf`;
+      // Notice of Attempt is always printed in the field from the in-vehicle
+      // Brother PJ thermal printer — never a desk laser — so this always
+      // renders mobile-safe margins, no office option.
+      const pdf = await generateNoticeOfAttempt(noticeData, { printTarget: 'mobile' });
 
       if (editBeforePrint) {
         const { storePdfForEditor } = await importWithRetry(() => import('../utils/openPdfDocument'));
@@ -309,6 +325,15 @@ export default function ServePage() {
       setFetchError('Could not generate the Notice of Attempt — please try again.');
     }
   };
+
+  // ── Notice of Attempt — in-app preview ──
+  // Opens PdfPreviewModal so the officer sees the actual rendered PDF —
+  // margins, header offset, table layout — before printing or downloading,
+  // instead of blind-downloading a file and finding out it's wrong once
+  // it's already at the printer. Always mobile: this notice is printed in
+  // the field from the in-vehicle Brother PJ thermal printer, never a desk
+  // laser, so there's no office variant to toggle to.
+  const [noticePreviewJobId, setNoticePreviewJobId] = useState<number | null>(null);
 
   // Job Information Sheet (PS-300) — full printable packet carried by the PSO
   // to the field and filed as an internal record. Distinct from the Notice of
@@ -704,22 +729,27 @@ export default function ServePage() {
     }
   }, [refreshJobs]);
 
-  const handleNavigate = useCallback((jobId: number) => {
+  const handleNavigate = useCallback(async (jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
+    const label = encodeURIComponent(job.recipient_name || 'Serve stop');
     if (job.recipient_lat != null && job.recipient_lng != null) {
-      window.open(
-        `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${job.recipient_lat},${job.recipient_lng}`,
-        '_blank',
-        'noopener,noreferrer',
-      );
-    } else if (job.recipient_address) {
-      const addr = encodeURIComponent(
-        `${job.recipient_address} ${(job as any).recipient_address_2 || ''} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
-      );
-      window.open(`https://www.openstreetmap.org/search?query=${addr}`, '_blank', 'noopener,noreferrer');
+      routerNavigate(`/navigation?destination=${label}&lat=${job.recipient_lat}&lng=${job.recipient_lng}`);
+      return;
     }
-  }, [jobs]);
+    if (!job.recipient_address) return;
+    const addr = [
+      job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
+    ].filter(Boolean).join(', ');
+    try {
+      const geo = await apiFetch<{ results: Array<{ lat: string; lon: string }> }>(`/geocode/search?q=${encodeURIComponent(addr)}&limit=1`);
+      const hit = geo?.results?.[0];
+      if (!hit) { addToast('Could not locate that address to navigate', 'error'); return; }
+      routerNavigate(`/navigation?destination=${label}&lat=${hit.lat}&lng=${hit.lon}`);
+    } catch {
+      addToast('Could not locate that address to navigate', 'error');
+    }
+  }, [jobs, routerNavigate]);
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
@@ -1205,7 +1235,7 @@ export default function ServePage() {
           type: 'line',
           source: sourceId,
           paint: {
-            'line-color': 'rgb(var(--rmpg-500-rgb))',
+            'line-color': getThemeColorRgb('--rmpg-500-rgb'),
             'line-opacity': 0.8,
             'line-width': 3,
           },
@@ -1342,7 +1372,7 @@ export default function ServePage() {
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       m.action('Print Job Sheet', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       ...(job.attempt_count > 0 ? [
-        m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> }),
+        m.action('Preview Notice of Attempt', () => setNoticePreviewJobId(job.id), { icon: <FileWarning size={12} /> }),
         m.action('Edit Notice before print', () => handleNoticeOfAttempt(job.id, true), { icon: <Pencil size={12} /> }),
       ] : []),
       ...(job.status === 'served' ? [
@@ -2100,6 +2130,26 @@ export default function ServePage() {
         <ServeAuditLogModal
           jobId={auditJobId}
           onClose={() => setAuditJobId(null)}
+        />
+      )}
+
+      {/* Notice of Attempt preview — always mobile (Brother PJ in-vehicle
+          thermal printer). Regenerates the doc live so the officer sees
+          actual margins/layout before printing or downloading, instead of
+          a blind download. */}
+      {noticePreviewJobId != null && (
+        <PdfPreviewModal
+          target="mobile"
+          title="Notice of Attempt to Serve"
+          filename={`Notice-of-Attempt-${noticePreviewJobId}`}
+          getDoc={async () => {
+            const data = await buildNoticeOfAttemptData(noticePreviewJobId);
+            if (!data) throw new Error('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
+            const { filename: _filename, ...noticeData } = data;
+            const { generateNoticeOfAttempt } = await importWithRetry(() => import('../utils/servePdfGenerator'));
+            return generateNoticeOfAttempt(noticeData, { printTarget: 'mobile' });
+          }}
+          onClose={() => setNoticePreviewJobId(null)}
         />
       )}
 

@@ -1,0 +1,29 @@
+-- 0184_cfs_ext_external_source_system.sql
+-- =====================================================================
+-- Dial Connect → calls_for_service push (POST /api/integrations/calls-for-service)
+-- needs to record which external system created the call. The base
+-- calls_for_service.source column has a CHECK constraint
+-- ('phone','radio','alarm','walk_in','email','patrol','online','dispatch',
+-- 'panic','servemanager','intake','other') that does NOT include
+-- 'dial_connect', and calls_for_service is at the D1 100-column cap besides.
+--
+-- Changing a CHECK constraint requires the create-new/copy/drop/rename
+-- rebuild documented in 0040 — and 0040 (adding 'on_hold' to the STATUS
+-- CHECK) was reverted after it broke on live D1 ("FOREIGN KEY constraint
+-- failed": D1 runs migrations inside a transaction where
+-- PRAGMA foreign_keys=OFF is a no-op, so dropping the 100-column table
+-- referenced by 8 child FKs trips enforcement mid-migration). 0041 replaced
+-- that approach with a plain ADD COLUMN on the _ext overflow table instead.
+--
+-- Following that precedent: rows pushed by POST /calls-for-service store
+-- source = 'other' on the base table (closest existing CHECK-permitted
+-- value for "no human intake channel"), and the actual originating system
+-- name goes here so it isn't lost. NULL for every pre-existing call and
+-- every call created through the normal dispatch UI.
+--
+-- D1 does NOT support IF NOT EXISTS on ADD COLUMN; re-applying this file
+-- against a DB that already has the column raises "duplicate column name",
+-- which deploy.yml's continue-on-error swallows (see CLAUDE.md).
+-- =====================================================================
+
+ALTER TABLE calls_for_service_ext ADD COLUMN external_source_system TEXT;

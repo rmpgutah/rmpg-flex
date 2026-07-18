@@ -1,5 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchWithTimeout, TimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from '../useApi';
+import { fetchWithTimeout, TimeoutError, DEFAULT_FETCH_TIMEOUT_MS, authedImageUrl } from '../useApi';
+
+describe('authedImageUrl', () => {
+  beforeEach(() => {
+    localStorage.setItem('rmpg_token', 'test-token');
+  });
+  afterEach(() => {
+    localStorage.removeItem('rmpg_token');
+  });
+
+  it('appends the token to a relative /api/ path', () => {
+    const result = authedImageUrl('/api/personnel/bodycam-videos/123/stream');
+    expect(result).toBe('/api/personnel/bodycam-videos/123/stream?token=test-token');
+  });
+
+  it('appends the token to an absolute URL whose pathname is under /api/', () => {
+    const result = authedImageUrl('https://rmpgutah.us/api/personnel/bodycam-videos/123/stream');
+    expect(result).toBe('https://rmpgutah.us/api/personnel/bodycam-videos/123/stream?token=test-token');
+  });
+});
 
 describe('fetchWithTimeout', () => {
   let originalFetch: typeof fetch;

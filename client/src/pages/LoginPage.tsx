@@ -11,7 +11,7 @@ import {
   KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
   HelpCircle, CheckCircle, ArrowRight,
 } from 'lucide-react';
-import { useAuth, type LoginStep } from '../context/AuthContext';
+import { useAuth, type LoginStep, fetchWithTimeout } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
@@ -116,6 +116,8 @@ export default function LoginPage() {
   const [loginUsername, setLoginUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoChecking, setSsoChecking] = useState(false);
+  const [showPasswordField, setShowPasswordField] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [backupCode, setBackupCode] = useState('');
   const [trustThisDevice, setTrustThisDevice] = useState(false);
@@ -170,6 +172,12 @@ export default function LoginPage() {
   }, [searchParams]);
   const [resetSuccess, setResetSuccess] = useState<boolean>(() => searchParams.get('reset') === '1');
   const [urlError, setUrlError] = useState<string | null>(() => {
+    // src/routes/oidc.ts's backToLogin() sends failed dialer SSO attempts
+    // here as ?sso=dialer&status=error&message=... — surface that message
+    // directly since it's already operator-facing (e.g. "no linked account").
+    if (searchParams.get('sso') === 'dialer' && searchParams.get('status') === 'error') {
+      return searchParams.get('message') || 'Dialer sign-in failed. Please try again.';
+    }
     const code = searchParams.get('error');
     if (!code) return null;
     switch (code) {
@@ -185,7 +193,7 @@ export default function LoginPage() {
     if (deepLinkConsumedRef.current) return;
     deepLinkConsumedRef.current = true;
     const hasTransient = searchParams.has('reset') || searchParams.has('error') ||
-      searchParams.has('forgot') || searchParams.has('username');
+      searchParams.has('forgot') || searchParams.has('username') || searchParams.has('sso');
     if (!hasTransient) return;
     const next = new URLSearchParams(searchParams);
     // Pre-fill username if provided and field is empty
@@ -197,6 +205,9 @@ export default function LoginPage() {
     next.delete('error');
     next.delete('forgot');
     next.delete('username');
+    next.delete('sso');
+    next.delete('status');
+    next.delete('message');
     // Preserve `return` — it's still load-bearing for the post-login navigate.
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,6 +339,14 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [loginStep]);
 
+  // Focus the password field the moment it mounts (after the identifier-first
+  // SSO check falls through). loginStep stays 'username' for this whole
+  // screen, so the auto-focus effect above never fires again here -- without
+  // this, focus would stay stranded on the now-satisfied username field.
+  useEffect(() => {
+    if (showPasswordField) passwordRef.current?.focus();
+  }, [showPasswordField]);
+
   // Auto-submit TOTP when 6 digits entered (with ref guard to prevent double-submit)
   const totpSubmittingRef = useRef(false);
   useEffect(() => {
@@ -350,6 +369,33 @@ export default function LoginPage() {
     } catch {
       // Error handled by context
     }
+  };
+
+  // Identifier-first step: before showing the password field, probe whether
+  // the typed value (matched against the user's `email` column, not their
+  // `username` -- those are separate fields in this app) is SSO-enabled.
+  // If so, skip the password field entirely and redirect into Dial Connect.
+  // A failed/timed-out check is non-fatal -- fall through to the normal
+  // password field rather than blocking login entirely.
+  const handleUsernameContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginUsername.trim()) return;
+    setSsoChecking(true);
+    clearError();
+    try {
+      const res = await fetchWithTimeout(`/api/oidc/dialer/check?email=${encodeURIComponent(loginUsername.trim())}`);
+      const data = await res.json();
+      if (data.ssoEnabled) {
+        window.location.href = '/api/oidc/dialer/login';
+        return;
+      }
+    } catch {
+      // SSO check failing is non-fatal -- fall through to the normal
+      // password field rather than blocking login entirely.
+    } finally {
+      setSsoChecking(false);
+    }
+    setShowPasswordField(true);
   };
 
   const handleBack = () => {
@@ -731,7 +777,7 @@ export default function LoginPage() {
             {/* Hidden while the forgot-password panel is open so the operator
                 isn't looking at two parallel forms. */}
             {isCredentialStep && !forgotPwActive && (
-              <form onSubmit={handleCredentialsSubmit} className="space-y-3">
+              <form onSubmit={showPasswordField ? handleCredentialsSubmit : handleUsernameContinue} className="space-y-3">
                 <div>
                   <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Username
@@ -745,55 +791,58 @@ export default function LoginPage() {
                     placeholder="Enter your username"
                     aria-required="true"
                     value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
+                    onChange={(e) => { setLoginUsername(e.target.value); setShowPasswordField(false); }}
                     autoComplete="username"
                     required
+                    disabled={ssoChecking}
                   />
                 </div>
-                <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      ref={passwordRef}
-                      id="password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      aria-required="true"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500"
-                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      tabIndex={0}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                {showPasswordField && (
+                  <div>
+                    <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        ref={passwordRef}
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                        aria-required="true"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                                              className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500"
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        tabIndex={0}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
                 <button
                   type="submit"
-                  disabled={loginBusy || !loginUsername.trim() || !password}
+                  disabled={loginBusy || ssoChecking || !loginUsername.trim() || (showPasswordField && !password)}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
-                  aria-busy={loginBusy}
+                  aria-busy={loginBusy || ssoChecking}
                 >
-                  {loginBusy ? (
+                  {loginBusy || ssoChecking ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
-                      <span>Authenticating...</span>
+                      <span>{ssoChecking ? 'Checking...' : 'Authenticating...'}</span>
                     </>
                   ) : (
-                    'Sign In'
+                    showPasswordField ? 'Sign In' : 'Continue'
                   )}
                 </button>
                 <button
@@ -805,6 +854,15 @@ export default function LoginPage() {
                   aria-label="Forgot password"
                 >
                   Forgot Password?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/api/oidc/dialer/login'; }}
+                  className="toolbar-btn w-full h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-rmpg-300 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 mt-2"
+                  aria-label="Sign in with Dialer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Sign in with Dialer
                 </button>
               </form>
             )}

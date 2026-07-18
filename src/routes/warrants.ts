@@ -1,18 +1,32 @@
-// Warrants routes for the CF Worker. Initially minimal — surfaces the
-// warrant-watch run history that the legacy server's /warrants page
-// + dashboard widget consume. The CRUD warrant routes (list, create,
-// archive, etc.) stay on the legacy server until the full warrants
-// subsystem is migrated.
+// Warrants routes for the CF Worker. Surfaces warrant-watch run history plus
+// the full manual-warrant CRUD lifecycle (get/create/update/serve/archive/
+// unarchive/delete) consumed by WarrantsPage.tsx. The CRUD routes were
+// historically deferred to "the legacy server" — but that VPS was
+// decommissioned 2026-06-15 (see CLAUDE.md), so they have nowhere else to
+// live. Every POST/PUT/DELETE the client sent 404'd until these were added.
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
-import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { getDb, query, queryFirst, execute } from '../utils/db';
+import { log } from '../utils/logger';
+import { runUtahWarrantScan, runUtahWarrantCheckForPerson, fetchWarrantsForPerson, recordWarrant } from '../utils/utahWarrantPoller';
+import { screenPersonAllSources } from '../utils/screening/screenPerson';
 import { getAllEnabledAdapters, ADAPTERS } from '../utils/warrantSources/registry';
 import { US_STATES, matchesDobOrAge, mapScrapedWarrantRow, mapLocalWarrantRow } from '../utils/warrantNationalSearch';
 
 const warrants = new Hono<Env>();
+
+// D1 caps bound parameters at ~100 per prepared statement. Bulk warrant
+// actions (batch-update/bulk-archive/bulk-review) build one `?` per selected
+// id — split into safely-sized chunks so a selection over the cap doesn't
+// throw and 500 the whole batch.
+const ID_CHUNK_SIZE = 90;
+function chunkIds(ids: number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK_SIZE) chunks.push(ids.slice(i, i + ID_CHUNK_SIZE));
+  return chunks;
+}
 
 // Warrant data (active warrants, per-person profiles) is sworn-side law
 // enforcement data — not everyone with a valid session should see it.
@@ -283,31 +297,153 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
   });
 }
 
-// POST /search-all — unified search across local, utah, and scraped buckets
+// POST /warrants/search-all — unified cross-source warrant search.
+// Queries local warrants, Utah warrants, and scraped warrants tables
+// with the supplied filters. Only scraped warrants are queried when a
+// name, court, charge, or case number filter is provided (dob-only
+// searches skip the scraped bucket to avoid noise).
 warrants.post('/search-all', async (c) => {
-  const db = getDb(c.env);
-  const body = await c.req.json().catch(() => ({} as any));
-  // Determine if any non‑dob filter is present; for tests we treat any key other than 'dob' as a trigger.
-  const hasNonDob = Object.keys(body).some((k) => k !== 'dob');
-  let scrapedRows: any[] = [];
-  if (hasNonDob) {
-    // Simple query returning all scraped_warrants rows; real implementation would filter.
-    scrapedRows = await query<any>(db, 'SELECT * FROM scraped_warrants');
+  const traceId = c.get('traceId');
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      lastName?: string;
+      firstName?: string;
+      dob?: string;
+      courtName?: string;
+      charge?: string;
+      caseNumber?: string;
+      // Advanced filters — WarrantsPage.tsx's Search-All "Advanced Filters"
+      // panel has always sent these; this route silently ignored all of
+      // them (never read from `body`), so every combination of source/
+      // status/type/offense-level/date-range was a no-op.
+      source?: 'local' | 'utah' | 'scraped';
+      status?: string;
+      type?: string;
+      offenseLevel?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    }>();
+
+    const limit = 50;
+
+    // Each source table has its own column names — there's no shared schema
+    // to build one WHERE clause from. `warrants` only has a combined
+    // subject_name (no first/last split) and no case_number column at all;
+    // `utah_warrants` has no dob/status/type/offense_level columns at all
+    // (status there is the separate is_active flag, not comparable to the
+    // local/scraped status vocabulary) — only date-range applies to it;
+    // `scraped_warrants` supports every filter (using date_of_birth, not dob).
+    const localConditions: string[] = [];
+    const localParams: unknown[] = [];
+    if (body.lastName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { localConditions.push('subject_name LIKE ?'); localParams.push(`%${body.firstName}%`); }
+    if (body.dob) { localConditions.push('subject_dob = ?'); localParams.push(body.dob); }
+    if (body.courtName) { localConditions.push('court LIKE ?'); localParams.push(`%${body.courtName}%`); }
+    if (body.charge) { localConditions.push('offense LIKE ?'); localParams.push(`%${body.charge}%`); }
+    if (body.status) { localConditions.push('status = ?'); localParams.push(body.status); }
+    if (body.type) { localConditions.push('type = ?'); localParams.push(body.type); }
+    if (body.offenseLevel) { localConditions.push('offense_level = ?'); localParams.push(body.offenseLevel); }
+    if (body.dateFrom) { localConditions.push('issued_date >= ?'); localParams.push(body.dateFrom); }
+    if (body.dateTo) { localConditions.push('issued_date <= ?'); localParams.push(body.dateTo); }
+    const localWhere = localConditions.length ? `WHERE ${localConditions.join(' AND ')}` : '';
+
+    const utahConditions: string[] = [];
+    const utahParams: unknown[] = [];
+    if (body.lastName) { utahConditions.push('last_name LIKE ?'); utahParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { utahConditions.push('first_name LIKE ?'); utahParams.push(`%${body.firstName}%`); }
+    if (body.courtName) { utahConditions.push('court_name LIKE ?'); utahParams.push(`%${body.courtName}%`); }
+    if (body.dateFrom) { utahConditions.push('issue_date >= ?'); utahParams.push(body.dateFrom); }
+    if (body.dateTo) { utahConditions.push('issue_date <= ?'); utahParams.push(body.dateTo); }
+    const utahWhere = utahConditions.length ? `WHERE ${utahConditions.join(' AND ')}` : '';
+
+    const scrapedConditions: string[] = [];
+    const scrapedParams: unknown[] = [];
+    if (body.lastName) { scrapedConditions.push('last_name LIKE ?'); scrapedParams.push(`%${body.lastName}%`); }
+    if (body.firstName) { scrapedConditions.push('first_name LIKE ?'); scrapedParams.push(`%${body.firstName}%`); }
+    if (body.dob) { scrapedConditions.push('date_of_birth = ?'); scrapedParams.push(body.dob); }
+    if (body.courtName) { scrapedConditions.push('court_name LIKE ?'); scrapedParams.push(`%${body.courtName}%`); }
+    if (body.charge) { scrapedConditions.push('charge_description LIKE ?'); scrapedParams.push(`%${body.charge}%`); }
+    if (body.caseNumber) { scrapedConditions.push('case_number LIKE ?'); scrapedParams.push(`%${body.caseNumber}%`); }
+    if (body.status) { scrapedConditions.push('status = ?'); scrapedParams.push(body.status); }
+    if (body.type) { scrapedConditions.push('warrant_type = ?'); scrapedParams.push(body.type); }
+    if (body.offenseLevel) { scrapedConditions.push('offense_level = ?'); scrapedParams.push(body.offenseLevel); }
+    if (body.dateFrom) { scrapedConditions.push('issue_date >= ?'); scrapedParams.push(body.dateFrom); }
+    if (body.dateTo) { scrapedConditions.push('issue_date <= ?'); scrapedParams.push(body.dateTo); }
+    const scrapedWhere = scrapedConditions.length ? `WHERE ${scrapedConditions.join(' AND ')}` : '';
+
+    // `source` restricts the search to a single bucket rather than filtering
+    // rows within all three — an empty selection means "all sources".
+    const wantLocal = !body.source || body.source === 'local';
+    const wantUtah = !body.source || body.source === 'utah';
+    const wantScraped = !body.source || body.source === 'scraped';
+
+    // The `utah_warrants` table is only a CACHE, populated by the background
+    // cron poller for the ~50 persons/run it happens to check — it does NOT
+    // reflect a live call to warrants.utah.gov. A name typed into Search All
+    // that isn't already a local D1 person the cron polled would silently
+    // return zero Utah hits even when the live API has real data for that
+    // name. When both first and last name are given, run a live on-demand
+    // check first (same fetchWarrantsForPerson/recordWarrant path already
+    // used by POST /warrants/check/:personId) so freshly-found warrants are
+    // persisted into utah_warrants BEFORE the cache SELECT below runs —
+    // the subsequent query then naturally includes them via the upsert.
+    if (wantUtah && body.firstName && body.lastName) {
+      try {
+        const liveWarrants = await fetchWarrantsForPerson({
+          id: 0,
+          first_name: body.firstName,
+          middle_name: null,
+          last_name: body.lastName,
+          dob: body.dob ?? null,
+        });
+        for (const w of liveWarrants) await recordWarrant(db, w, null);
+      } catch (err) {
+        log.error('warrants/search-all: live utah fetch failed', { traceId },
+          err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+
+    const [local, utah] = await Promise.all([
+      wantLocal
+        ? query<Record<string, unknown>>(db, `SELECT * FROM warrants ${localWhere} LIMIT ?`, ...localParams, limit)
+            .catch((err) => { log.error('warrants/search-all: local query failed', { traceId }, err); return []; })
+        : Promise.resolve([]),
+      wantUtah
+        ? query<Record<string, unknown>>(db, `SELECT * FROM utah_warrants ${utahWhere} LIMIT ?`, ...utahParams, limit)
+            .catch((err) => { log.error('warrants/search-all: utah query failed', { traceId }, err); return []; })
+        : Promise.resolve([]),
+    ]);
+
+    // Only query scraped_warrants when there's a meaningful filter (not dob-only)
+    const hasScrapedFilter = body.lastName || body.firstName || body.courtName || body.charge || body.caseNumber
+      || body.status || body.type || body.offenseLevel || body.dateFrom || body.dateTo;
+    let scraped: Record<string, unknown>[] = [];
+    if (wantScraped && hasScrapedFilter) {
+      scraped = await query<Record<string, unknown>>(db, `SELECT * FROM scraped_warrants ${scrapedWhere} LIMIT ?`, ...scrapedParams, limit)
+        .catch((err) => { log.error('warrants/search-all: scraped query failed', { traceId }, err); return []; });
+    }
+
+    const allResults = [...local, ...utah, ...scraped];
+    return c.json({
+      local,
+      utah,
+      scraped,
+      meta: {
+        sources: [
+          ...(local.length ? ['local'] : []),
+          ...(utah.length ? ['utah'] : []),
+          ...(scraped.length ? ['scraped'] : []),
+        ],
+        totalHits: allResults.length,
+      },
+    });
+  } catch (err) {
+    log.error('warrants/search-all failed', { traceId }, err instanceof Error ? err : new Error(String(err)));
+    return c.json({ local: [], utah: [], scraped: [], meta: { sources: [], totalHits: 0 } });
   }
-  const response = {
-    local: [],
-    utah: [],
-    scraped: scrapedRows,
-    meta: {
-      sources: [] as string[],
-      totalHits: scrapedRows.length,
-    },
-  };
-  if (response.local.length) response.meta.sources.push('local');
-  if (response.utah.length) response.meta.sources.push('utah');
-  if (response.scraped.length) response.meta.sources.push('scraped');
-  return c.json(response);
 });
+
 // GET /national-coverage — per-state source/warrant counts for the
 // NationalWarrantSearchPage coverage map. A state counts as 'active' if it
 // has at least one enabled source, from EITHER national_warrant_sources
@@ -445,12 +581,21 @@ warrants.post('/national-search', async (c) => {
   if (body.warrant_type) { localWhere.push("UPPER(COALESCE(warrant_type, type)) = ?"); localParams.push(body.warrant_type.toUpperCase()); }
   if (body.charge_keyword) { localWhere.push('COALESCE(charge_description, offense_description, offense) LIKE ?'); localParams.push(`%${body.charge_keyword}%`); }
 
-  const localSql = `SELECT * FROM warrants${localWhere.length ? ' WHERE ' + localWhere.join(' AND ') : ''}`;
-  const localRows = await query<Record<string, unknown>>(db, localSql, ...localParams);
-
-  const local = localRows
-    .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
-    .map(mapLocalWarrantRow);
+  // Local `warrants` has no state/jurisdiction column to filter on. A
+  // state-only search (the coverage-map "click a state" flow — the 400
+  // guard above only requires ONE of first_name/last_name/state) used to
+  // fall through to zero WHERE clauses, i.e. `SELECT * FROM warrants` with
+  // no filter at all — every local warrant, regardless of relevance, got
+  // dumped into the results for whatever state was clicked. With nothing
+  // to scope local rows to a state, skip the local table entirely rather
+  // than return unrelated records.
+  const local = localWhere.length
+    ? (await query<Record<string, unknown>>(
+        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')}`, ...localParams,
+      ))
+        .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
+        .map(mapLocalWarrantRow)
+    : [];
 
   const total = Object.values(by_state).reduce((a, arr) => a + arr.length, 0) + local.length;
 
@@ -770,6 +915,446 @@ warrants.get('/unified', async (c) => {
   } catch (err) {
     console.error('[warrants] unified error', err);
     return c.json({ warrants: [], total: 0 });
+  }
+});
+
+// ============================================================
+// Manual warrant CRUD — WarrantsPage.tsx's New/Edit Warrant form, serve,
+// archive/unarchive, and delete actions. Registered after every other
+// literal-path route in this file so a numeric warrant id can never shadow
+// a named route like /watch/runs or /dashboard/stats (Hono's router is a
+// radix trie and prioritizes static segments regardless of declaration
+// order, but keeping /: routes last matches this file's existing style
+// and stays correct even if that routing guarantee ever changes).
+// ============================================================
+
+const ALLOWED_WARRANT_COLUMNS = [
+  'type', 'status', 'charge_description', 'subject_person_id',
+  'subject_name', 'subject_first_name', 'subject_last_name', 'subject_dob',
+  'issuing_court', 'issuing_judge', 'bail_amount', 'offense_level',
+  'expires_at', 'notes', 'statute_id', 'statute_citation', 'priority',
+] as const;
+
+// GET /warrants/:id — single warrant detail for WarrantsPage's fetchWarrantDetail.
+warrants.get('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Warrant not found' }, 404);
+    return c.json(row);
+  } catch (err) {
+    console.error('[warrants] get by id error', err);
+    return c.json({ error: 'Failed to load warrant' }, 500);
+  }
+});
+
+// POST /warrants — create a manual warrant.
+warrants.post('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    const user = c.get('user') as { id?: number } | undefined;
+
+    if (!body.type || typeof body.type !== 'string') {
+      return c.json({ error: 'type is required' }, 400);
+    }
+    if (!body.charge_description || typeof body.charge_description !== 'string' || body.charge_description.trim().length < 3) {
+      return c.json({ error: 'charge_description is required (min 3 chars)' }, 400);
+    }
+
+    let subjectName: string | null = null;
+    if (body.subject_person_id) {
+      const person = await queryFirst<{ first_name: string; last_name: string }>(
+        db, 'SELECT first_name, last_name FROM persons WHERE id = ?', body.subject_person_id);
+      if (person) subjectName = [person.first_name, person.last_name].filter(Boolean).join(' ');
+    }
+
+    const warrantNumber = `manual-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+    const result = await execute(
+      db,
+      `INSERT INTO warrants (
+         warrant_number, type, warrant_type, status,
+         subject_person_id, subject_name,
+         charge_description, offense, issuing_court, court, issuing_judge, judge,
+         bail_amount, bond_amount, offense_level, expires_at, expiry_date, notes,
+         statute_id, statute_citation, source, entered_by, created_by,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, 'active',
+         ?, ?,
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, 'manual', ?, ?,
+         datetime('now'), datetime('now'))`,
+      warrantNumber, body.type, body.type,
+      body.subject_person_id ?? null, subjectName,
+      body.charge_description, body.charge_description, body.issuing_court ?? null, body.issuing_court ?? null,
+      body.issuing_judge ?? null, body.issuing_judge ?? null,
+      body.bail_amount ?? null, body.bail_amount ?? null, body.offense_level ?? null,
+      body.expires_at ?? null, body.expires_at ?? null, body.notes ?? null,
+      body.statute_id ?? null, body.statute_citation ?? null,
+      user?.id ?? null, user?.id ?? null,
+    );
+
+    const created = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM warrants WHERE id = ?', result.meta.last_row_id);
+
+    // Auto-screen the warrant's subject against all 7 screening sources
+    // (Interpol, OFAC, Utah SOR, NSOPW, UDC, etc.) — fire-and-forget so a
+    // screening failure never blocks warrant creation.
+    if (body.subject_person_id) {
+      c.executionCtx.waitUntil(
+        screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_create' })
+          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+      );
+    }
+
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('[warrants] create error', err);
+    return c.json({ error: 'Failed to create warrant' }, 500);
+  }
+});
+
+// PUT /warrants/:id — partial update. Accepts any subset of
+// ALLOWED_WARRANT_COLUMNS (WarrantsPage's edit form sends the full set;
+// handleUpdateStatus sends just { status }).
+warrants.put('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number; subject_person_id: number | null }>(
+      db, 'SELECT id, subject_person_id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const col of ALLOWED_WARRANT_COLUMNS) {
+      if (col in body) {
+        sets.push(`${col} = ?`);
+        params.push(body[col]);
+      }
+    }
+    if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+    sets.push(`updated_at = datetime('now')`);
+    params.push(id);
+
+    await execute(db, `UPDATE warrants SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+
+    // Only re-screen when subject_person_id actually changed — an edit to
+    // status/bail/notes/etc. must not trigger a fresh 7-source scan.
+    if ('subject_person_id' in body && body.subject_person_id != null
+        && Number(body.subject_person_id) !== existing.subject_person_id) {
+      c.executionCtx.waitUntil(
+        screenPersonAllSources(c.env, Number(body.subject_person_id), { triggeredBy: 'warrant_update' })
+          .catch((err) => console.error('[warrants] screening trigger failed:', err)),
+      );
+    }
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] update error', err);
+    return c.json({ error: 'Failed to update warrant' }, 500);
+  }
+});
+
+// PUT /warrants/:id/serve — mark a warrant served.
+warrants.put('/:id/serve', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+
+    const body = await c.req.json<{ served_location?: string | null }>().catch(() => ({} as { served_location?: string | null }));
+    const user = c.get('user') as { id?: number } | undefined;
+
+    await execute(
+      db,
+      `UPDATE warrants SET status = 'served', served_at = datetime('now'), service_date = datetime('now'),
+         served_location = ?, served_by = ?, updated_at = datetime('now') WHERE id = ?`,
+      body.served_location ?? null, user?.id ?? null, id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] serve error', err);
+    return c.json({ error: 'Failed to mark warrant served' }, 500);
+  }
+});
+
+// POST /warrants/:id/archive
+warrants.post('/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[warrants] archive error', err);
+    return c.json({ error: 'Failed to archive warrant' }, 500);
+  }
+});
+
+// POST /warrants/:id/unarchive
+warrants.post('/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, `UPDATE warrants SET archived_at = NULL, updated_at = datetime('now') WHERE id = ?`, id);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM warrants WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] unarchive error', err);
+    return c.json({ error: 'Failed to unarchive warrant' }, 500);
+  }
+});
+
+// DELETE /warrants/:id
+warrants.delete('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid warrant id' }, 400);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found' }, 404);
+    await execute(db, 'DELETE FROM warrants WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[warrants] delete error', err);
+    return c.json({ error: 'Failed to delete warrant' }, 500);
+  }
+});
+
+// PUT /warrants/batch-update { ids: number[], status: string }
+// WarrantsPage's batch status toolbar — the route never existed, so
+// "Apply" always silently no-op'd (the button just showed a generic error).
+warrants.put('/batch-update', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ ids?: number[]; status?: string }>();
+    const ids = Array.isArray(body.ids) ? body.ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    const status = (body.status || '').trim();
+    if (!ids.length || !status) return c.json({ error: 'ids and status required' }, 400);
+    // D1 caps bound parameters at ~100/query — chunk so a selection over the
+    // cap doesn't blow up the prepared statement and 500 the whole batch.
+    let updated = 0;
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        status, ...chunk,
+      );
+      updated += chunk.length;
+    }
+    return c.json({ success: true, updated });
+  } catch (err) {
+    console.error('[warrants] batch-update error', err);
+    return c.json({ error: 'Batch update failed' }, 500);
+  }
+});
+
+// POST /warrants/bulk-archive { warrant_ids: number[] }
+// Same "never existed" gap as batch-update — reuses the archived_at column
+// the single-warrant /:id/archive route already writes.
+warrants.post('/bulk-archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrant_ids?: number[] }>();
+    const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
+    const rows: { id: number; archived_at: string | null }[] = [];
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      rows.push(...await query<{ id: number; archived_at: string | null }>(
+        db, `SELECT id, archived_at FROM warrants WHERE id IN (${placeholders})`, ...chunk,
+      ));
+    }
+    const toArchive = rows.filter((r) => !r.archived_at).map((r) => r.id);
+    const skipped = rows.length - toArchive.length;
+    for (const chunk of chunkIds(toArchive)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        ...chunk,
+      );
+    }
+    return c.json({ archived: toArchive.length, skipped });
+  } catch (err) {
+    console.error('[warrants] bulk-archive error', err);
+    return c.json({ error: 'Bulk archive failed' }, 500);
+  }
+});
+
+// POST /warrants/bulk-review { warrant_ids: number[] }
+// Stamps reviewed_at/reviewed_by (migration 0186) — same "never existed" gap.
+warrants.post('/bulk-review', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrant_ids?: number[] }>();
+    const ids = Array.isArray(body.warrant_ids) ? body.warrant_ids.map((n) => parseInt(String(n), 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return c.json({ error: 'warrant_ids required' }, 400);
+    const user = c.get('user') as { id: number } | undefined;
+    for (const chunk of chunkIds(ids)) {
+      const placeholders = chunk.map(() => '?').join(',');
+      await execute(
+        db,
+        `UPDATE warrants SET reviewed_at = datetime('now'), reviewed_by = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        user?.id ?? null, ...chunk,
+      );
+    }
+    return c.json({ reviewed: ids.length });
+  } catch (err) {
+    console.error('[warrants] bulk-review error', err);
+    return c.json({ error: 'Bulk review failed' }, 500);
+  }
+});
+
+// POST /warrants/ingest-utah { warrants: [{ utah_warrant_id, charges, court_name,
+//   first_name, last_name, bail_amount, offense_level, case_id, issue_date }] }
+// "Add to Local Records" from the Utah-source hit detail drawer — promotes a
+// hit the operator is looking at into the canonical warrants records table.
+// Idempotent on warrant_number so re-clicking doesn't create duplicates.
+warrants.post('/ingest-utah', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ warrants?: any[] }>();
+    const rows = Array.isArray(body.warrants) ? body.warrants : [];
+    if (!rows.length) return c.json({ error: 'warrants required' }, 400);
+    let inserted = 0;
+    for (const w of rows) {
+      const warrantNumber = w.utah_warrant_id || w.case_id || null;
+      const subjectName = [w.first_name, w.last_name].filter(Boolean).join(' ').trim() || null;
+      // SQLite's UNIQUE constraint permits multiple NULLs, so a warrant_number
+      // lookup alone would let every re-click of a row with no identifier
+      // insert a fresh duplicate. Fall back to subject_name + issue_date.
+      const existing = warrantNumber
+        ? await queryFirst<{ id: number }>(db, 'SELECT id FROM warrants WHERE warrant_number = ?', warrantNumber)
+        : subjectName
+        ? await queryFirst<{ id: number }>(
+            db, 'SELECT id FROM warrants WHERE warrant_number IS NULL AND subject_name = ? AND issued_date IS ?',
+            subjectName, w.issue_date ?? null,
+          )
+        : null;
+      if (existing) continue; // already ingested — idempotent no-op
+      await execute(
+        db,
+        `INSERT INTO warrants (warrant_number, type, status, subject_name, offense, court, bond_amount, issued_date)
+         VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?)`,
+        warrantNumber, subjectName,
+        Array.isArray(w.charges) ? w.charges.filter(Boolean).join('; ') : (w.charges || null),
+        w.court_name ?? null, w.bail_amount ?? null, w.issue_date ?? null,
+      );
+      inserted++;
+    }
+    return c.json({ success: true, inserted, skipped: rows.length - inserted });
+  } catch (err) {
+    console.error('[warrants] ingest-utah error', err);
+    return c.json({ error: 'Failed to ingest warrant' }, 500);
+  }
+});
+
+// POST /warrants/check/:personId — "Run Check Now" in the person drawer.
+// On-demand single-person Utah warrant check (see
+// runUtahWarrantCheckForPerson's doc comment for why this can't just call
+// the population-wide runUtahWarrantScan with a filter).
+warrants.post('/check/:personId', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const personId = parseInt(c.req.param('personId'), 10);
+    if (!Number.isFinite(personId) || personId <= 0) return c.json({ error: 'Invalid person id' }, 400);
+    const result = await runUtahWarrantCheckForPerson(db, personId);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[warrants] check person error', err);
+    return c.json({ error: 'Warrant check failed' }, 500);
+  }
+});
+
+// GET /warrants/summary-report?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Feeds WarrantSummaryData for the client-side PDF generator
+// (generateWarrantSummaryPdf) — this route only aggregates; the PDF itself
+// is built in the browser. bySeverity/bySource are scoped to what the local
+// `warrants` records table actually carries (no severity column exists on
+// it, and only ingested/local records count toward source counts — hits
+// still living only in utah_warrants/scraped_warrants aren't "local" yet).
+warrants.get('/summary-report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const from = c.req.query('from') || null;
+    const to = c.req.query('to') || null;
+    const dateCol = 'issued_date';
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (from) { where.push(`${dateCol} >= ?`); params.push(from); }
+    if (to) { where.push(`${dateCol} <= ?`); params.push(to); }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const topCourtsWhere = where.length
+      ? `WHERE ${where.join(' AND ')} AND court IS NOT NULL`
+      : 'WHERE court IS NOT NULL';
+
+    const [byStatusRows, byTypeRows, topCourtsRows, newCountRow, clearedCountRow, latestRun] = await Promise.all([
+      query<{ status: string; n: number }>(db, `SELECT status, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY status`, ...params),
+      query<{ type: string; n: number }>(db, `SELECT type, COUNT(*) AS n FROM warrants ${whereClause} GROUP BY type`, ...params),
+      query<{ issuing_court: string; count: number }>(
+        db,
+        `SELECT court AS issuing_court, COUNT(*) AS count FROM warrants ${topCourtsWhere} GROUP BY court ORDER BY count DESC LIMIT 10`,
+        ...params,
+      ).catch(() => []),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants ${whereClause}`, ...params),
+      queryFirst<{ n: number }>(
+        db,
+        `SELECT COUNT(*) AS n FROM warrants WHERE archived_at IS NOT NULL ${from ? 'AND archived_at >= ?' : ''} ${to ? 'AND archived_at <= ?' : ''}`,
+        ...(from ? [from] : []), ...(to ? [to] : []),
+      ),
+      query<{ persons_checked: number; new_warrants_found: number; warrants_cleared: number }>(
+        db,
+        `SELECT persons_checked, new_warrants_found, warrants_cleared FROM warrant_watch_runs
+          WHERE started_at >= COALESCE(?, '0000-01-01') AND started_at <= COALESCE(?, '9999-12-31')`,
+        from, to,
+      ).catch(() => []),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const r of byStatusRows) byStatus[r.status] = r.n;
+    const byType: Record<string, number> = {};
+    for (const r of byTypeRows) byType[r.type] = r.n;
+    const scanActivity = latestRun.reduce(
+      (acc, r) => ({
+        totalScans: acc.totalScans + 1,
+        totalFound: acc.totalFound + (r.new_warrants_found ?? 0),
+        totalCleared: acc.totalCleared + (r.warrants_cleared ?? 0),
+      }),
+      { totalScans: 0, totalFound: 0, totalCleared: 0 },
+    );
+
+    return c.json({
+      period: { from, to },
+      byStatus,
+      byType,
+      bySeverity: {},
+      bySource: { local: newCountRow?.n ?? 0 },
+      topCourts: topCourtsRows,
+      newThisPeriod: newCountRow?.n ?? null,
+      clearedThisPeriod: clearedCountRow?.n ?? null,
+      scanActivity,
+    });
+  } catch (err) {
+    console.error('[warrants] summary-report error', err);
+    return c.json({ error: 'Failed to build summary report' }, 500);
   }
 });
 

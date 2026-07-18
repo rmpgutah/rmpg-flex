@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface StaggerWrapperProps {
   children: React.ReactNode;
@@ -20,10 +20,31 @@ export default function StaggerWrapper({
   index = 0,
   type = 'fade',
 }: StaggerWrapperProps) {
-  const animClass = CLASS_MAP[type];
-  const delayIndex = Math.min(Math.max(index, 0), 19);
+  // The stagger-* keyframes use `animation-fill-mode: forwards` on
+  // `transform` to hold their final frame. Per spec, an element that is the
+  // target of a transform animation is a containing block for
+  // position:fixed descendants for as long as the animation stays
+  // associated with it — regardless of the resolved value — and
+  // `forwards` never lets that association expire. Since this wrapper can
+  // hold arbitrary children (tooltips, "..." menus, modals rendered as
+  // fixed-position descendants), that would permanently trap any such
+  // fixed child inside the card instead of the viewport. Dropping the
+  // animation class once it finishes ends the association immediately
+  // without affecting the visible transition.
+  const [animating, setAnimating] = useState(true);
+  const animClass = animating ? CLASS_MAP[type] : '';
+  const delayClass = animating ? `delay-${Math.min(Math.max(index, 0), 19)}` : '';
   return (
-    <div className={`${animClass} delay-${delayIndex} ${className}`}>
+    <div
+      className={`${animClass} ${delayClass} ${className}`}
+      onAnimationEnd={(e) => {
+        // animationend bubbles — without this guard, a descendant's own
+        // animation (dropdown-appear, spinners, hover transitions) would
+        // fire this handler and strip the wrapper's animation class
+        // mid-entrance, causing a visible jump.
+        if (e.target === e.currentTarget) setAnimating(false);
+      }}
+    >
       {children}
     </div>
   );

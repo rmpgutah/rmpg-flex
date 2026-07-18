@@ -21,7 +21,8 @@ async function ensureSchema(db: ReturnType<typeof getDb>): Promise<void> {
     kinds TEXT, region_count INTEGER NOT NULL DEFAULT 0, style TEXT, regions_json TEXT,
     redacted_by INTEGER, status TEXT NOT NULL DEFAULT 'completed', requested_at TEXT,
     completed_at TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
-  for (const [name, type] of EXTRA_COLUMNS) {
+  const columnsWithBodycam: Array<[string, string]> = [...EXTRA_COLUMNS, ['source_bodycam_video_id', 'INTEGER']];
+  for (const [name, type] of columnsWithBodycam) {
     if (!(await columnExists(db, 'video_redactions', name))) {
       try { await execute(db, `ALTER TABLE video_redactions ADD COLUMN ${name} ${type}`); }
       catch { /* race / already present */ }
@@ -63,15 +64,28 @@ redactions.post('/', async (c): Promise<Response> => {
   const kinds: string = Array.isArray(meta.kinds) ? meta.kinds.join(',') : (typeof meta.kinds === 'string' ? meta.kinds : '');
   let res: Awaited<ReturnType<typeof execute>>;
   try {
+    const sourceBodycamVideoId = Number(meta.source_bodycam_video_id) || null;
     res = await execute(db,
       `INSERT INTO video_redactions
-         (source_event_id, r2_key, kinds, region_count, style, regions_json, redacted_by,
+         (source_event_id, source_bodycam_video_id, r2_key, kinds, region_count, style, regions_json, redacted_by,
           status, requested_at, completed_at, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), ?)`,
-      Number(meta.event_id) || null, r2Key, kinds, Number(meta.region_count) || 0,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), ?)`,
+      Number(meta.event_id) || null, sourceBodycamVideoId, r2Key, kinds, Number(meta.region_count) || 0,
       typeof meta.style === 'string' ? meta.style : null,
       typeof meta.regions_json === 'string' ? meta.regions_json : (meta.regions ? JSON.stringify(meta.regions) : null),
       userId, meta.requested_at ?? null, typeof meta.notes === 'string' ? meta.notes : null);
+
+    // Mirror onto bodycam_videos.redacted_path when this redaction is for a
+    // body-cam video. Best-effort: the custody row above is the source of
+    // truth and must not be rolled back if this update fails (matches the
+    // existing "custody record must not silently disappear" behavior).
+    if (sourceBodycamVideoId) {
+      try {
+        await execute(db, "UPDATE bodycam_videos SET redacted_path = ?, updated_at = datetime('now') WHERE id = ?", r2Key, sourceBodycamVideoId);
+      } catch (e) {
+        console.warn('bodycam_videos.redacted_path update failed (non-fatal, custody row already committed):', e);
+      }
+    }
   } catch (err: any) {
     // Custody row failed — don't leave the MP4 orphaned in R2 with no record.
     try { await c.env.UPLOADS.delete(r2Key); } catch { /* best-effort */ }
@@ -87,9 +101,13 @@ redactions.get('/', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureSchema(db);
   const eventId = c.req.query('event_id');
+  const bodycamVideoId = c.req.query('bodycam_video_id');
+  const cols = 'id, source_event_id, source_bodycam_video_id, r2_key, kinds, region_count, style, redacted_by, status, created_at';
   const rows = eventId
-    ? await query<any>(db, `SELECT id, source_event_id, r2_key, kinds, region_count, style, redacted_by, status, created_at FROM video_redactions WHERE source_event_id = ? ORDER BY id DESC LIMIT 100`, Number(eventId))
-    : await query<any>(db, `SELECT id, source_event_id, r2_key, kinds, region_count, style, redacted_by, status, created_at FROM video_redactions ORDER BY id DESC LIMIT 100`);
+    ? await query<any>(db, `SELECT ${cols} FROM video_redactions WHERE source_event_id = ? ORDER BY id DESC LIMIT 100`, Number(eventId))
+    : bodycamVideoId
+    ? await query<any>(db, `SELECT ${cols} FROM video_redactions WHERE source_bodycam_video_id = ? ORDER BY id DESC LIMIT 100`, Number(bodycamVideoId))
+    : await query<any>(db, `SELECT ${cols} FROM video_redactions ORDER BY id DESC LIMIT 100`);
   return c.json({ redactions: rows });
 });
 

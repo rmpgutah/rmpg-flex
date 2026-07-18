@@ -7,6 +7,8 @@ import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle, FleetMaintenance, FleetVehicleStatus } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green',
@@ -86,8 +88,50 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
     apiFetch<any>(`/fleet/${detail.id}/mileage-history`).then((d: any) => Array.isArray(d) && setMileageHistory(d)).catch(() => {});
   }, [detail?.id]);
 
+  const [vehicleConflicts, setVehicleConflicts] = useState<ConflictBadgeConflict[]>([]);
+  useEffect(() => {
+    if (!detail?.id) return;
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=fleet_vehicles&ids=${detail.id}`)
+      .then((r) => setVehicleConflicts((r?.conflicts ?? []).map((c) => ({
+        id: c.id as number,
+        field: c.field as string,
+        local_value: c.local_value as string | null | undefined,
+        remote_value: c.remote_value as string | null | undefined,
+        resolution: c.resolution as string | null | undefined,
+      }))))
+      .catch(() => {});
+  }, [detail?.id]);
+
+  const [maintenanceConflicts, setMaintenanceConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  useEffect(() => {
+    const ids = maintenance.map((m) => m.id);
+    if (!ids.length) return;
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=fleet_maintenance&ids=${ids.join(',')}`)
+      .then((r) => {
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r?.conflicts ?? []) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+          });
+        }
+        setMaintenanceConflicts(map);
+      })
+      .catch(() => {});
+  }, [maintenance]);
+
   return (
     <div className="p-4 space-y-3">
+      {vehicleConflicts.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {vehicleConflicts.map((c) => <FleetioConflictBadge key={c.id} conflict={c} compact />)}
+        </div>
+      )}
       {/* Vehicle Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
@@ -466,6 +510,9 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                           {m.cost != null && (
                             <span className="text-[10px] text-green-400 font-mono font-bold">${m.cost.toFixed(2)}</span>
                           )}
+                          {maintenanceConflicts.get(Number(m.id))?.map((c) => (
+                            <FleetioConflictBadge key={c.id} conflict={c} compact />
+                          ))}
                           {/* Admin Edit / Delete */}
                           {(onEditMaintenance || onDeleteMaintenance) && (
                             <div className="flex items-center gap-1 ml-1">

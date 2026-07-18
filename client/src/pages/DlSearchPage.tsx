@@ -620,11 +620,12 @@ export default function DlSearchPage() {
       );
       let rows = Array.isArray(data?.data) ? data.data : [];
       // Client-side refine across the supplied fields.
-      const f = firstName.trim().toLowerCase(), l = lastName.trim().toLowerCase(), st = state;
+      const f = firstName.trim().toLowerCase(), l = lastName.trim().toLowerCase(), st = state, d = dob.trim();
       rows = rows.filter(r =>
         (!f || (r.first_name || '').toLowerCase().includes(f)) &&
         (!l || (r.last_name || '').toLowerCase().includes(l)) &&
-        (!st || r.dl_state === st));
+        (!st || r.dl_state === st) &&
+        (!d || String(r.date_of_birth || '').slice(0, 10) === d));
       setResults(rows);
       setSource('LOCAL');
       if (rows.length === 0 && fromDeepLinkRef.current) {
@@ -935,7 +936,7 @@ export default function DlSearchPage() {
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input id="ff-dlsearchpage-2" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
         onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <select id="ff-dlsearchpage-3" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+      <select id="ff-dlsearchpage-3" className="select-dark text-[10px] w-20 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
@@ -1041,7 +1042,7 @@ export default function DlSearchPage() {
           <div className="flex items-center gap-1.5">
             <input id="ff-dlsearchpage-8" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
               onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <select id="ff-dlsearchpage-9" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+            <select id="ff-dlsearchpage-9" className="select-dark text-[10px] w-20 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>

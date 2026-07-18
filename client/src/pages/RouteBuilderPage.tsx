@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Route, MapPin, Navigation, Clock, ChevronUp, ChevronDown,
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
@@ -27,6 +27,7 @@ import {
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useNavTrip } from '../context/NavTripContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
 import { getDirections } from '../utils/mapboxServices';
@@ -120,6 +121,7 @@ export default function RouteBuilderPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedRouteId, setSavedRouteId] = useState<number | null>(null);
+  const [startingRoute, setStartingRoute] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [useMapboxDirections, setUseMapboxDirections] = useState(true);
@@ -136,6 +138,8 @@ export default function RouteBuilderPage() {
   const renderRouteRef = useRef<((origin: { lat: number; lng: number }, stops: RouteWaypoint[]) => void) | undefined>(undefined);
 
   const { subscribe } = useWebSocket();
+  const navigate = useNavigate();
+  const navTrip = useNavTrip();
 
   // ─── Load Units ─────────────────────────────────────────
 
@@ -481,6 +485,30 @@ export default function RouteBuilderPage() {
     }
   }, [selectedUnitId, waypoints, origin, totalDistance, estimatedMinutes]);
 
+  // ─── Start Route (live multi-stop nav HUD) ──────────────
+  // Saves first if the current stop list hasn't been persisted yet — the
+  // guidance engine's loadUnitRoute reads the ACTIVE saved row from
+  // /api/dispatch/routing/unit/:unitId, so an unsaved edit here would be
+  // invisible to it.
+
+  const startRoute = useCallback(async () => {
+    if (!selectedUnitId || waypoints.length === 0 || !navTrip) return;
+
+    setStartingRoute(true);
+    setError(null);
+    try {
+      if (!savedRouteId) {
+        await saveRoute();
+      }
+      await navTrip.loadUnitRoute(selectedUnitId);
+      navigate('/navigation');
+    } catch (err: any) {
+      setError(err.message || 'Failed to start route');
+    } finally {
+      setStartingRoute(false);
+    }
+  }, [selectedUnitId, waypoints, navTrip, savedRouteId, saveRoute, navigate]);
+
   // ─── Load Saved Route ───────────────────────────────────
 
   useEffect(() => {
@@ -618,6 +646,22 @@ export default function RouteBuilderPage() {
               <Trash2 className="w-3.5 h-3.5" />
             </IconButton>
           </div>
+
+          {waypoints.length > 0 && (
+            <button
+              onClick={startRoute}
+              disabled={startingRoute || !navTrip}
+              title={!navTrip ? 'Navigation is unavailable on this page' : undefined}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-brand-500 text-surface-deep text-xs font-semibold rounded-[2px] hover:bg-brand-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {startingRoute ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Navigation className="w-3.5 h-3.5" />
+              )}
+              {startingRoute ? 'Starting…' : 'Start Route'}
+            </button>
+          )}
 
           {savedRouteId && (
             <div className="text-[10px] text-green-500 font-mono flex items-center gap-1">

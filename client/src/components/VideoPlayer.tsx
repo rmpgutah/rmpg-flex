@@ -8,18 +8,20 @@
 // ============================================================
 
 import { useRef, useState, useEffect } from 'react';
-import { X, Video, Shield, Maximize2, Minimize2, Edit2, Printer } from 'lucide-react';
+import { X, Video, Shield, Maximize2, Minimize2, Edit2, Printer, ScanSearch, AlertTriangle, Loader2 } from 'lucide-react';
 import type { BodyCamVideo } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
 // Note: VideoHudOverlay was imported but never referenced — the HUD is
 // rendered inline below. Removed during the page-25 audit pass.
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiPostForm } from '../hooks/useApi';
 import {
   openBodycamVideoCustodyPdf,
   type BodycamCustodyEntry,
 } from '../utils/bodycamVideoCustodyPdf';
+import { sampleFramesForAnalysis } from '../utils/videoAiAnalyze';
+import type { AnalysisResult } from '../utils/videoAiAnalyze';
 
 interface Props {
   isOpen: boolean;
@@ -41,6 +43,34 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
+
+  // AI object-detection ("Analyze") — samples frames from the already-loaded
+  // <video> element and posts them to the Worker for weapon/force/vehicle/
+  // scene detection. `localAnalysis` (this session's freshly-run result)
+  // takes priority over `video.ai_analysis_json` (a prior run persisted on
+  // the row), so re-running Analyze always reflects the latest pass.
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [localAnalysis, setLocalAnalysis] = useState<AnalysisResult | null>(null);
+  // Synchronous re-entrancy guard for handleAnalyze — `analyzing` state is
+  // only visible after React commits, so two rapid clicks before that commit
+  // can both pass an `if (analyzing) return` check. A ref is readable/settable
+  // synchronously within the same event-handler invocation, closing that race.
+  const analyzingRef = useRef(false);
+
+  // Reset all per-video AI-analysis state whenever the displayed video
+  // changes. VideoPlayer is a single reused instance (BodyCamerasPage renders
+  // it with no `key`), so without this reset a prior video's findings
+  // (weapon-detection banner, seek buttons, etc.) would stay visible against
+  // a newly opened, unrelated video — a misattribution risk for evidence.
+  useEffect(() => {
+    setLocalAnalysis(null);
+    setAnalyzeError(null);
+    setAnalyzing(false);
+    setAnalyzeProgress(null);
+    analyzingRef.current = false;
+  }, [video?.id]);
 
   // Fire a chain-of-custody "viewed" event on open so the audit_log
   // captures WHO opened the player and WHEN, even when no metadata
@@ -108,10 +138,15 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  // KB = bytes/1024 (binary), then MB/GB step decimally (/1000) — matches
+  // BodyCameraTab.tsx's formatFileSize (kept in sync 2026-07-14 audit).
   const formatSize = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    const kb = bytes / 1024;
+    if (kb < 1000) return `${kb.toFixed(0)} KB`;
+    const mb = kb / 1000;
+    if (mb < 1000) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1000;
+    return `${gb.toFixed(2)} GB`;
   };
 
   const formatDate = (d?: string) => {
@@ -120,6 +155,22 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   };
 
   const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
+
+  // Prefer this-session's freshly-run analysis over whatever was already
+  // persisted on the row.
+  const analysis: AnalysisResult | null = localAnalysis ?? (video.ai_analysis_json ? (() => {
+    try { return JSON.parse(video.ai_analysis_json); } catch { return null; }
+  })() : null);
+
+  const seekToTime = (t: number) => {
+    if (videoRef.current) videoRef.current.currentTime = t;
+  };
+
+  const formatMmSs = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
 
   // Empty until signing resolves — the <video> element gets no src rather
   // than a JWT-bearing URL it would immediately fetch.
@@ -145,6 +196,60 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       openBodycamVideoCustodyPdf({ video, custody, preparedBy });
     } finally {
       setPrinting(false);
+    }
+  };
+
+  // Sample frames off the live <video> element and post them for AI object
+  // detection (weapons/force indicators/vehicles/scenes/officer-safety
+  // flags). Advisory only — a review aid, not a determination.
+  const handleAnalyze = async () => {
+    const vid = videoRef.current;
+    if (!vid || !video || analyzing || analyzingRef.current) return;
+    analyzingRef.current = true;
+    // Capture the video this request belongs to so a late-resolving result
+    // can be discarded if the user has since switched to a different video.
+    const requestedVideoId = video.id;
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    setAnalyzeProgress(null);
+    try {
+      const frames = await sampleFramesForAnalysis(vid, (done, total) => {
+        if (requestedVideoId !== video?.id) return;
+        setAnalyzeProgress({ done, total });
+      });
+      if (requestedVideoId !== video?.id) return; // user navigated away — discard silently
+      if (frames.length === 0) {
+        setAnalyzeError('No frames could be captured for analysis.');
+        return;
+      }
+      const formData = new FormData();
+      frames.forEach((f) => {
+        formData.append('frame', f.blob, `frame_${f.timestamp}.jpg`);
+      });
+      formData.append('timestamps', JSON.stringify(frames.map((f) => f.timestamp)));
+
+      // Server analyzes frames sequentially against Workers AI's vision model
+      // (up to ANALYSIS_MAX_FRAMES = 20, deliberately not parallelized — see
+      // src/routes/personnel/bodyCameraUploads.ts). 20 sequential vision calls
+      // can comfortably exceed the default 60s fetch timeout, so this request
+      // gets a generous 3-minute allowance instead.
+      const result = await apiPostForm<{ success: boolean; frames_analyzed: number; frames_requested: number; analysis: AnalysisResult }>(
+        `/personnel/bodycam-videos/${requestedVideoId}/analyze`,
+        formData,
+        { timeoutMs: 180_000 },
+      );
+      if (requestedVideoId !== video?.id) return; // stale result — video switched mid-request
+      setLocalAnalysis(result.analysis);
+    } catch (err: any) {
+      if (requestedVideoId !== video?.id) return; // stale error — don't surface against the new video
+      console.warn('[VideoPlayer] AI analysis failed:', err);
+      setAnalyzeError(err?.message || 'AI analysis failed.');
+    } finally {
+      if (requestedVideoId === video?.id) {
+        setAnalyzing(false);
+        setAnalyzeProgress(null);
+        analyzingRef.current = false;
+      }
     }
   };
 
@@ -213,6 +318,16 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              className="toolbar-btn p-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Run AI object detection on this footage (review aid, not a determination)"
+              aria-label="Analyze footage with AI object detection"
+            >
+              {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+            </button>
             <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
@@ -309,6 +424,106 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
           )}
         </div>
+
+        {video.transcript && (
+          <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
+            <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">Transcript</p>
+            <p className="text-[10px] text-rmpg-300 leading-relaxed max-h-24 overflow-y-auto scrollbar-dark">{video.transcript}</p>
+          </div>
+        )}
+
+        {/* AI Findings — advisory review aid, not a determination. */}
+        {(analyzing || analyzeError || analysis) && (
+          <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
+            {analyzing ? (
+              <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                {analyzeProgress ? `Analyzing — frame ${analyzeProgress.done} of ${analyzeProgress.total}` : 'Analyzing…'}
+              </p>
+            ) : (
+              <>
+                {analyzeError && (
+                  <p className="text-[9px] font-mono text-amber-400 flex items-center gap-1.5 mb-1">
+                    <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                    {analyzeError}
+                  </p>
+                )}
+                {analysis && (
+                  <>
+                    <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">
+                      AI Findings — {analysis.frame_count} frame(s) analyzed
+                    </p>
+                    {!analysis.weapon && !analysis.force_indicators && analysis.vehicles.length === 0 &&
+                      analysis.scene_types.length === 0 && analysis.officer_safety_flags.length === 0 ? (
+                      <p className="text-[10px] text-rmpg-500 italic">No findings.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {analysis.weapon && (
+                          <button
+                            type="button"
+                            onClick={() => seekToTime(analysis.weapon!.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Weapon detected — {Math.round(analysis.weapon.max_confidence * 100)}% confidence — review required
+                            <span className="text-rmpg-500">(jump to {formatMmSs(analysis.weapon.timestamps[0])})</span>
+                          </button>
+                        )}
+                        {analysis.force_indicators && (
+                          <button
+                            type="button"
+                            onClick={() => seekToTime(analysis.force_indicators!.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Force indicator detected — {Math.round(analysis.force_indicators.max_confidence * 100)}% confidence — review required
+                            <span className="text-rmpg-500">(jump to {formatMmSs(analysis.force_indicators.timestamps[0])})</span>
+                          </button>
+                        )}
+                        {analysis.officer_safety_flags.map((flag, i) => (
+                          <button
+                            key={`safety-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(flag.timestamp)}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Officer safety flag: {flag.flag} — review required
+                            <span className="text-rmpg-500">(jump to {formatMmSs(flag.timestamp)})</span>
+                          </button>
+                        ))}
+                        {analysis.vehicles.map((v, i) => (
+                          <button
+                            key={`vehicle-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(v.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                          >
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                            Vehicle: {v.description}
+                            <span className="text-rmpg-500">(jump to {formatMmSs(v.timestamps[0])})</span>
+                          </button>
+                        ))}
+                        {analysis.scene_types.map((s, i) => (
+                          <button
+                            key={`scene-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(s.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                          >
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                            Scene: {s.type}
+                            <span className="text-rmpg-500">(jump to {formatMmSs(s.timestamps[0])})</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
