@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDesktopWindows } from './DesktopWindowManager';
@@ -6,6 +6,7 @@ import { useClock } from '../../hooks/useClock';
 import { useAuth } from '../../context/AuthContext';
 import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../ToastProvider';
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
@@ -34,8 +35,16 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
   }, []);
 
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [onDuty, setOnDuty] = useState<boolean | null>(null);
   const [clockBusy, setClockBusy] = useState(false);
+  // Synchronous re-entrancy guard: `clockBusy` state drives the UI (disabling/
+  // labeling) but its update doesn't commit until the next render, so two
+  // click events dispatched before that render (e.g. a rapid double-click)
+  // can both observe a stale `clockBusy === false` closure. A ref mutates
+  // immediately, so the second invocation is rejected regardless of React's
+  // batching/timing.
+  const clockToggleInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,18 +55,30 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
   }, [launcherOpen]);
 
   const handleClockToggle = useCallback(async () => {
-    if (!user?.id || clockBusy) return;
+    if (!user?.id || clockBusy || clockToggleInFlightRef.current) return;
+    clockToggleInFlightRef.current = true;
     setClockBusy(true);
+    const wasOnDuty = onDuty;
     try {
-      await apiFetch(onDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
+      await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
         method: 'POST',
         body: JSON.stringify({ officer_id: user.id }),
       });
       setOnDuty(v => !v);
-    } catch { /* toast handled by apiFetch's shared error interceptor */ }
-    setClockBusy(false);
-    setLauncherOpen(false);
-  }, [onDuty, clockBusy, user]);
+    } catch (err: any) {
+      // apiFetch has no toast interceptor of its own — on failure it only plays
+      // a best-effort audio chime (nackForApiFailure in actionChimes.ts), so
+      // without this the operator gets zero visible feedback on a real failure
+      // (e.g. the 409 "Already clocked in" from src/routes/personnel.ts, or a
+      // network error). Surface it the same way PersonnelPage.tsx's
+      // handleClockIn/handleClockOut do.
+      addToast(err?.message || (wasOnDuty ? 'Failed to clock out' : 'Failed to clock in'), 'error');
+    } finally {
+      clockToggleInFlightRef.current = false;
+      setClockBusy(false);
+      setLauncherOpen(false);
+    }
+  }, [onDuty, clockBusy, user, addToast]);
 
   const quickActions = useMemo(() => ([
     { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },

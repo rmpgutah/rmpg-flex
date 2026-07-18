@@ -10,6 +10,12 @@ vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetc
 vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
+// DesktopTaskbar also calls useToast() to surface clock in/out failures;
+// without a real ToastProvider in the tree it throws "useToast must be used
+// within a ToastProvider". Mock it the same way useAuth is mocked above.
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
 
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import DesktopTaskbar from './DesktopTaskbar';

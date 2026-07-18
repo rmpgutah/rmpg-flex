@@ -28,6 +28,14 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
 
+// DesktopTaskbar (rendered by DesktopPage) calls useToast() to surface
+// clock in/out failures; without a real ToastProvider in the tree it throws
+// "useToast must be used within a ToastProvider". Mock it the same way
+// useAuth is mocked above.
+vi.mock('../components/ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
+
 import { saveFavorites } from '../utils/navFavorites';
 import DesktopPage from './DesktopPage';
 
