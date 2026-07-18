@@ -17,8 +17,10 @@ public struct QuickAction: Identifiable, Equatable, Sendable {
     }
 }
 
-/// The 8 actions that match the desktop web app's top action bar. Order is
-/// load-bearing — officers learn position-by-position muscle memory.
+/// The first 8 actions match the desktop web app's top action bar — order is
+/// load-bearing there, officers learn position-by-position muscle memory.
+/// `secure_evidence` (tamper-evident chain-of-custody capture) is iOS-only
+/// today and appended at the end so it doesn't disturb that muscle memory.
 public enum QuickActionsRegistry {
     public static let all: [QuickAction] = [
         QuickAction(id: "new_call",        title: "New Call",       systemImage: "phone.badge.plus",        milestone: "M1"),
@@ -29,5 +31,6 @@ public enum QuickActionsRegistry {
         QuickAction(id: "quick_capture",   title: "Quick Capture",  systemImage: "camera.fill",             milestone: "M1"),
         QuickAction(id: "field_camera",    title: "Field Camera",   systemImage: "camera.aperture",         milestone: "M1"),
         QuickAction(id: "tasks",           title: "Tasks",          systemImage: "checklist",               milestone: "M1"),
+        QuickAction(id: "secure_evidence", title: "Secure Evidence", systemImage: "checkmark.shield.fill",  milestone: "M1"),
     ]
 }

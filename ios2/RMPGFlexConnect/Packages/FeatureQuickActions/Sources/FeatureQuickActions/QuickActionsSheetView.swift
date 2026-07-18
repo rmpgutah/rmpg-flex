@@ -1,9 +1,11 @@
 import SwiftUI
 import CoreAPI
+import CoreAuth
 import DesignSystem
 import FeatureDuty
 import FeatureCFS
 import FeatureReports
+import FeatureEvidence
 
 @MainActor
 public struct QuickActionsSheetView: View {
@@ -17,6 +19,7 @@ public struct QuickActionsSheetView: View {
     @State private var showCitation = false
     @State private var showInspection = false
     @State private var showFieldCamera = false
+    @State private var showSecureEvidence = false
 
     public init(apiClient: APIClient, dutyState: DutyState) {
         self.apiClient = apiClient
@@ -55,6 +58,9 @@ public struct QuickActionsSheetView: View {
         .sheet(isPresented: $showCitation) {
             CitationView()
         }
+        .sheet(isPresented: $showSecureEvidence) {
+            EvidenceCameraView(apiClient: apiClient, authSession: AuthSession())
+        }
     }
 
     private func handleAction(_ action: QuickAction) {
@@ -64,6 +70,7 @@ public struct QuickActionsSheetView: View {
         case "new_incident": showNewCall = true
         case "new_citation": showCitation = true
         case "quick_capture", "field_camera": showFieldCamera = true
+        case "secure_evidence": showSecureEvidence = true
         case "process_server", "tasks": break
         default: break
         }
