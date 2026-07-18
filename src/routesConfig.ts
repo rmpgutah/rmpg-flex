@@ -128,6 +128,7 @@ import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import legalDataHunter from './routes/legalDataHunter';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
@@ -436,6 +437,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
+  { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
+    note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
