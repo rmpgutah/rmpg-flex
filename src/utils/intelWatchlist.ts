@@ -114,7 +114,7 @@ async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number>
       `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
        VALUES ('warrant_watch_hit', 'high', ?, ?, 'warrant', ?, ?, 0, datetime('now'))`,
       `WARRANT ${label} STATUS CHANGED`,
-      `Warrant ${label} status changed: ${w.last_known_status} → ${warrant.status}${w.reason ? ` (watch reason: ${w.reason})` : ''}`,
+      `Warrant #${label} status changed: ${w.last_known_status} → ${warrant.status}${w.reason ? ` (watch reason: ${w.reason})` : ''}`,
       w.entity_id, w.added_by);
     alerts++;
   }
@@ -133,7 +133,7 @@ async function processWarrantWatch(db: D1Database, w: WatchRow): Promise<number>
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
            VALUES ('warrant_watch_hit', 'high', ?, ?, 'warrant', ?, ?, 0, datetime('now'))`,
           `WARRANT ${label} EXPIRING SOON`,
-          `Warrant ${label} expires in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`,
+          `Warrant #${label} expires in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`,
           w.entity_id, w.added_by);
         await execute(db, `UPDATE intel_watchlist SET expiry_alerted_at = datetime('now') WHERE id = ?`, w.id);
         alerts++;
