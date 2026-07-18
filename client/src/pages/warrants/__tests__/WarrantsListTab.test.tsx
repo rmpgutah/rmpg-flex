@@ -2,7 +2,7 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import WarrantsListTab from '../WarrantsListTab';
 import * as useApiModule from '../../../hooks/useApi';
 import type { User } from '../../../types';
@@ -62,6 +62,23 @@ function renderTab(props: Partial<typeof baseProps> = {}) {
   return render(
     <MemoryRouter>
       <WarrantsListTab {...baseProps} {...props} />
+    </MemoryRouter>,
+  );
+}
+
+// Exposes the router's current ?search string so URL-sync behavior (chips
+// persisting their state to the URL, or hydrating from it) can be asserted
+// without reaching into MemoryRouter internals.
+function LocationSearchProbe() {
+  const location = useLocation();
+  return <div data-testid="location-search">{location.search}</div>;
+}
+
+function renderTabWithLocationProbe(props: Partial<typeof baseProps> = {}, initialEntries: string[] = ['/warrants']) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <WarrantsListTab {...baseProps} {...props} />
+      <LocationSearchProbe />
     </MemoryRouter>,
   );
 }
@@ -131,6 +148,25 @@ describe('WarrantsListTab', () => {
       const calls = (useApiModule.apiFetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
       const lastCall = calls[calls.length - 1]?.[0];
       expect(String(lastCall)).not.toContain('watched_only');
+    });
+  });
+
+  it('syncs the "My Watched Warrants" chip with the URL like its sibling filters', async () => {
+    renderTabWithLocationProbe();
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalled());
+    const chip = screen.getByRole('button', { name: /my watched warrants/i });
+    await userEvent.click(chip);
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search').textContent).toContain('watched_only=1');
+    });
+  });
+
+  it('pre-checks "My Watched Warrants" on mount when the URL already has watched_only=1', async () => {
+    renderTabWithLocationProbe({}, ['/warrants?watched_only=1']);
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalled());
+    const chip = await screen.findByRole('button', { name: /my watched warrants/i });
+    await waitFor(() => {
+      expect(chip.className).toContain('bg-[var(--brand-gold)]');
     });
   });
 });

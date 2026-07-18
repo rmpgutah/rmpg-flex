@@ -491,6 +491,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
     setFilterStateChip(searchParams.get('state') || '');
     setFilterFederal(searchParams.get('state_prefix') === 'fed_');
     setFilterArchivedChip(searchParams.get('include_archived') === '1');
+    setFilterWatchedOnly(searchParams.get('watched_only') === '1');
     // Also hydrate the ?status= deep-link into the dropdown filter so that
     // /warrants?status=active lands with the Active filter pre-selected.
     const statusParam = searchParams.get('status');
@@ -514,9 +515,10 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
       if (filterStateChip) next.set('state', filterStateChip); else next.delete('state');
       if (filterFederal) next.set('state_prefix', 'fed_'); else next.delete('state_prefix');
       if (filterArchivedChip) next.set('include_archived', '1'); else next.delete('include_archived');
+      if (filterWatchedOnly) next.set('watched_only', '1'); else next.delete('watched_only');
       return next;
     }, { replace: true });
-  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, setSearchParams]);
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, filterWatchedOnly, setSearchParams]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
