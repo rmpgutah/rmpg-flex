@@ -22,6 +22,11 @@ export type Bindings = {
   // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
   // a stable seed from JWT_SECRET so signing still works (see pdfTools.ts).
   PDF_SIGNING_KEY?: string;
+  // Master Key-Encryption-Key for envelope-encrypted R2 storage (src/utils/encryptedR2.ts).
+  // Wraps a fresh random per-file Data Encryption Key for each protected upload. Base64 of
+  // 32 random bytes — provision via:
+  //   node scripts/generate-quantum-key.mjs 32 | wrangler secret put FILE_ENCRYPTION_KEK
+  FILE_ENCRYPTION_KEK?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
