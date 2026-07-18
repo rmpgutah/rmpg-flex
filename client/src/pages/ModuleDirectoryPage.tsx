@@ -23,8 +23,7 @@ export default function ModuleDirectoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const [recent, setRecent] = useState<string[]>(loadRecent);
-  const [badges, setBadges] = useState<Record<string, number>>({});
-  const [badgesLoading, setBadgesLoading] = useState(true);
+  const { badges, isLoading: badgesLoading } = useNavBadges();
 
   const showFavorites = favorites.size > 0 && !searchQuery.trim();
 
@@ -172,41 +171,6 @@ export default function ModuleDirectoryPage() {
     };
   }, []);
 
-  useEffect(() => {
-    async function fetchBadges() {
-      setBadgesLoading(true);
-      const results: Record<string, number> = {};
-      try {
-        // dispatchAggregates mounts bare at /api/dispatch (see routesConfig.ts note
-        // near dispatchAggregates) — '/dispatch/aggregates' 404s, the dashboard-stats
-        // route is the bare prefix itself.
-        const stats = await apiFetch<{ calls?: { active?: number } }>('/dispatch');
-        if (stats?.calls?.active) results.activeCalls = stats.calls.active;
-      } catch { /* silent */ }
-      try {
-        const bolos = await apiFetch<unknown[]>('/comms/bolos/active');
-        if (Array.isArray(bolos)) results.activeBOLOs = bolos.length;
-      } catch { /* silent */ }
-      try {
-        const email = await apiFetch<{ count: number }>('/email/unread-count');
-        if (email?.count) results.unreadEmail = email.count;
-      } catch { /* silent */ }
-      try {
-        const warrants = await apiFetch<{ active_warrants?: number }>('/dispatch/stats');
-        if (warrants?.active_warrants) results.activeWarrants = warrants.active_warrants;
-      } catch { /* silent */ }
-      try {
-        const dashboard = await apiFetch<{ open_cases?: number; pending_serve?: number }>('/stats/dashboard');
-        if (dashboard?.open_cases) results.openCases = dashboard.open_cases;
-        if (dashboard?.pending_serve) results.pendingServe = dashboard.pending_serve;
-      } catch { /* silent */ }
-      setBadges(results);
-      setBadgesLoading(false);
-    }
-    fetchBadges();
-    const interval = setInterval(fetchBadges, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   const hasSearchResults = !searchQuery.trim() || allFunctions.length > 0;
 

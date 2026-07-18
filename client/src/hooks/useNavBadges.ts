@@ -8,6 +8,7 @@ export interface NavBadges {
   activeWarrants?: number;
   openCases?: number;
   pendingServe?: number;
+  [key: string]: number | undefined;
 }
 
 export function useNavBadges(intervalMs = 30000): { badges: NavBadges; isLoading: boolean } {
