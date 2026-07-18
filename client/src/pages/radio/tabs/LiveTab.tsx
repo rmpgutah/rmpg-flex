@@ -17,7 +17,7 @@ import { asArray } from '../../../utils/asArray';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, formatDate } from '../../../utils/dateUtils';
 
 interface Props {
   selectedChannelId: number | null;
@@ -276,6 +276,19 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   const time = useMemo(() => {
     try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
+  // The list is correctly ordered DESC by full transmitted_at, but with
+  // only a bare HH:MM:SS shown, rows from different days look randomly
+  // out of order on screen (e.g. 06:52 → 07:04 → 14:03 → 20:06 → 12:55 —
+  // that's five different days, not one scrambled one). Prefix the date
+  // whenever a transmission isn't from today so the ordering reads as
+  // correct instead of broken.
+  const dateLabel = useMemo(() => {
+    try {
+      const txDate = formatDate(tx.transmitted_at);
+      const today = formatDate(new Date().toISOString());
+      return txDate && txDate !== today ? txDate : null;
+    } catch { return null; }
+  }, [tx.transmitted_at]);
   const isLive = tx.duration_seconds > 0 && Date.now() - parseTimestamp(tx.transmitted_at).getTime() < 10_000;
 
   const buildTxMenu = (): ContextMenuItem[] => [
@@ -295,7 +308,9 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   return (
     <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
       onContextMenu={(e) => openMenu(e, buildTxMenu())}>
-      <span className="tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 70 }}>{time}</span>
+      <span className="tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 70 }}>
+        {dateLabel && <span style={{ opacity: 0.7 }}>{dateLabel} </span>}{time}
+      </span>
       {isLive ? <Waveform color="var(--rt-tx)" /> : <span style={{ width: 24 }} />}
       <span className="font-bold" style={{ color: 'var(--rt-accent)', minWidth: 80 }}>{tx.unit_label || tx.user_name || '—'}</span>
       <span style={{ color: 'var(--rt-muted)', minWidth: 60 }}>{tx.channel_name || '—'}</span>
