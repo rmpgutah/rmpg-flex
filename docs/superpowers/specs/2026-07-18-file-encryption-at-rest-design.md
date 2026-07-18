@@ -124,15 +124,25 @@ for free.
 
 ### Phase 1 scope: `field-photos/` only
 
-Exactly the two files identified above:
+Exactly the two files identified above — but narrower than the initial survey suggested. A closer
+read of `alpr.ts` found it has **three** `UPLOADS` call sites, and only **one** of them actually
+touches the `field-photos/` prefix:
 
 - `src/routes/fieldPhotos.ts` — `POST /` (upload, currently `c.env.UPLOADS.put(key, ...)` at
   line 84) and `GET /file/*` (stream, currently `c.env.UPLOADS.get(key)` at line 136) switch to
   `putEncrypted`/`getDecrypted`.
-- `src/routes/alpr.ts` — its own direct `UPLOADS.put()`/`.get()` calls into the `field-photos/`
-  prefix (confirmed at lines 507, 972, 1002) switch to the same two functions, so ALPR continues
-  to read real (decrypted) image bytes for plate detection without any change to its own logic
-  beyond swapping the R2 call.
+- `src/routes/alpr.ts:507` — the ONE call site that touches `field-photos/`, and only
+  conditionally: `imageKey` is `` `${attachToCall ? FIELD_PHOTO_PREFIX : ALPR_PREFIX}...` `` — it
+  writes to `field-photos/` only when the capture is attached to a call/incident, and to
+  `alpr-captures/` (a different, out-of-scope prefix) otherwise. Only the `field-photos/` branch
+  of this write switches to `putEncrypted`; the `alpr-captures/` branch is untouched. **This is a
+  write-only path** — ALPR's plate detection runs on the in-memory `bytes` captured at line 499,
+  before this R2 write, not on a re-fetched R2 object, and this write is already wrapped in a
+  best-effort try/catch that doesn't affect detection either way. There is no decrypt-for-detection
+  concern here, unlike what the original survey assumed.
+  - `alpr.ts:972` (`GET /image/*`) and `alpr.ts:1002` (crop upload) were confirmed, on closer
+    inspection, to touch `alpr-captures/` and `alpr/vehicles/` respectively — genuinely different
+    prefixes, never `field-photos/`. **Out of scope; do not modify these two call sites.**
 - `field_photos` DELETE (`fieldPhotos.ts:160`) additionally deletes the corresponding
   `file_encryption_keys` row — otherwise a deleted photo would leave an orphaned wrapped key
   behind indefinitely.
@@ -154,11 +164,12 @@ strings pointing back at `fieldPhotos.ts`'s own route, so they need no changes.
   list → stream → delete cycle end-to-end against real (local) D1 + R2 bindings, confirming the
   full route still behaves identically from the client's perspective (same response shapes, same
   status codes) while the underlying R2 object is now ciphertext.
-- A manual smoke-test step (documented in the plan, not scripted) confirming ALPR's field-photo
-  capture flow still successfully detects a plate in a real test image after the R2 access
-  swap — this is the one behavior that would silently degrade (not error) if `alpr.ts`'s switch
-  to `getDecrypted` were done incorrectly, since a raw ciphertext blob fed to Roboflow wouldn't
-  throw, it would just never detect anything.
+- A manual smoke-test step (documented in the plan, not scripted) confirming a call-attached ALPR
+  capture still stores successfully and the resulting photo is viewable (correctly decrypted) via
+  the call's photo gallery afterward — since ALPR's plate detection itself runs on in-memory bytes
+  before the R2 write (see Phase 1 scope above), the actual regression risk here is narrower than
+  originally assumed: it's "does the stored photo still open correctly," not "does detection still
+  work."
 
 ## What this document does not cover
 
