@@ -100,7 +100,26 @@ describe('POST /presign/:fileId/complete', () => {
   it('inserts an attachments row on a successful full round-trip', async () => {
     const token = await makeToken(7, 'officer');
     const kv = makeFakeKv();
-    const { db, calls } = recordingDb();
+    const { db, calls } = recordingDb([
+      {
+        match: /SELECT \* FROM attachments WHERE file_id = \?/,
+        rows: [
+          {
+            file_id: 'placeholder-uuid',
+            original_name: 'report.pdf',
+            stored_name: 'report.pdf',
+            file_path: 'attachments/report.pdf',
+            mime_type: 'application/pdf',
+            file_size: 1234,
+            entity_type: null,
+            entity_id: null,
+            uploaded_by: 7,
+            folder_id: null,
+            created_at: '2026-07-18T12:00:00Z',
+          },
+        ],
+      },
+    ]);
 
     const presignRes = await uploads.request('/presign', {
       method: 'POST',
@@ -115,6 +134,36 @@ describe('POST /presign/:fileId/complete', () => {
 
     expect(completeRes.status).toBe(201);
     expect(calls.some((c) => /INSERT INTO attachments/.test(c.sql))).toBe(true);
+
+    // Verify the response body is a single object (not an array) with expected fields
+    const body = await completeRes.json() as any;
+    expect(body).not.toBeInstanceOf(Array);
+    expect(body).toMatchObject({
+      original_name: 'report.pdf',
+      mime_type: 'application/pdf',
+      file_size: 1234,
+      uploaded_by: 7,
+    });
+  });
+
+  it('403s when user tries to complete an upload initiated by a different user', async () => {
+    const token7 = await makeToken(7, 'officer');
+    const token8 = await makeToken(8, 'officer');
+    const kv = makeFakeKv();
+    const { db } = recordingDb();
+
+    const presignRes = await uploads.request('/presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token7}` },
+      body: JSON.stringify({ filename: 'report.pdf', contentType: 'application/pdf', size: 1234 }),
+    }, baseEnv(kv, makeFakeUploadsBucket(null), db));
+    const { file_id: fileId } = await presignRes.json() as any;
+
+    const completeRes = await uploads.request(`/presign/${fileId}/complete`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token8}` },
+    }, baseEnv(kv, makeFakeUploadsBucket(1234), db));
+
+    expect(completeRes.status).toBe(403);
   });
 
   it('400s when the object never landed in R2', async () => {
