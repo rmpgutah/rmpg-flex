@@ -55,4 +55,40 @@ describe('useFleetWideFanOut', () => {
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/fleet?limit=500'));
     await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledWith('/fleet/1/maintenance'));
   });
+
+  it('sets error when /fleet?limit=500 rejects', async () => {
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url === '/fleet?limit=500') return Promise.reject(new Error('Network error'));
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const { result } = renderHook(() =>
+      useFleetWideFanOut<{ id: number; cost: number }>((id) => `/fleet/${id}/maintenance`)
+    );
+
+    expect(result.current.error).toBe(null);
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe('Network error');
+    expect(result.current.vehicles).toHaveLength(0);
+    expect(result.current.rows).toHaveLength(0);
+  });
+
+  it('keeps error null when /fleet?limit=500 resolves to empty list', async () => {
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url === '/fleet?limit=500') return Promise.resolve([]);
+      return Promise.reject(new Error('unexpected url ' + url));
+    });
+
+    const { result } = renderHook(() =>
+      useFleetWideFanOut<{ id: number; cost: number }>((id) => `/fleet/${id}/maintenance`)
+    );
+
+    expect(result.current.error).toBe(null);
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(null);
+    expect(result.current.vehicles).toHaveLength(0);
+    expect(result.current.rows).toHaveLength(0);
+  });
 });

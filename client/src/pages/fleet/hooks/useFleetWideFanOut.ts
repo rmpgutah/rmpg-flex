@@ -14,6 +14,7 @@ export interface FanOutResult<T> {
   loadedVehicles: number;
   totalVehicles: number;
   vehicles: VehicleStub[];
+  error: string | null;
   refetch: () => void;
 }
 
@@ -41,6 +42,7 @@ export function useFleetWideFanOut<T>(
   const [rows, setRows] = useState<FanOutRow<T>[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedVehicles, setLoadedVehicles] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
   const pathForRef = useRef(pathFor);
@@ -52,6 +54,7 @@ export function useFleetWideFanOut<T>(
   useEffect(() => {
     let cancelled = false;
     if (!hasLoadedRef.current) setLoading(true);
+    setError(null);
     apiFetch<VehicleStub[] | { data: VehicleStub[] }>('/fleet?limit=500')
       .then((vlist) => {
         if (cancelled) return;
@@ -83,13 +86,19 @@ export function useFleetWideFanOut<T>(
             setLoading(false);
           });
       })
-      .catch(() => { if (!cancelled) { hasLoadedRef.current = true; setLoading(false); } });
+      .catch((e) => {
+        if (!cancelled) {
+          hasLoadedRef.current = true;
+          setError(e instanceof Error ? e.message : 'Failed to load vehicles');
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [refreshToken]);
 
   const refetch = useCallback(() => setRefreshToken((t) => t + 1), []);
 
-  return { rows, loading, loadedVehicles, totalVehicles: vehicles.length, vehicles, refetch };
+  return { rows, loading, loadedVehicles, totalVehicles: vehicles.length, vehicles, error, refetch };
 }
 
 function asArray<T>(v: unknown): T[] {
