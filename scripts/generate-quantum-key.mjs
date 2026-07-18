@@ -23,6 +23,7 @@
 // ============================================================
 
 import { randomBytes, webcrypto } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 const QRNG_URL = 'https://qrng.anu.edu.au/API/jsonI.php';
 const QRNG_TIMEOUT_MS = 5000;
@@ -81,4 +82,50 @@ export async function generateQuantumKey(byteLength) {
   const qrngBytes = await fetchQrngBytes(byteLength);
   const combined = await combineEntropy(localBytes, qrngBytes, byteLength);
   return { combined, qrngUsed: qrngBytes !== null };
+}
+
+/** All CLI logic, I/O-free: takes argv (without the `node script.mjs`
+ *  prefix), returns what to print and what exit code to use. The real
+ *  `main()` below is the only thing that touches process.stdout/stderr/exit. */
+export async function runCli(argv) {
+  const byteLengthArg = argv[0];
+  const byteLength = Number(byteLengthArg);
+  if (!byteLengthArg || !Number.isInteger(byteLength) || byteLength <= 0) {
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Usage: node scripts/generate-quantum-key.mjs <byteLength>\n'
+        + 'Example: node scripts/generate-quantum-key.mjs 32\n',
+    };
+  }
+
+  const { combined, qrngUsed } = await generateQuantumKey(byteLength);
+  const base64 = Buffer.from(combined).toString('base64');
+
+  const stderrLines = [];
+  if (!qrngUsed) {
+    stderrLines.push('QRNG unreachable — using local CSPRNG only; re-run to retry the mix.');
+  }
+  stderrLines.push(
+    `[${new Date().toISOString()}] Generated ${byteLength}-byte key. `  // new-date-ok
+    + `QRNG mix: ${qrngUsed ? 'yes' : 'no (local-only fallback)'}.`,
+  );
+
+  return { exitCode: 0, stdout: `${base64}\n`, stderr: `${stderrLines.join('\n')}\n` };
+}
+
+async function main() {
+  const { exitCode, stdout, stderr } = await runCli(process.argv.slice(2));
+  if (stderr) process.stderr.write(stderr);
+  if (stdout) process.stdout.write(stdout);
+  process.exit(exitCode);
+}
+
+// Compares via pathToFileURL() (not a plain `file://${process.argv[1]}`
+// template) because that naive form breaks on paths containing spaces or
+// other characters that get percent-encoded in a real file:// URL — e.g.
+// this repo's own worktree path (`.../RMPG Flex/...`) — silently making
+// the guard always false and main() never run.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
 }

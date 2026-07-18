@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { parseQrngResponse, fetchQrngBytes, combineEntropy, generateQuantumKey } from './generate-quantum-key.mjs';
+import { parseQrngResponse, fetchQrngBytes, combineEntropy, generateQuantumKey, runCli } from './generate-quantum-key.mjs';
 import { vi } from 'vitest';
 
 describe('parseQrngResponse', () => {
@@ -147,5 +147,52 @@ describe('generateQuantumKey', () => {
     const a = await generateQuantumKey(32);
     const b = await generateQuantumKey(32);
     expect(Array.from(a.combined)).not.toEqual(Array.from(b.combined));
+  });
+});
+
+describe('runCli', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('prints usage and exits 1 when byteLength is missing', async () => {
+    const { exitCode, stdout, stderr } = await runCli([]);
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('Usage:');
+  });
+
+  it('prints usage and exits 1 when byteLength is not a positive integer', async () => {
+    expect((await runCli(['0'])).exitCode).toBe(1);
+    expect((await runCli(['-5'])).exitCode).toBe(1);
+    expect((await runCli(['abc'])).exitCode).toBe(1);
+  });
+
+  it('on QRNG success: stdout is a valid base64 string decoding to byteLength bytes, exit 0', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ success: true, data: Array.from({ length: 32 }, (_, i) => i), length: 32, type: 'uint8' }),
+      { status: 200 },
+    )));
+    const { exitCode, stdout, stderr } = await runCli(['32']);
+    expect(exitCode).toBe(0);
+    const decoded = Buffer.from(stdout.trim(), 'base64');
+    expect(decoded.length).toBe(32);
+    expect(stderr).toContain('QRNG mix: yes');
+  });
+
+  it('on QRNG failure: falls back to local-only, still exits 0 with a valid key, warns on stderr', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    const { exitCode, stdout, stderr } = await runCli(['32']);
+    expect(exitCode).toBe(0);
+    const decoded = Buffer.from(stdout.trim(), 'base64');
+    expect(decoded.length).toBe(32);
+    expect(stderr).toContain('QRNG unreachable');
+    expect(stderr).toContain('QRNG mix: no');
+  });
+
+  it('stdout contains nothing but the base64 key and a trailing newline', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    const { stdout } = await runCli(['16']);
+    expect(stdout).toMatch(/^[A-Za-z0-9+/=]+\n$/);
   });
 });
