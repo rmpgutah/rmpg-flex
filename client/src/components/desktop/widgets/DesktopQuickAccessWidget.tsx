@@ -22,11 +22,28 @@ export default function DesktopQuickAccessWidget() {
         <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>No favorites yet — star a module in the Directory.</div>
       ) : (
         <>
-          {favorites.map(fn => (
-            <button key={fn.path} type="button" onClick={() => navigate(fn.path)} className="w-full text-left text-[11px] py-0.5 truncate" style={{ color: 'var(--text-primary)' }}>
-              {fn.label}
-            </button>
-          ))}
+          {favorites.length > 0 && (
+            <div>
+              {recent.length > 0 && (
+                <div className="text-[9px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Favorites</div>
+              )}
+              {favorites.map(fn => (
+                <button key={fn.path} type="button" onClick={() => navigate(fn.path)} className="w-full text-left text-[11px] py-0.5 truncate" style={{ color: 'var(--text-primary)' }}>
+                  {fn.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {recent.length > 0 && (
+            <div className={favorites.length > 0 ? 'mt-2' : undefined}>
+              <div className="text-[9px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Recent</div>
+              {recent.map(fn => (
+                <button key={fn.path} type="button" onClick={() => navigate(fn.path)} className="w-full text-left text-[11px] py-0.5 truncate" style={{ color: 'var(--text-primary)' }}>
+                  {fn.label}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
