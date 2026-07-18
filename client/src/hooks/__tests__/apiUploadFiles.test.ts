@@ -103,4 +103,37 @@ describe('apiUploadFiles auto-retry', () => {
     expect(fetchMock.mock.calls.every(([u]) => !String(u).endsWith('/api/uploads') || String(u).includes('presign'))).toBe(true);
     putSpy.mockRestore();
   });
+
+  it('preserves file order when uploading mixed-size files [small, large, small]', async () => {
+    const small1 = new File(['x'], 'small1.jpg', { type: 'image/jpeg' });
+    const large = new File(['x'.repeat(21 * 1024 * 1024)], 'large.mp4', { type: 'video/mp4' });
+    const small2 = new File(['x'], 'small2.jpg', { type: 'image/jpeg' });
+
+    // Mock multipart POST /api/uploads to return results for both small files in order
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        { file_id: 'small1-id', original_name: 'small1.jpg' },
+        { file_id: 'small2-id', original_name: 'small2.jpg' },
+      ]), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      // Presign for large file
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        file_id: 'large-id', upload_url: 'https://acct.r2.cloudflarestorage.com/bucket/key', key: 'attachments/large-id.mp4',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      // Complete presign for large file
+      .mockResolvedValueOnce(new Response(JSON.stringify({ file_id: 'large-id', original_name: 'large.mp4' }), {
+        status: 201, headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const putSpy = vi.spyOn(await import('../../utils/uploadWithProgress'), 'putFileDirect').mockResolvedValue(undefined);
+
+    const out = await apiUploadFiles([small1, large, small2]);
+
+    // Verify results are in the SAME order as input files: [small1, large, small2]
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual({ file_id: 'small1-id', original_name: 'small1.jpg' });
+    expect(out[1]).toEqual({ file_id: 'large-id', original_name: 'large.mp4' });
+    expect(out[2]).toEqual({ file_id: 'small2-id', original_name: 'small2.jpg' });
+
+    putSpy.mockRestore();
+  });
 });

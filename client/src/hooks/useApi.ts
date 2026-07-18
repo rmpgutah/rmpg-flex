@@ -599,16 +599,30 @@ export async function apiUploadFiles(
   entityId?: string | number,
   opts?: UploadOptions,
 ): Promise<any[]> {
-  const smallFiles = files.filter((f) => f.size <= DIRECT_UPLOAD_THRESHOLD_BYTES);
-  const largeFiles = files.filter((f) => f.size > DIRECT_UPLOAD_THRESHOLD_BYTES);
+  const smallIndices: number[] = [];
+  const smallFiles: File[] = [];
+  const largeIndices: number[] = [];
 
-  const results: any[] = [];
+  files.forEach((f, i) => {
+    if (f.size <= DIRECT_UPLOAD_THRESHOLD_BYTES) {
+      smallIndices.push(i);
+      smallFiles.push(f);
+    } else {
+      largeIndices.push(i);
+    }
+  });
+
+  const results: any[] = new Array(files.length);
+
   if (smallFiles.length > 0) {
-    results.push(...await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts));
+    const smallResults = await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts);
+    smallIndices.forEach((origIdx, i) => { results[origIdx] = smallResults[i]; });
   }
-  for (const file of largeFiles) {
-    results.push(await apiUploadFileDirect(file, entityType, entityId));
+
+  for (const origIdx of largeIndices) {
+    results[origIdx] = await apiUploadFileDirect(files[origIdx], entityType, entityId);
   }
+
   return results;
 }
 
