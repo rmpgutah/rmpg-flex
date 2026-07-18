@@ -26,6 +26,11 @@ interface ThreatEntry {
   timestamp: string; count?: number;
 }
 
+interface LockedAccount {
+  id: number; username: string; full_name?: string;
+  failed_login_count: number; locked_until: string;
+}
+
 type TabId = 'overview' | 'logins' | 'threats' | 'sessions' | 'timeline';
 
 const VALID_TABS: TabId[] = ['overview', 'logins', 'threats', 'sessions', 'timeline'];
@@ -46,6 +51,7 @@ export default function SecurityDashboardPage() {
   const [loginHistory, setLoginHistory] = useState<LoginEntry[]>([]);
   const [threats, setThreats] = useState<ThreatEntry[]>([]);
   const [blockedIps, setBlockedIps] = useState<any[]>([]);
+  const [lockedAccounts, setLockedAccounts] = useState<LockedAccount[]>([]);
   const [passwordCompliance, setPasswordCompliance] = useState<any>(null);
   const [sessionAnalytics, setSessionAnalytics] = useState<any>(null);
   const [eventTimeline, setEventTimeline] = useState<any[]>([]);
@@ -55,6 +61,8 @@ export default function SecurityDashboardPage() {
   // ConfirmDialog state for unblock-IP (admin-only destructive action)
   const [unblockTarget, setUnblockTarget] = useState<string | null>(null);
   const [unblocking, setUnblocking] = useState(false);
+  const [unlockTarget, setUnlockTarget] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const ipRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Strip deep-link param after first mount
@@ -73,11 +81,12 @@ export default function SecurityDashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const [s, lh, t, bi, pc, sa, et] = await Promise.all([
+      const [s, lh, t, bi, la, pc, sa, et] = await Promise.all([
         safeGet<SecurityStatus>('/auth/security/status'),
         safeGet<{ data: LoginEntry[] }>('/auth/security/login-history?limit=50'),
         isAdmin ? safeGet<{ data: ThreatEntry[] }>('/auth/security/recent-threats') : null,
         isAdmin ? safeGet<{ data: any[] }>('/auth/security/blocked-ips') : null,
+        isAdmin ? safeGet<{ data: LockedAccount[] }>('/auth/security/locked-accounts') : null,
         isAdmin ? safeGet<any>('/auth/security/password-compliance') : null,
         isAdmin ? safeGet<any>('/auth/security/session-analytics') : null,
         isAdmin ? safeGet<{ data: any[] }>('/auth/security/event-timeline?limit=100') : null,
@@ -94,6 +103,7 @@ export default function SecurityDashboardPage() {
         ip_address: raw.ip_address || raw.ip,
       })));
       if (bi) setBlockedIps(bi.data || []);
+      if (la) setLockedAccounts(la.data || []);
       if (pc) setPasswordCompliance(pc);
       if (sa) setSessionAnalytics(sa);
       if (et) setEventTimeline(et.data || []);
@@ -140,6 +150,20 @@ export default function SecurityDashboardPage() {
       setError(err?.message || 'Failed to unblock IP');
     } finally {
       setUnblocking(false);
+    }
+  };
+
+  const confirmUnlock = async () => {
+    if (!unlockTarget) return;
+    setUnlocking(true);
+    try {
+      await apiFetch('/auth/security/unlock-account', { method: 'POST', body: JSON.stringify({ username: unlockTarget }) });
+      setLockedAccounts(prev => prev.filter(a => a.username !== unlockTarget));
+      setUnlockTarget(null);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to unlock account');
+    } finally {
+      setUnlocking(false);
     }
   };
 
@@ -297,6 +321,29 @@ export default function SecurityDashboardPage() {
             </div>
           )}
 
+          {/* Locked Accounts — admin only, hidden when list is empty */}
+          {isAdmin && lockedAccounts.length > 0 && (
+            <div className="panel-beveled bg-surface-base p-3">
+              <div className="text-[9px] text-red-400 uppercase font-bold mb-2">Locked Accounts ({lockedAccounts.length})</div>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {lockedAccounts.map(a => (
+                  <div key={a.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
+                    <Lock className="w-3 h-3 text-red-400 flex-shrink-0" />
+                    <span className="text-rmpg-100 flex-1 truncate">{a.full_name || a.username}</span>
+                    <span className="text-rmpg-500">{a.failed_login_count} failed attempts</span>
+                    <button
+                      type="button"
+                      className="text-[9px] text-amber-400 hover:underline"
+                      onClick={() => setUnlockTarget(a.username)}
+                    >
+                      Unlock
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Password Compliance — admin only */}
           {isAdmin && passwordCompliance && (
             <div className="panel-beveled bg-surface-base p-3">
@@ -429,6 +476,18 @@ export default function SecurityDashboardPage() {
         confirmLabel="Unblock"
         confirmVariant="warning"
         isLoading={unblocking}
+      />
+
+      <ConfirmDialog
+        isOpen={!!unlockTarget}
+        onClose={() => setUnlockTarget(null)}
+        onConfirm={confirmUnlock}
+        title="Unlock Account"
+        message="Are you sure you want to unlock this account? The user will be able to attempt logins again immediately."
+        details={unlockTarget ? <span className="font-mono text-rmpg-100">{unlockTarget}</span> : undefined}
+        confirmLabel="Unlock"
+        confirmVariant="warning"
+        isLoading={unlocking}
       />
     </div>
   );

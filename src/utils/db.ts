@@ -304,6 +304,32 @@ export async function ensureDialerOidcColumns(db: D1Database): Promise<void> {
   _dialerOidcColumnsEnsured = await columnExists(db, 'users', 'dialer_oidc_sub');
 }
 
+// ── Account lockout columns reconciler ──────────────────────
+// Migration 0192_account_lockout.sql adds failed_login_count and
+// locked_until to users for login-attempt lockout (see
+// docs/superpowers/specs/2026-07-18-account-lockout-login-hardening-design.md).
+// Same self-heal situation as above (CLAUDE.md rule #5).
+let _accountLockoutColumnsEnsured = false;
+
+const ACCOUNT_LOCKOUT_COLUMNS: Array<[string, string]> = [
+  ['failed_login_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ['locked_until', 'TEXT'],
+];
+
+export async function ensureAccountLockoutColumns(db: D1Database): Promise<void> {
+  if (_accountLockoutColumnsEnsured) return;
+  for (const [col, type] of ACCOUNT_LOCKOUT_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'users', col))) {
+        await db.prepare(`ALTER TABLE users ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  _accountLockoutColumnsEnsured = await columnExists(db, 'users', 'failed_login_count');
+}
+
 // ── Jurisdiction override + photo/layout reconciler ────────
 // Migration 0189_jurisdiction_photo_layout.sql adds jurisdiction_override to
 // businesses/properties, photo_url/layout_url to parcel_records, a `kind`

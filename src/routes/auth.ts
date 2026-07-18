@@ -3,7 +3,7 @@ import type { Env } from '../types';
 import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, queryFirst, query, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute, ensureAccountLockoutColumns } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
@@ -39,6 +39,8 @@ const auth = new Hono<Env>();
 // earlier handlers referenced those and 500'd on every login + refresh.
 const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
+const FAILED_LOGIN_THRESHOLD = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
 
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
@@ -212,9 +214,13 @@ auth.post('/login', async (c) => {
     }
 
     const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
     const user = await queryFirst<any>(
       db,
-      `SELECT ${USER_SELECT}, password_hash FROM users WHERE username = ?`,
+      `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
+              (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
+              CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
+       FROM users WHERE username = ?`,
       username
     );
 
@@ -222,6 +228,17 @@ auth.post('/login', async (c) => {
       await recordLoginAttempt(db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
+
+    if (user.is_locked) {
+      await recordLoginAttempt(db, username, ip, false, 'account_locked');
+      const minutes = Math.max(1, Math.ceil((user.lock_retry_seconds ?? 0) / 60));
+      return c.json({
+        error: `Account locked due to repeated failed attempts. Try again in ${minutes} minutes.`,
+        code: 'ACCOUNT_LOCKED',
+        retry_after_seconds: user.lock_retry_seconds ?? 0,
+      }, 403);
+    }
+
     if (user.status !== 'active') {
       await recordLoginAttempt(db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
@@ -234,8 +251,42 @@ auth.post('/login', async (c) => {
     }
 
     if (!compareSync(password, user.password_hash)) {
+      // Atomic increment (avoids a lost-update race under concurrent
+      // wrong-password requests for the same account). Reached here only
+      // when is_locked was already false, so any locked_until still on the
+      // row is a stale/expired lock — reset the counter to a fresh window
+      // rather than immediately re-locking on the very next typo.
+      const updated = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+        db,
+        `UPDATE users SET
+           failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
+           locked_until = CASE
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${FAILED_LOGIN_THRESHOLD}
+               THEN datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes')
+             ELSE NULL
+           END
+         WHERE id = ?
+         RETURNING failed_login_count, locked_until`,
+        user.id,
+      ).catch(() => null);
+
+      if (updated?.locked_until) {
+        await recordLoginAttempt(db, username, ip, false, 'account_locked');
+        return c.json({
+          error: `Account locked due to repeated failed attempts. Try again in ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          code: 'ACCOUNT_LOCKED',
+          retry_after_seconds: LOCKOUT_DURATION_MINUTES * 60,
+        }, 403);
+      }
       await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
+    // Correct password — reset the failure counter regardless of what happens
+    // next (2FA gate, trusted-device check, etc). Password-guessing is what
+    // lockout defends against; a wrong 2FA code afterward is unrelated.
+    if (user.failed_login_count || user.locked_until) {
+      await execute(db, `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?`, user.id).catch(() => undefined);
     }
 
     const secret = c.env.JWT_SECRET;
@@ -1861,6 +1912,43 @@ auth.post('/security/unblock-ip', authMiddleware, async (c) => {
       `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
     return c.json({ success: true, cleared: r.meta.changes ?? 0 });
   } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+});
+
+// GET /api/auth/security/locked-accounts — accounts currently locked out.
+auth.get('/security/locked-accounts', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT id, username, full_name, failed_login_count, locked_until
+       FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime('now')
+       ORDER BY locked_until DESC LIMIT 100`);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// ── Security: unlock account ────────────────────────────────
+// Break-glass note: if every admin/manager account is locked simultaneously
+// (e.g. an attacker deliberately trips 5 wrong passwords against each one),
+// this endpoint itself becomes unreachable until the 15-minute auto-expiry
+// lifts (self-healing). The out-of-band fallback is POST /auth/recover-all
+// (RECOVERY_KEY-gated, see that handler's comment) or a direct D1 write.
+auth.post('/security/unlock-account', authMiddleware, async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const { username } = await c.req.json<{ username: string }>();
+    if (!username) return c.json({ error: 'username required' }, 400);
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const r = await execute(db,
+      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE username = ?`, username);
+    return c.json({ success: true, cleared: r.meta.changes ?? 0 });
+  } catch { return c.json({ error: 'Failed to unlock account' }, 500); }
 });
 
 // ── Account recovery (no JWT required — secured by RECOVERY_KEY env secret) ──
