@@ -5,6 +5,9 @@ import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
 import { authMiddleware, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
+import { hashSync } from 'bcryptjs';
+import authRouter from '../src/routes/auth';
+import { getDb, execute, queryFirst, columnExists } from '../src/utils/db';
 
 describe('auth middleware — unauthenticated access', () => {
   it('returns 401 when Authorization header is missing', async () => {
@@ -129,5 +132,119 @@ describe('auth middleware — media-path query-auth passthrough', () => {
       env as unknown as Record<string, unknown>,
     );
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /login — account lockout', () => {
+  const TEST_PASSWORD = 'CorrectHorseBattery1';
+  const TEST_PASSWORD_HASH = hashSync(TEST_PASSWORD, 4); // low cost — test speed only
+
+  function loginEnv() {
+    return { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' };
+  }
+
+  async function seedUser(db: D1Database, username: string): Promise<number> {
+    await execute(db,
+      `INSERT INTO users (username, password_hash, full_name, role, status) VALUES (?, ?, 'Test User', 'officer', 'active')`,
+      username, TEST_PASSWORD_HASH);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM users WHERE username = ?', username);
+    return row!.id;
+  }
+
+  function post(username: string, password: string, ip: string) {
+    return authRouter.request('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': ip },
+      body: JSON.stringify({ username, password }),
+    }, loginEnv());
+  }
+
+  beforeAll(async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await execute(db, `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT, first_name TEXT, last_name TEXT, email TEXT,
+      role TEXT NOT NULL DEFAULT 'officer', badge_number TEXT, phone TEXT, avatar_url TEXT,
+      status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0,
+      totp_enabled INTEGER NOT NULL DEFAULT 0, login_count INTEGER NOT NULL DEFAULT 0, last_login_at TEXT
+    )`);
+    await execute(db, `CREATE TABLE IF NOT EXISTS login_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, ip_address TEXT,
+      success INTEGER NOT NULL DEFAULT 0, failure_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    await execute(db, `CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, refresh_token_hash TEXT NOT NULL,
+      ip_address TEXT, user_agent TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+      expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  });
+
+  // Runs first, deliberately, while the module-level reconciler cache flag
+  // is still unset for this isolate — proves the self-heal path works, not
+  // just the already-migrated path the later tests exercise.
+  it('self-heals a users table that predates the lockout columns', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    expect(await columnExists(db, 'users', 'failed_login_count')).toBe(false);
+    expect(await columnExists(db, 'users', 'locked_until')).toBe(false);
+    await seedUser(db, 'lockout-user-0');
+    const res = await post('lockout-user-0', TEST_PASSWORD, '10.1.0.0');
+    expect(res.status).toBe(200);
+    expect(await columnExists(db, 'users', 'failed_login_count')).toBe(true);
+    expect(await columnExists(db, 'users', 'locked_until')).toBe(true);
+  });
+
+  it('locks the account on the 5th consecutive wrong password and reports it immediately', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await seedUser(db, 'lockout-user-1');
+
+    for (let i = 0; i < 4; i++) {
+      const res = await post('lockout-user-1', 'wrong-password', '10.1.0.1');
+      expect(res.status).toBe(401);
+      const body = await res.json() as { code: string };
+      expect(body.code).toBe('INVALID_USERNAME_OR_PASSWORD');
+    }
+
+    // 5th wrong attempt trips the lock — reported on THIS response, not the next one.
+    const res5 = await post('lockout-user-1', 'wrong-password', '10.1.0.1');
+    expect(res5.status).toBe(403);
+    const body5 = await res5.json() as { code: string };
+    expect(body5.code).toBe('ACCOUNT_LOCKED');
+
+    // 6th attempt, even with the correct password, stays locked.
+    const res6 = await post('lockout-user-1', TEST_PASSWORD, '10.1.0.1');
+    expect(res6.status).toBe(403);
+    const body6 = await res6.json() as { code: string };
+    expect(body6.code).toBe('ACCOUNT_LOCKED');
+  });
+
+  it('resets failed_login_count to 0 on a successful login before reaching the threshold', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const userId = await seedUser(db, 'lockout-user-2');
+    await post('lockout-user-2', 'wrong-password', '10.1.0.2');
+    await post('lockout-user-2', 'wrong-password', '10.1.0.2');
+    const res = await post('lockout-user-2', TEST_PASSWORD, '10.1.0.2');
+    expect(res.status).toBe(200);
+    const row = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+      db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', userId);
+    expect(row?.failed_login_count).toBe(0);
+    expect(row?.locked_until).toBeNull();
+  });
+
+  it('auto-unlocks once locked_until is in the past', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    const userId = await seedUser(db, 'lockout-user-3');
+    await execute(db,
+      `UPDATE users SET failed_login_count = 5, locked_until = datetime('now', '-1 minute') WHERE id = ?`,
+      userId);
+    const res = await post('lockout-user-3', TEST_PASSWORD, '10.1.0.3');
+    expect(res.status).toBe(200);
+    const row = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+      db, 'SELECT failed_login_count, locked_until FROM users WHERE id = ?', userId);
+    expect(row?.failed_login_count).toBe(0);
+    expect(row?.locked_until).toBeNull();
   });
 });

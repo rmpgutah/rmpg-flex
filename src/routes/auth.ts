@@ -3,7 +3,7 @@ import type { Env } from '../types';
 import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, queryFirst, query, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute, ensureAccountLockoutColumns } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
@@ -39,6 +39,8 @@ const auth = new Hono<Env>();
 // earlier handlers referenced those and 500'd on every login + refresh.
 const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
+const FAILED_LOGIN_THRESHOLD = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
 
 // Live `users` uses must_change_password / totp_enabled — NOT the
 // force_password_change / totp_enrolled names the earlier handlers queried
@@ -212,9 +214,13 @@ auth.post('/login', async (c) => {
     }
 
     const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
     const user = await queryFirst<any>(
       db,
-      `SELECT ${USER_SELECT}, password_hash FROM users WHERE username = ?`,
+      `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
+              (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
+              CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
+       FROM users WHERE username = ?`,
       username
     );
 
@@ -222,6 +228,17 @@ auth.post('/login', async (c) => {
       await recordLoginAttempt(db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
+
+    if (user.is_locked) {
+      await recordLoginAttempt(db, username, ip, false, 'account_locked');
+      const minutes = Math.max(1, Math.ceil((user.lock_retry_seconds ?? 0) / 60));
+      return c.json({
+        error: `Account locked due to repeated failed attempts. Try again in ${minutes} minutes.`,
+        code: 'ACCOUNT_LOCKED',
+        retry_after_seconds: user.lock_retry_seconds ?? 0,
+      }, 403);
+    }
+
     if (user.status !== 'active') {
       await recordLoginAttempt(db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
@@ -234,8 +251,30 @@ auth.post('/login', async (c) => {
     }
 
     if (!compareSync(password, user.password_hash)) {
+      const newCount = (user.failed_login_count ?? 0) + 1;
+      if (newCount >= FAILED_LOGIN_THRESHOLD) {
+        await execute(
+          db,
+          `UPDATE users SET failed_login_count = ?, locked_until = datetime('now', '+${LOCKOUT_DURATION_MINUTES} minutes') WHERE id = ?`,
+          newCount, user.id,
+        ).catch(() => undefined);
+        await recordLoginAttempt(db, username, ip, false, 'account_locked');
+        return c.json({
+          error: `Account locked due to repeated failed attempts. Try again in ${LOCKOUT_DURATION_MINUTES} minutes.`,
+          code: 'ACCOUNT_LOCKED',
+          retry_after_seconds: LOCKOUT_DURATION_MINUTES * 60,
+        }, 403);
+      }
+      await execute(db, `UPDATE users SET failed_login_count = ? WHERE id = ?`, newCount, user.id).catch(() => undefined);
       await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
+    // Correct password — reset the failure counter regardless of what happens
+    // next (2FA gate, trusted-device check, etc). Password-guessing is what
+    // lockout defends against; a wrong 2FA code afterward is unrelated.
+    if (user.failed_login_count || user.locked_until) {
+      await execute(db, `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?`, user.id).catch(() => undefined);
     }
 
     const secret = c.env.JWT_SECRET;
