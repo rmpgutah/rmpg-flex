@@ -78,27 +78,31 @@ CREATE INDEX IF NOT EXISTS idx_forensic_qc_checks_case ON forensic_qc_checks(for
 -- ── Report + analysis templates ──
 -- GET /forensics/templates/report and GET /forensics/analysis-templates
 -- already exist in src/routes/forensics.ts and query these exact table
--- names — they've been 404-ing to an empty array because the tables
--- were never created in any prior migration.
-CREATE TABLE IF NOT EXISTS forensic_report_templates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  case_type TEXT,
-  sections TEXT NOT NULL DEFAULT '[]',
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-);
+-- names — they've been returning empty arrays because the tables never
+-- had the columns those routes (and this file's seed INSERTs below)
+-- expect.
+--
+-- ⚠️ Both tables already exist as of 0093_schema_drift_sweep.sql, with an
+-- OLDER, incompatible shape (forensic_report_templates: description/
+-- sections_json/body_template instead of case_type/sections;
+-- forensic_analysis_templates: case_type + steps_json/description, but no
+-- analysis_type/methodology/equipment_used). CREATE TABLE IF NOT EXISTS
+-- silently no-ops against a same-named-but-different-schema table — exactly
+-- the trap documented above for forensic_case_entity_links — so this must
+-- reconcile via ALTER TABLE ADD COLUMN instead of CREATE TABLE. The old
+-- 0093 columns are left in place (unused, harmless) rather than dropped;
+-- D1/SQLite can't cheaply drop columns and no code reads them.
+ALTER TABLE forensic_report_templates ADD COLUMN case_type TEXT;
+ALTER TABLE forensic_report_templates ADD COLUMN sections TEXT NOT NULL DEFAULT '[]';
 
-CREATE TABLE IF NOT EXISTS forensic_analysis_templates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  case_type TEXT,
-  analysis_type TEXT NOT NULL,
-  methodology TEXT,
-  equipment_used TEXT,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-);
+-- case_type already exists on forensic_analysis_templates via 0093 — only
+-- analysis_type/methodology/equipment_used are missing. analysis_type gets
+-- a '' default (rather than the original fresh-table NOT NULL with no
+-- default) because SQLite requires a DEFAULT when ALTER-adding a NOT NULL
+-- column to a table that may already have rows.
+ALTER TABLE forensic_analysis_templates ADD COLUMN analysis_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE forensic_analysis_templates ADD COLUMN methodology TEXT;
+ALTER TABLE forensic_analysis_templates ADD COLUMN equipment_used TEXT;
 
 -- ── forensic_cases new columns ──
 -- metadata: generic per-case JSON bag. ForensicLabPage.tsx's
