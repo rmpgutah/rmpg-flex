@@ -112,4 +112,28 @@ describe('encryptedR2', () => {
     await expect(putEncrypted(bucket, db, btoa('too-short'), 'field-photos/f.jpg', new Uint8Array([1, 2, 3])))
       .rejects.toBeInstanceOf(FileEncryptionError);
   });
+
+  it('rejects a tampered R2 ciphertext (AES-GCM auth tag catches it) rather than returning garbage', async () => {
+    const { bucket, store } = makeMockBucket();
+    const { db } = makeMockDb();
+    await putEncrypted(bucket, db, KEK, 'field-photos/tamper.jpg', new TextEncoder().encode('original evidence content'));
+    // Flip a byte in the middle of the stored ciphertext.
+    const entry = store.get('field-photos/tamper.jpg')!;
+    const tampered = new Uint8Array(entry.data);
+    const mid = Math.floor(tampered.length / 2);
+    tampered[mid] = tampered[mid] ^ 0xff;
+    store.set('field-photos/tamper.jpg', { ...entry, data: tampered.buffer });
+    await expect(getDecrypted(bucket, db, KEK, 'field-photos/tamper.jpg')).rejects.toThrow();
+  });
+
+  it('rejects a tampered wrapped DEK rather than unwrapping to garbage key material', async () => {
+    const { bucket } = makeMockBucket();
+    const { db, rows } = makeMockDb();
+    await putEncrypted(bucket, db, KEK, 'field-photos/tamper2.jpg', new TextEncoder().encode('original evidence content'));
+    const row = rows.get('field-photos/tamper2.jpg')!;
+    // Corrupt the wrapped_dek's base64 payload (flip the first character, staying valid base64).
+    const corrupted = (row.wrapped_dek[0] === 'A' ? 'B' : 'A') + row.wrapped_dek.slice(1);
+    rows.set('field-photos/tamper2.jpg', { ...row, wrapped_dek: corrupted });
+    await expect(getDecrypted(bucket, db, KEK, 'field-photos/tamper2.jpg')).rejects.toThrow();
+  });
 });

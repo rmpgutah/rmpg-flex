@@ -87,7 +87,14 @@ export async function putEncrypted(
   const dekIv = crypto.getRandomValues(new Uint8Array(12));
   const wrappedDek = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: dekIv }, kek, dekRaw);
 
-  await bucket.put(key, ciphertext, opts);
+  // Write the D1 row before the R2 object: if the INSERT fails (transient
+  // error or an unexpected r2_key collision), nothing lands in R2 and the
+  // caller gets a clean error to retry. The reverse order would risk an
+  // orphaned R2 object with no key row — indistinguishable from a
+  // deliberately crypto-shredded file. getDecrypted() checks bucket.get()
+  // before it ever queries D1, so the failure mode this order leaves behind
+  // (a D1 row with no R2 object) is harmless dead data, not silent evidence
+  // loss.
   await db.prepare(
     'INSERT INTO file_encryption_keys (r2_key, wrapped_dek, dek_iv, file_iv, algorithm_version) VALUES (?, ?, ?, ?, ?)',
   ).bind(
@@ -97,6 +104,7 @@ export async function putEncrypted(
     bytesToBase64(fileIv),
     ALGORITHM_VERSION,
   ).run();
+  await bucket.put(key, ciphertext, opts);
 }
 
 /** Fetch and decrypt a file. Returns null if the R2 object doesn't exist,
