@@ -1,5 +1,5 @@
 // client/src/pages/warrants/__tests__/WarrantsListTab.test.tsx
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,8 +10,9 @@ import type { User } from '../../../types';
 vi.mock('../../../components/ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
+const { openMenuMock } = vi.hoisted(() => ({ openMenuMock: vi.fn() }));
 vi.mock('../../../context/ContextMenuContext', () => ({
-  useContextMenu: () => ({ openMenu: vi.fn() }),
+  useContextMenu: () => ({ openMenu: openMenuMock }),
 }));
 vi.mock('../../../hooks/useLiveSync', () => ({ useLiveSync: () => {} }));
 vi.mock('../../../context/AuthContext', () => ({
@@ -81,18 +82,20 @@ describe('WarrantsListTab', () => {
 
   it('debounces the search box — typing does not fire a request per keystroke', async () => {
     renderTab();
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(2));
+    // 3 calls at mount: the double fetchWarrants invoke plus the
+    // useWatchedWarrantIds hook's own /intel/watchlist fetch.
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
     const search = screen.getByPlaceholderText(/search by name, warrant #, or charge/i);
     await userEvent.type(search, 'Turley');
     // Immediately after typing, no new request yet (debounce window hasn't elapsed).
-    expect(useApiModule.apiFetch).toHaveBeenCalledTimes(2);
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3), { timeout: 1000 });
+    expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3);
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(4), { timeout: 1000 });
     expect(useApiModule.apiFetch).toHaveBeenLastCalledWith(expect.stringContaining('subject_name=Turley'));
   });
 
   it('calls onOpenNewForm when the New Warrant button is clicked', async () => {
     renderTab();
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
     // The empty-state panel also renders a "New Warrant" action button when
     // the list is empty (as it is here, per the mocked apiFetch response),
     // so target the toolbar's primary button specifically (first match).
@@ -103,7 +106,90 @@ describe('WarrantsListTab', () => {
 
   it('is hidden (display: none) when isVisible is false', async () => {
     const { container } = renderTab({ isVisible: false });
-    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledTimes(3));
     expect(container.firstChild).toHaveStyle({ display: 'none' });
+  });
+
+  it('shows a "My Watched Warrants" filter chip that adds watched_only=1 to the request', async () => {
+    renderTab();
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalled());
+    const chip = screen.getByRole('button', { name: /my watched warrants/i });
+    await userEvent.click(chip);
+    await waitFor(() => {
+      expect(useApiModule.apiFetch).toHaveBeenCalledWith(expect.stringContaining('watched_only=1'));
+    });
+  });
+
+  it('toggling the chip off removes watched_only from the request', async () => {
+    renderTab();
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalled());
+    const chip = screen.getByRole('button', { name: /my watched warrants/i });
+    await userEvent.click(chip); // on
+    await waitFor(() => expect(useApiModule.apiFetch).toHaveBeenCalledWith(expect.stringContaining('watched_only=1')));
+    await userEvent.click(chip); // off
+    await waitFor(() => {
+      const calls = (useApiModule.apiFetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const lastCall = calls[calls.length - 1]?.[0];
+      expect(String(lastCall)).not.toContain('watched_only');
+    });
+  });
+});
+
+describe('WarrantsListTab — watch/unwatch action', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    openMenuMock.mockClear();
+  });
+
+  it('POSTs to /intel/watchlist when watching an unwatched warrant via the context menu', async () => {
+    vi.spyOn(useApiModule, 'apiFetch').mockImplementation(async (path: string) => {
+      if (String(path).includes('/warrants/unified')) {
+        return { warrants: [{ id: 10, warrant_number: 'W-10', status: 'active', subject_name: 'Jane Roe', subject_person_id: null }], total: 1 };
+      }
+      if (String(path) === '/intel/watchlist') return []; // useWatchedWarrantIds' own fetch — no watches yet
+      return {};
+    });
+    renderTab();
+    const row = await screen.findByText('W-10');
+    row.closest('tr, div')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+    await waitFor(() => expect(openMenuMock).toHaveBeenCalled());
+    const menuItems = openMenuMock.mock.calls[openMenuMock.mock.calls.length - 1]?.[1] as { label: string; onClick: () => void }[] | undefined;
+    const watchItem = menuItems?.find((i) => /watch this warrant/i.test(i.label));
+    expect(watchItem).toBeTruthy();
+
+    await act(async () => { await watchItem!.onClick(); });
+    expect(useApiModule.apiFetch).toHaveBeenCalledWith('/intel/watchlist', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"entity_type":"warrant"'),
+    }));
+  });
+
+  it('labels the menu item "Unwatch this warrant" when the warrant is already watched', async () => {
+    vi.doMock('../useWatchedWarrantIds', () => ({
+      useWatchedWarrantIds: () => ({ watchedIds: new Set([10]), refresh: vi.fn() }),
+    }));
+    vi.resetModules();
+    const { default: WarrantsListTabReloaded } = await import('../WarrantsListTab');
+    // `vi.resetModules()` gives the reloaded component its own fresh copy of
+    // `useApi` — the top-level `useApiModule` import in this file is a
+    // different (stale) module instance after the reset, so spying on it
+    // would leave the reloaded component's real `apiFetch` unmocked. Import
+    // the fresh instance (same specifier resolves to the same cached module
+    // the reloaded component already pulled in) and spy on that instead.
+    const freshApiModule = await import('../../../hooks/useApi');
+    vi.spyOn(freshApiModule, 'apiFetch').mockImplementation(async (path: string) => {
+      if (String(path).includes('/warrants/unified')) {
+        return { warrants: [{ id: 10, warrant_number: 'W-10', status: 'active', subject_name: 'Jane Roe', subject_person_id: null }], total: 1 };
+      }
+      return [];
+    });
+    render(<MemoryRouter><WarrantsListTabReloaded {...baseProps} /></MemoryRouter>);
+    const row = await screen.findByText('W-10');
+    row.closest('tr, div')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    await waitFor(() => expect(openMenuMock).toHaveBeenCalled());
+    const menuItems = openMenuMock.mock.calls[openMenuMock.mock.calls.length - 1]?.[1] as { label: string }[] | undefined;
+    expect(menuItems?.some((i) => /unwatch this warrant/i.test(i.label))).toBe(true);
   });
 });
