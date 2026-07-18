@@ -213,6 +213,35 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
   `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
   Set the two secrets, then hit `POST /api/fleetio/seed` once.
 
+### Legal Data Hunter (manual warrant-charge validation)
+
+Manual, officer-initiated cross-reference of a warrant's charge text against the Legal Data
+Hunter API (230+ jurisdictions). **Not** an auto-screen — never runs on warrant create/update,
+never blocks any warrant workflow. Full design:
+[`docs/superpowers/specs/2026-07-17-legal-data-hunter-integration-design.md`](docs/superpowers/specs/2026-07-17-legal-data-hunter-integration-design.md).
+
+- **Client**: [`src/utils/legalDataHunter/client.ts`](src/utils/legalDataHunter/client.ts) —
+  Worker-safe `fetch` wrapper for `POST /v1/resolve` and `POST /v1/search`
+  (`https://legaldatahunter.com`). Typed errors (`LdhConfigError|LdhTimeoutError|LdhHttpError|LdhRateLimitError`).
+  Unit-tested in [`tests/legalDataHunterClient.test.ts`](tests/legalDataHunterClient.test.ts).
+- **Rate limiting**: LDH's own limits are 10 req/min / 20 req/day / 600/period — far too low for
+  any automated pipeline. [`src/utils/legalDataHunter/rateLimit.ts`](src/utils/legalDataHunter/rateLimit.ts)
+  enforces a self-imposed buffer (8/min, 18/day) via KV counters before any live call is made.
+- **Route**: [`src/routes/legalDataHunter.ts`](src/routes/legalDataHunter.ts) at
+  `/api/legal-data-hunter` (auth required, `client_viewer` excluded). `POST /validate` tries, in
+  order: the local `utah_statutes` table (free, Utah-only) → the `legal_charge_validations` D1
+  cache → a live LDH call under the rate budget. `GET /usage` (admin/manager) reports today's
+  call count.
+- **Schema**: migration `0191_legal_data_hunter.sql` — `legal_charge_validations`
+  (charge text/state → cached match, unique per normalized charge+state). No new columns on
+  `warrants` (100-col cap).
+- **UI**: [`LegalDataHunterValidateButton`](client/src/components/LegalDataHunterValidateButton.tsx),
+  embedded on `WarrantsPage.tsx`'s warrant-detail "Offense / Charges" block. Click-to-validate
+  only — no polling, no background state.
+- **Config**: secret `LEGAL_DATA_HUNTER_API_KEY` via `wrangler secret put` (prod) / `.dev.vars`
+  (local, gitignored). Unset → `/api/legal-data-hunter/validate` returns
+  `200 { ok: false, code: 'not_configured' }`.
+
 ## Code Patterns
 
 ### Logging & observability (2026-06-24: structured JSON logger)
