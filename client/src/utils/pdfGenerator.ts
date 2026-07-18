@@ -1760,20 +1760,16 @@ export function addDocumentIntegrityTrailer(
 
   const sig = getActiveSignature();
   if (sig) {
-    // Signature value — base64 grouped 4-char × 12-cols × 2 rows
+    // Ed25519 — 88 base64 chars, short enough to print in full, grouped.
     doc.setFont('courier', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    for (const line of formatSignatureGrouped(sig.signature)) {
+    for (const line of formatSignatureGrouped(sig.ed25519.signature)) {
       doc.text(line, labelX, y);
       y += 3.2;
     }
     y += 1;
 
-    // Signed-at + public-key fingerprint (first 16 chars of base64
-    // — full key is too long for the trailer, but the prefix
-    // disambiguates which keypair was used if the server later
-    // rotates).
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -1784,9 +1780,31 @@ export function addDocumentIntegrityTrailer(
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(sanitizePdfText(sig.signedAt), labelX, y);
-    const keyPrefix = (sig.publicKey || '').slice(0, 16) + '…';
-    doc.text(keyPrefix, labelX + 38, y);
+    doc.text((sig.ed25519.publicKey || '').slice(0, 16) + '…', labelX + 38, y);
     y += 5;
+
+    // ML-DSA-87 (4.6KB) / SLH-DSA-256f (49.9KB) signatures are far too
+    // large to print in full on a page — only a short fingerprint is
+    // shown here. The complete post-quantum signatures travel inside
+    // the PDF's embedded sidecar (engine/sidecar.ts, Keywords + post-EOF
+    // marker) for machine verification, not human transcription.
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('ML-DSA-87 / SLH-DSA-256F (POST-QUANTUM)', labelX, y);
+    y += 3;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(`ML-DSA-87  ${(sig.mlDsa87.signature || '').slice(0, 24)}…`, labelX, y);
+    y += 2.8;
+    doc.text(`SLH-DSA    ${(sig.slhDsa256f.signature || '').slice(0, 24)}…`, labelX, y);
+    y += 2.8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('Full post-quantum signatures embedded in PDF sidecar metadata.', labelX, y);
+    y += 4;
   } else {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
