@@ -67,7 +67,14 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   return (
     <div
       style={{ ...style, background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-      onPointerDown={() => focusWindow(win.id)}
+      onPointerDown={(e) => {
+        // Guard against the outer div's pointerdown firing before a title-bar button's
+        // click (native pointerdown-before-click ordering). Without this, focusWindow's
+        // unconditional `minimized: false` would race the Minimize button's own toggle
+        // and prevent the button from ever restoring a minimized window.
+        if ((e.target as HTMLElement).closest('button')) return;
+        focusWindow(win.id);
+      }}
     >
       <div
         onPointerDown={onTitleBarPointerDown}
