@@ -13,6 +13,8 @@ const PREF_DEFAULTS = {
   font_scale: 1.0, compact_mode: 0, show_map_labels: 1,
   default_map_style: 'dark', dispatch_sort: 'priority',
   dispatch_show_cleared: 0, theme_preference: 'dark',
+  desktop_layout_json: null, desktop_wallpaper: 'blue-silver-default',
+  desktop_widgets_json: null,
 } as const;
 
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));

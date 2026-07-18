@@ -86,6 +86,7 @@ const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
 const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
+const DesktopPage = lazyRetry(() => import('./pages/DesktopPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
 const CustomReportBuilder = lazyRetry(() => import('./pages/CustomReportBuilder'));
@@ -525,6 +526,7 @@ function AppRoutes() {
                 renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
                 page's own header has a Close button back to /map. */}
             <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
+            <Route path="/desktop" element={<RouteErrorBoundary><DesktopPage /></RouteErrorBoundary>} />
 
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>

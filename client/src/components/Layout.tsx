@@ -3,6 +3,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
+  LayoutGrid,
   Radio,
   Map,
   FileText,
@@ -368,6 +369,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
   { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
+  { path: '/desktop', icon: LayoutGrid, label: 'Desktop', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
