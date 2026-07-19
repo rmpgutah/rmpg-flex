@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useMapWeatherRadar } from '../useMapWeatherRadar';
 
 function makeMap() {
+  const listeners: Record<string, Array<() => void>> = {};
   return {
     style: {},
     getLayer: vi.fn().mockReturnValue(null),
@@ -12,6 +13,15 @@ function makeMap() {
     removeLayer: vi.fn(),
     removeSource: vi.fn(),
     setPaintProperty: vi.fn(),
+    on: vi.fn((event: string, cb: () => void) => {
+      (listeners[event] ??= []).push(cb);
+    }),
+    off: vi.fn((event: string, cb: () => void) => {
+      listeners[event] = (listeners[event] || []).filter((fn) => fn !== cb);
+    }),
+    _fire: (event: string) => {
+      (listeners[event] || []).forEach((cb) => cb());
+    },
   } as any;
 }
 
@@ -147,5 +157,29 @@ describe('useMapWeatherRadar', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1); // no refetch
     expect(map.addSource).toHaveBeenCalledTimes(1); // no re-add
     expect(map.setPaintProperty).toHaveBeenCalledWith('rmpg-weather-radar-layer', 'raster-opacity', 0.9);
+  });
+
+  it('re-adds the current frame after a basemap style reload without re-fetching', async () => {
+    const map = makeMap();
+    const { result } = renderHook(() => useMapWeatherRadar(map, true));
+    await act(async () => {
+      result.current.setEnabled(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(map.addSource).toHaveBeenCalledTimes(1);
+
+    map.getSource.mockReturnValue(null); // simulate the style swap wiping the source
+    map._fire('style.load');
+
+    expect(global.fetch).toHaveBeenCalledTimes(1); // reused the cached frame, no refetch
+    expect(map.addSource).toHaveBeenCalledTimes(2); // re-added after the style reload
+  });
+
+  it('does not re-add anything on style reload while disabled', () => {
+    const map = makeMap();
+    renderHook(() => useMapWeatherRadar(map, true));
+    map._fire('style.load');
+    expect(map.addSource).not.toHaveBeenCalled();
   });
 });

@@ -44,8 +44,8 @@ const TILE_SIZE = 256;
 const COLOR_SCHEME = 2; // "Universal Blue" — the common blue->green->red precip ramp
 const TILE_OPTIONS = '1_1'; // smooth=1, snow-color=1
 
-function buildTileUrl(host: string, frame: RainviewerFrame): string {
-  return `${host}${frame.path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTIONS}.png`;
+function buildTileUrl(host: string, path: string): string {
+  return `${host}${path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTIONS}.png`;
 }
 
 // ── Hook ──────────────────────────────────────────────────
@@ -60,6 +60,9 @@ export function useMapWeatherRadar(
   const opacityRef = useRef(opacity);
   useEffect(() => { opacityRef.current = opacity; }, [opacity]);
   const renderedFrameKeyRef = useRef<string | null>(null);
+  const hostRef = useRef<string | null>(null);
+  const enabledRef = useRef(enabled);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
   const removeLayer = useCallback(() => {
     if (!map) return;
@@ -68,13 +71,13 @@ export function useMapWeatherRadar(
     renderedFrameKeyRef.current = null;
   }, [map]);
 
-  const addOrReplaceLayer = useCallback((host: string, frame: RainviewerFrame) => {
+  const addOrReplaceLayer = useCallback((host: string, path: string) => {
     if (!map) return;
-    if (renderedFrameKeyRef.current === frame.path) return; // already showing this frame
+    if (renderedFrameKeyRef.current === path) return; // already showing this frame
     removeLayer();
     map.addSource(WEATHER_SOURCE, {
       type: 'raster',
-      tiles: [buildTileUrl(host, frame)],
+      tiles: [buildTileUrl(host, path)],
       tileSize: TILE_SIZE,
       attribution: '&copy; <a href="https://www.rainviewer.com">RainViewer</a>',
     });
@@ -84,8 +87,9 @@ export function useMapWeatherRadar(
       source: WEATHER_SOURCE,
       paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
     });
-    renderedFrameKeyRef.current = frame.path;
-    devLog('[WeatherRadar] Rendering frame', frame.path);
+    renderedFrameKeyRef.current = path;
+    hostRef.current = host;
+    devLog('[WeatherRadar] Rendering frame', path);
   }, [map, removeLayer]);
 
   const fetchFrames = useCallback(async (signal: AbortSignal) => {
@@ -96,7 +100,7 @@ export function useMapWeatherRadar(
       const past = data.radar?.past ?? [];
       setFrames(past);
       const latest = past[past.length - 1];
-      if (latest) addOrReplaceLayer(data.host, latest);
+      if (latest) addOrReplaceLayer(data.host, latest.path);
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
       devWarn('[WeatherRadar] Failed to fetch RainViewer frames', err);
@@ -123,6 +127,28 @@ export function useMapWeatherRadar(
     if (!map || !hasLayer(map, WEATHER_LAYER)) return;
     map.setPaintProperty(WEATHER_LAYER, 'raster-opacity', opacity);
   }, [map, opacity]);
+
+  // A basemap style swap (e.g. NavMapView's manual `map.setStyle()` path)
+  // wipes all custom sources/layers but does NOT reset `mapLoaded` the way
+  // a full map recreation does (that's how the main Map page picks up style
+  // swaps for free). Re-add the already-known latest frame from the cached
+  // host/path instead of re-fetching RainViewer — the frame we had was
+  // still valid, only the map's rendering of it was wiped.
+  useEffect(() => {
+    if (!map) return;
+    const onStyleLoad = () => {
+      if (!enabledRef.current) return;
+      const host = hostRef.current;
+      const path = renderedFrameKeyRef.current;
+      if (!host || !path) return;
+      renderedFrameKeyRef.current = null; // clear so addOrReplaceLayer's dedup guard doesn't skip the re-add
+      addOrReplaceLayer(host, path);
+    };
+    map.on('style.load', onStyleLoad);
+    return () => {
+      map.off('style.load', onStyleLoad);
+    };
+  }, [map, addOrReplaceLayer]);
 
   // Cleanup on unmount.
   useEffect(() => () => removeLayer(), [removeLayer]);
