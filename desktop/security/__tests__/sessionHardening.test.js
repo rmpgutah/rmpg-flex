@@ -207,3 +207,22 @@ test('createCertificateVerifyProc: never logs for a non-pinned host, even on fai
   assert.equal(calledWith, -3);
   assert.equal(logs.length, 0);
 });
+
+const path = require('node:path');
+const { resolveTrustedPreloadPath } = require('../sessionHardening');
+
+test('resolveTrustedPreloadPath: returns the path when it exactly matches the allowed one', () => {
+  const allowed = path.resolve('/app/desktop/preload.js');
+  assert.equal(resolveTrustedPreloadPath(allowed, allowed), allowed);
+});
+
+test('resolveTrustedPreloadPath: returns the path when it resolves to the same file via a relative form', () => {
+  const allowed = path.resolve('/app/desktop/preload.js');
+  const relative = path.join('/app/desktop', '.', 'preload.js');
+  assert.equal(resolveTrustedPreloadPath(relative, allowed), allowed);
+});
+
+test('resolveTrustedPreloadPath: throws for any other path', () => {
+  const allowed = path.resolve('/app/desktop/preload.js');
+  assert.throws(() => resolveTrustedPreloadPath('/tmp/malicious-preload.js', allowed), /untrusted preload path/);
+});

@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -706,7 +706,7 @@ async function createMainWindow() {
     backgroundColor: '#000000',
     show: false,
     webPreferences: hardenWebPreferencesDefaults({
-      preload: path.join(__dirname, 'preload.js'),
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
       // Keep the renderer running at full rate when the window is minimized,
       // occluded, or otherwise not focused. Chromium throttles background
       // windows by default — setInterval clamped to ~1/min, rAF paused — which

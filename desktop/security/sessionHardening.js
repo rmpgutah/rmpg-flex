@@ -9,6 +9,8 @@
 
 'use strict';
 
+const path = require('path');
+
 /**
  * The desktop shell's Content-Security-Policy, shipped in Report-Only
  * mode (see plan Global Constraints) until a human confirms zero real
@@ -183,6 +185,23 @@ function createCertificateVerifyProc(pinnedHosts, logFn) {
   };
 }
 
+/**
+ * The main window is the only BrowserWindow with a preload script today,
+ * and it must always be exactly desktop/preload.js. A future BrowserWindow
+ * (e.g. a Group E secondary window) that wants a preload script should
+ * call this with its own requested path and the same fixed allowed path,
+ * so a typo or a renderer-influenced path can never load an unintended
+ * script with Node access.
+ */
+function resolveTrustedPreloadPath(requestedPath, allowedPath) {
+  const resolvedRequested = path.resolve(requestedPath);
+  const resolvedAllowed = path.resolve(allowedPath);
+  if (resolvedRequested !== resolvedAllowed) {
+    throw new Error(`untrusted preload path: "${resolvedRequested}" !== "${resolvedAllowed}"`);
+  }
+  return resolvedAllowed;
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
@@ -195,4 +214,5 @@ module.exports = {
   isSecureUpdateFeedUrl,
   shouldAuditCertificateVerification,
   createCertificateVerifyProc,
+  resolveTrustedPreloadPath,
 };
