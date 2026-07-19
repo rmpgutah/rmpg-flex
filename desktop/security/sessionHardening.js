@@ -76,9 +76,30 @@ function shouldAllowNavigation(targetUrl, expectedHost) {
   return parsed.host === expectedHost;
 }
 
+/**
+ * Single source of truth for webPreferences security defaults. Every
+ * BrowserWindow this shell creates should build its webPreferences via
+ * this function rather than hand-rolling the flag list, so a future
+ * window (e.g. a Group E secondary window) can't accidentally ship with
+ * a weaker configuration than the main window.
+ */
+function hardenWebPreferencesDefaults(overrides = {}) {
+  return {
+    contextIsolation: true,
+    nodeIntegration: false,
+    webSecurity: true,
+    webviewTag: false,
+    experimentalFeatures: false,
+    allowRunningInsecureContent: false,
+    enableWebSQL: false,
+    ...overrides,
+  };
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
   isPermissionAllowed,
   shouldAllowNavigation,
+  hardenWebPreferencesDefaults,
 };

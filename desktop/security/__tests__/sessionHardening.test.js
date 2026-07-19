@@ -67,3 +67,33 @@ test('shouldAllowNavigation: allows the local offline fallback page (data: URL i
   // rather than special-casing data: URLs as generally allowed.
   assert.equal(shouldAllowNavigation('data:text/html;charset=utf-8,%3Chtml%3E', 'rmpgutah.us'), false);
 });
+
+const { hardenWebPreferencesDefaults } = require('../sessionHardening');
+
+test('hardenWebPreferencesDefaults: returns the hardened baseline with no overrides', () => {
+  const prefs = hardenWebPreferencesDefaults();
+  assert.equal(prefs.contextIsolation, true);
+  assert.equal(prefs.nodeIntegration, false);
+  assert.equal(prefs.webSecurity, true);
+  assert.equal(prefs.webviewTag, false);
+  assert.equal(prefs.experimentalFeatures, false);
+  assert.equal(prefs.allowRunningInsecureContent, false);
+  assert.equal(prefs.enableWebSQL, false);
+});
+
+test('hardenWebPreferencesDefaults: caller overrides win over the baseline', () => {
+  const prefs = hardenWebPreferencesDefaults({ preload: '/path/to/preload.js', backgroundThrottling: false });
+  assert.equal(prefs.preload, '/path/to/preload.js');
+  assert.equal(prefs.backgroundThrottling, false);
+  // baseline values not overridden are still present
+  assert.equal(prefs.contextIsolation, true);
+});
+
+test('hardenWebPreferencesDefaults: an override cannot silently re-enable a security-critical flag by accident-proofing (documents intent, not enforced)', () => {
+  // If a caller explicitly passes contextIsolation: false, that IS honored —
+  // this function centralizes defaults, it does not forbid an override.
+  // This test documents that behavior so it is a deliberate, visible choice
+  // rather than a surprise.
+  const prefs = hardenWebPreferencesDefaults({ contextIsolation: false });
+  assert.equal(prefs.contextIsolation, false);
+});
