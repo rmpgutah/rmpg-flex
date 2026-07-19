@@ -34,7 +34,49 @@ function decryptSecretForStorage(ciphertextBase64, safeStorage) {
   return safeStorage.decryptString(Buffer.from(ciphertextBase64, 'base64'));
 }
 
+const OFFLINE_SECRET_KEYS = ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret'];
+// Every value this module encrypts is base64 — plaintext legacy values
+// are plain JSON/strings and will not parse as valid base64-of-our-format.
+// We detect "already migrated" by attempting a decrypt: if it succeeds,
+// it was already ciphertext; if safeStorage throws, treat it as plaintext
+// still needing migration. This makes the migration self-idempotent
+// without a separate sentinel key that could itself drift out of sync.
+function looksAlreadyMigrated(value, safeStorage) {
+  try {
+    decryptSecretForStorage(value, safeStorage);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One-time migration moving the three plaintext offline-PIN secrets
+ * (desktop/pinManager.js:80,103-104) out of local_config's plaintext
+ * storage into safeStorage-encrypted form, in place (same keys).
+ * Safe to call on every startup — already-migrated keys are skipped.
+ */
+function migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage }) {
+  const migrated = [];
+  const skipped = [];
+  for (const key of OFFLINE_SECRET_KEYS) {
+    const value = getConfig(key);
+    if (!value) {
+      skipped.push(key);
+      continue;
+    }
+    if (looksAlreadyMigrated(value, safeStorage)) {
+      skipped.push(key);
+      continue;
+    }
+    setConfig(key, encryptSecretForStorage(value, safeStorage));
+    migrated.push(key);
+  }
+  return { migrated, skipped };
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
+  migrateOfflineSecretsToSafeStorage,
 };

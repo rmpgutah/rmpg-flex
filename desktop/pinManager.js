@@ -7,6 +7,8 @@
 
 const crypto = require('crypto');
 const { getLocalDb, getConfig, setConfig } = require('./localDb');
+const { safeStorage } = require('electron');
+const { migrateOfflineSecretsToSafeStorage, decryptSecretForStorage } = require('./security/secretsStore');
 
 let mainWindow = null;
 let expiryTimer = null;
@@ -21,6 +23,11 @@ const LOCKOUT_MINUTES = 15;
 
 function init(window) {
   mainWindow = window;
+
+  const migrationResult = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+  if (migrationResult.migrated.length > 0) {
+    console.log('[PIN-MANAGER] Migrated offline secrets to safeStorage:', migrationResult.migrated);
+  }
 
   // Start expiry check timer (every 60 seconds)
   expiryTimer = setInterval(checkExpiredSessions, 60_000);

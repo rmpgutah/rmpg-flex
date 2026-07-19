@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { encryptSecretForStorage, decryptSecretForStorage } = require('../secretsStore');
+const { migrateOfflineSecretsToSafeStorage } = require('../secretsStore');
 
 function fakeSafeStorage({ available = true } = {}) {
   return {
@@ -40,4 +41,45 @@ test('encryptSecretForStorage: throws for a non-string plaintext', () => {
 test('decryptSecretForStorage: throws for a non-string ciphertext', () => {
   const safeStorage = fakeSafeStorage();
   assert.throws(() => decryptSecretForStorage(null, safeStorage), /must be a string/);
+});
+
+function fakeConfigStore(initial) {
+  const store = { ...initial };
+  return {
+    getConfig: (key) => (key in store ? store[key] : null),
+    setConfig: (key, value) => { store[key] = value; },
+    _dump: () => ({ ...store }),
+  };
+}
+
+test('migrateOfflineSecretsToSafeStorage: migrates all three plaintext secrets present', () => {
+  const { getConfig, setConfig, _dump } = fakeConfigStore({
+    admin_offline_secret: 'admin-plain',
+    all_user_secrets: '[{"user_id":1,"secret":"user-plain"}]',
+    my_offline_secret: 'my-plain',
+  });
+  const safeStorage = fakeSafeStorage();
+  const result = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+  assert.deepEqual(result.migrated.sort(), ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret']);
+  assert.deepEqual(result.skipped, []);
+  // Each value in the store is now the encrypted form, decryptable back to the original
+  const dumped = _dump();
+  assert.equal(decryptSecretForStorage(dumped.admin_offline_secret, safeStorage), 'admin-plain');
+});
+
+test('migrateOfflineSecretsToSafeStorage: skips a key that is absent', () => {
+  const { getConfig, setConfig } = fakeConfigStore({ admin_offline_secret: 'admin-plain' });
+  const safeStorage = fakeSafeStorage();
+  const result = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+  assert.deepEqual(result.migrated, ['admin_offline_secret']);
+  assert.deepEqual(result.skipped, ['all_user_secrets', 'my_offline_secret']);
+});
+
+test('migrateOfflineSecretsToSafeStorage: is idempotent — a second run skips already-migrated keys', () => {
+  const { getConfig, setConfig } = fakeConfigStore({ admin_offline_secret: 'admin-plain' });
+  const safeStorage = fakeSafeStorage();
+  migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+  const second = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+  assert.deepEqual(second.migrated, []);
+  assert.deepEqual(second.skipped, ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret']);
 });
