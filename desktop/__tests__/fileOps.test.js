@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport } = require('../fileOps');
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -124,4 +124,30 @@ test('encodeBackupForExport: throws TypeError for a non-Buffer input', () => {
     encryptString: (s) => Buffer.from('enc:' + s),
   };
   assert.throws(() => encodeBackupForExport('not-a-buffer', fakeSafeStorage), TypeError);
+});
+
+test('decodeBackupForImport: decrypts then base64-decodes back to the original raw bytes', () => {
+  const fakeSafeStorage = {
+    decryptString: (buf) => buf.toString().slice(4),
+  };
+  const rawBytes = Buffer.from('hello');
+  // Matches the Task 8 test fixture: encryptSecretForStorage's
+  // encryptString('enc:' + base64) -> .toString('base64').
+  const encodedText = Buffer.from('enc:' + rawBytes.toString('base64')).toString('base64');
+  const result = decodeBackupForImport(encodedText, fakeSafeStorage);
+  assert.deepEqual(result, rawBytes);
+});
+
+test('decodeBackupForImport: round-trips exactly with encodeBackupForExport using matching fakes', () => {
+  const fakeSafeStorageForEncrypt = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from('enc:' + s),
+  };
+  const fakeSafeStorageForDecrypt = {
+    decryptString: (buf) => buf.toString().slice(4),
+  };
+  const rawBytes = Buffer.from('this is a raw sqlite backup payload, not really SQLite bytes');
+  const encoded = encodeBackupForExport(rawBytes, fakeSafeStorageForEncrypt);
+  const decoded = decodeBackupForImport(encoded, fakeSafeStorageForDecrypt);
+  assert.deepEqual(decoded, rawBytes);
 });

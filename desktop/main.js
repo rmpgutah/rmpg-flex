@@ -10,9 +10,9 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -22,9 +22,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -32,6 +32,7 @@ try {
   initLocalDb = () => { console.warn('[LOCAL-DB] Unavailable — native module failed to load'); };
   getLocalDb = () => null;
   closeLocalDb = () => {};
+  getLocalDbPath = () => null;
   getConfig = () => null;
   setConfig = () => {};
   getQueueDepth = () => 0;
@@ -1031,6 +1032,31 @@ guardedHandle('fs:export-db-backup', async () => {
     return { ok: false, error: err.message };
   } finally {
     fs.promises.unlink(tempPath).catch(() => {});
+  }
+});
+guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
+  const pathValidation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
+  if (!pathValidation.ok) return { ok: false, error: pathValidation.error };
+  let rawBytes;
+  try {
+    const encodedText = await fs.promises.readFile(pathValidation.resolved, 'utf8');
+    rawBytes = decodeBackupForImport(encodedText, safeStorage);
+  } catch (err) {
+    return { ok: false, error: `could not decrypt backup: ${err.message}` };
+  }
+  const contentValidation = validateBackupFileBeforeImport(rawBytes);
+  if (!contentValidation.ok) return { ok: false, error: contentValidation.error };
+  try {
+    closeLocalDb();
+    const dbPath = getLocalDbPath(app, path);
+    await fs.promises.writeFile(dbPath, rawBytes);
+    for (const suffix of ['-wal', '-shm']) {
+      await fs.promises.unlink(dbPath + suffix).catch(() => {});
+    }
+    initLocalDb();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 });
 

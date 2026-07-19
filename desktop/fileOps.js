@@ -8,7 +8,7 @@
 
 'use strict';
 
-const { encryptSecretForStorage } = require('./security/secretsStore');
+const { encryptSecretForStorage, decryptSecretForStorage } = require('./security/secretsStore');
 
 /** Builds the options shape for Electron's dialog.showSaveDialog. */
 function buildSaveDialogOptions({ defaultPath, filters } = {}) {
@@ -79,6 +79,19 @@ function encodeBackupForExport(rawDbBytes, safeStorageModule) {
   return encryptSecretForStorage(base64, safeStorageModule);
 }
 
+/**
+ * Inverse of encodeBackupForExport: decrypts the on-disk .rmpgbak text via
+ * Group H's decryptSecretForStorage to recover the base64-of-raw-bytes
+ * string, then base64-decodes it back to the raw backup Buffer. Takes
+ * `safeStorage` as a param (no direct `electron` import) to stay
+ * unit-testable. Callers are responsible for validating the result is a
+ * genuine SQLite file (validateBackupFileBeforeImport) before trusting it.
+ */
+function decodeBackupForImport(encodedText, safeStorageModule) {
+  const base64 = decryptSecretForStorage(encodedText, safeStorageModule);
+  return Buffer.from(base64, 'base64');
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
@@ -86,4 +99,5 @@ module.exports = {
   formatPrinters,
   isKnownPrinterName,
   encodeBackupForExport,
+  decodeBackupForImport,
 };

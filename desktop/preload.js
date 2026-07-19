@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electron', {
   getPrinters: () => ipcRenderer.invoke('fs:printers'),
   printSilently: (printerName) => ipcRenderer.invoke('fs:print-silent', printerName),
   exportLocalDbBackup: () => ipcRenderer.invoke('fs:export-db-backup'),
+  importLocalDbBackup: (path) => ipcRenderer.invoke('fs:import-db-backup', path),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
