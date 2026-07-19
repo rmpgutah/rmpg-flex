@@ -86,6 +86,15 @@ function formatNetworkInterfaces(rawInterfaces) {
   return result;
 }
 
+const PMSET_BATTERY_LINE = /(\d+)%;\s*(charging|discharging|charged);/;
+
+/** Parses macOS `pmset -g batt` output. Returns null if no battery line is present (desktop Mac). */
+function parsePmsetBatteryOutput(rawOutput) {
+  const match = PMSET_BATTERY_LINE.exec(rawOutput);
+  if (!match) return null;
+  return { percent: Number(match[1]), charging: match[2] === 'charging' };
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
@@ -97,4 +106,5 @@ module.exports = {
   evaluateDiskSpace,
   DEFAULT_DISK_WARN_THRESHOLD_BYTES,
   formatNetworkInterfaces,
+  parsePmsetBatteryOutput,
 };

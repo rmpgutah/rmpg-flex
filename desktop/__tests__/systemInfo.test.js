@@ -166,3 +166,29 @@ test('formatNetworkInterfaces: includes multiple addresses on the same interface
 test('formatNetworkInterfaces: returns [] for an empty interfaces object', () => {
   assert.deepEqual(formatNetworkInterfaces({}), []);
 });
+
+const { parsePmsetBatteryOutput } = require('../systemInfo');
+
+test('parsePmsetBatteryOutput: parses a discharging laptop', () => {
+  const raw = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=4325561)\t87%; discharging; 3:47 remaining present: true\n";
+  assert.deepEqual(parsePmsetBatteryOutput(raw), { percent: 87, charging: false });
+});
+
+test('parsePmsetBatteryOutput: parses a charging laptop', () => {
+  const raw = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4325561)\t54%; charging; 1:12 remaining present: true\n";
+  assert.deepEqual(parsePmsetBatteryOutput(raw), { percent: 54, charging: true });
+});
+
+test('parsePmsetBatteryOutput: parses "charged" (fully charged, on AC) as not charging', () => {
+  const raw = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4325561)\t100%; charged; 0:00 remaining present: true\n";
+  assert.deepEqual(parsePmsetBatteryOutput(raw), { percent: 100, charging: false });
+});
+
+test('parsePmsetBatteryOutput: returns null for a desktop Mac with no battery line', () => {
+  const raw = "Now drawing from 'AC Power'\n";
+  assert.equal(parsePmsetBatteryOutput(raw), null);
+});
+
+test('parsePmsetBatteryOutput: returns null for unrecognizable output', () => {
+  assert.equal(parsePmsetBatteryOutput('garbage'), null);
+});

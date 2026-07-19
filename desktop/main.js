@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const fs = require('fs');
 
@@ -916,6 +916,17 @@ guardedHandle('sys:disk-space', () => {
 });
 guardedHandle('sys:network-interfaces', () => {
   return formatNetworkInterfaces(require('os').networkInterfaces());
+});
+guardedHandle('sys:battery', () => {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const { execSync } = require('child_process');
+    const output = execSync('pmset -g batt', { encoding: 'utf8', timeout: 3000 });
+    return parsePmsetBatteryOutput(output);
+  } catch (err) {
+    console.error('[SYS:BATTERY] pmset failed:', err.message);
+    return null;
+  }
 });
 guardedHandle('sys:export-diagnostics', async () => {
   const os = require('os');
