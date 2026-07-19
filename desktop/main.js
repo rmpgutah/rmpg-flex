@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs } = require('./security/ipcGuard');
 
 // ─── Lazy-load native modules ─────────────────────────────────
 // better-sqlite3 is a native (C++) add-on that must be compiled for
@@ -1830,6 +1830,8 @@ guardedHandle('recon:tool-install', async (event, { pkg } = {}) => {
 const toolSessions = new Map();
 
 guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
+  const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
+  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
@@ -1909,6 +1911,8 @@ guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
 // command, same args, but with a TTY so sudo prompts, interactive CLI
 // tools, or color-aware outputs that require a terminal work properly.
 guardedHandle('recon:tool-terminal', async (_event, { toolId, args = {} } = {}) => {
+  const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
+  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
   const { spawn } = require('child_process');
   const tool = RECON_TOOLS[toolId];
   if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };

@@ -92,3 +92,39 @@ test('guardedOn: swallows the call for an untrusted sender without throwing', ()
   assert.doesNotThrow(() => fakeIpcMain._emit('test:fire', event, 'payload'));
   assert.equal(called, false);
 });
+
+const { sanitizeReconToolArgs } = require('../ipcGuard');
+
+const FAKE_CATALOG = {
+  nmap: { title: 'Nmap' },
+  wireshark: { title: 'Wireshark' },
+};
+
+test('sanitizeReconToolArgs: accepts a known tool with simple scalar args', () => {
+  const result = sanitizeReconToolArgs('nmap', { target: '10.0.0.1', ports: '22,80' }, FAKE_CATALOG);
+  assert.deepEqual(result, { ok: true });
+});
+
+test('sanitizeReconToolArgs: rejects an unknown toolId', () => {
+  const result = sanitizeReconToolArgs('not-a-real-tool', {}, FAKE_CATALOG);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /Unknown tool/);
+});
+
+test('sanitizeReconToolArgs: rejects a non-object args value', () => {
+  const result = sanitizeReconToolArgs('nmap', 'not-an-object', FAKE_CATALOG);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /must be an object/);
+});
+
+test('sanitizeReconToolArgs: rejects a nested object value inside args', () => {
+  const result = sanitizeReconToolArgs('nmap', { target: { nested: true } }, FAKE_CATALOG);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /invalid value type/);
+});
+
+test('sanitizeReconToolArgs: rejects args exceeding the size cap', () => {
+  const result = sanitizeReconToolArgs('nmap', { target: 'x'.repeat(5000) }, FAKE_CATALOG);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /too large/);
+});

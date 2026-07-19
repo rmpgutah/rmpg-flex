@@ -57,7 +57,35 @@ function createIpcGuards(ipcMain, expectedHost) {
   return { guardedHandle, guardedOn };
 }
 
+const MAX_RECON_ARGS_BYTES = 4096;
+
+/**
+ * Validates a recon-tool spawn request before it reaches child_process.spawn.
+ * toolId must be a known key in catalog; args must be a flat object of
+ * string/number/boolean values under a total size cap.
+ */
+function sanitizeReconToolArgs(toolId, args, catalog) {
+  if (!catalog || !Object.prototype.hasOwnProperty.call(catalog, toolId)) {
+    return { ok: false, error: `Unknown tool: ${toolId}` };
+  }
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    return { ok: false, error: 'args must be an object' };
+  }
+  for (const [key, value] of Object.entries(args)) {
+    const t = typeof value;
+    if (t !== 'string' && t !== 'number' && t !== 'boolean') {
+      return { ok: false, error: `invalid value type for "${key}"` };
+    }
+  }
+  const serializedSize = Buffer.byteLength(JSON.stringify(args), 'utf8');
+  if (serializedSize > MAX_RECON_ARGS_BYTES) {
+    return { ok: false, error: `args too large (${serializedSize} bytes, max ${MAX_RECON_ARGS_BYTES})` };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
+  sanitizeReconToolArgs,
 };
