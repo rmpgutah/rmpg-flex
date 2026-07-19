@@ -160,3 +160,35 @@ test('verifyLocalDbIntegrity: reports errors when the pragma returns problem row
   assert.equal(result.ok, false);
   assert.equal(result.errors.length, 2);
 });
+
+const { restrictLocalDbFilePermissions } = require('../secretsStore');
+
+function fakeFs({ existing = [] } = {}) {
+  const chmoded = [];
+  return {
+    existsSync: (p) => existing.includes(p),
+    chmodSync: (p, mode) => { chmoded.push({ path: p, mode }); },
+    _chmoded: chmoded,
+  };
+}
+
+test('restrictLocalDbFilePermissions: chmods the main db file to 0600', () => {
+  const fs = fakeFs({ existing: ['/data/rmpg-local.db'] });
+  const result = restrictLocalDbFilePermissions('/data/rmpg-local.db', fs);
+  assert.equal(result.ok, true);
+  assert.deepEqual(fs._chmoded[0], { path: '/data/rmpg-local.db', mode: 0o600 });
+});
+
+test('restrictLocalDbFilePermissions: also chmods -wal/-shm sidecars when present', () => {
+  const fs = fakeFs({ existing: ['/data/rmpg-local.db', '/data/rmpg-local.db-wal', '/data/rmpg-local.db-shm'] });
+  const result = restrictLocalDbFilePermissions('/data/rmpg-local.db', fs);
+  assert.equal(result.chmoded.length, 3);
+  assert.ok(result.chmoded.includes('/data/rmpg-local.db-wal'));
+  assert.ok(result.chmoded.includes('/data/rmpg-local.db-shm'));
+});
+
+test('restrictLocalDbFilePermissions: skips sidecars that do not exist yet', () => {
+  const fs = fakeFs({ existing: ['/data/rmpg-local.db'] });
+  const result = restrictLocalDbFilePermissions('/data/rmpg-local.db', fs);
+  assert.deepEqual(result.chmoded, ['/data/rmpg-local.db']);
+});

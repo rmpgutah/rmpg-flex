@@ -144,6 +144,29 @@ function verifyLocalDbIntegrity(db) {
   return { ok: false, errors: rows.map((r) => r.integrity_check) };
 }
 
+/**
+ * Restricts the local SQLite database file — and its WAL-mode sidecar
+ * files, which can hold the same sensitive row data mid-transaction —
+ * to owner-only read/write (0600). Best-effort: a missing sidecar (not
+ * yet created, WAL mode not yet active) is not an error.
+ */
+function restrictLocalDbFilePermissions(dbPath, fsModule) {
+  const chmoded = [];
+  try {
+    fsModule.chmodSync(dbPath, 0o600);
+    chmoded.push(dbPath);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+  for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
+    if (fsModule.existsSync(sidecar)) {
+      fsModule.chmodSync(sidecar, 0o600);
+      chmoded.push(sidecar);
+    }
+  }
+  return { ok: true, chmoded };
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -154,4 +177,5 @@ module.exports = {
   enableSecureDelete,
   secureDeleteLocalCache,
   verifyLocalDbIntegrity,
+  restrictLocalDbFilePermissions,
 };

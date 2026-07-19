@@ -8,7 +8,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const { app, safeStorage } = require('electron');
-const { encryptPasswordHashForCache, decryptPasswordHashFromCache, enableSecureDelete, verifyLocalDbIntegrity } = require('./security/secretsStore');
+const { encryptPasswordHashForCache, decryptPasswordHashFromCache, enableSecureDelete, verifyLocalDbIntegrity, restrictLocalDbFilePermissions } = require('./security/secretsStore');
 
 let db = null;
 
@@ -29,6 +29,11 @@ function initLocalDb() {
 
   console.log('[LOCAL-DB] Initializing at:', dbPath);
   db = new Database(dbPath);
+
+  const permsResult = restrictLocalDbFilePermissions(dbPath, fs);
+  if (!permsResult.ok) {
+    console.error('[LOCAL-DB] Failed to restrict file permissions:', permsResult.error);
+  }
 
   // Performance pragmas
   db.pragma('journal_mode = WAL');
