@@ -17,6 +17,16 @@ export const DESKTOP_WALLPAPERS: WallpaperPreset[] = [
       'linear-gradient(var(--border-subtle) 1px, transparent 1px), ' +
       'linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px), var(--surface-base)',
   },
+  {
+    id: 'precinct-radial',
+    label: 'Precinct Radial',
+    background: 'radial-gradient(circle at center, var(--surface-raised) 0%, var(--surface-base) 70%)',
+  },
+  {
+    id: 'shift-gradient',
+    label: 'Shift Gradient',
+    background: 'linear-gradient(160deg, var(--surface-overlay) 0%, var(--surface-base) 100%)',
+  },
 ];
 
 export function getWallpaper(id: string): WallpaperPreset {

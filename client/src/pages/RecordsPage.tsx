@@ -95,6 +95,13 @@ export default function RecordsPage() {
   //          &person_id= | &vehicle_id= | &property_id= | &business_id= | &evidence_id=
   //          (legacy camelCase: personId, vehicleId, propertyId, businessId, evidenceId
   //           and `id` when paired with a `tab`)
+  //          Desktop Launcher v2 (Task 14): dragging a person row onto the
+  //          Records desktop icon opens a window at `/records?personId=<id>`
+  //          (DesktopIconGrid.tsx's onDrop handler) — this already-existing
+  //          `personId` legacy alias is what picks it up and auto-selects the
+  //          person below once the list hydrates (or via the direct-fetch
+  //          fallback for an archived/paged-out id). No new plumbing needed;
+  //          don't remove `personId` support thinking it's unused legacy code.
   //          &q=<search box pre-fill>
   // On mount: pick the tab and remember the target id; once the hydrated list
   // contains it we auto-select that record and strip the params so a refresh

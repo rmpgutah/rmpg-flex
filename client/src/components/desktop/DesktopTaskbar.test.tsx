@@ -4,6 +4,18 @@ import { MemoryRouter } from 'react-router-dom';
 
 const apiFetchMock = vi.fn().mockResolvedValue({ count: 0 });
 vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
+// DesktopTaskbar calls useAuth() (for the command bar's clock-in/out officer id);
+// without a real AuthProvider in the tree it throws "useAuth must be used within
+// an AuthProvider". Mock it the same way DesktopPage.test.tsx does.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+}));
+// DesktopTaskbar also calls useToast() to surface clock in/out failures;
+// without a real ToastProvider in the tree it throws "useToast must be used
+// within a ToastProvider". Mock it the same way useAuth is mocked above.
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
 
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import DesktopTaskbar from './DesktopTaskbar';

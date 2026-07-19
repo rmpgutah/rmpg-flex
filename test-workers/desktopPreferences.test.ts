@@ -16,6 +16,7 @@ beforeAll(async () => {
     default_map_style TEXT, dispatch_sort TEXT, dispatch_show_cleared INTEGER,
     theme_preference TEXT,
     desktop_layout_json TEXT, desktop_wallpaper TEXT, desktop_widgets_json TEXT,
+    desktop_accent TEXT, desktop_notes_json TEXT,
     updated_at TEXT
   )`);
 });
@@ -39,5 +40,21 @@ describe('PUT/GET /api/preferences — desktop layout fields', () => {
     const getBody = await getRes.json() as Record<string, unknown>;
     expect(getBody.desktop_wallpaper).toBe('slate');
     expect(JSON.parse(getBody.desktop_widgets_json as string)).toEqual(['clock', 'ops-summary']);
+  });
+
+  it('persists and reads back desktop_accent and desktop_notes_json', async () => {
+    const putRes = await app.request('/api/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({
+        desktop_accent: 'amber',
+        desktop_notes_json: JSON.stringify([{ id: 'n1', x: 40, y: 40, width: 180, height: 140, text: 'Check plate ABC123', color: 'amber' }]),
+      }),
+    }, env as unknown as Record<string, unknown>);
+    expect(putRes.status).toBe(200);
+
+    const getRes = await app.request('/api/preferences', {}, env as unknown as Record<string, unknown>);
+    const getBody = await getRes.json() as Record<string, unknown>;
+    expect(getBody.desktop_accent).toBe('amber');
+    expect(JSON.parse(getBody.desktop_notes_json as string)[0].text).toBe('Check plate ABC123');
   });
 });
