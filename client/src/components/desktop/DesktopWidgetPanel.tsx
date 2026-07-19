@@ -64,6 +64,7 @@ function WidgetFrame({
           opacity: widget.opacity,
           backdropFilter: widget.blur > 0 ? `blur(${widget.blur}px)` : undefined,
           cursor: 'move',
+          pointerEvents: 'auto',
         }}
       >
         {widget.id === 'quick-access' ? <Widget catalog={catalog} /> : <Widget />}
@@ -75,11 +76,9 @@ function WidgetFrame({
 export default function DesktopWidgetPanel({ widgets = [], catalog, onMoveWidget, onAdjustWidget }: DesktopWidgetPanelProps) {
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'auto' }}>
-        {widgets.filter(w => w.on).map(w => (
-          <WidgetFrame key={w.id} widget={w} catalog={catalog} onMoveWidget={onMoveWidget} onAdjustWidget={onAdjustWidget} />
-        ))}
-      </div>
+      {widgets.filter(w => w.on).map(w => (
+        <WidgetFrame key={w.id} widget={w} catalog={catalog} onMoveWidget={onMoveWidget} onAdjustWidget={onAdjustWidget} />
+      ))}
     </div>
   );
 }

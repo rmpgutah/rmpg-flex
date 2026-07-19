@@ -27,6 +27,28 @@ describe('DesktopWidgetPanel — freeform layout', () => {
     expect(screen.queryByText(/Shift Timer/i)).not.toBeInTheDocument();
   });
 
+  it('lets clicks pass through empty canvas while keeping each widget frame clickable (regression: full-canvas overlay bug)', () => {
+    const widgets = normalizeDesktopWidgets(null).map(w => w.id === 'clock' ? { ...w, x: 300, y: 40 } : w);
+    render(<MemoryRouter><DesktopWidgetPanel widgets={widgets} catalog={[]} onMoveWidget={vi.fn()} onAdjustWidget={vi.fn()} /></MemoryRouter>);
+
+    const clockPanel = screen.getByText('12:00:00').closest('[data-widget-id="clock"]') as HTMLElement;
+    // The widget frame itself must remain interactive.
+    expect(clockPanel).toHaveStyle({ pointerEvents: 'auto' });
+
+    // The outer wrapper (which paints above icons/notes via zIndex: 10) must stay
+    // pointer-events: none so canvas space NOT covered by any widget passes clicks
+    // through to whatever sits underneath. Previously an intermediate full-`inset: 0`
+    // div re-enabled pointerEvents: 'auto' across the ENTIRE canvas, silently
+    // swallowing every click regardless of whether a widget was visually there.
+    const outerWrapper = clockPanel.parentElement as HTMLElement;
+    expect(outerWrapper).toHaveStyle({ position: 'absolute', inset: '0px', pointerEvents: 'none' });
+
+    // No element between the outer wrapper and the widget frame should re-enable
+    // pointer-events across the full canvas — the widget frame's parent must be
+    // the outer wrapper directly (no intermediate full-coverage div).
+    expect(outerWrapper.style.pointerEvents).toBe('none');
+  });
+
   it('right-clicking a widget offers opacity and blur adjustments that call onAdjustWidget', () => {
     const widgets = normalizeDesktopWidgets(null).map(w => w.id === 'clock' ? { ...w, opacity: 1, blur: 0 } : w);
     const onAdjustWidget = vi.fn();
