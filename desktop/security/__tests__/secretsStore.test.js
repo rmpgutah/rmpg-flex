@@ -226,3 +226,28 @@ test('restrictLocalDbFilePermissions: a sidecar whose chmodSync throws is logged
   assert.equal(errorCalls.length, 1);
   assert.ok(String(errorCalls[0][0]).includes('/data/rmpg-local.db-wal'));
 });
+
+const { redactSensitiveFieldsInLogs } = require('../secretsStore');
+
+test('redactSensitiveFieldsInLogs: redacts a JWT-shaped token', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+  const redacted = redactSensitiveFieldsInLogs(`Authorization: Bearer ${jwt}`);
+  assert.doesNotMatch(redacted, /eyJ/);
+  assert.match(redacted, /\[REDACTED\]/);
+});
+
+test('redactSensitiveFieldsInLogs: redacts a PIN following the word "pin"', () => {
+  const redacted = redactSensitiveFieldsInLogs('Employee entered PIN 482913 for auth');
+  assert.doesNotMatch(redacted, /482913/);
+  assert.match(redacted, /\[REDACTED\]/);
+});
+
+test('redactSensitiveFieldsInLogs: redacts known secret-key substrings', () => {
+  const redacted = redactSensitiveFieldsInLogs('config lookup failed for admin_offline_secret');
+  assert.doesNotMatch(redacted, /admin_offline_secret/);
+});
+
+test('redactSensitiveFieldsInLogs: leaves ordinary text untouched', () => {
+  const text = 'Sync completed for calls_for_service: 42 rows';
+  assert.equal(redactSensitiveFieldsInLogs(text), text);
+});

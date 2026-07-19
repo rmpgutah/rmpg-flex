@@ -176,6 +176,24 @@ function restrictLocalDbFilePermissions(dbPath, fsModule) {
   return { ok: true, chmoded };
 }
 
+const JWT_SHAPE = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+const PIN_AFTER_LABEL = /\bpin\b\s*:?\s*(\d{6})\b/gi;
+
+/**
+ * Text-transform redaction for use at specific log sites (opt-in, not a
+ * global console monkey-patch — see interface doc for why). Redacts:
+ * JWT-shaped tokens, a 6-digit PIN immediately following the word "pin",
+ * and any of this repo's known offline-secret config-key names.
+ */
+function redactSensitiveFieldsInLogs(text) {
+  let result = text.replace(JWT_SHAPE, '[REDACTED]');
+  result = result.replace(PIN_AFTER_LABEL, (match, pin) => match.replace(pin, '[REDACTED]'));
+  for (const key of OFFLINE_SECRET_KEYS) {
+    result = result.split(key).join('[REDACTED]');
+  }
+  return result;
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -187,4 +205,5 @@ module.exports = {
   secureDeleteLocalCache,
   verifyLocalDbIntegrity,
   restrictLocalDbFilePermissions,
+  redactSensitiveFieldsInLogs,
 };
