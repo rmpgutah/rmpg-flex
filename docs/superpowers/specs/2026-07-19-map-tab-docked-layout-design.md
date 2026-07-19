@@ -138,9 +138,17 @@ below, not four; no "Status" section, since there's nothing live to relocate int
 
 | Section | Contents |
 |---|---|
-| **Dispatch Tools** | `directions`, `places`, `bookmarks`, `optimize` (multi-stop route planner) toggles, plus the existing `MapboxDispatchConnections` component |
+| **Dispatch Tools** | `directions`, `places`, `bookmarks`, `optimize` (multi-stop route planner) toggles |
 | **Analysis** | `speed-analytics` (opens the existing `SpeedAnalyticsPanel`), `gps-replay` (opens the existing `GpsReplayTool`), `ruler`, `buffer-ring`, `annotation`, `draw-geofence` (each opens its existing floating tool component — `RulerTool`, `BufferRingTool`, `AnnotationTool`, `DrawGeofenceTool`), plus `measure` (distance/area — opens the existing inline dropdown), `draw` (polygon/polyline/circle — opens the existing inline dropdown), `gl-draw` (`glDraw.toggle()`) from the Advanced Toolbar's separate measure/draw subsystem |
-| **Diagnostics** | `identify`, `inspect` (Feature Inspector), `mapmatch` (Map Match Trace), plus the existing `MapDiagnosticsOverlay` component |
+| **Diagnostics** | `identify`, `inspect` (Feature Inspector), `mapmatch` (Map Match Trace) |
+
+**Second correction:** `MapboxDispatchConnections` and `MapDiagnosticsOverlay` (both
+referenced in an earlier draft of this table) are, like `UnifiedMapLegend`, components
+that exist in the codebase but are never imported/rendered anywhere in the app today —
+confirmed via a repo-wide import search finding zero live usages of either. Same
+non-goal applies: reviving orphaned components is out of scope for a layout
+reorganization. Both dropped from the table above; each section still has real,
+currently-live content without them.
 
 Note: items in Analysis and some in Dispatch Tools don't render their content *inside*
 the dock — clicking them still opens the existing floating tool panel/component (e.g.
