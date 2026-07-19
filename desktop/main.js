@@ -1001,6 +1001,7 @@ guardedHandle('fs:reveal', (event, targetPath) => {
   }
   shell.showItemInFolder(validation.resolved);
 });
+guardedHandle('fs:downloads-path', () => app.getPath('downloads'));
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
