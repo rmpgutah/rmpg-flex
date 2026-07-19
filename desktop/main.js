@@ -12,6 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { buildSaveDialogOptions, buildOpenDialogOptions } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -961,6 +962,16 @@ guardedHandle('sys:export-diagnostics', async () => {
 guardedHandle('sys:restart', () => {
   app.relaunch();
   app.exit();
+});
+
+// ─── File & Data Export/Import ──────────────────────────────
+guardedHandle('fs:save-dialog', async (event, opts) => {
+  const result = await dialog.showSaveDialog(mainWindow, buildSaveDialogOptions(opts || {}));
+  return result.canceled ? null : result.filePath;
+});
+guardedHandle('fs:open-dialog', async (event, opts) => {
+  const result = await dialog.showOpenDialog(mainWindow, buildOpenDialogOptions(opts || {}));
+  return result.canceled ? null : result.filePaths;
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────
