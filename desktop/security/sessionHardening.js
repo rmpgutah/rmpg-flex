@@ -45,7 +45,19 @@ function installContentSecurityPolicy(session) {
   });
 }
 
+const ALLOWED_PERMISSIONS = new Set(['geolocation', 'notifications', 'media']);
+
+/**
+ * The pre-Group-F handler granted these permissions to ANY origin the
+ * window ever loaded. This adds the missing origin check: only the
+ * configured trusted host may receive them.
+ */
+function isPermissionAllowed(requestingHost, expectedHost, permission) {
+  return requestingHost === expectedHost && ALLOWED_PERMISSIONS.has(permission);
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
+  isPermissionAllowed,
 };

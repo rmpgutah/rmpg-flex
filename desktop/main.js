@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -732,17 +732,27 @@ async function createMainWindow() {
   // Electron denies geolocation by default. For RMPG Flex, GPS
   // tracking is mandatory for all logged-in users — auto-grant it.
   mainWindow.webContents.session.setPermissionRequestHandler(
-    (_webContents, permission, callback) => {
-      const allowed = ['geolocation', 'notifications', 'media'];
-      callback(allowed.includes(permission));
+    (webContents, permission, callback) => {
+      let requestingHost;
+      try {
+        requestingHost = new URL(webContents.getURL()).host;
+      } catch {
+        requestingHost = '';
+      }
+      callback(isPermissionAllowed(requestingHost, TRUSTED_HOST, permission));
     }
   );
 
   // Also handle the newer permission-check API (Electron 20+)
   mainWindow.webContents.session.setPermissionCheckHandler(
-    (_webContents, permission) => {
-      const allowed = ['geolocation', 'notifications', 'media'];
-      return allowed.includes(permission);
+    (webContents, permission) => {
+      let requestingHost;
+      try {
+        requestingHost = new URL(webContents.getURL()).host;
+      } catch {
+        requestingHost = '';
+      }
+      return isPermissionAllowed(requestingHost, TRUSTED_HOST, permission);
     }
   );
 
