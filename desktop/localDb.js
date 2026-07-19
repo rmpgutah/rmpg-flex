@@ -19,9 +19,19 @@ function getLocalDb() {
   return db;
 }
 
+/**
+ * Resolves the local SQLite cache file path. Takes Electron's `app` and
+ * Node's `path` modules as parameters (mirroring fileOps.js's pattern) so
+ * this stays unit-testable, and so 'rmpg-local.db' is written in exactly
+ * one place in this file.
+ */
+function getLocalDbPath(appModule, pathModule) {
+  return pathModule.join(appModule.getPath('userData'), 'rmpg-local.db');
+}
+
 function initLocalDb() {
   const dbDir = app.getPath('userData');
-  const dbPath = path.join(dbDir, 'rmpg-local.db');
+  const dbPath = getLocalDbPath(app, path);
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -458,6 +468,7 @@ function getQueueDepth() {
 module.exports = {
   initLocalDb,
   getLocalDb,
+  getLocalDbPath,
   closeLocalDb,
   upsertRow,
   replaceTable,

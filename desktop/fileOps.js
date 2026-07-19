@@ -8,6 +8,8 @@
 
 'use strict';
 
+const { encryptSecretForStorage } = require('./security/secretsStore');
+
 /** Builds the options shape for Electron's dialog.showSaveDialog. */
 function buildSaveDialogOptions({ defaultPath, filters } = {}) {
   return {
@@ -62,10 +64,26 @@ function isKnownPrinterName(printerName, formattedPrinterList) {
   return (formattedPrinterList || []).some((printer) => printer.name === printerName);
 }
 
+/**
+ * Prepares a live better-sqlite3 backup for export: base64-encodes the raw
+ * backup bytes, then encrypts that string via Group H's
+ * encryptSecretForStorage (OS-keychain-backed) so the on-disk .rmpgbak
+ * file is never plaintext SQLite. Takes `safeStorage` as a param (no
+ * direct `electron` import) to stay unit-testable.
+ */
+function encodeBackupForExport(rawDbBytes, safeStorageModule) {
+  if (!Buffer.isBuffer(rawDbBytes)) {
+    throw new TypeError('rawDbBytes must be a Buffer');
+  }
+  const base64 = rawDbBytes.toString('base64');
+  return encryptSecretForStorage(base64, safeStorageModule);
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
   resolveAllowedRoots,
   formatPrinters,
   isKnownPrinterName,
+  encodeBackupForExport,
 };

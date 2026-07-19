@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport } = require('../fileOps');
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -105,4 +105,23 @@ test('isKnownPrinterName: returns false when the name does not match any entry',
 
 test('isKnownPrinterName: returns false for an empty printer list', () => {
   assert.equal(isKnownPrinterName('Any_Printer', []), false);
+});
+
+test('encodeBackupForExport: base64-encodes raw bytes then encrypts via safeStorage', () => {
+  const fakeSafeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from('enc:' + s),
+  };
+  const rawBytes = Buffer.from('hello');
+  const result = encodeBackupForExport(rawBytes, fakeSafeStorage);
+  const expected = Buffer.from('enc:' + rawBytes.toString('base64')).toString('base64');
+  assert.equal(result, expected);
+});
+
+test('encodeBackupForExport: throws TypeError for a non-Buffer input', () => {
+  const fakeSafeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from('enc:' + s),
+  };
+  assert.throws(() => encodeBackupForExport('not-a-buffer', fakeSafeStorage), TypeError);
 });

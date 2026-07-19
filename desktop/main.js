@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -1013,6 +1013,25 @@ guardedHandle('fs:print-silent', async (event, printerName) => {
       resolve(success ? { ok: true } : { ok: false, error: failureReason });
     });
   });
+});
+guardedHandle('fs:export-db-backup', async () => {
+  const dialogResult = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: `rmpg-flex-backup-${Date.now()}.rmpgbak`,
+    filters: [{ name: 'RMPG Flex Backup', extensions: ['rmpgbak'] }],
+  });
+  if (dialogResult.canceled) return { ok: false, error: 'cancelled' };
+  const tempPath = path.join(app.getPath('temp'), `rmpg-db-backup-${Date.now()}.db`);
+  try {
+    await getLocalDb().backup(tempPath);
+    const rawBytes = await fs.promises.readFile(tempPath);
+    const encoded = encodeBackupForExport(rawBytes, safeStorage);
+    await fs.promises.writeFile(dialogResult.filePath, encoded, 'utf8');
+    return { ok: true, path: dialogResult.filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    fs.promises.unlink(tempPath).catch(() => {});
+  }
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────
