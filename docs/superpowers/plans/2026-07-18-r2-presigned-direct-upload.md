@@ -1519,7 +1519,7 @@ Create `scripts/r2-cors-policy.json`:
   "rules": [
     {
       "allowed": {
-        "origins": ["https://rmpgutah.us", "http://localhost:5173"],
+        "origins": ["https://rmpgutah.us", "https://www.rmpgutah.us", "http://localhost:5173"],
         "methods": ["PUT", "GET", "HEAD"],
         "headers": ["Content-Type"]
       },
