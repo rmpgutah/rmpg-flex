@@ -125,7 +125,7 @@ export default function DesktopIconGrid({
                 try {
                   const payload = JSON.parse(e.dataTransfer.getData('application/json'));
                   if (payload?.type === 'person' && payload.id) {
-                    openWindow(`/records?personId=${payload.id}`, 'Records');
+                    openWindow(`/records?personId=${encodeURIComponent(payload.id)}`, 'Records');
                   }
                 } catch { /* ignore malformed drag payloads */ }
               } : undefined}

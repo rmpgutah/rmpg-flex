@@ -10,9 +10,13 @@ describe('DesktopPinnedCallTicker', () => {
   beforeEach(() => apiFetchMock.mockReset());
 
   it('renders each active call\'s type and address', async () => {
+    // Real /dispatch/queue response shape (LIST_VIEW_COLUMNS in
+    // src/routes/dispatch/calls.ts, projected by src/routes/dispatch/aggregates.ts's
+    // GET /queue) — DB columns are incident_type/location_address, NOT the
+    // call_type/address the widget used to (wrongly) assume.
     apiFetchMock.mockResolvedValue([
-      { id: 1, call_type: 'Traffic Stop', address: '123 Main St', priority: 2 },
-      { id: 2, call_type: 'Domestic Disturbance', address: '456 Elm St', priority: 1 },
+      { id: 1, incident_type: 'Traffic Stop', location_address: '123 Main St', priority: 'P2' },
+      { id: 2, incident_type: 'Domestic Disturbance', location_address: '456 Elm St', priority: 'P1' },
     ]);
     render(<DesktopPinnedCallTicker />);
     await waitFor(() => expect(screen.getByText(/Traffic Stop/)).toBeInTheDocument());

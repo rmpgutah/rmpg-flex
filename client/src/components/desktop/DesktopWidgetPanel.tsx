@@ -21,6 +21,11 @@ export interface DesktopWidgetPanelProps {
   onAdjustWidget: (id: string, patch: Partial<Pick<DesktopWidgetState, 'opacity' | 'blur'>>) => void;
 }
 
+// Left as `any`: every widget but 'quick-access' takes no props at all, so a
+// shared prop type would either make `catalog` optional (which then fails to
+// satisfy DesktopQuickAccessWidgetProps's required `catalog`) or required
+// (which then fails the no-prop `<Widget />` call sites below) — either way
+// forces a real refactor of the no-prop widgets rather than a one-line change.
 const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'clock': DesktopClockWidget,
   'ops-summary': DesktopOpsSummaryWidget,

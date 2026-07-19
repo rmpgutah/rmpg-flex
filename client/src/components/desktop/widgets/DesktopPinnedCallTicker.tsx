@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 
+// Matches the real /dispatch/queue response shape — see ActiveCall in
+// client/src/pages/map/utils/mapConstants.ts and LIST_VIEW_COLUMNS in
+// src/routes/dispatch/calls.ts (projected as-is by src/routes/dispatch/aggregates.ts's
+// GET /queue). There is no `call_type`/`address`; the DB columns are
+// `incident_type`/`location_address`. `priority` isn't rendered here, so it's
+// omitted rather than kept as an unused (and previously mistyped) field.
 interface TickerCall {
   id: number | string;
-  call_type: string;
-  address: string;
-  priority: number;
+  incident_type: string;
+  location_address: string;
 }
 
 export default function DesktopPinnedCallTicker() {
@@ -34,8 +39,8 @@ export default function DesktopPinnedCallTicker() {
       ) : (
         calls.map(c => (
           <div key={c.id} className="text-[11px] py-0.5" style={{ color: 'var(--text-primary)' }}>
-            <span className="font-semibold">{c.call_type}</span>
-            <span style={{ color: 'var(--text-muted)' }}> — {c.address}</span>
+            <span className="font-semibold">{c.incident_type}</span>
+            <span style={{ color: 'var(--text-muted)' }}> — {c.location_address}</span>
           </div>
         ))
       )}

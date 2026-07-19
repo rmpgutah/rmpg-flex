@@ -12,7 +12,7 @@ export interface DesktopStickyNoteProps {
 
 export default function DesktopStickyNote({ note, onChange, onDelete }: DesktopStickyNoteProps) {
   const { onPointerDown } = useDraggablePosition(note.x, note.y, (x, y) => onChange({ x, y }));
-  const accent = getAccent(note.color === 'amber' ? 'amber' : note.color);
+  const accent = getAccent(note.color);
 
   return (
     <div

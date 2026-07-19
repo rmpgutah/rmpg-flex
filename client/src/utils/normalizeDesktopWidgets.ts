@@ -15,9 +15,16 @@ export const ALL_WIDGET_IDS = [
 export const V1_DEFAULT_ON_IDS: readonly string[] = ['clock', 'ops-summary', 'notifications', 'quick-access'];
 
 function defaultPositionFor(index: number): { x: number; y: number } {
-  // Stacked top-right, matching v1's fixed DesktopWidgetPanel layout —
-  // only used as a starting point; the user can drag afterward (Task 10).
-  return { x: 1180, y: 16 + index * 160 };
+  // Stacked, matching v1's fixed DesktopWidgetPanel layout — only used as a
+  // starting point; the user can drag afterward (Task 10). x=700 keeps the
+  // widest widget (mini-map, 260px) fully on-screen down to a 1024px-wide
+  // viewport (a real deployment target — Toughbook/MDT displays), unlike the
+  // old x=1180 which assumed a ~1280px+ viewport and spawned new widgets
+  // off-screen — undraggable back into view — on narrower ones. This is a
+  // pure function with no DOM/window access (called from tests and
+  // server-adjacent contexts), so the fix is a lower fixed default rather
+  // than a window.innerWidth-based clamp.
+  return { x: 700, y: 16 + index * 160 };
 }
 
 function defaultWidget(id: string, index: number, on: boolean): DesktopWidgetState {

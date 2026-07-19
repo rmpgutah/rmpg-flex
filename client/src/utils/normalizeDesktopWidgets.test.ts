@@ -44,4 +44,19 @@ describe('normalizeDesktopWidgets', () => {
     const widgets = normalizeDesktopWidgets(null);
     expect(normalizeDesktopWidgets(serializeDesktopWidgets(widgets))).toEqual(widgets);
   });
+
+  it('gives every default-positioned widget an x that stays on-screen on a 1024px-wide display', () => {
+    // Widest widget (mini-map) renders at 260px; a 1024px-wide Toughbook/MDT
+    // viewport is a real deployment target (see CLAUDE.md). x + width must
+    // clear that with margin, or a newly-enabled widget spawns off the right
+    // edge with no way to drag it back into view.
+    const NARROW_VIEWPORT_WIDTH = 1024;
+    const WIDEST_WIDGET_PX = 260;
+    for (const raw of [null, JSON.stringify([{ id: 'clock', x: 10, y: 10, on: true, opacity: 1, blur: 0 }])]) {
+      const widgets = normalizeDesktopWidgets(raw);
+      for (const w of widgets) {
+        expect(w.x + WIDEST_WIDGET_PX).toBeLessThanOrEqual(NARROW_VIEWPORT_WIDTH);
+      }
+    }
+  });
 });
