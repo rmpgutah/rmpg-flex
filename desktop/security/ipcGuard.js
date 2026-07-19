@@ -208,6 +208,25 @@ function requireOfflineAuthForSensitiveIpc(cachedRole) {
   return { ok: true };
 }
 
+const RAW_IPC_REGISTRATION = /^\s*ipcMain\.(handle|on)\(\s*['"]([^'"]+)['"]/gm;
+
+/**
+ * Statically scans main.js source text for any ipcMain.handle/on call that
+ * bypasses guardedHandle/guardedOn. Returns the offending channel names so
+ * a regression (a new handler added without going through the guard) is
+ * caught immediately instead of silently reintroducing an unvalidated
+ * channel.
+ */
+function auditIpcHandlerRegistry(mainJsSource) {
+  const violations = [];
+  let match;
+  RAW_IPC_REGISTRATION.lastIndex = 0;
+  while ((match = RAW_IPC_REGISTRATION.exec(mainJsSource)) !== null) {
+    violations.push(`raw ipcMain.${match[1]}('${match[2]}') bypasses guardedHandle/guardedOn`);
+  }
+  return violations.length === 0 ? { ok: true } : { ok: false, violations };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -219,6 +238,7 @@ module.exports = {
   validateGlobalShortcutAccelerator,
   createRateLimiter,
   requireOfflineAuthForSensitiveIpc,
+  auditIpcHandlerRegistry,
   ACCELERATOR_MODIFIERS,
   ACCELERATOR_KEYS,
 };

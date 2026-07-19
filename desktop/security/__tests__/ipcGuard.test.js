@@ -289,3 +289,38 @@ test('requireOfflineAuthForSensitiveIpc: rejects a missing/null role', () => {
   assert.equal(requireOfflineAuthForSensitiveIpc(null).ok, false);
   assert.equal(requireOfflineAuthForSensitiveIpc(undefined).ok, false);
 });
+
+const { auditIpcHandlerRegistry } = require('../ipcGuard');
+
+test('auditIpcHandlerRegistry: passes when source has no raw ipcMain registrations', () => {
+  const source = `
+    guardedHandle('app:version', () => app.getVersion());
+    guardedOn('window:minimize', () => mainWindow?.minimize());
+  `;
+  assert.deepEqual(auditIpcHandlerRegistry(source), { ok: true });
+});
+
+test('auditIpcHandlerRegistry: flags a raw ipcMain.handle call', () => {
+  const source = `ipcMain.handle('new:channel', () => {});`;
+  const result = auditIpcHandlerRegistry(source);
+  assert.equal(result.ok, false);
+  assert.equal(result.violations.length, 1);
+  assert.match(result.violations[0], /new:channel/);
+});
+
+test('auditIpcHandlerRegistry: flags a raw ipcMain.on call', () => {
+  const source = `ipcMain.on('new:channel', () => {});`;
+  const result = auditIpcHandlerRegistry(source);
+  assert.equal(result.ok, false);
+  assert.match(result.violations[0], /new:channel/);
+});
+
+test('auditIpcHandlerRegistry: flags multiple violations', () => {
+  const source = `
+    ipcMain.handle('a', () => {});
+    guardedHandle('b', () => {});
+    ipcMain.on('c', () => {});
+  `;
+  const result = auditIpcHandlerRegistry(source);
+  assert.equal(result.violations.length, 2);
+});

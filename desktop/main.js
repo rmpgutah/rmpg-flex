@@ -9,7 +9,8 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
 // better-sqlite3 is a native (C++) add-on that must be compiled for
@@ -2815,6 +2816,14 @@ app.whenReady().then(async () => {
     // the window even began loading. Now the window starts immediately
     // and the connectivity result is used only to seed the monitor.
     const connectivityPromise = checkServerConnectivity();
+
+    if (DEV_MODE) {
+      const mainJsSource = fs.readFileSync(__filename, 'utf8');
+      const auditResult = auditIpcHandlerRegistry(mainJsSource);
+      if (!auditResult.ok) {
+        console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
+      }
+    }
 
     createMenu();
     await createMainWindow();
