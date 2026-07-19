@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electron', {
   openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
   exportDiagnosticsBundle: () => ipcRenderer.invoke('sys:export-diagnostics'),
   getCrashReports: () => ipcRenderer.invoke('sys:crash-reports'),
+  checkDiskSpace: () => ipcRenderer.invoke('sys:disk-space'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens

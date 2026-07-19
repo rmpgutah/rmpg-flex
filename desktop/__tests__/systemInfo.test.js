@@ -115,3 +115,17 @@ test('listCrashReports: lists files with date and path', () => {
   assert.equal(result[0].path, '/crashes/crash-1.dmp');
   assert.equal(result[0].date, mtime.toISOString());
 });
+
+const { evaluateDiskSpace } = require('../systemInfo');
+
+test('evaluateDiskSpace: warn is false comfortably above the threshold', () => {
+  assert.deepEqual(evaluateDiskSpace(2_000_000_000), { freeBytes: 2_000_000_000, warn: false });
+});
+
+test('evaluateDiskSpace: warn is true below the default 500MB threshold', () => {
+  assert.deepEqual(evaluateDiskSpace(100_000_000), { freeBytes: 100_000_000, warn: true });
+});
+
+test('evaluateDiskSpace: accepts a custom threshold', () => {
+  assert.deepEqual(evaluateDiskSpace(1_000_000_000, 2_000_000_000), { freeBytes: 1_000_000_000, warn: true });
+});

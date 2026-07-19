@@ -67,6 +67,13 @@ function listCrashReports(crashDumpsDir, fsModule) {
   });
 }
 
+const DEFAULT_DISK_WARN_THRESHOLD_BYTES = 500 * 1024 * 1024; // 500MB
+
+/** Flags low disk space before a local DB write that could fail on a full disk. */
+function evaluateDiskSpace(freeBytes, warnThresholdBytes = DEFAULT_DISK_WARN_THRESHOLD_BYTES) {
+  return { freeBytes, warn: freeBytes < warnThresholdBytes };
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
@@ -75,4 +82,6 @@ module.exports = {
   getLogsDirectory,
   buildDiagnosticsBundleText,
   listCrashReports,
+  evaluateDiskSpace,
+  DEFAULT_DISK_WARN_THRESHOLD_BYTES,
 };
