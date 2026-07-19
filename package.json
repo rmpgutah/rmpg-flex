@@ -24,6 +24,7 @@
     "@hono/zod-validator": "^0.8.0",
     "@noble/post-quantum": "^0.6.1",
     "@simplewebauthn/server": "^13.3.2",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "hono": "^4.12.30",
     "jose": "^6.2.3",
