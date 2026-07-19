@@ -57,6 +57,8 @@ export function useMapWeatherRadar(
   const [enabled, setEnabled] = useState(false);
   const [opacity, setOpacity] = useState(0.6);
   const [frames, setFrames] = useState<RainviewerFrame[]>([]);
+  const opacityRef = useRef(opacity);
+  useEffect(() => { opacityRef.current = opacity; }, [opacity]);
   const renderedFrameKeyRef = useRef<string | null>(null);
 
   const removeLayer = useCallback(() => {
@@ -80,11 +82,11 @@ export function useMapWeatherRadar(
       id: WEATHER_LAYER,
       type: 'raster',
       source: WEATHER_SOURCE,
-      paint: { 'raster-opacity': opacity, 'raster-fade-duration': 300 },
+      paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
     });
     renderedFrameKeyRef.current = frame.path;
     devLog('[WeatherRadar] Rendering frame', frame.path);
-  }, [map, opacity, removeLayer]);
+  }, [map, removeLayer]);
 
   const fetchFrames = useCallback(async (signal: AbortSignal) => {
     try {

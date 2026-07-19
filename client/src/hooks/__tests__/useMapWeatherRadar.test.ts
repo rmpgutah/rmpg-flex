@@ -126,4 +126,26 @@ describe('useMapWeatherRadar', () => {
 
     expect(map.addSource).not.toHaveBeenCalled();
   });
+
+  it('updates opacity in place without triggering a refetch', async () => {
+    const map = makeMap();
+    const { result } = renderHook(() => useMapWeatherRadar(map, true));
+    await act(async () => {
+      result.current.setEnabled(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(map.addSource).toHaveBeenCalledTimes(1);
+
+    // Simulate the layer now being registered on the map (as it would be
+    // after the addLayer call above), so the opacity effect's hasLayer
+    // guard passes.
+    map.getLayer.mockReturnValue({ id: 'rmpg-weather-radar-layer' });
+
+    act(() => result.current.setOpacity(0.9));
+
+    expect(global.fetch).toHaveBeenCalledTimes(1); // no refetch
+    expect(map.addSource).toHaveBeenCalledTimes(1); // no re-add
+    expect(map.setPaintProperty).toHaveBeenCalledWith('rmpg-weather-radar-layer', 'raster-opacity', 0.9);
+  });
 });
