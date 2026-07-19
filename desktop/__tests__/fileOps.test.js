@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('../fileOps');
 
 /**
  * In-memory fake for Node's `fs` module, exposing only the
@@ -73,7 +73,7 @@ test('buildOpenDialogOptions: multi false produces just openFile', () => {
   assert.deepEqual(opts.properties, ['openFile']);
 });
 
-test('resolveAllowedRoots: returns the 5 roots in documented order', () => {
+test('resolveAllowedRoots: returns the 4 roots in documented order', () => {
   const fakeApp = { getPath: (name) => `${name}-path` };
   const roots = resolveAllowedRoots(fakeApp);
   assert.deepEqual(roots, [
@@ -81,8 +81,38 @@ test('resolveAllowedRoots: returns the 5 roots in documented order', () => {
     'documents-path',
     'desktop-path',
     'temp-path',
-    'userData-path',
   ]);
+});
+
+test('resolveAllowedRoots: excludes userData — the live local DB cache must never be a validateFilePathInput root', () => {
+  const fakeApp = { getPath: (name) => `${name}-path` };
+  const roots = resolveAllowedRoots(fakeApp);
+  assert.equal(roots.includes('userData-path'), false);
+});
+
+test('isLocalDbPath: matches the exact DB path', () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  assert.equal(isLocalDbPath(dbPath, dbPath), true);
+});
+
+test('isLocalDbPath: matches the -wal sidecar', () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  assert.equal(isLocalDbPath(dbPath + '-wal', dbPath), true);
+});
+
+test('isLocalDbPath: matches the -shm sidecar', () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  assert.equal(isLocalDbPath(dbPath + '-shm', dbPath), true);
+});
+
+test('isLocalDbPath: does not match an unrelated file in the same directory', () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  assert.equal(isLocalDbPath('/fake/userData/other-file.db', dbPath), false);
+});
+
+test('isLocalDbPath: does not match a path that merely contains the dbPath as a substring', () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  assert.equal(isLocalDbPath(dbPath + '.bak', dbPath), false);
 });
 
 test('formatPrinters: maps raw printer list to {name, isDefault} pairs, preserving order', () => {

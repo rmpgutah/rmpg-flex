@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -977,6 +977,14 @@ guardedHandle('fs:open-dialog', async (event, opts) => {
 guardedHandle('fs:write-export', async (event, targetPath, data) => {
   const validation = validateFilePathInput(targetPath, resolveAllowedRoots(app));
   if (!validation.ok) return { ok: false, error: validation.error };
+  // Defense in depth: userData is no longer an allowed root, but reject the
+  // live local DB file (and its -wal/-shm sidecars) outright regardless of
+  // which root it resolved under — this channel must never be able to
+  // overwrite the offline DB cache (see fs:import-db-backup for the actual,
+  // rollback-guarded way to do that).
+  if (isLocalDbPath(validation.resolved, getLocalDbPath(app, path))) {
+    return { ok: false, error: 'cannot access the local database file via this channel' };
+  }
   try {
     await fs.promises.writeFile(validation.resolved, data);
     return { ok: true };
@@ -987,6 +995,10 @@ guardedHandle('fs:write-export', async (event, targetPath, data) => {
 guardedHandle('fs:read-import', async (event, sourcePath) => {
   const validation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
   if (!validation.ok) return { ok: false, error: validation.error };
+  // Defense in depth — see the matching check in fs:write-export above.
+  if (isLocalDbPath(validation.resolved, getLocalDbPath(app, path))) {
+    return { ok: false, error: 'cannot access the local database file via this channel' };
+  }
   try {
     const data = await fs.promises.readFile(validation.resolved);
     return { ok: true, data };
@@ -1016,6 +1028,8 @@ guardedHandle('fs:print-silent', async (event, printerName) => {
   });
 });
 guardedHandle('fs:export-db-backup', async () => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
   const dialogResult = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `rmpg-flex-backup-${Date.now()}.rmpgbak`,
     filters: [{ name: 'RMPG Flex Backup', extensions: ['rmpgbak'] }],
@@ -1035,6 +1049,8 @@ guardedHandle('fs:export-db-backup', async () => {
   }
 });
 guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
   const pathValidation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
   if (!pathValidation.ok) return { ok: false, error: pathValidation.error };
   let rawBytes;

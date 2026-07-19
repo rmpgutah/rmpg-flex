@@ -31,6 +31,17 @@ function buildOpenDialogOptions({ filters, multi } = {}) {
  * to fall under, for validateFilePathInput() in security/ipcGuard.js.
  * Takes Electron's `app` module as a parameter (no direct `electron` import)
  * so this stays unit-testable with a fake `app.getPath`.
+ *
+ * Deliberately EXCLUDES `userData` — that's where the live local SQLite
+ * cache (rmpg-local.db, see localDb.js's getLocalDbPath) lives, and none of
+ * the four legitimate fs:* flows that consult this list (PDF/CSV export,
+ * bulk import, encrypted DB backup/restore) need userData: the DB backup
+ * channels (fs:export-db-backup/fs:import-db-backup) resolve dbPath
+ * internally via getLocalDbPath(), never through this allowlist. Including
+ * it would let a compromised renderer read/overwrite the live DB (or its
+ * -wal/-shm sidecars) directly via fs:write-export/fs:read-import,
+ * bypassing validateBackupFileBeforeImport and swapInLocalDbWithRollback
+ * entirely.
  */
 function resolveAllowedRoots(appModule) {
   return [
@@ -38,8 +49,22 @@ function resolveAllowedRoots(appModule) {
     appModule.getPath('documents'),
     appModule.getPath('desktop'),
     appModule.getPath('temp'),
-    appModule.getPath('userData'),
   ];
+}
+
+/**
+ * Defense-in-depth check for fs:write-export/fs:read-import: even with
+ * `userData` excluded from resolveAllowedRoots(), this rejects a validated
+ * path that resolves to the live local DB file itself or its `-wal`/`-shm`
+ * sidecars, regardless of which allowed root it happened to fall under
+ * (e.g. a symlink, or a future allowlist change). `resolvedPath` and
+ * `dbPath` are expected to both already be absolute, resolved paths (the
+ * output of validateFilePathInput()'s `.resolved` and getLocalDbPath()
+ * respectively) — this is a plain equality check, not a path-normalizing
+ * one, so callers must resolve both sides first.
+ */
+function isLocalDbPath(resolvedPath, dbPath) {
+  return resolvedPath === dbPath || resolvedPath === dbPath + '-wal' || resolvedPath === dbPath + '-shm';
 }
 
 /**
@@ -230,6 +255,7 @@ module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
   resolveAllowedRoots,
+  isLocalDbPath,
   formatPrinters,
   isKnownPrinterName,
   encodeBackupForExport,
