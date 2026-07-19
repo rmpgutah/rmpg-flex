@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy, isPermissionAllowed } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -859,6 +859,13 @@ async function createMainWindow() {
       return { action: 'deny' };
     }
     return { action: 'allow' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!shouldAllowNavigation(url, TRUSTED_HOST)) {
+      console.warn('[SECURITY] Blocked navigation to untrusted URL:', url);
+      event.preventDefault();
+    }
   });
 
   // Prevent closing — minimize to tray instead

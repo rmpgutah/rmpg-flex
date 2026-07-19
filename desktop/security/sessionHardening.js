@@ -56,8 +56,29 @@ function isPermissionAllowed(requestingHost, expectedHost, permission) {
   return requestingHost === expectedHost && ALLOWED_PERMISSIONS.has(permission);
 }
 
+/**
+ * Decision function for the main window's 'will-navigate' guard. Only
+ * same-host http(s) navigation is allowed; everything else (a different
+ * host, a data:/javascript: scheme, an unparseable URL) is rejected.
+ * This complements the pre-existing setWindowOpenHandler, which governs
+ * NEW windows/tabs rather than navigation of the existing one.
+ */
+function shouldAllowNavigation(targetUrl, expectedHost) {
+  let parsed;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  return parsed.host === expectedHost;
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
   isPermissionAllowed,
+  shouldAllowNavigation,
 };

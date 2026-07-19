@@ -40,3 +40,30 @@ test('isPermissionAllowed: rejects an unlisted permission even from the trusted 
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'midi'), false);
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'clipboard-read'), false);
 });
+
+const { shouldAllowNavigation } = require('../sessionHardening');
+
+test('shouldAllowNavigation: allows same-host https navigation', () => {
+  assert.equal(shouldAllowNavigation('https://rmpgutah.us/dispatch', 'rmpgutah.us'), true);
+});
+
+test('shouldAllowNavigation: rejects a different host', () => {
+  assert.equal(shouldAllowNavigation('https://evil.example/phish', 'rmpgutah.us'), false);
+});
+
+test('shouldAllowNavigation: rejects a data: URL', () => {
+  assert.equal(shouldAllowNavigation('data:text/html,<script>alert(1)</script>', 'rmpgutah.us'), false);
+});
+
+test('shouldAllowNavigation: rejects an unparseable URL', () => {
+  assert.equal(shouldAllowNavigation('not a url', 'rmpgutah.us'), false);
+});
+
+test('shouldAllowNavigation: allows the local offline fallback page (data: URL is the one deliberate exception — guarded by exact prefix)', () => {
+  // getOfflineHTML() in main.js builds a data:text/html,... URL for the
+  // offline fallback screen. Navigation TO it happens via mainWindow.loadURL()
+  // directly (not a renderer-driven navigation event), so will-navigate
+  // never actually fires for it — this test documents that assumption
+  // rather than special-casing data: URLs as generally allowed.
+  assert.equal(shouldAllowNavigation('data:text/html;charset=utf-8,%3Chtml%3E', 'rmpgutah.us'), false);
+});
