@@ -930,6 +930,10 @@ guardedHandle('sys:export-diagnostics', async () => {
   }
   return { ok: true, path: outPath };
 });
+guardedHandle('sys:restart', () => {
+  app.relaunch();
+  app.exit();
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
