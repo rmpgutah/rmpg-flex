@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -1003,6 +1003,17 @@ guardedHandle('fs:reveal', (event, targetPath) => {
 });
 guardedHandle('fs:downloads-path', () => app.getPath('downloads'));
 guardedHandle('fs:printers', async (event) => formatPrinters(await event.sender.getPrintersAsync()));
+guardedHandle('fs:print-silent', async (event, printerName) => {
+  const printers = formatPrinters(await event.sender.getPrintersAsync());
+  if (!isKnownPrinterName(printerName, printers)) {
+    return { ok: false, error: `unknown printer: ${printerName}` };
+  }
+  return new Promise((resolve) => {
+    event.sender.print({ silent: true, deviceName: printerName }, (success, failureReason) => {
+      resolve(success ? { ok: true } : { ok: false, error: failureReason });
+    });
+  });
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →

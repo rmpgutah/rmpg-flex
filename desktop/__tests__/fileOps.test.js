@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName } = require('../fileOps');
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -85,4 +85,24 @@ test('formatPrinters: maps raw printer list to {name, isDefault} pairs, preservi
     { name: 'Canon_Pixma', isDefault: true },
     { name: 'PDF_Printer', isDefault: false },
   ]);
+});
+
+test('isKnownPrinterName: returns true when the name matches an entry in the list', () => {
+  const printers = [
+    { name: 'HP_LaserJet', isDefault: false },
+    { name: 'Canon_Pixma', isDefault: true },
+  ];
+  assert.equal(isKnownPrinterName('Canon_Pixma', printers), true);
+});
+
+test('isKnownPrinterName: returns false when the name does not match any entry', () => {
+  const printers = [
+    { name: 'HP_LaserJet', isDefault: false },
+    { name: 'Canon_Pixma', isDefault: true },
+  ];
+  assert.equal(isKnownPrinterName('Nonexistent_Printer', printers), false);
+});
+
+test('isKnownPrinterName: returns false for an empty printer list', () => {
+  assert.equal(isKnownPrinterName('Any_Printer', []), false);
 });

@@ -52,9 +52,20 @@ function formatPrinters(rawPrinterList) {
   }));
 }
 
+/**
+ * Validates a renderer-supplied printer name against the real, just-fetched
+ * printer list (from formatPrinters()) before it's ever passed to
+ * webContents.print()'s deviceName — a compromised renderer can't smuggle
+ * an arbitrary/malicious device name past this check.
+ */
+function isKnownPrinterName(printerName, formattedPrinterList) {
+  return (formattedPrinterList || []).some((printer) => printer.name === printerName);
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
   resolveAllowedRoots,
   formatPrinters,
+  isKnownPrinterName,
 };
