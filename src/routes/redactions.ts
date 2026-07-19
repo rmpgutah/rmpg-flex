@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, execute, query, queryFirst, columnExists } from '../utils/db';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
 
 const redactions = new Hono<Env>();
 
@@ -56,7 +57,7 @@ redactions.post('/', async (c): Promise<Response> => {
 
   const r2Key = `redactions/${crypto.randomUUID()}.${fmt.ext}`;
   try {
-    await c.env.UPLOADS.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: fmt.contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: fmt.contentType } });
   } catch (err: any) {
     return c.json({ error: `storage failed: ${err?.message ?? 'unknown'}` }, 502);
   }
@@ -89,6 +90,7 @@ redactions.post('/', async (c): Promise<Response> => {
   } catch (err: any) {
     // Custody row failed — don't leave the MP4 orphaned in R2 with no record.
     try { await c.env.UPLOADS.delete(r2Key); } catch { /* best-effort */ }
+    try { await deleteEncryptionKey(db, r2Key); } catch { /* best-effort */ }
     return c.json({ error: 'custody record failed: ' + (err?.message ?? 'unknown') }, 502);
   }
 
@@ -117,11 +119,25 @@ redactions.get('/:id/download', async (c): Promise<Response> => {
   await ensureSchema(db);
   const row = await queryFirst<{ r2_key: string }>(db, `SELECT r2_key FROM video_redactions WHERE id = ?`, Number(c.req.param('id')));
   if (!row) return c.json({ error: 'Not found' }, 404);
-  const obj = await c.env.UPLOADS.get(row.r2_key);
-  if (!obj) return c.json({ error: 'File missing from storage' }, 404);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, row.r2_key);
   const ext = row.r2_key.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
-  const contentType = obj.httpMetadata?.contentType || (ext === 'webm' ? 'video/webm' : 'video/mp4');
-  return new Response(obj.body, { headers: { 'Content-Type': contentType, 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.${ext}"` } });
+  if (decrypted) {
+    const contentType = decrypted.httpMetadata?.contentType || (ext === 'webm' ? 'video/webm' : 'video/mp4');
+    return new Response(decrypted.bytes, { headers: { 'Content-Type': contentType, 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.${ext}"` } });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // genuinely crypto-shredded object with no key row -- neither is
+  // distinguishable here from a LEGACY object uploaded before this feature
+  // shipped (also "object exists, no key row"). Fall back to serving the
+  // raw R2 bytes as-is, matching fieldPhotos.ts's `GET /file/*` route. Safe
+  // today because no code path does standalone crypto-shredding: this
+  // route's own custody-row-failed rollback (above) always removes the R2
+  // object and its key row together, so "object present, row absent" can
+  // currently only mean "predates encryption," never "was shredded."
+  const legacy = await c.env.UPLOADS.get(row.r2_key);
+  if (!legacy) return c.json({ error: 'File missing from storage' }, 404);
+  const contentType = legacy.httpMetadata?.contentType || (ext === 'webm' ? 'video/webm' : 'video/mp4');
+  return new Response(legacy.body, { headers: { 'Content-Type': contentType, 'Content-Disposition': `attachment; filename="redacted-${c.req.param('id')}.${ext}"` } });
 });
 
 export default redactions;
