@@ -10,9 +10,8 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -917,12 +916,14 @@ guardedHandle('sys:disk-space', () => {
 guardedHandle('sys:network-interfaces', () => {
   return formatNetworkInterfaces(require('os').networkInterfaces());
 });
-guardedHandle('sys:battery', () => {
+guardedHandle('sys:battery', async () => {
   if (process.platform !== 'darwin') return null;
   try {
-    const { execSync } = require('child_process');
-    const output = execSync('pmset -g batt', { encoding: 'utf8', timeout: 3000 });
-    return parsePmsetBatteryOutput(output);
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync('pmset', ['-g', 'batt'], { timeout: 3000 });
+    return parsePmsetBatteryOutput(stdout);
   } catch (err) {
     console.error('[SYS:BATTERY] pmset failed:', err.message);
     return null;

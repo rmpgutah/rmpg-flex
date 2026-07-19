@@ -104,7 +104,6 @@ module.exports = {
   buildDiagnosticsBundleText,
   listCrashReports,
   evaluateDiskSpace,
-  DEFAULT_DISK_WARN_THRESHOLD_BYTES,
   formatNetworkInterfaces,
   parsePmsetBatteryOutput,
 };
