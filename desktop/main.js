@@ -983,6 +983,16 @@ guardedHandle('fs:write-export', async (event, targetPath, data) => {
     return { ok: false, error: err.message };
   }
 });
+guardedHandle('fs:read-import', async (event, sourcePath) => {
+  const validation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
+  if (!validation.ok) return { ok: false, error: validation.error };
+  try {
+    const data = await fs.promises.readFile(validation.resolved);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
