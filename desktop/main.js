@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports } = require('./systemInfo');
 const { encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const fs = require('fs');
 
@@ -900,6 +900,9 @@ guardedHandle('sys:logs', (_event, lines = 500) => {
 });
 guardedHandle('sys:open-logs-folder', () => {
   shell.openPath(getLogsDirectory(LOG_FILE_PATH, path));
+});
+guardedHandle('sys:crash-reports', () => {
+  return listCrashReports(app.getPath('crashDumps'), require('fs'));
 });
 guardedHandle('sys:export-diagnostics', async () => {
   const os = require('os');

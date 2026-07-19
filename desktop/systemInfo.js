@@ -57,6 +57,16 @@ function buildDiagnosticsBundleText(systemInfoObj, logTail) {
   ].join('\n');
 }
 
+/** Lists crash dump files in Electron's standard crashDumps directory. */
+function listCrashReports(crashDumpsDir, fsModule) {
+  if (!fsModule.existsSync(crashDumpsDir)) return [];
+  return fsModule.readdirSync(crashDumpsDir).map((name) => {
+    const fullPath = `${crashDumpsDir}/${name}`;
+    const stats = fsModule.statSync(fullPath);
+    return { date: stats.mtime.toISOString(), path: fullPath };
+  });
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
@@ -64,4 +74,5 @@ module.exports = {
   tailLogFile,
   getLogsDirectory,
   buildDiagnosticsBundleText,
+  listCrashReports,
 };

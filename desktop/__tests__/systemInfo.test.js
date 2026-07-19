@@ -91,3 +91,27 @@ test('buildDiagnosticsBundleText: combines system info and log tail into one tex
   assert.match(text, /=== Recent Logs ===/);
   assert.match(text, /log line 1/);
 });
+
+const { listCrashReports } = require('../systemInfo');
+
+function fakeFsDir(exists, entries) {
+  return {
+    existsSync: () => exists,
+    readdirSync: () => entries.map((e) => e.name),
+    statSync: (p) => ({ mtime: entries.find((e) => p.endsWith(e.name)).mtime }),
+  };
+}
+
+test('listCrashReports: returns [] when the crash dumps directory does not exist', () => {
+  const fs = fakeFsDir(false, []);
+  assert.deepEqual(listCrashReports('/crashes', fs), []);
+});
+
+test('listCrashReports: lists files with date and path', () => {
+  const mtime = new Date('2026-07-01T00:00:00Z');
+  const fs = fakeFsDir(true, [{ name: 'crash-1.dmp', mtime }]);
+  const result = listCrashReports('/crashes', fs);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].path, '/crashes/crash-1.dmp');
+  assert.equal(result[0].date, mtime.toISOString());
+});
