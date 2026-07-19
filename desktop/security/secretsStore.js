@@ -205,6 +205,23 @@ function encryptDiagnosticsBundleOnExport(plainText, safeStorage) {
   return encryptSecretForStorage(redactSensitiveFieldsInLogs(plainText), safeStorage);
 }
 
+/**
+ * Explicitly clears cached offline-PIN secrets (the same three keys
+ * migrateOfflineSecretsToSafeStorage manages) from local storage. Today
+ * these only expire on the fixed 24h PIN window — this closes the gap
+ * for an explicit officer logout, once a logout IPC channel exists.
+ * UNWIRED today — no logout channel exists anywhere in desktop/main.js
+ * yet; a future group's plan is the intended caller.
+ */
+function wipeSecretsOnLogout(setConfig, keys = OFFLINE_SECRET_KEYS) {
+  const wiped = [];
+  for (const key of keys) {
+    setConfig(key, '');
+    wiped.push(key);
+  }
+  return { wiped };
+}
+
 const SQLITE_MAGIC_HEADER = Buffer.from('SQLite format 3\0', 'utf8');
 
 /**
@@ -242,4 +259,5 @@ module.exports = {
   redactSensitiveFieldsInLogs,
   encryptDiagnosticsBundleOnExport,
   validateBackupFileBeforeImport,
+  wipeSecretsOnLogout,
 };

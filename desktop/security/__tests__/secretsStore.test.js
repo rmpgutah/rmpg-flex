@@ -288,3 +288,18 @@ test('validateBackupFileBeforeImport: rejects a non-Buffer input', () => {
   const result = validateBackupFileBeforeImport('not a buffer');
   assert.equal(result.ok, false);
 });
+
+const { wipeSecretsOnLogout } = require('../secretsStore');
+
+test('wipeSecretsOnLogout: wipes all three OFFLINE_SECRET_KEYS and reports them', () => {
+  const { getConfig, setConfig } = fakeConfigStore({
+    admin_offline_secret: 'admin-plain',
+    all_user_secrets: '[{"user_id":1,"secret":"user-plain"}]',
+    my_offline_secret: 'my-plain',
+  });
+  const result = wipeSecretsOnLogout(setConfig);
+  assert.deepEqual(result.wiped.sort(), ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret']);
+  assert.equal(getConfig('admin_offline_secret'), '');
+  assert.equal(getConfig('all_user_secrets'), '');
+  assert.equal(getConfig('my_offline_secret'), '');
+});

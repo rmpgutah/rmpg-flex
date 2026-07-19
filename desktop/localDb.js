@@ -30,15 +30,19 @@ function initLocalDb() {
   console.log('[LOCAL-DB] Initializing at:', dbPath);
   db = new Database(dbPath);
 
+  // Performance pragmas
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
+
+  // journal_mode = WAL above is what creates the -wal/-shm sidecar files,
+  // so the permission restriction must run after it to actually find and
+  // protect them (see restrictLocalDbFilePermissions doc comment).
   const permsResult = restrictLocalDbFilePermissions(dbPath, fs);
   if (!permsResult.ok) {
     console.error('[LOCAL-DB] Failed to restrict file permissions:', permsResult.error);
   }
 
-  // Performance pragmas
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
   enableSecureDelete(db);
 
   const integrityResult = verifyLocalDbIntegrity(db);

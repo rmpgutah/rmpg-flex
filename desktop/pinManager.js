@@ -37,9 +37,13 @@ const LOCKOUT_MINUTES = 15;
 function init(window) {
   mainWindow = window;
 
-  const migrationResult = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
-  if (migrationResult.migrated.length > 0) {
-    console.log('[PIN-MANAGER] Migrated offline secrets to safeStorage:', migrationResult.migrated);
+  try {
+    const migrationResult = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+    if (migrationResult.migrated.length > 0) {
+      console.log('[PIN-MANAGER] Migrated offline secrets to safeStorage:', migrationResult.migrated);
+    }
+  } catch (err) {
+    console.error('[PIN-MANAGER] Offline secret migration failed (continuing with unmigrated secrets):', err.message);
   }
 
   // Start expiry check timer (every 60 seconds)
