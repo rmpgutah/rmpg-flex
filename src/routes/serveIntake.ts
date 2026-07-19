@@ -73,6 +73,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -257,12 +258,8 @@ async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | 
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
   const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await env.UPLOADS.put(key, file.stream(), {
+  await putEncrypted(env.UPLOADS, getDb(env), env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
-    customMetadata: {
-      original_name: file.name || '',
-      uploaded_by: String(uploaderId ?? ''),
-    },
   });
   return key;
 }
@@ -1094,9 +1091,25 @@ si.get('/documents/:docId/file', async (c) => {
     docId,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  const obj = await c.env.UPLOADS.get(doc.r2_key);
-  if (!obj) return c.json({ error: 'File missing in R2' }, 404);
-  return new Response(obj.body, {
+  // getDecrypted() cleanly returns null when there's no file_encryption_keys
+  // row (the legacy pre-encryption case — this feature has been live, and
+  // production R2 already holds serve-intake/ objects written before this
+  // task shipped). A genuine decrypt failure (bad KEK, tampered ciphertext)
+  // THROWS instead and must propagate as a real error, not silently fall
+  // back to raw bytes — so this is deliberately NOT wrapped in .catch().
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  if (decrypted) {
+    return new Response(decrypted.bytes, {
+      headers: {
+        'Content-Type': doc.file_type || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  }
+  const legacy = await c.env.UPLOADS.get(doc.r2_key);
+  if (!legacy) return c.json({ error: 'File missing in R2' }, 404);
+  return new Response(legacy.body, {
     headers: {
       'Content-Type': doc.file_type || 'application/octet-stream',
       'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
@@ -1118,8 +1131,18 @@ async function reprocessDocument(
   const db = getDb(c.env);
   let extraction: ExtractionResult | null = null;
   if (isImage(doc.file_type) && doc.r2_key) {
-    const obj = await c.env.UPLOADS.get(doc.r2_key);
-    if (obj) extraction = await ocrImage(c.env, new Uint8Array(await obj.arrayBuffer()), doc.file_type).catch(() => null);
+    // getDecrypted() cleanly returns null for the legacy pre-encryption case
+    // (no file_encryption_keys row — production already holds serve-intake/
+    // objects written before this task shipped); it THROWS for a genuine
+    // decrypt failure, which is deliberately left uncaught here so it
+    // propagates as a real error instead of masquerading as "no image".
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+    let bytes: Uint8Array | null = decrypted ? decrypted.bytes : null;
+    if (!bytes) {
+      const legacy = await c.env.UPLOADS.get(doc.r2_key);
+      if (legacy) bytes = new Uint8Array(await legacy.arrayBuffer());
+    }
+    if (bytes) extraction = await ocrImage(c.env, bytes, doc.file_type).catch(() => null);
   } else if ((doc.raw_text || '').trim().length >= 20) {
     extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
   }

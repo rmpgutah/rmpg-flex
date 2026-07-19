@@ -12,6 +12,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const citations = new Hono<Env>();
@@ -554,7 +555,7 @@ citations.post('/:id/copies', async (c) => {
       }
       const key = `citations/${id}/${kind}.pdf`;
       try {
-        await c.env.UPLOADS.put(key, bytes, {
+        await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, bytes, {
           httpMetadata: { contentType: 'application/pdf' },
         });
         uploaded[kind] = key;
@@ -642,6 +643,7 @@ citations.get('/:id/copies/:kind', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
+    const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const kind = c.req.param('kind') as CitationCopyKind;
     if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
@@ -649,12 +651,30 @@ citations.get('/:id/copies/:kind', async (c) => {
       return c.json({ error: 'Invalid copy kind', code: 'INVALID_KIND' }, 400);
     }
     const key = `citations/${id}/${kind}.pdf`;
-    const obj = await c.env.UPLOADS.get(key);
-    if (!obj) return c.json({ error: 'Copy not found', code: 'NOT_FOUND' }, 404);
-    return new Response(obj.body, {
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    let body: BodyInit;
+    let contentType = 'application/pdf';
+    if (decrypted) {
+      body = decrypted.bytes;
+      contentType = decrypted.httpMetadata?.contentType || contentType;
+    } else {
+      // getDecrypted() returns null both for "object never existed" and for
+      // "object exists but has no file_encryption_keys row" — the latter is
+      // exactly what a citation PDF copy uploaded before this feature
+      // shipped looks like. Fall back to a raw R2 read so those pre-existing
+      // copies stay retrievable instead of permanently 404ing. A genuine
+      // decrypt failure (bad KEK, tampered ciphertext) throws out of
+      // getDecrypted() rather than returning null, so it's caught by this
+      // handler's own try/catch below and never reaches this fallback.
+      const legacy = await c.env.UPLOADS.get(key);
+      if (!legacy) return c.json({ error: 'Copy not found', code: 'NOT_FOUND' }, 404);
+      body = legacy.body;
+      contentType = legacy.httpMetadata?.contentType || contentType;
+    }
+    return new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
+        'Content-Type': contentType,
         'Cache-Control': 'private, max-age=60',
         'Content-Disposition': `inline; filename="citation-${id}-${kind}.pdf"`,
       },

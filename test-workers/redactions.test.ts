@@ -5,6 +5,7 @@
 import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import app from './entry';
+import { envWithKek, ensureFileEncryptionKeysTable } from './helpers/fileEncryptionTestSchema';
 
 async function execute(db: D1Database, sql: string): Promise<void> {
   await db.prepare(sql).run();
@@ -54,6 +55,11 @@ async function ensureBodycamTables(): Promise<void> {
   if (!existingUser) {
     await db.prepare(`INSERT INTO users (id, full_name, badge_number) VALUES (1, 'Test Officer', 'T-1')`).run();
   }
+
+  // Redaction uploads now go through putEncrypted(), which needs somewhere
+  // to store the wrapped per-file key (mirrors migration
+  // 0194_file_encryption_keys.sql — see test-workers/redactionsEncryption.test.ts).
+  await ensureFileEncryptionKeysTable(db);
 }
 
 describe('POST /api/redactions — stores the redacted MP4 + custody row', () => {
@@ -64,17 +70,17 @@ describe('POST /api/redactions — stores the redacted MP4 + custody row', () =>
     fd.append('video', new Blob([new Uint8Array([0, 0, 0, 24])], { type: 'video/mp4' }), 'redacted.mp4');
     fd.append('metadata', JSON.stringify({ event_id: 42, kinds: ['face', 'license_plate'], region_count: 3, style: 'blur' }));
 
-    const res = await app.request('/api/redactions', { method: 'POST', body: fd }, env as unknown as Record<string, unknown>);
+    const res = await app.request('/api/redactions', { method: 'POST', body: fd }, envWithKek(env as unknown as Record<string, unknown>));
     expect(res.status).toBe(200);
     const body = await res.json() as { id: number; download_url: string };
     expect(body.id).toBeGreaterThan(0);
 
-    const list = await app.request('/api/redactions?event_id=42', {}, env as unknown as Record<string, unknown>);
+    const list = await app.request('/api/redactions?event_id=42', {}, envWithKek(env as unknown as Record<string, unknown>));
     const listBody = await list.json() as { redactions: Array<{ id: number; kinds: string; region_count: number }> };
     expect(listBody.redactions[0].kinds).toContain('face');
     expect(listBody.redactions[0].region_count).toBe(3);
 
-    const dl = await app.request(body.download_url, {}, env as unknown as Record<string, unknown>);
+    const dl = await app.request(body.download_url, {}, envWithKek(env as unknown as Record<string, unknown>));
     expect(dl.status).toBe(200);
     expect(dl.headers.get('content-type')).toBe('video/mp4');
   });
@@ -95,11 +101,11 @@ describe('POST /api/redactions — stores the redacted MP4 + custody row', () =>
     fd.append('video', new Blob([new Uint8Array([0, 0, 0, 24])], { type: 'video/mp4' }), 'redacted.mp4');
     fd.append('metadata', JSON.stringify({ source_bodycam_video_id: videoId, kinds: ['face'], region_count: 1, style: 'blur' }));
 
-    const res = await app.request('/api/redactions', { method: 'POST', body: fd }, env as unknown as Record<string, unknown>);
+    const res = await app.request('/api/redactions', { method: 'POST', body: fd }, envWithKek(env as unknown as Record<string, unknown>));
     expect(res.status).toBe(200);
     const body = await res.json() as { id: number; r2_key: string };
 
-    const list = await app.request(`/api/redactions?bodycam_video_id=${videoId}`, {}, env as unknown as Record<string, unknown>);
+    const list = await app.request(`/api/redactions?bodycam_video_id=${videoId}`, {}, envWithKek(env as unknown as Record<string, unknown>));
     const listBody = await list.json() as { redactions: Array<{ id: number; source_bodycam_video_id: number }> };
     expect(listBody.redactions[0].source_bodycam_video_id).toBe(videoId);
 
