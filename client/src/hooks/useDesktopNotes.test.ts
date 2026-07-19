@@ -27,4 +27,14 @@ describe('useDesktopNotes', () => {
     act(() => result.current.deleteNote('a'));
     expect(result.current.notes).toHaveLength(0);
   });
+
+  it('clearNotes empties the notes array', () => {
+    const { result } = renderHook(() => useDesktopNotes([
+      { id: 'a', x: 0, y: 0, width: 180, height: 140, text: '', color: 'amber' },
+      { id: 'b', x: 10, y: 10, width: 180, height: 140, text: '', color: 'amber' },
+    ]));
+    expect(result.current.notes).toHaveLength(2);
+    act(() => result.current.clearNotes());
+    expect(result.current.notes).toHaveLength(0);
+  });
 });

@@ -1,6 +1,6 @@
 // client/src/pages/DesktopPage.test.tsx
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const apiFetchMock = vi.fn().mockResolvedValue({});
@@ -105,5 +105,56 @@ describe('DesktopPage', () => {
     fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
     fireEvent.click(screen.getByText('New sticky note'));
     expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+  });
+
+  it('debounced PUT body reflects the actual final state after adding a sticky note', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+      fireEvent.click(screen.getByText('New sticky note'));
+      expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+
+      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/preferences' && c[1]?.method === 'PUT');
+      expect(putCall).toBeDefined();
+      const body = JSON.parse(putCall![1].body as string);
+      const savedNotes = JSON.parse(body.desktop_notes_json);
+      expect(savedNotes).toHaveLength(1);
+      expect(savedNotes[0]).toMatchObject({ x: 60, y: 60, text: '', color: 'amber' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Reset to Default clears sticky notes and the following debounced PUT reflects the reset state', async () => {
+    vi.useFakeTimers();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+      fireEvent.click(screen.getByText('New sticky note'));
+      expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+      fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
+      fireEvent.click(screen.getByText('Widget settings'));
+      fireEvent.click(screen.getByText('Reset to Default'));
+
+      expect(confirmSpy).toHaveBeenCalled();
+      // Reset's real effect: the note is actually gone, not just "confirmed".
+      expect(screen.queryByLabelText('Delete note')).not.toBeInTheDocument();
+
+      apiFetchMock.mockClear();
+      await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+
+      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/preferences' && c[1]?.method === 'PUT');
+      expect(putCall).toBeDefined();
+      const body = JSON.parse(putCall![1].body as string);
+      expect(JSON.parse(body.desktop_notes_json)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      confirmSpy.mockRestore();
+    }
   });
 });

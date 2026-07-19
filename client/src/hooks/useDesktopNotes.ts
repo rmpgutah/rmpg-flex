@@ -29,5 +29,9 @@ export function useDesktopNotes(initial: DesktopNote[]) {
     setNotes(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  return { notes, addNote, updateNote, deleteNote };
+  const clearNotes = useCallback(() => {
+    setNotes([]);
+  }, []);
+
+  return { notes, addNote, updateNote, deleteNote, clearNotes };
 }

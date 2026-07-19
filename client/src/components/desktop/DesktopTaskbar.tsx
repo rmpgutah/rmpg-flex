@@ -96,7 +96,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
   return (
     <div
       className="flex items-center justify-between px-2 gap-2"
-      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, height: 48, background: 'var(--surface-overlay)', borderTop: '1px solid var(--border-default)', zIndex: 1000 }}
+      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, height: 48, background: 'var(--surface-overlay)', borderTop: '1px solid var(--desktop-shell-accent, var(--border-default))', zIndex: 1000 }}
     >
       <div className="flex items-center gap-2">
         <button type="button" aria-label="Open app launcher" onClick={() => setLauncherOpen(v => !v)} className="p-2 hover:bg-surface-hover">

@@ -97,7 +97,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
   // above), so it never re-runs against stale/default data mid-session.
-  const { notes, addNote, updateNote, deleteNote } = useDesktopNotes(parseDesktopNotes(prefs.desktop_notes_json));
+  const { notes, addNote, updateNote, deleteNote, clearNotes } = useDesktopNotes(parseDesktopNotes(prefs.desktop_notes_json));
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstRender = useRef(true);
@@ -192,7 +192,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     setWallpaperId(DEFAULT_WALLPAPER_ID);
     setAccentId(DEFAULT_ACCENT_ID);
     setWidgets(normalizeDesktopWidgets(null));
-  }, [favorites]);
+    clearNotes();
+  }, [favorites, clearNotes]);
 
   const accentStyle = useMemo(() => {
     const accent = getAccent(accentId);
@@ -200,48 +201,50 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   }, [accentId]);
 
   return (
-    <DesktopWindowManagerProvider>
-      <ContextMenu
-        items={[
-          { label: 'Widget settings', onClick: () => setWidgetSettingsOpen(true) },
-          { label: 'New sticky note', onClick: () => addNote(60, 60) },
-        ]}
-      >
-        <div style={{ ...accentStyle, position: 'relative', width: '100%', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
-          <DesktopWallpaper wallpaperId={wallpaperId}>
-            {pinnedIcons.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                No modules pinned yet — star modules from Module Directory, or right-click here to get started.
-              </div>
-            ) : (
-              <DesktopIconGrid
-                icons={pinnedIcons} positions={positions} onReposition={handleReposition} onUnpin={handleUnpin}
-                groups={layout.groups} onCreateGroup={handleCreateGroup} onUngroup={handleUngroup}
-                iconSize={layout.iconSize} viewMode={layout.viewMode}
-              />
-            )}
-            {notes.map(note => (
-              <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
-            ))}
-            <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
-            <WindowLayer />
-          </DesktopWallpaper>
-        </div>
-      </ContextMenu>
-      <DesktopTaskbar icons={pinnedIcons} catalog={allFunctions} />
-      {widgetSettingsOpen && (
-        <DesktopWidgetSettingsPopover
-          widgets={widgets} onToggleWidget={handleToggleWidget}
-          iconSize={layout.iconSize} onIconSizeChange={handleIconSizeChange}
-          viewMode={layout.viewMode} onViewModeChange={handleViewModeChange}
-          sortMode={layout.sortMode} onSortModeChange={handleSortModeChange} onSnapToGrid={handleSnapToGrid}
-          wallpaperId={wallpaperId} onWallpaperChange={setWallpaperId}
-          accentId={accentId} onAccentChange={setAccentId}
-          onResetToDefault={handleResetToDefault}
-          onClose={() => setWidgetSettingsOpen(false)}
-        />
-      )}
-    </DesktopWindowManagerProvider>
+    <div style={accentStyle}>
+      <DesktopWindowManagerProvider>
+        <ContextMenu
+          items={[
+            { label: 'Widget settings', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'New sticky note', onClick: () => addNote(60, 60) },
+          ]}
+        >
+          <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
+            <DesktopWallpaper wallpaperId={wallpaperId}>
+              {pinnedIcons.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  No modules pinned yet — star modules from Module Directory, or right-click here to get started.
+                </div>
+              ) : (
+                <DesktopIconGrid
+                  icons={pinnedIcons} positions={positions} onReposition={handleReposition} onUnpin={handleUnpin}
+                  groups={layout.groups} onCreateGroup={handleCreateGroup} onUngroup={handleUngroup}
+                  iconSize={layout.iconSize} viewMode={layout.viewMode}
+                />
+              )}
+              {notes.map(note => (
+                <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
+              ))}
+              <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
+              <WindowLayer />
+            </DesktopWallpaper>
+          </div>
+        </ContextMenu>
+        <DesktopTaskbar icons={pinnedIcons} catalog={allFunctions} />
+        {widgetSettingsOpen && (
+          <DesktopWidgetSettingsPopover
+            widgets={widgets} onToggleWidget={handleToggleWidget}
+            iconSize={layout.iconSize} onIconSizeChange={handleIconSizeChange}
+            viewMode={layout.viewMode} onViewModeChange={handleViewModeChange}
+            sortMode={layout.sortMode} onSortModeChange={handleSortModeChange} onSnapToGrid={handleSnapToGrid}
+            wallpaperId={wallpaperId} onWallpaperChange={setWallpaperId}
+            accentId={accentId} onAccentChange={setAccentId}
+            onResetToDefault={handleResetToDefault}
+            onClose={() => setWidgetSettingsOpen(false)}
+          />
+        )}
+      </DesktopWindowManagerProvider>
+    </div>
   );
 }
 
