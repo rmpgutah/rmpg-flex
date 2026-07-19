@@ -161,7 +161,7 @@ git commit -m "desktop: add encryptSecretForStorage/decryptSecretForStorage (saf
 - Test: `desktop/security/__tests__/secretsStore.test.js`
 
 **Interfaces:**
-- Produces: `migrateOfflineSecretsToSafeStorage(deps)` where `deps = { getConfig, setConfig, safeStorage, isMigrated }`. `isMigrated` is a pre-read boolean (the caller checks a sentinel config key, e.g. `getConfig('secrets_migrated_v1') === '1'`, before calling this — keeps the function itself a pure decision-plus-side-effect without embedding its own idempotency-check I/O). Returns `{ migrated: string[], skipped: string[] }` — `migrated` lists which of the three keys (`admin_offline_secret`, `all_user_secrets`, `my_offline_secret`) were plaintext and got re-written as `safeStorage`-encrypted; `skipped` lists keys that were already absent (nothing to migrate) or already looked like this module's own ciphertext (idempotent re-run safety, checked via a fixed prefix marker — see implementation).
+- Produces: `migrateOfflineSecretsToSafeStorage(deps)` where `deps = { getConfig, setConfig, safeStorage }`. Idempotency is NOT a caller-supplied flag — the function detects "already migrated" itself, per key, by attempting `decryptSecretForStorage` on the stored value: success means it's already ciphertext, failure means it's still plaintext and needs migrating (see `looksAlreadyMigrated` in the implementation). Returns `{ migrated: string[], skipped: string[] }` — `migrated` lists which of the three keys (`admin_offline_secret`, `all_user_secrets`, `my_offline_secret`) were plaintext and got re-written as `safeStorage`-encrypted; `skipped` lists keys that were already absent (nothing to migrate) or already migrated (decrypt succeeded).
 
 - [ ] **Step 1: Write the failing test**
 
