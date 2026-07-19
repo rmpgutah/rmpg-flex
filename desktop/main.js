@@ -10,6 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { installContentSecurityPolicy } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -744,6 +745,8 @@ async function createMainWindow() {
       return allowed.includes(permission);
     }
   );
+
+  installContentSecurityPolicy(mainWindow.webContents.session);
 
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.
