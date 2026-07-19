@@ -43,4 +43,18 @@ describe('DockToggleRow', () => {
     const dot = screen.getByText('X').closest('button')!.querySelector('span');
     expect(dot).toHaveStyle({ background: 'var(--brand-gold)' });
   });
+
+  it('produces a valid (non-concatenated) box-shadow when falling back to the var() default color', () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ id: 'x', label: 'X', active: true, onToggle }} />);
+    const dot = screen.getByText('X').closest('button')!.querySelector('span');
+    expect(dot).toHaveStyle({ boxShadow: '0 0 4px var(--brand-gold)' });
+  });
+
+  it('still applies the alpha-suffixed glow for an explicit hex color', () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ id: 'y', label: 'Y', active: true, onToggle, color: '#22c55e' }} />);
+    const dot = screen.getByText('Y').closest('button')!.querySelector('span');
+    expect(dot).toHaveStyle({ boxShadow: '0 0 4px #22c55e80' });
+  });
 });

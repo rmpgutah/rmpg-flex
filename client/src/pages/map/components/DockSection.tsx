@@ -44,6 +44,7 @@ export interface DockToggleItem {
 
 export function DockToggleRow({ item }: { item: DockToggleItem }) {
   const dotColor = item.color ?? 'var(--brand-gold)';
+  const glowColor = dotColor.startsWith('#') ? `${dotColor}80` : dotColor;
   return (
     <button
       type="button"
@@ -60,7 +61,7 @@ export function DockToggleRow({ item }: { item: DockToggleItem }) {
         style={{
           borderRadius: '50%',
           background: item.active ? dotColor : 'var(--text-secondary)',
-          boxShadow: item.active ? `0 0 4px ${dotColor}80` : 'none',
+          boxShadow: item.active ? `0 0 4px ${glowColor}` : 'none',
         }}
       />
       <span className="flex-1 min-w-0 truncate text-left">{item.label}</span>
