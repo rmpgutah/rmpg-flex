@@ -138,3 +138,31 @@ test('evaluateDiskSpace: null freeBytes coerces to a false-positive warn (why ca
   // of routing the null through evaluateDiskSpace.
   assert.deepEqual(evaluateDiskSpace(null), { freeBytes: null, warn: true });
 });
+
+const { formatNetworkInterfaces } = require('../systemInfo');
+
+test('formatNetworkInterfaces: filters out internal/loopback interfaces', () => {
+  const raw = {
+    lo0: [{ address: '127.0.0.1', internal: true, family: 'IPv4' }],
+    en0: [{ address: '192.168.1.42', internal: false, family: 'IPv4' }],
+  };
+  const result = formatNetworkInterfaces(raw);
+  assert.deepEqual(result, [{ name: 'en0', address: '192.168.1.42', type: 'IPv4' }]);
+});
+
+test('formatNetworkInterfaces: includes multiple addresses on the same interface as separate entries', () => {
+  const raw = {
+    en0: [
+      { address: '192.168.1.42', internal: false, family: 'IPv4' },
+      { address: 'fe80::1', internal: false, family: 'IPv6' },
+    ],
+  };
+  const result = formatNetworkInterfaces(raw);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].type, 'IPv4');
+  assert.equal(result[1].type, 'IPv6');
+});
+
+test('formatNetworkInterfaces: returns [] for an empty interfaces object', () => {
+  assert.deepEqual(formatNetworkInterfaces({}), []);
+});

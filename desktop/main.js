@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces } = require('./systemInfo');
 const { encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const fs = require('fs');
 
@@ -913,6 +913,9 @@ guardedHandle('sys:disk-space', () => {
     return { freeBytes: null, warn: false };
   }
   return evaluateDiskSpace(freeBytes);
+});
+guardedHandle('sys:network-interfaces', () => {
+  return formatNetworkInterfaces(require('os').networkInterfaces());
 });
 guardedHandle('sys:export-diagnostics', async () => {
   const os = require('os');

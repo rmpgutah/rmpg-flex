@@ -74,6 +74,18 @@ function evaluateDiskSpace(freeBytes, warnThresholdBytes = DEFAULT_DISK_WARN_THR
   return { freeBytes, warn: freeBytes < warnThresholdBytes };
 }
 
+/** Flattens os.networkInterfaces() into {name, address, type}[], dropping internal/loopback entries. */
+function formatNetworkInterfaces(rawInterfaces) {
+  const result = [];
+  for (const [name, addresses] of Object.entries(rawInterfaces)) {
+    for (const addr of addresses) {
+      if (addr.internal) continue;
+      result.push({ name, address: addr.address, type: addr.family });
+    }
+  }
+  return result;
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
@@ -84,4 +96,5 @@ module.exports = {
   listCrashReports,
   evaluateDiskSpace,
   DEFAULT_DISK_WARN_THRESHOLD_BYTES,
+  formatNetworkInterfaces,
 };
