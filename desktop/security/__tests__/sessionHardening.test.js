@@ -119,3 +119,28 @@ test('shouldAllowNewWindow: denies a data: URL', () => {
 test('shouldAllowNewWindow: denies an unparseable URL', () => {
   assert.deepEqual(shouldAllowNewWindow('not a url', 'rmpgutah.us'), { action: 'deny' });
 });
+
+const { assertSecureElectronDefaults } = require('../sessionHardening');
+
+function fakeApp(enabledSwitches) {
+  return {
+    commandLine: {
+      hasSwitch: (name) => enabledSwitches.includes(name),
+    },
+  };
+}
+
+test('assertSecureElectronDefaults: ok when no insecure switches are set', () => {
+  assert.deepEqual(assertSecureElectronDefaults(fakeApp([])), { ok: true });
+});
+
+test('assertSecureElectronDefaults: flags disable-web-security', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['disable-web-security']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('disable-web-security'));
+});
+
+test('assertSecureElectronDefaults: flags multiple insecure switches at once', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['disable-web-security', 'allow-file-access-from-files']));
+  assert.equal(result.violations.length, 2);
+});

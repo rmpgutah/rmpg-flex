@@ -117,6 +117,24 @@ function hardenWebPreferencesDefaults(overrides = {}) {
   };
 }
 
+const INSECURE_COMMAND_LINE_SWITCHES = [
+  'disable-web-security',
+  'allow-file-access-from-files',
+  'allow-running-insecure-content',
+  'ignore-certificate-errors',
+];
+
+/**
+ * Startup assertion: none of the known security-weakening Chromium
+ * command-line switches should ever be active. These are normally only
+ * set for local debugging (e.g. --disable-web-security to bypass CORS
+ * while pointed at a dev server) and must never ship in a packaged build.
+ */
+function assertSecureElectronDefaults(app) {
+  const violations = INSECURE_COMMAND_LINE_SWITCHES.filter((flag) => app.commandLine.hasSwitch(flag));
+  return violations.length === 0 ? { ok: true } : { ok: false, violations };
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
@@ -124,4 +142,5 @@ module.exports = {
   shouldAllowNavigation,
   shouldAllowNewWindow,
   hardenWebPreferencesDefaults,
+  assertSecureElectronDefaults,
 };
