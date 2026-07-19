@@ -136,9 +136,26 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
       await fsModule.promises.copyFile(dbPath, rollbackPath);
     } catch (snapshotErr) {
       if (snapshotErr.code !== 'ENOENT') {
+        // closeLocalDb() above already closed the in-process DB handle, and
+        // this path aborts before dbPath is ever touched — so dbPath is
+        // still the exact same file that was open a moment ago. Reopen it
+        // so getLocalDb() callers elsewhere in the app (offlineRouter.js,
+        // syncManager.js, ...) don't see a stale 'not initialized' error for
+        // the rest of the session over what was only a transient snapshot
+        // failure (disk full, permission, AV lock, ...).
+        const snapshotError = `could not snapshot existing local DB before import: ${snapshotErr.message}`;
+        try {
+          initLocalDb();
+        } catch (reopenErr) {
+          return {
+            ok: false,
+            error: `${snapshotError}; additionally, reopening the original local DB failed: ${reopenErr.message}`,
+            rolledBack: false,
+          };
+        }
         return {
           ok: false,
-          error: `could not snapshot existing local DB before import: ${snapshotErr.message}`,
+          error: snapshotError,
           rolledBack: false,
         };
       }

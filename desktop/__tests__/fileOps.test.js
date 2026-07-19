@@ -264,11 +264,12 @@ test('swapInLocalDbWithRollback: aborts before the destructive write when the pr
     return originalWriteFile(...args);
   };
 
+  let initCalls = 0;
   const result = await swapInLocalDbWithRollback(newBytes, {
     dbPath,
     fsModule: fakeFs,
     closeLocalDb: () => {},
-    initLocalDb: () => {},
+    initLocalDb: () => { initCalls++; },
   });
 
   assert.equal(result.ok, false);
@@ -276,6 +277,33 @@ test('swapInLocalDbWithRollback: aborts before the destructive write when the pr
   assert.match(result.error, /snapshot/i, 'error must reference the snapshot failure, not a downstream one');
   assert.equal(writeCalls, 0, 'writeFile must never be called when the snapshot cannot be taken');
   assert.deepEqual(fakeFs.files.get(dbPath), oldBytes, 'dbPath content must be left completely untouched');
+  assert.equal(initCalls, 1, 'initLocalDb() must be called again to reopen the original, never-touched dbPath so the app is not left with a closed DB handle for the rest of the session');
+});
+
+test('swapInLocalDbWithRollback: if reopening the original DB also fails after a non-ENOENT snapshot failure, the error names both failures and the function still does not throw', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const newBytes = Buffer.from('NEW DB BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  fakeFs.promises.copyFile = async () => {
+    const err = new Error('permission denied');
+    err.code = 'EACCES';
+    throw err;
+  };
+
+  const result = await swapInLocalDbWithRollback(newBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {
+      throw new Error('reopen exploded too');
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.rolledBack, false);
+  assert.match(result.error, /snapshot/i, 'error must still mention the original snapshot failure');
+  assert.match(result.error, /reopen exploded too/, 'error must also surface the reopen failure so it is not silently masked');
 });
 
 test('swapInLocalDbWithRollback: never throws even when the rollback restore itself fails', async () => {
