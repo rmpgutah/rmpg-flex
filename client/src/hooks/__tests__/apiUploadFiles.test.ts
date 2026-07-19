@@ -86,54 +86,44 @@ describe('apiUploadFiles auto-retry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('routes a file over the direct-upload threshold through presign, not /api/uploads', async () => {
+  // Direct-to-R2 presigned upload is disabled for the general attachments
+  // uploader (DIRECT_UPLOAD_THRESHOLD_BYTES = Infinity in useApi.ts) — the
+  // Worker-proxied multipart route now encrypts every attachment via
+  // putEncrypted() before writing to R2, and a presigned PUT bypasses the
+  // Worker entirely, so it would land unencrypted. This asserts even a
+  // large file still goes through the encrypted multipart path, not presign.
+  it('does not route a large file through presign — direct-upload is disabled pending encryption-at-rest parity', async () => {
     const bigFile = new File(['x'.repeat(21 * 1024 * 1024)], 'big.mp4', { type: 'video/mp4' });
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        file_id: 'big-1', upload_url: 'https://acct.r2.cloudflarestorage.com/bucket/key', key: 'attachments/big-1.mp4',
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ file_id: 'big-1', original_name: 'big.mp4' }), {
-        status: 201, headers: { 'Content-Type': 'application/json' },
-      }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { file_id: 'big-1', original_name: 'big.mp4' },
+    ]), { status: 201, headers: { 'Content-Type': 'application/json' } }));
 
-    const putSpy = vi.spyOn(await import('../../utils/uploadWithProgress'), 'putFileDirect').mockResolvedValue(undefined);
     const out = await apiUploadFiles([bigFile]);
 
     expect(out).toEqual([{ file_id: 'big-1', original_name: 'big.mp4' }]);
-    expect(fetchMock.mock.calls.every(([u]) => !String(u).endsWith('/api/uploads') || String(u).includes('presign'))).toBe(true);
-    putSpy.mockRestore();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/uploads');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('presign');
   });
 
-  it('preserves file order when uploading mixed-size files [small, large, small]', async () => {
+  it('preserves file order for a mixed-size batch, all via the multipart route', async () => {
     const small1 = new File(['x'], 'small1.jpg', { type: 'image/jpeg' });
     const large = new File(['x'.repeat(21 * 1024 * 1024)], 'large.mp4', { type: 'video/mp4' });
     const small2 = new File(['x'], 'small2.jpg', { type: 'image/jpeg' });
 
-    // Mock multipart POST /api/uploads to return results for both small files in order
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify([
-        { file_id: 'small1-id', original_name: 'small1.jpg' },
-        { file_id: 'small2-id', original_name: 'small2.jpg' },
-      ]), { status: 201, headers: { 'Content-Type': 'application/json' } }))
-      // Presign for large file
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        file_id: 'large-id', upload_url: 'https://acct.r2.cloudflarestorage.com/bucket/key', key: 'attachments/large-id.mp4',
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-      // Complete presign for large file
-      .mockResolvedValueOnce(new Response(JSON.stringify({ file_id: 'large-id', original_name: 'large.mp4' }), {
-        status: 201, headers: { 'Content-Type': 'application/json' },
-      }));
-
-    const putSpy = vi.spyOn(await import('../../utils/uploadWithProgress'), 'putFileDirect').mockResolvedValue(undefined);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { file_id: 'small1-id', original_name: 'small1.jpg' },
+      { file_id: 'large-id', original_name: 'large.mp4' },
+      { file_id: 'small2-id', original_name: 'small2.jpg' },
+    ]), { status: 201, headers: { 'Content-Type': 'application/json' } }));
 
     const out = await apiUploadFiles([small1, large, small2]);
 
-    // Verify results are in the SAME order as input files: [small1, large, small2]
-    expect(out).toHaveLength(3);
-    expect(out[0]).toEqual({ file_id: 'small1-id', original_name: 'small1.jpg' });
-    expect(out[1]).toEqual({ file_id: 'large-id', original_name: 'large.mp4' });
-    expect(out[2]).toEqual({ file_id: 'small2-id', original_name: 'small2.jpg' });
-
-    putSpy.mockRestore();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(out).toEqual([
+      { file_id: 'small1-id', original_name: 'small1.jpg' },
+      { file_id: 'large-id', original_name: 'large.mp4' },
+      { file_id: 'small2-id', original_name: 'small2.jpg' },
+    ]);
   });
 });
