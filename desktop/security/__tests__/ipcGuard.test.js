@@ -201,3 +201,19 @@ test('validateFilePathInput: rejects a non-string path', () => {
   const result = validateFilePathInput(null, [root]);
   assert.equal(result.ok, false);
 });
+
+const { validateSyncQueueIdInput } = require('../ipcGuard');
+
+test('validateSyncQueueIdInput: accepts a positive integer', () => {
+  assert.deepEqual(validateSyncQueueIdInput(7), { ok: true });
+});
+
+test('validateSyncQueueIdInput: rejects zero, negative, or non-integer', () => {
+  assert.equal(validateSyncQueueIdInput(0).ok, false);
+  assert.equal(validateSyncQueueIdInput(-3).ok, false);
+  assert.equal(validateSyncQueueIdInput(1.5).ok, false);
+});
+
+test('validateSyncQueueIdInput: rejects a non-numeric value', () => {
+  assert.equal(validateSyncQueueIdInput('all').ok, false);
+});

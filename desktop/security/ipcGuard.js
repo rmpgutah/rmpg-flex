@@ -131,6 +131,17 @@ function validateFilePathInput(candidatePath, allowedRoots) {
   return { ok: true, resolved };
 }
 
+/**
+ * Validates a sync queue ID before it reaches the future sync:retry-item handler.
+ * Must be a positive integer (no existence check — that's deferred to the handler itself).
+ */
+function validateSyncQueueIdInput(id) {
+  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: 'id must be a positive integer' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -138,4 +149,5 @@ module.exports = {
   validatePinInput,
   validateUserIdInput,
   validateFilePathInput,
+  validateSyncQueueIdInput,
 };
