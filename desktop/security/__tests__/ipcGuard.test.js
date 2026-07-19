@@ -240,3 +240,36 @@ test('validateGlobalShortcutAccelerator: rejects a non-string', () => {
 test('validateGlobalShortcutAccelerator: rejects an empty string', () => {
   assert.equal(validateGlobalShortcutAccelerator('').ok, false);
 });
+
+const { createRateLimiter } = require('../ipcGuard');
+
+test('createRateLimiter: allows calls under the limit', () => {
+  const { checkRateLimit } = createRateLimiter(3, 60_000);
+  assert.equal(checkRateLimit('recon:tool-spawn').ok, true);
+  assert.equal(checkRateLimit('recon:tool-spawn').ok, true);
+  assert.equal(checkRateLimit('recon:tool-spawn').ok, true);
+});
+
+test('createRateLimiter: rejects the call that exceeds the limit', () => {
+  const { checkRateLimit } = createRateLimiter(2, 60_000);
+  assert.equal(checkRateLimit('recon:tool-spawn').ok, true);
+  assert.equal(checkRateLimit('recon:tool-spawn').ok, true);
+  const third = checkRateLimit('recon:tool-spawn');
+  assert.equal(third.ok, false);
+  assert.match(third.error, /rate limit/);
+});
+
+test('createRateLimiter: tracks separate channels independently', () => {
+  const { checkRateLimit } = createRateLimiter(1, 60_000);
+  assert.equal(checkRateLimit('channel-a').ok, true);
+  assert.equal(checkRateLimit('channel-b').ok, true);
+  assert.equal(checkRateLimit('channel-a').ok, false);
+});
+
+test('createRateLimiter: resets after the window elapses', async () => {
+  const { checkRateLimit } = createRateLimiter(1, 50);
+  assert.equal(checkRateLimit('channel-a').ok, true);
+  assert.equal(checkRateLimit('channel-a').ok, false);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(checkRateLimit('channel-a').ok, true);
+});

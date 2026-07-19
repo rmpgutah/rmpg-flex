@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter } = require('./security/ipcGuard');
 
 // ─── Lazy-load native modules ─────────────────────────────────
 // better-sqlite3 is a native (C++) add-on that must be compiled for
@@ -67,6 +67,12 @@ try {
 }
 
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
+
+// Shared per-channel call-rate limiter for the recon spawn/catalog and
+// offline-sync-trigger channels — these kick off child processes or network
+// calls, so a compromised/misbehaving renderer shouldn't be able to hammer
+// them.
+const { checkRateLimit } = createRateLimiter(10, 60_000); // 10 calls/min per channel
 
 let mainWindow = null;
 let splashWindow = null;
@@ -1830,6 +1836,8 @@ guardedHandle('recon:tool-install', async (event, { pkg } = {}) => {
 const toolSessions = new Map();
 
 guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
+  const rateCheck = checkRateLimit('recon:tool-spawn');
+  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
   const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
   if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
   const { spawn } = require('child_process');
@@ -1995,6 +2003,8 @@ guardedHandle('recon:tool-kill', async (_event, { sessionId }) => {
 // process looks up the actual commands from the bundled catalog JSON,
 // preventing arbitrary shell execution via IPC.
 guardedHandle('recon:catalog-run', async (event, { category, className, kind, index } = {}) => {
+  const rateCheck = checkRateLimit('recon:catalog-run');
+  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
@@ -2584,6 +2594,8 @@ guardedHandle('offline:sync-status', () => {
 
 // Force an immediate sync cycle
 guardedHandle('offline:trigger-sync', async () => {
+  const rateCheck = checkRateLimit('offline:trigger-sync');
+  if (!rateCheck.ok) return { success: false, error: rateCheck.error };
   try {
     if (syncManager && connectivityMonitor?.isOnline) {
       await syncManager.pullAll();

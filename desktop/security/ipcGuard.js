@@ -176,6 +176,29 @@ function validateGlobalShortcutAccelerator(accelerator) {
   return { ok: true };
 }
 
+/**
+ * Sliding-window call-count limiter, keyed by channel name. Each call to
+ * the returned checkRateLimit records a timestamp and rejects once
+ * maxCallsPerWindow timestamps fall inside the trailing windowMs.
+ */
+function createRateLimiter(maxCallsPerWindow, windowMs) {
+  const callLog = new Map(); // channel -> array of timestamps
+
+  function checkRateLimit(channel) {
+    const now = Date.now();
+    const timestamps = (callLog.get(channel) || []).filter((t) => now - t < windowMs);
+    if (timestamps.length >= maxCallsPerWindow) {
+      callLog.set(channel, timestamps);
+      return { ok: false, error: `rate limit exceeded for "${channel}" (${maxCallsPerWindow} per ${windowMs}ms)` };
+    }
+    timestamps.push(now);
+    callLog.set(channel, timestamps);
+    return { ok: true };
+  }
+
+  return { checkRateLimit };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -185,6 +208,7 @@ module.exports = {
   validateFilePathInput,
   validateSyncQueueIdInput,
   validateGlobalShortcutAccelerator,
+  createRateLimiter,
   ACCELERATOR_MODIFIERS,
   ACCELERATOR_KEYS,
 };
