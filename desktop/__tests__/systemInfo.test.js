@@ -129,3 +129,12 @@ test('evaluateDiskSpace: warn is true below the default 500MB threshold', () => 
 test('evaluateDiskSpace: accepts a custom threshold', () => {
   assert.deepEqual(evaluateDiskSpace(1_000_000_000, 2_000_000_000), { freeBytes: 1_000_000_000, warn: true });
 });
+
+test('evaluateDiskSpace: null freeBytes coerces to a false-positive warn (why callers must not pass null through)', () => {
+  // JS coerces null to 0 in a numeric comparison, so evaluateDiskSpace(null) reports
+  // warn: true — "disk space is low" — when the real problem is "couldn't determine
+  // disk space at all". This is why the sys:disk-space handler in main.js must catch
+  // a statfsSync failure and return { freeBytes: null, warn: false } directly instead
+  // of routing the null through evaluateDiskSpace.
+  assert.deepEqual(evaluateDiskSpace(null), { freeBytes: null, warn: true });
+});

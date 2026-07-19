@@ -905,7 +905,13 @@ guardedHandle('sys:crash-reports', () => {
   return listCrashReports(app.getPath('crashDumps'), require('fs'));
 });
 guardedHandle('sys:disk-space', () => {
-  const freeBytes = getDiskFreeBytes(app.getPath('userData'), require('fs'));
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), require('fs'));
+  } catch (err) {
+    console.error('[SYS:DISK-SPACE] Disk space check failed:', err.message);
+    return { freeBytes: null, warn: false };
+  }
   return evaluateDiskSpace(freeBytes);
 });
 guardedHandle('sys:export-diagnostics', async () => {
