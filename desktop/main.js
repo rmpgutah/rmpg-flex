@@ -9,10 +9,10 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -972,6 +972,16 @@ guardedHandle('fs:save-dialog', async (event, opts) => {
 guardedHandle('fs:open-dialog', async (event, opts) => {
   const result = await dialog.showOpenDialog(mainWindow, buildOpenDialogOptions(opts || {}));
   return result.canceled ? null : result.filePaths;
+});
+guardedHandle('fs:write-export', async (event, targetPath, data) => {
+  const validation = validateFilePathInput(targetPath, resolveAllowedRoots(app));
+  if (!validation.ok) return { ok: false, error: validation.error };
+  try {
+    await fs.promises.writeFile(validation.resolved, data);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────

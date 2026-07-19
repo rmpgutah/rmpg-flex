@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots } = require('../fileOps');
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -38,4 +38,16 @@ test('buildOpenDialogOptions: multi omitted produces just openFile', () => {
 test('buildOpenDialogOptions: multi false produces just openFile', () => {
   const opts = buildOpenDialogOptions({ multi: false });
   assert.deepEqual(opts.properties, ['openFile']);
+});
+
+test('resolveAllowedRoots: returns the 5 roots in documented order', () => {
+  const fakeApp = { getPath: (name) => `${name}-path` };
+  const roots = resolveAllowedRoots(fakeApp);
+  assert.deepEqual(roots, [
+    'downloads-path',
+    'documents-path',
+    'desktop-path',
+    'temp-path',
+    'userData-path',
+  ]);
 });

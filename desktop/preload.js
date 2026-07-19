@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electron', {
   // ─── File & Data Export/Import ───────────────────────
   saveFileDialog: (opts) => ipcRenderer.invoke('fs:save-dialog', opts),
   openFileDialog: (opts) => ipcRenderer.invoke('fs:open-dialog', opts),
+  writeExportFile: (path, data) => ipcRenderer.invoke('fs:write-export', path, data),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel

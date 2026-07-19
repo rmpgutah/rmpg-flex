@@ -24,7 +24,24 @@ function buildOpenDialogOptions({ filters, multi } = {}) {
   };
 }
 
+/**
+ * Resolves the set of directories a renderer-supplied file path is allowed
+ * to fall under, for validateFilePathInput() in security/ipcGuard.js.
+ * Takes Electron's `app` module as a parameter (no direct `electron` import)
+ * so this stays unit-testable with a fake `app.getPath`.
+ */
+function resolveAllowedRoots(appModule) {
+  return [
+    appModule.getPath('downloads'),
+    appModule.getPath('documents'),
+    appModule.getPath('desktop'),
+    appModule.getPath('temp'),
+    appModule.getPath('userData'),
+  ];
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
+  resolveAllowedRoots,
 };
