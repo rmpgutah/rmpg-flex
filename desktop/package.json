@@ -8,6 +8,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --dev",
+    "test": "node --test 'security/__tests__/**/*.js'",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:all": "electron-builder --mac --win",
@@ -36,7 +37,8 @@
       "offlineRouter.js",
       "syncManager.js",
       "internalGps.js",
-      "originalCatalog.json"
+      "originalCatalog.json",
+      "security"
     ],
     "extraResources": [
       {

@@ -9,6 +9,8 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
 // better-sqlite3 is a native (C++) add-on that must be compiled for
@@ -56,6 +58,22 @@ const REMOTE_SERVER_URL = DEV_MODE
 const UPDATE_SERVER_URL = DEV_MODE
   ? 'http://localhost:3001'
   : 'github';
+
+// ─── Trusted host (shared by window-open filtering and IPC sender validation) ───
+let TRUSTED_HOST;
+try {
+  TRUSTED_HOST = new URL(REMOTE_SERVER_URL).host;
+} catch {
+  TRUSTED_HOST = 'rmpgutah.us';
+}
+
+const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
+
+// Shared per-channel call-rate limiter for the recon spawn/catalog and
+// offline-sync-trigger channels — these kick off child processes or network
+// calls, so a compromised/misbehaving renderer shouldn't be able to hammer
+// them.
+const { checkRateLimit } = createRateLimiter(10, 60_000); // 10 calls/min per channel
 
 let mainWindow = null;
 let splashWindow = null;
@@ -818,13 +836,8 @@ async function createMainWindow() {
     });
   });
 
-  // Extract the server's hostname for link filtering
-  let serverHost;
-  try {
-    serverHost = new URL(REMOTE_SERVER_URL).host;
-  } catch {
-    serverHost = 'rmpgutah.us';
-  }
+  // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
+  const serverHost = TRUSTED_HOST;
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -849,16 +862,16 @@ async function createMainWindow() {
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
-ipcMain.on('window:minimize', () => mainWindow?.minimize());
-ipcMain.on('window:maximize', () => {
+guardedOn('window:minimize', () => mainWindow?.minimize());
+guardedOn('window:maximize', () => {
   if (mainWindow?.isMaximized()) {
     mainWindow.unmaximize();
   } else {
     mainWindow?.maximize();
   }
 });
-ipcMain.on('window:close', () => mainWindow?.close());
-ipcMain.handle('app:version', () => app.getVersion());
+guardedOn('window:close', () => mainWindow?.close());
+guardedHandle('app:version', () => app.getVersion());
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
@@ -891,7 +904,7 @@ app.on('web-contents-created', (_event, wc) => {
   });
 });
 
-ipcMain.handle('print:to-pdf', async (event) => {
+guardedHandle('print:to-pdf', async (event) => {
   const fs = require('fs');
   try {
     const pdf = await event.sender.printToPDF({ printBackground: true });
@@ -909,7 +922,7 @@ ipcMain.handle('print:to-pdf', async (event) => {
 // Python CLI lives outside Flex; we only hand off — no stdio piping, no
 // privilege delegation. Returns { ok, error? } so the renderer can show
 // a copy-command fallback if the binary isn't installed.
-ipcMain.handle('recon:launch', async () => {
+guardedHandle('recon:launch', async () => {
   const os = require('os');
   const { spawn } = require('child_process');
   const fs = require('fs');
@@ -1075,7 +1088,7 @@ echo "==================================================="
   return null;
 }
 
-ipcMain.handle('recon:term-spawn', async (event, { mode } = {}) => {
+guardedHandle('recon:term-spawn', async (event, { mode } = {}) => {
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
@@ -1146,14 +1159,14 @@ ipcMain.handle('recon:term-spawn', async (event, { mode } = {}) => {
   }
 });
 
-ipcMain.on('recon:term-input', (_event, { sessionId, data }) => {
+guardedOn('recon:term-input', (_event, { sessionId, data }) => {
   const child = reconSessions.get(sessionId);
   if (child && !child.killed) {
     try { child.stdin.write(data); } catch { /* pipe closed */ }
   }
 });
 
-ipcMain.on('recon:term-resize', (_event, _payload) => {
+guardedOn('recon:term-resize', (_event, _payload) => {
   // No-op without a PTY — size is cosmetic for piped stdio.
 });
 
@@ -1758,7 +1771,7 @@ const RECON_TOOLS = {
 };
 
 // One-click brew install for a known package
-ipcMain.handle('recon:tool-install', async (event, { pkg } = {}) => {
+guardedHandle('recon:tool-install', async (event, { pkg } = {}) => {
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   // Whitelist to prevent arbitrary brew package installs via IPC
@@ -1823,7 +1836,11 @@ ipcMain.handle('recon:tool-install', async (event, { pkg } = {}) => {
 
 const toolSessions = new Map();
 
-ipcMain.handle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
+guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
+  const rateCheck = checkRateLimit('recon:tool-spawn');
+  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
+  const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
+  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
@@ -1871,7 +1888,7 @@ ipcMain.handle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => 
 
 // Check whether a binary is on PATH — used by the renderer to show
 // INSTALLED/NOT INSTALLED badges and skip the run if pre-flight fails.
-ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
+guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
   if (!binary || !/^[a-zA-Z0-9._+-]+$/.test(binary)) return { installed: false, error: 'Invalid binary name' };
   const { spawnSync } = require('child_process');
   const pathParts = [
@@ -1902,7 +1919,9 @@ ipcMain.handle('recon:check-binary', async (_event, { binary } = {}) => {
 // Run a registered RECON_TOOLS tool in a visible Terminal window — same
 // command, same args, but with a TTY so sudo prompts, interactive CLI
 // tools, or color-aware outputs that require a terminal work properly.
-ipcMain.handle('recon:tool-terminal', async (_event, { toolId, args = {} } = {}) => {
+guardedHandle('recon:tool-terminal', async (_event, { toolId, args = {} } = {}) => {
+  const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
+  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
   const { spawn } = require('child_process');
   const tool = RECON_TOOLS[toolId];
   if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
@@ -1936,7 +1955,7 @@ ipcMain.handle('recon:tool-terminal', async (_event, { toolId, args = {} } = {})
 // Open Terminal.app with a catalog command that needs interactive sudo.
 // The command is resolved from the bundled catalog by (category, className, kind, index),
 // same guardrails as recon:catalog-run.
-ipcMain.handle('recon:catalog-terminal', async (_event, { category, className, kind, index } = {}) => {
+guardedHandle('recon:catalog-terminal', async (_event, { category, className, kind, index } = {}) => {
   const fs = require('fs');
   const { spawn } = require('child_process');
   try {
@@ -1972,7 +1991,7 @@ ipcMain.handle('recon:catalog-terminal', async (_event, { category, className, k
   }
 });
 
-ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
+guardedHandle('recon:tool-kill', async (_event, { sessionId }) => {
   const child = toolSessions.get(sessionId);
   if (!child) return { ok: true };
   try { child.kill('SIGTERM'); } catch { /* ignore */ }
@@ -1984,7 +2003,9 @@ ipcMain.handle('recon:tool-kill', async (_event, { sessionId }) => {
 // passes (categoryId, toolClassName, kind='install'|'run', index) — the main
 // process looks up the actual commands from the bundled catalog JSON,
 // preventing arbitrary shell execution via IPC.
-ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, index } = {}) => {
+guardedHandle('recon:catalog-run', async (event, { category, className, kind, index } = {}) => {
+  const rateCheck = checkRateLimit('recon:catalog-run');
+  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
@@ -2093,7 +2114,7 @@ ipcMain.handle('recon:catalog-run', async (event, { category, className, kind, i
   }
 });
 
-ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
+guardedHandle('recon:term-kill', async (_event, { sessionId }) => {
   const child = reconSessions.get(sessionId);
   if (!child) return { ok: true };
   try {
@@ -2105,7 +2126,7 @@ ipcMain.handle('recon:term-kill', async (_event, { sessionId }) => {
 });
 
 // Detailed Recon Connect install state (path + whether hackingtool.py is present)
-ipcMain.handle('recon:install-state', async () => {
+guardedHandle('recon:install-state', async () => {
   const os = require('os');
   const fs = require('fs');
   const home = os.homedir();
@@ -2126,7 +2147,7 @@ ipcMain.handle('recon:install-state', async () => {
 });
 
 // Pull latest changes from the Recon Connect repo
-ipcMain.handle('recon:update', async (event) => {
+guardedHandle('recon:update', async (event) => {
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const os = require('os');
@@ -2150,7 +2171,7 @@ ipcMain.handle('recon:update', async (event) => {
 });
 
 // Emergency kill-all — stops every child process this module has spawned
-ipcMain.handle('recon:kill-all', async () => {
+guardedHandle('recon:kill-all', async () => {
   let killed = 0;
   for (const [, child] of toolSessions) {
     try { child.kill('SIGTERM'); killed++; } catch { /* ignore */ }
@@ -2164,7 +2185,7 @@ ipcMain.handle('recon:kill-all', async () => {
 });
 
 // Quick install-state check so the UI can show the right button.
-ipcMain.handle('recon:check', async () => {
+guardedHandle('recon:check', async () => {
   const os = require('os');
   const fs = require('fs');
   const home = os.homedir();
@@ -2179,7 +2200,7 @@ ipcMain.handle('recon:check', async () => {
 
 // Run the install in a visible terminal so the user can enter sudo/brew
 // prompts, watch git clone / pip install progress, and see any errors.
-ipcMain.handle('recon:install', async () => {
+guardedHandle('recon:install', async () => {
   const os = require('os');
   const { spawn } = require('child_process');
   const platform = process.platform;
@@ -2246,7 +2267,7 @@ ipcMain.handle('recon:install', async () => {
 });
 
 // Force clear all caches and reload — called by web app update banner
-ipcMain.handle('app:force-refresh', async () => {
+guardedHandle('app:force-refresh', async () => {
   if (mainWindow) {
     await mainWindow.webContents.session.clearCache();
     await mainWindow.webContents.session.clearStorageData({
@@ -2360,9 +2381,9 @@ async function detectToughbook() {
   }
 }
 
-ipcMain.handle('geo:internal-gps-detect', detectToughbook);
+guardedHandle('geo:internal-gps-detect', detectToughbook);
 
-ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
   if (internalGpsReader) return { ok: true, alreadyRunning: true };
   if (!portPath) {
     const detected = await detectToughbook();
@@ -2386,7 +2407,7 @@ ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } =
   return { ok, portPath };
 });
 
-ipcMain.handle('geo:internal-gps-stop', async () => {
+guardedHandle('geo:internal-gps-stop', async () => {
   if (internalGpsReader) {
     internalGpsReader.stop();
     internalGpsReader.removeAllListeners();
@@ -2405,7 +2426,7 @@ ipcMain.handle('geo:internal-gps-stop', async () => {
 // parked/idle unit returns to normal power behavior. Idempotent: repeated
 // keep-awake calls reuse the single active blocker id.
 let powerBlockerId = null;
-ipcMain.handle('power:keep-awake', () => {
+guardedHandle('power:keep-awake', () => {
   try {
     if (powerBlockerId == null || !powerSaveBlocker.isStarted(powerBlockerId)) {
       powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
@@ -2417,7 +2438,7 @@ ipcMain.handle('power:keep-awake', () => {
     return { ok: false, error: err.message };
   }
 });
-ipcMain.handle('power:allow-sleep', () => {
+guardedHandle('power:allow-sleep', () => {
   try {
     if (powerBlockerId != null && powerSaveBlocker.isStarted(powerBlockerId)) {
       powerSaveBlocker.stop(powerBlockerId);
@@ -2435,7 +2456,7 @@ ipcMain.handle('power:allow-sleep', () => {
 // Desktop machines often lack GPS hardware. When Chromium's
 // navigator.geolocation fails, the renderer can call this to get
 // an approximate position via Google's Geolocation API (IP-based).
-ipcMain.handle('geo:ip-locate', async () => {
+guardedHandle('geo:ip-locate', async () => {
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
     const url = `https://www.googleapis.com/geolocation/v1/geolocate?key=${apiKey}`;
@@ -2475,7 +2496,7 @@ ipcMain.handle('geo:ip-locate', async () => {
 // ─── Offline Mode IPC Handlers ──────────────────────────────
 
 // Route an API request through the local SQLite database
-ipcMain.handle('offline:api', async (_event, { method, path, body }) => {
+guardedHandle('offline:api', async (_event, { method, path, body }) => {
   try {
     if (!offlineRouter) return { status: 503, error: 'Offline mode not initialized' };
     return offlineRouter.handle(method, path, body);
@@ -2486,7 +2507,7 @@ ipcMain.handle('offline:api', async (_event, { method, path, body }) => {
 });
 
 // Get current offline/authorization state
-ipcMain.handle('offline:state', () => {
+guardedHandle('offline:state', () => {
   try {
     const db = getLocalDb();
     const isOnline = connectivityMonitor ? connectivityMonitor.isOnline : true;
@@ -2527,7 +2548,9 @@ ipcMain.handle('offline:state', () => {
 });
 
 // Employee enters a PIN to unlock 24h local writes
-ipcMain.handle('offline:enter-pin', (_event, { pin }) => {
+guardedHandle('offline:enter-pin', (_event, { pin }) => {
+  const pinCheck = validatePinInput(pin);
+  if (!pinCheck.ok) return { success: false, error: pinCheck.error };
   try {
     if (!pinManager) return { success: false, error: 'PIN system not initialized' };
     return pinManager.validatePin(pin);
@@ -2538,7 +2561,11 @@ ipcMain.handle('offline:enter-pin', (_event, { pin }) => {
 });
 
 // Admin generates a PIN for an employee
-ipcMain.handle('offline:generate-pin', (_event, { userId }) => {
+guardedHandle('offline:generate-pin', (_event, { userId }) => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { error: roleCheck.error };
+  const userIdCheck = validateUserIdInput(userId);
+  if (!userIdCheck.ok) return { error: userIdCheck.error };
   try {
     if (!pinManager) return { error: 'PIN system not initialized' };
     return pinManager.generatePinForUser(userId);
@@ -2549,7 +2576,7 @@ ipcMain.handle('offline:generate-pin', (_event, { userId }) => {
 });
 
 // Get sync status
-ipcMain.handle('offline:sync-status', () => {
+guardedHandle('offline:sync-status', () => {
   try {
     const tables = ['users', 'clients', 'properties', 'calls_for_service', 'units', 'incidents', 'persons', 'vehicles_records'];
     const status = {};
@@ -2569,7 +2596,9 @@ ipcMain.handle('offline:sync-status', () => {
 });
 
 // Force an immediate sync cycle
-ipcMain.handle('offline:trigger-sync', async () => {
+guardedHandle('offline:trigger-sync', async () => {
+  const rateCheck = checkRateLimit('offline:trigger-sync');
+  if (!rateCheck.ok) return { success: false, error: rateCheck.error };
   try {
     if (syncManager && connectivityMonitor?.isOnline) {
       await syncManager.pullAll();
@@ -2583,7 +2612,7 @@ ipcMain.handle('offline:trigger-sync', async () => {
 });
 
 // Get locally cached user for offline authentication
-ipcMain.handle('offline:get-cached-user', (_event, { username }) => {
+guardedHandle('offline:get-cached-user', (_event, { username }) => {
   try {
     const db = getLocalDb();
     const user = db.prepare(
@@ -2788,6 +2817,15 @@ app.whenReady().then(async () => {
     // and the connectivity result is used only to seed the monitor.
     const connectivityPromise = checkServerConnectivity();
 
+    if (DEV_MODE) {
+      const mainJsSource = fs.readFileSync(__filename, 'utf8');
+      const updaterJsSource = fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8');
+      const auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
+      if (!auditResult.ok) {
+        console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
+      }
+    }
+
     createMenu();
     await createMainWindow();
     createTray();
@@ -2800,7 +2838,7 @@ app.whenReady().then(async () => {
 
     // Initialize auto-updater
     console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);
-    appUpdater.init(REMOTE_SERVER_URL);
+    appUpdater.init(REMOTE_SERVER_URL, guardedOn);
 
     // Initialize offline modules (lazy-loaded after local DB is ready)
     try {
