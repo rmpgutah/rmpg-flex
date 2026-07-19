@@ -36,4 +36,11 @@ describe('DockToggleRow', () => {
     const row = screen.getByText('Live Traffic').closest('button')!;
     expect(row).toHaveAttribute('title', 'Real-time congestion');
   });
+
+  it('falls back to the theme brand-gold token (not a hardcoded hex) when no color is given', () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ id: 'x', label: 'X', active: true, onToggle }} />);
+    const dot = screen.getByText('X').closest('button')!.querySelector('span');
+    expect(dot).toHaveStyle({ background: 'var(--brand-gold)' });
+  });
 });

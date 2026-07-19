@@ -43,7 +43,7 @@ export interface DockToggleItem {
 }
 
 export function DockToggleRow({ item }: { item: DockToggleItem }) {
-  const dotColor = item.color ?? '#d4a017';
+  const dotColor = item.color ?? 'var(--brand-gold)';
   return (
     <button
       type="button"
