@@ -11,6 +11,7 @@ import intel from '../src/routes/intel';
 import citations from '../src/routes/citations';
 import { bodycamVideosRouter } from '../src/routes/personnel/bodyCameras';
 import '../src/routes/personnel/bodyCameraUploads'; // attaches handlers to bodycamVideosRouter
+import uploads from '../src/routes/uploads';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -26,5 +27,6 @@ app.route('/api/radio', radio);
 app.route('/api/intel', intel);
 app.route('/api/citations', citations);
 app.route('/api/personnel/bodycam-videos', bodycamVideosRouter);
+app.route('/api/uploads', uploads);
 
 export default app;
