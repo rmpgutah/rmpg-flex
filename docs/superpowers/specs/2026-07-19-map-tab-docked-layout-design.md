@@ -90,9 +90,15 @@ Six regions, always present at ≥1024px viewport width:
    responsive breakpoint below.
 
 The Layers dock and Info & Tools dock are collapsible section-by-section
-(accordion-style, matching the existing `LayerGroup`-driven panel's current collapse
-behavior) — this redesign changes what's grouped where and where the group renders,
-not the interaction pattern of expanding a section. The Roster dock keeps its existing
+(accordion-style — each section shown at once with an expand/collapse header, matching
+the mockup validated during design). **Correction:** an earlier draft of this spec
+claimed this matches the current `MapOverlaysPanel`'s existing collapse behavior: it
+doesn't — that panel is single-active-tab (switch between groups, one visible at a
+time) with a search box and toggle-switch rows, not an accordion. The new docks use
+accordion sections (not tabs) because they're persistent sidebars with room for
+multiple sections open at once, unlike the old panel's small floating-popup footprint;
+this was the actual layout validated in the approved mockup, independent of what the
+old component happened to do internally. The Roster dock keeps its existing
 open/closed toggle (not accordion sections) since that's how it already behaves today.
 
 ### Left Dock — Layers (5 sections)
