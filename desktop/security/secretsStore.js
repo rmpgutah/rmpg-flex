@@ -194,6 +194,17 @@ function redactSensitiveFieldsInLogs(text) {
   return result;
 }
 
+/**
+ * Composes redactSensitiveFieldsInLogs + encryptSecretForStorage for the
+ * diagnostics-bundle export flow. UNWIRED today — Group A's future
+ * exportDiagnosticsBundle (System & Diagnostics, not yet built) is the
+ * intended caller. Ships now, tested, so that future group's plan
+ * doesn't have to design or test this composition from scratch.
+ */
+function encryptDiagnosticsBundleOnExport(plainText, safeStorage) {
+  return encryptSecretForStorage(redactSensitiveFieldsInLogs(plainText), safeStorage);
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -206,4 +217,5 @@ module.exports = {
   verifyLocalDbIntegrity,
   restrictLocalDbFilePermissions,
   redactSensitiveFieldsInLogs,
+  encryptDiagnosticsBundleOnExport,
 };

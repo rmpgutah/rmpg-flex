@@ -251,3 +251,17 @@ test('redactSensitiveFieldsInLogs: leaves ordinary text untouched', () => {
   const text = 'Sync completed for calls_for_service: 42 rows';
   assert.equal(redactSensitiveFieldsInLogs(text), text);
 });
+
+const { encryptDiagnosticsBundleOnExport } = require('../secretsStore');
+
+test('encryptDiagnosticsBundleOnExport: redacts sensitive content, then encrypts', () => {
+  const safeStorage = fakeSafeStorage();
+  const raw = 'Log dump — PIN 482913 was entered, admin_offline_secret lookup failed';
+  const ciphertext = encryptDiagnosticsBundleOnExport(raw, safeStorage);
+  // The ciphertext must not, even accidentally, contain the raw secret values
+  assert.doesNotMatch(ciphertext, /482913/);
+  // Decrypting recovers the REDACTED form, not the original raw secrets
+  const decrypted = decryptSecretForStorage(ciphertext, safeStorage);
+  assert.doesNotMatch(decrypted, /482913/);
+  assert.match(decrypted, /\[REDACTED\]/);
+});
