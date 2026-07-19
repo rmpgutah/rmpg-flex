@@ -1253,7 +1253,7 @@ git commit -m "desktop: require admin role for offline:generate-pin"
 - Test: `desktop/security/__tests__/ipcGuard.test.js`
 
 **Interfaces:**
-- Produces: `auditIpcHandlerRegistry(rawIpcMainHandleCalls, rawIpcMainOnCalls)` — returns `{ ok: true }` or `{ ok: false, violations: string[] }`. Rather than trying to introspect Electron's live `ipcMain` internals (not exposed), this task takes the pragmatic approach the spec's Guardrails section calls for: a **static source check** that greps `main.js` for any remaining raw `ipcMain.handle(`/`ipcMain.on(` call — i.e. it's the same check Task 3 Step 2 ran manually, now turned into a reusable, testable function callable from a startup dev-mode check or a CI step.
+- Produces: `auditIpcHandlerRegistry(mainJsSource)` — takes the full text of `main.js` as a single string and returns `{ ok: true }` or `{ ok: false, violations: string[] }`. Rather than trying to introspect Electron's live `ipcMain` internals (not exposed), this task takes the pragmatic approach the spec's Guardrails section calls for: a **static source check** that greps `main.js` for any remaining raw `ipcMain.handle(`/`ipcMain.on(` call — i.e. it's the same check Task 3 Step 2 ran manually, now turned into a reusable, testable function callable from a startup dev-mode check or a CI step.
 
 - [ ] **Step 1: Write the failing test**
 
