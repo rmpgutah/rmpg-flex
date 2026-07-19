@@ -779,9 +779,13 @@ export default function NavMapView({
             </button>
           </div>
 
-          {/* Live traffic + weather radar (top-right, below Mapbox's own
-              native zoom control which occupies the very top-right corner) */}
-          <div className="absolute top-16 right-2 flex flex-col gap-1">
+          {/* Live traffic + weather radar (top-right). Positioned with a
+              generous buffer below Mapbox's native zoom control (added via
+              addControl(NavigationControl, 'top-right') above), which
+              occupies roughly the top ~70px of this corner — not
+              precisely measured, so the buffer is intentionally generous
+              rather than tight. */}
+          <div className="absolute top-24 right-2 flex flex-col gap-1">
             <button
               type="button"
               onClick={() => traffic.toggle()}
