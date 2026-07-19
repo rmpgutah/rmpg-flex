@@ -29,6 +29,35 @@ function validateIpcSenderOrigin(event, expectedHost) {
   return true;
 }
 
+/**
+ * Wraps an ipcMain instance so every handle()/on() registration made
+ * through the returned guardedHandle/guardedOn validates the sender's
+ * frame origin before the real handler runs.
+ */
+function createIpcGuards(ipcMain, expectedHost) {
+  function guardedHandle(channel, handler) {
+    ipcMain.handle(channel, async (event, ...args) => {
+      validateIpcSenderOrigin(event, expectedHost);
+      return handler(event, ...args);
+    });
+  }
+
+  function guardedOn(channel, handler) {
+    ipcMain.on(channel, (event, ...args) => {
+      try {
+        validateIpcSenderOrigin(event, expectedHost);
+      } catch (err) {
+        console.error(`[ipcGuard] rejected "${channel}":`, err.message);
+        return;
+      }
+      handler(event, ...args);
+    });
+  }
+
+  return { guardedHandle, guardedOn };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
+  createIpcGuards,
 };
