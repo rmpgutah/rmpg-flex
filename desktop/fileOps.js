@@ -125,10 +125,24 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
 
   try {
     closeLocalDb();
-    // Best-effort snapshot of the current DB. On a first-ever run there's
-    // no existing dbPath to copy — that failure is expected and swallowed,
-    // since there's nothing to roll back to in that case anyway.
-    await fsModule.promises.copyFile(dbPath, rollbackPath).catch(() => {});
+    // Snapshot of the current DB before it's overwritten. On a first-ever
+    // run there's no existing dbPath to copy — ENOENT is expected and safe
+    // to proceed from, since there's nothing to roll back to in that case
+    // anyway. Any OTHER failure (disk full, permission denied, AV file
+    // lock, transient I/O error) means we have no guaranteed way back if
+    // the import fails, so abort here, before the destructive write ever
+    // touches dbPath, rather than silently proceeding with no safety net.
+    try {
+      await fsModule.promises.copyFile(dbPath, rollbackPath);
+    } catch (snapshotErr) {
+      if (snapshotErr.code !== 'ENOENT') {
+        return {
+          ok: false,
+          error: `could not snapshot existing local DB before import: ${snapshotErr.message}`,
+          rolledBack: false,
+        };
+      }
+    }
     await fsModule.promises.writeFile(dbPath, rawBytes);
     await deleteStaleSidecars(dbPath);
     initLocalDb();
@@ -142,6 +156,12 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
       return { ok: false, error: originalError, rolledBack: false };
     }
     try {
+      // initLocalDb() above may have already reassigned localDb.js's
+      // module-scoped `db` to a new (possibly-corrupt) handle before it
+      // threw. Re-closing here (idempotent — see closeLocalDb() itself)
+      // releases that handle before we reopen the restored snapshot, so we
+      // never leak a native SQLite handle across the restore.
+      closeLocalDb();
       await fsModule.promises.copyFile(rollbackPath, dbPath);
       await deleteStaleSidecars(dbPath);
       initLocalDb();

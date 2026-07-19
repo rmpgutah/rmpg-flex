@@ -229,11 +229,12 @@ test('swapInLocalDbWithRollback: rolls back to the pre-import DB when initLocalD
   const corruptBytes = Buffer.from('CORRUPT BYTES');
   const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
   let initCalls = 0;
+  let closeCalls = 0;
 
   const result = await swapInLocalDbWithRollback(corruptBytes, {
     dbPath,
     fsModule: fakeFs,
-    closeLocalDb: () => {},
+    closeLocalDb: () => { closeCalls++; },
     initLocalDb: () => {
       initCalls++;
       if (initCalls === 1) throw new Error('file is not a database');
@@ -242,7 +243,39 @@ test('swapInLocalDbWithRollback: rolls back to the pre-import DB when initLocalD
 
   assert.deepEqual(result, { ok: false, error: 'file is not a database', rolledBack: true });
   assert.equal(initCalls, 2, 'initLocalDb() must be called again to reopen the restored DB');
+  assert.equal(closeCalls, 2, 'closeLocalDb() must be re-called before the restore copy-back, in addition to the initial call at the top');
   assert.deepEqual(fakeFs.files.get(dbPath), oldBytes, 'dbPath content must be restored to the pre-import bytes');
+});
+
+test('swapInLocalDbWithRollback: aborts before the destructive write when the pre-write snapshot fails for a reason other than ENOENT', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const newBytes = Buffer.from('NEW DB BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  fakeFs.promises.copyFile = async () => {
+    const err = new Error('permission denied');
+    err.code = 'EACCES';
+    throw err;
+  };
+  let writeCalls = 0;
+  const originalWriteFile = fakeFs.promises.writeFile;
+  fakeFs.promises.writeFile = async (...args) => {
+    writeCalls++;
+    return originalWriteFile(...args);
+  };
+
+  const result = await swapInLocalDbWithRollback(newBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {},
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.rolledBack, false);
+  assert.match(result.error, /snapshot/i, 'error must reference the snapshot failure, not a downstream one');
+  assert.equal(writeCalls, 0, 'writeFile must never be called when the snapshot cannot be taken');
+  assert.deepEqual(fakeFs.files.get(dbPath), oldBytes, 'dbPath content must be left completely untouched');
 });
 
 test('swapInLocalDbWithRollback: never throws even when the rollback restore itself fails', async () => {
