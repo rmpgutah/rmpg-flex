@@ -93,6 +93,23 @@ function decodeBackupForImport(encodedText, safeStorageModule) {
 }
 
 /**
+ * Attempts to call initLocalDb() to reopen the local DB after some preceding
+ * failure (a failed pre-write snapshot, or a failed/rolled-back import).
+ * Returns `null` if the reopen succeeds (no additional error to report).
+ * If the reopen itself throws, returns a string combining the preceding
+ * failure's message with the reopen failure's message, so a second failure
+ * is never silently masked behind the first. Never throws.
+ */
+function attemptReopenAfterFailure(initLocalDb, precedingErrorMessage) {
+  try {
+    initLocalDb();
+    return null;
+  } catch (reopenErr) {
+    return `${precedingErrorMessage}; additionally, reopening the local DB failed: ${reopenErr.message}`;
+  }
+}
+
+/**
  * Swaps a validated backup in as the live local DB cache, with an automatic
  * rollback if the swap doesn't survive reopening. validateBackupFileBeforeImport
  * (secretsStore.js) only checks a 16-byte magic header — a file that's
@@ -144,18 +161,10 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
         // the rest of the session over what was only a transient snapshot
         // failure (disk full, permission, AV lock, ...).
         const snapshotError = `could not snapshot existing local DB before import: ${snapshotErr.message}`;
-        try {
-          initLocalDb();
-        } catch (reopenErr) {
-          return {
-            ok: false,
-            error: `${snapshotError}; additionally, reopening the original local DB failed: ${reopenErr.message}`,
-            rolledBack: false,
-          };
-        }
+        const reopenError = attemptReopenAfterFailure(initLocalDb, snapshotError);
         return {
           ok: false,
-          error: snapshotError,
+          error: reopenError || snapshotError,
           rolledBack: false,
         };
       }
@@ -169,9 +178,28 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
     const originalError = err.message;
     try {
       await fsModule.promises.access(rollbackPath);
-    } catch {
-      return { ok: false, error: originalError, rolledBack: false };
+    } catch (accessErr) {
+      if (accessErr.code === 'ENOENT') {
+        // Genuinely nothing to roll back to (e.g. the pre-write snapshot
+        // step itself never ran or was already cleaned up).
+        return { ok: false, error: originalError, rolledBack: false };
+      }
+      // Some OTHER error reading the rollback snapshot (permission denied,
+      // transient I/O, ...) is a different situation than "no rollback
+      // available" — surface it distinctly rather than silently folding it
+      // into the same message.
+      return {
+        ok: false,
+        error: `${originalError}; additionally, could not confirm the rollback snapshot exists: ${accessErr.message}`,
+        rolledBack: false,
+      };
     }
+
+    // The rollback snapshot exists — attempt the file-level restore (copy
+    // it back over dbPath, drop stale sidecars). A failure here means the
+    // restore copy itself didn't complete, so dbPath may be left in an
+    // inconsistent/half-written state; there's no point attempting to
+    // reopen it, and rolledBack must be false.
     try {
       // initLocalDb() above may have already reassigned localDb.js's
       // module-scoped `db` to a new (possibly-corrupt) handle before it
@@ -181,11 +209,20 @@ async function swapInLocalDbWithRollback(rawBytes, deps) {
       closeLocalDb();
       await fsModule.promises.copyFile(rollbackPath, dbPath);
       await deleteStaleSidecars(dbPath);
-      initLocalDb();
-      return { ok: false, error: originalError, rolledBack: true };
     } catch {
       return { ok: false, error: originalError, rolledBack: false };
     }
+
+    // The restore copy itself succeeded — the on-disk file at dbPath is
+    // genuinely the good, restored file. Attempt to reopen a working
+    // connection to it; if that also fails, the file is fine but the app
+    // has no working connection to it, which is functionally similar to
+    // not having rolled back at all from the caller's perspective.
+    const reopenError = attemptReopenAfterFailure(initLocalDb, originalError);
+    if (reopenError) {
+      return { ok: false, error: reopenError, rolledBack: false };
+    }
+    return { ok: false, error: originalError, rolledBack: true };
   }
 }
 

@@ -330,3 +330,67 @@ test('swapInLocalDbWithRollback: never throws even when the rollback restore its
   assert.equal(result.rolledBack, false);
   assert.equal(result.error, 'file is not a database', 'error must reflect the original failure, not the restore failure');
 });
+
+test('swapInLocalDbWithRollback: restore copy succeeds but the trailing initLocalDb() reopen also fails — file is restored on disk, but rolledBack is false and both failures are reported', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const corruptBytes = Buffer.from('CORRUPT BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  let initCalls = 0;
+
+  const result = await swapInLocalDbWithRollback(corruptBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {
+      initCalls++;
+      if (initCalls === 1) throw new Error('file is not a database');
+      throw new Error('reopen after restore exploded');
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.rolledBack,
+    false,
+    'the restored FILE is fine, but there is no working connection to it, which is functionally similar to not having rolled back'
+  );
+  assert.match(result.error, /file is not a database/, 'must still surface the original write/initLocalDb failure that triggered the rollback');
+  assert.match(result.error, /reopen after restore exploded/, 'must also surface the reopen failure so it is not silently masked');
+  assert.equal(initCalls, 2, 'initLocalDb() must be attempted a second time to reopen the restored file');
+  assert.deepEqual(
+    fakeFs.files.get(dbPath),
+    oldBytes,
+    'the restore copy itself succeeded — dbPath must contain the restored bytes even though the trailing reopen failed'
+  );
+});
+
+test('swapInLocalDbWithRollback: a non-ENOENT access() error checking the rollback snapshot is distinguished from "no rollback available"', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const corruptBytes = Buffer.from('CORRUPT BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  fakeFs.promises.access = async () => {
+    const err = new Error('permission denied');
+    err.code = 'EACCES';
+    throw err;
+  };
+
+  const result = await swapInLocalDbWithRollback(corruptBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {
+      throw new Error('file is not a database');
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.rolledBack, false);
+  assert.match(result.error, /file is not a database/, 'must still surface the original failure');
+  assert.match(
+    result.error,
+    /permission denied/,
+    'must surface the access-check failure distinctly rather than silently treating it the same as "no rollback available"'
+  );
+});
