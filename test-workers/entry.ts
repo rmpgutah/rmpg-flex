@@ -15,6 +15,7 @@ import uploads from '../src/routes/uploads';
 import inspections from '../src/routes/inspections';
 import businessPhotos from '../src/routes/business/photos';
 import propertyPhotos from '../src/routes/property/photos';
+import workOrders from '../src/routes/workOrders';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -34,5 +35,6 @@ app.route('/api/uploads', uploads);
 app.route('/api/inspections', inspections);
 app.route('/api/business-photos', businessPhotos);
 app.route('/api/property-photos', propertyPhotos);
+app.route('/api/work-orders', workOrders);
 
 export default app;
