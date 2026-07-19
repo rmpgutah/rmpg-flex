@@ -25,7 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
-import { putEncrypted, FileEncryptionError } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
@@ -505,11 +505,7 @@ alpr.post('/capture', operational, async (c) => {
   // run the read + persist the row (image_url just resolves to a missing object).
   let imageStored = true;
   try {
-    if (attachToCall) {
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
-    } else {
-      await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
-    }
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
   } catch (err: any) {
     if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
@@ -975,11 +971,25 @@ alpr.get('/capture/:id/history', operational, async (c) => {
 alpr.get('/image/*', operational, async (c) => {
   const key = c.req.path.replace(/^.*\/image\//, '');
   if (!key.startsWith(ALPR_PREFIX) || key.includes('..')) return c.json({ error: 'Invalid key' }, 400);
-  const obj = await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Not found' }, 404);
-  return new Response(obj.body, {
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  if (decrypted) {
+    return new Response(decrypted.bytes, {
+      headers: {
+        'Content-Type': decrypted.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=86400',
+      },
+    });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // LEGACY object uploaded under alpr-captures/ before this feature shipped
+  // (object exists, no file_encryption_keys row) -- mirrors the fallback in
+  // fieldPhotos.ts's GET /file/*. Fall back to the raw R2 bytes rather than
+  // 404ing every unattached ALPR capture already in production R2.
+  const legacy = await c.env.UPLOADS.get(key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  return new Response(legacy.body, {
     headers: {
-      'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+      'Content-Type': legacy.httpMetadata?.contentType || 'image/jpeg',
       'Cache-Control': 'private, max-age=86400',
     },
   });
@@ -1005,7 +1015,7 @@ alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
       ? (entry as File) : null;
     if (file) {
       const key = `alpr/vehicles/${id}/${field}.jpg`;
-      await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
       out[`${field}_r2_key`] = key;
     }
   }

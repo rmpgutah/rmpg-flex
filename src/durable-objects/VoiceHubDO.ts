@@ -47,6 +47,7 @@ import {
 import { gatherAwareness, runLookup, runAction, checkPremiseHazards, VERBATIM_LOOKUPS, type RecordRef } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
+import { putEncrypted } from '../utils/encryptedR2';
 
 interface VoiceEnv {
   DB: D1Database;
@@ -57,6 +58,9 @@ interface VoiceEnv {
   // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
   // See src/utils/aiDispatcher.ts.
   AI: Ai;
+  // Envelope-encryption master key for radio-audio/ and panic-audio/ writes.
+  // See src/utils/encryptedR2.ts.
+  FILE_ENCRYPTION_KEK?: string;
 }
 
 // Synthetic call-sign for the AI dispatcher's own transmissions. Used
@@ -314,7 +318,7 @@ export class VoiceHubDO {
       // logged (audit trail) but no audio is kept and no play button appears.
       if (settings.auto_record) {
         const key = `radio-audio/${id}.webm`;
-        await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+        await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
         await execute(
           db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
           `/api/radio/transmissions/${id}/audio`, id,
@@ -355,7 +359,7 @@ export class VoiceHubDO {
       if (this.panicRecorded) return;
       this.panicRecorded = true;
       const key = `panic-audio/${this.refId}.webm`;
-      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
       await execute(
         db,
         `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
@@ -641,7 +645,7 @@ export class VoiceHubDO {
       if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
       // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
       // row is minted — the live audio still plays even if replay-by-URL 404s.
-      await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, `radio-audio/${dispId}.webm`, audioBytes, {
         httpMetadata: { contentType: 'audio/mpeg' },
       }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
       await execute(

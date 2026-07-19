@@ -24,6 +24,7 @@ import { runIntelQuery } from '../utils/intelQuery';
 import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 import { intelReports, intelSources } from './intel/development';
 import { buildOverview } from '../utils/intelOverview';
 import { daysCutoffISO, finiteCoord, geoFeature, type GeoFeature } from '../utils/intelGeo';
@@ -674,7 +675,7 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
   if (body.byteLength === 0) return c.json({ error: 'empty chunk' }, 400);
   if (body.byteLength > 8 * 1024 * 1024) return c.json({ error: 'chunk too large' }, 413);
   try {
-    await (c.env as any).UPLOADS.put(chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
     await execute(db,
       'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
     return c.json({ success: true, seq });
@@ -717,11 +718,28 @@ intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
   const seq = parseSeq(c.req.param('seq'));
   if (seq === null) return c.json({ error: 'invalid seq' }, 400);
   try {
-    const obj = await (c.env as any).UPLOADS.get(chunkKey(id, seq));
-    if (!obj) return c.json({ error: 'chunk not found' }, 404);
+    const key = chunkKey(id, seq);
+    // getDecrypted() returns null both for "object never existed" and for
+    // "object exists, no file_encryption_keys row" -- the latter is exactly
+    // what every interactions/ chunk looks like for recordings made before
+    // this task started calling putEncrypted() (this feature has been live
+    // in production). Fall back to a raw R2 read so those chunks stay
+    // servable instead of permanently 404ing -- mirrors fieldPhotos.ts's
+    // `GET /file/*` route. A genuine decrypt failure (bad/rotated KEK,
+    // tampered ciphertext) throws instead of returning null, so it is never
+    // confused with the legacy case and is not caught here -- it propagates
+    // to the outer catch below as a loud 500, never a fake 200 of raw
+    // ciphertext.
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
     const rec = await queryFirst<{ mime: string | null }>(db, 'SELECT mime FROM interaction_recordings WHERE id = ?', id).catch(() => null);
-    const mime = obj.httpMetadata?.contentType || rec?.mime || 'audio/webm';
-    return new Response(obj.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
+    if (decrypted) {
+      const mime = decrypted.httpMetadata?.contentType || rec?.mime || 'audio/webm';
+      return new Response(decrypted.bytes, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
+    }
+    const legacy = await (c.env as any).UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'chunk not found' }, 404);
+    const mime = legacy.httpMetadata?.contentType || rec?.mime || 'audio/webm';
+    return new Response(legacy.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
   } catch (err: any) {
     return c.json({ error: err?.message }, 500);
   }

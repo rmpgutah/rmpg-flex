@@ -5,6 +5,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { downloadAndStorePhoto } from '../src/utils/nsopw/photoStore';
 
+// A deterministic base64 32-byte KEK for tests — the write path now fails
+// closed (see src/utils/encryptedR2.ts) without FILE_ENCRYPTION_KEK set.
+const TEST_KEK = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => i)));
+
 function makeMockDb(existingFetchedAt: string | null = null) {
   const updates: Array<{ sql: string; bindings: unknown[] }> = [];
   const prepared = vi.fn(() => ({
@@ -124,7 +128,7 @@ describe('downloadAndStorePhoto', () => {
       headers: { 'content-type': 'image/jpeg' },
     })) as never;
     const r = await downloadAndStorePhoto(
-      { UPLOADS: bucket } as never, db, 42, 'ut', 'icrimewatch.net:735527',
+      { UPLOADS: bucket, FILE_ENCRYPTION_KEK: TEST_KEK } as never, db, 42, 'ut', 'icrimewatch.net:735527',
       'https://wsdocs.example/photo.jpg',
     );
     expect(r.stored).toBe(true);
@@ -148,5 +152,63 @@ describe('downloadAndStorePhoto', () => {
     );
     expect(r.stored).toBe(false);
     expect(r.reason).toContain('too large');
+  });
+});
+
+// ── Envelope encryption (file-encryption-at-rest Phase 2, Task 4) ──
+// Mocked R2/D1 pattern matching tests/encryptedR2.test.ts — photoStore.ts is
+// a plain exported function, not a Hono route, so no Miniflare needed here.
+// (Reuses the module-level TEST_KEK declared above.)
+
+function mockR2() {
+  const store = new Map<string, { body: Uint8Array; httpMetadata?: any }>();
+  return {
+    store,
+    put: vi.fn(async (key: string, bytes: any, opts?: any) => {
+      store.set(key, { body: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), httpMetadata: opts?.httpMetadata });
+    }),
+  };
+}
+
+function mockD1() {
+  const rows = new Map<string, any>();
+  return {
+    rows,
+    prepare: (sql: string) => ({
+      bind: (...args: any[]) => ({
+        first: async () => {
+          if (sql.includes('SELECT photo_fetched_at')) return null; // not stale-gated in this test
+          if (sql.includes('SELECT wrapped_dek')) return rows.get(args[0]) ?? null;
+          return null;
+        },
+        run: async () => {
+          if (sql.includes('INSERT INTO file_encryption_keys')) {
+            rows.set(args[0], { wrapped_dek: args[1], dek_iv: args[2], file_iv: args[3] });
+          }
+        },
+      }),
+    }),
+  };
+}
+
+describe('downloadAndStorePhoto — encrypts nsopw-photos/ at rest', () => {
+  const originalFetch = global.fetch;
+  beforeEach(() => { global.fetch = originalFetch; });
+
+  it('stores ciphertext in R2, not the original photo bytes', async () => {
+    const photoBytes = new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3, 4, 5]);
+    global.fetch = vi.fn(async () => new Response(photoBytes, { headers: { 'content-type': 'image/jpeg' } })) as any;
+
+    const uploads = mockR2();
+    const db = mockD1();
+    const env = { UPLOADS: uploads, FILE_ENCRYPTION_KEK: TEST_KEK } as any;
+
+    const result = await downloadAndStorePhoto(env, db as any, 42, 'FL', 'ext-1', 'https://example.test/photo.jpg');
+
+    expect(result.stored).toBe(true);
+    expect(result.key).toMatch(/^nsopw-photos\/FL\//);
+    const stored = uploads.store.get(result.key!);
+    expect(stored).toBeDefined();
+    expect(Array.from(stored!.body)).not.toEqual(Array.from(photoBytes));
   });
 });

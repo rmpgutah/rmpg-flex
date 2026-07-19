@@ -3,6 +3,7 @@ import { jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
 
 const uploads = new Hono<Env>();
 
@@ -28,7 +29,7 @@ const ALLOWED_MIME = new Set([
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 function extFor(name: string, type: string): string {
   const fromName = name && name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : '';
@@ -177,10 +178,25 @@ uploads.get('/:fileId/thumbnail', async (c) => {
       return c.json({ error: 'Not an image', code: 'NOT_AN_IMAGE' }, 400);
     }
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // getDecrypted() returns a clean null both when the R2 object is
+      // genuinely absent and when it exists but predates this feature (no
+      // file_encryption_keys row). Fall back to a raw read so pre-encryption
+      // attachments (this prefix has been live at up to 500 MB/file for a
+      // long time) stay accessible instead of permanently 404ing. A thrown
+      // decrypt error (bad KEK, tampered ciphertext) is NOT caught here — it
+      // propagates to the outer try/catch below as a genuine failure.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=600');
@@ -202,10 +218,21 @@ uploads.get('/:fileId/download', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // See the thumbnail route above: clean null == legacy pre-encryption
+      // object or genuinely missing; only a thrown decrypt error skips this
+      // fallback and surfaces via the outer try/catch.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', 'application/octet-stream');
     c.header('Content-Disposition', `attachment; filename="${att.original_name}"`);
     return c.body(data);
@@ -225,10 +252,21 @@ uploads.get('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // See the thumbnail route above: clean null == legacy pre-encryption
+      // object or genuinely missing; only a thrown decrypt error skips this
+      // fallback and surfaces via the outer try/catch.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=300');
@@ -304,7 +342,7 @@ uploads.post('/', async (c) => {
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
 
-      await c.env.UPLOADS.put(r2Key, buffer, {
+      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
         httpMetadata: { contentType: file.type || 'application/octet-stream' },
       });
 
@@ -371,7 +409,7 @@ uploads.post('/create', async (c) => {
     const ext = extFor(name, mimeType);
     const r2Key = `attachments/${fileId}${ext}`;
 
-    await c.env.UPLOADS.put(r2Key, new Uint8Array(0), {
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, new Uint8Array(0), {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -411,7 +449,7 @@ uploads.put('/:fileId/content', async (c) => {
 
     const text = await c.req.text();
     const encoded = new TextEncoder().encode(text);
-    await c.env.UPLOADS.put(att.file_path, encoded, {
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, encoded, {
       httpMetadata: { contentType: att.mime_type || 'text/plain' },
     });
     await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', encoded.byteLength, fileId);
@@ -471,6 +509,7 @@ uploads.delete('/:fileId', async (c) => {
     }
 
     try { await c.env.UPLOADS.delete(att.file_path); } catch { /* non-fatal */ }
+    try { await deleteEncryptionKey(db, att.file_path); } catch { /* non-fatal */ }
 
     await execute(db, 'DELETE FROM attachments WHERE file_id = ?', fileId);
 

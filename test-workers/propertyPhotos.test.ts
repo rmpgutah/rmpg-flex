@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { env } from 'cloudflare:test';
 import propertyPhotos from '../src/routes/property/photos';
+import { envWithKek, ensureFileEncryptionKeysTable } from './helpers/fileEncryptionTestSchema';
 
 async function seedProperty(id: number) {
   await env.DB.prepare(
@@ -21,8 +22,13 @@ async function seedProperty(id: number) {
 }
 
 describe('property-photos route', () => {
+  // The upload write now always goes through putEncrypted(), so this
+  // pre-existing test needs a KEK + the file_encryption_keys table or the
+  // write fails closed with FileEncryptionError. See
+  // test-workers/helpers/fileEncryptionTestSchema.ts.
   beforeAll(async () => {
     await seedProperty(1);
+    await ensureFileEncryptionKeysTable(env.DB as unknown as import('@cloudflare/workers-types').D1Database);
   });
 
   it('uploads a photo (kind defaults to photo)', async () => {
@@ -30,7 +36,7 @@ describe('property-photos route', () => {
     form.set('photo', new File([new Uint8Array([1, 2, 3])], 'a.png', { type: 'image/png' }));
     form.set('property_id', '1');
     form.set('category', 'exterior');
-    const res = await propertyPhotos.request('/', { method: 'POST', body: form }, env as any);
+    const res = await propertyPhotos.request('/', { method: 'POST', body: form }, envWithKek(env as unknown as Record<string, unknown>));
     expect(res.status).toBe(201);
     const body = await res.json() as any;
     expect(body.kind).toBe('photo');
@@ -43,7 +49,7 @@ describe('property-photos route', () => {
     form.set('photo', new File([new Uint8Array([1, 2, 3])], 'plan.png', { type: 'image/png' }));
     form.set('property_id', '1');
     form.set('kind', 'layout');
-    const res = await propertyPhotos.request('/', { method: 'POST', body: form }, env as any);
+    const res = await propertyPhotos.request('/', { method: 'POST', body: form }, envWithKek(env as unknown as Record<string, unknown>));
     expect(res.status).toBe(201);
     const body = await res.json() as any;
     expect(body.kind).toBe('layout');
@@ -60,7 +66,7 @@ describe('property-photos route', () => {
     older.set('property_id', '1');
     older.set('category', 'exterior');
     older.set('caption', 'older upload');
-    const olderRes = await propertyPhotos.request('/', { method: 'POST', body: older }, env as any);
+    const olderRes = await propertyPhotos.request('/', { method: 'POST', body: older }, envWithKek(env as unknown as Record<string, unknown>));
     const olderBody = await olderRes.json() as any;
 
     const newer = new FormData();
@@ -68,7 +74,7 @@ describe('property-photos route', () => {
     newer.set('property_id', '1');
     newer.set('category', 'exterior');
     newer.set('caption', 'newer upload');
-    const newerRes = await propertyPhotos.request('/', { method: 'POST', body: newer }, env as any);
+    const newerRes = await propertyPhotos.request('/', { method: 'POST', body: newer }, envWithKek(env as unknown as Record<string, unknown>));
     const newerBody = await newerRes.json() as any;
 
     const res = await propertyPhotos.request('/1', {}, env as any);
