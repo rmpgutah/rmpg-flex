@@ -154,3 +154,17 @@ test('shouldExposeDevToolsMenuItem: true when not packaged (dev run)', () => {
 test('shouldExposeDevToolsMenuItem: false when packaged (production build)', () => {
   assert.equal(shouldExposeDevToolsMenuItem(true), false);
 });
+
+const { isSecureUpdateFeedUrl } = require('../sessionHardening');
+
+test('isSecureUpdateFeedUrl: true for an https URL', () => {
+  assert.equal(isSecureUpdateFeedUrl('https://api.rmpgutah.us/updates/'), true);
+});
+
+test('isSecureUpdateFeedUrl: false for an http URL', () => {
+  assert.equal(isSecureUpdateFeedUrl('http://api.rmpgutah.us/updates/'), false);
+});
+
+test('isSecureUpdateFeedUrl: false for an unparseable value', () => {
+  assert.equal(isSecureUpdateFeedUrl('not a url'), false);
+});

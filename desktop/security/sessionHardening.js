@@ -145,6 +145,20 @@ function shouldExposeDevToolsMenuItem(isPackaged) {
   return !isPackaged;
 }
 
+/**
+ * The auto-updater downloads and silently installs whatever it finds at
+ * this URL (electron-updater's 'generic' provider). It must always be
+ * https — this is a startup assertion against that URL ever regressing
+ * to plain http, not a runtime network check.
+ */
+function isSecureUpdateFeedUrl(url) {
+  try {
+    return new URL(url).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
@@ -154,4 +168,5 @@ module.exports = {
   hardenWebPreferencesDefaults,
   assertSecureElectronDefaults,
   shouldExposeDevToolsMenuItem,
+  isSecureUpdateFeedUrl,
 };

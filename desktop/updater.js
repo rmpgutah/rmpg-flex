@@ -6,6 +6,7 @@
 
 const { autoUpdater } = require('electron-updater');
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { isSecureUpdateFeedUrl } = require('./security/sessionHardening');
 
 class AppUpdater {
   constructor() {
@@ -57,9 +58,13 @@ class AppUpdater {
     // old VPS path). electron-updater's 'generic' provider GETs
     // <url>/latest.yml (win) / latest-mac.yml (mac) and follows the
     // path/sha512 it finds — no auth, no third party.
+    const feedUrl = 'https://api.rmpgutah.us/updates/';
+    if (!isSecureUpdateFeedUrl(feedUrl)) {
+      throw new Error('[UPDATER] Refusing to start: update feed URL is not https');
+    }
     autoUpdater.setFeedURL({
       provider: 'generic',
-      url: 'https://api.rmpgutah.us/updates/',
+      url: feedUrl,
     });
 
     // ─── Event handlers ───────────────────────────────
