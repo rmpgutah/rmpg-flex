@@ -273,3 +273,19 @@ test('createRateLimiter: resets after the window elapses', async () => {
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.equal(checkRateLimit('channel-a').ok, true);
 });
+
+const { requireOfflineAuthForSensitiveIpc } = require('../ipcGuard');
+
+test('requireOfflineAuthForSensitiveIpc: allows an admin role', () => {
+  assert.deepEqual(requireOfflineAuthForSensitiveIpc('admin'), { ok: true });
+});
+
+test('requireOfflineAuthForSensitiveIpc: rejects a non-admin role', () => {
+  const result = requireOfflineAuthForSensitiveIpc('officer');
+  assert.equal(result.ok, false);
+});
+
+test('requireOfflineAuthForSensitiveIpc: rejects a missing/null role', () => {
+  assert.equal(requireOfflineAuthForSensitiveIpc(null).ok, false);
+  assert.equal(requireOfflineAuthForSensitiveIpc(undefined).ok, false);
+});

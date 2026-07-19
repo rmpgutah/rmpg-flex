@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc } = require('./security/ipcGuard');
 
 // ─── Lazy-load native modules ─────────────────────────────────
 // better-sqlite3 is a native (C++) add-on that must be compiled for
@@ -2561,6 +2561,8 @@ guardedHandle('offline:enter-pin', (_event, { pin }) => {
 
 // Admin generates a PIN for an employee
 guardedHandle('offline:generate-pin', (_event, { userId }) => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { error: roleCheck.error };
   const userIdCheck = validateUserIdInput(userId);
   if (!userIdCheck.ok) return { error: userIdCheck.error };
   try {

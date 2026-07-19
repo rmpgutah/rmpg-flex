@@ -199,6 +199,15 @@ function createRateLimiter(maxCallsPerWindow, windowMs) {
   return { checkRateLimit };
 }
 
+/** Gate for IPC actions (e.g. admin PIN generation) that must not be
+ * callable by a non-admin renderer session, even a same-origin one. */
+function requireOfflineAuthForSensitiveIpc(cachedRole) {
+  if (cachedRole !== 'admin') {
+    return { ok: false, error: 'This action requires an admin session' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -209,6 +218,7 @@ module.exports = {
   validateSyncQueueIdInput,
   validateGlobalShortcutAccelerator,
   createRateLimiter,
+  requireOfflineAuthForSensitiveIpc,
   ACCELERATOR_MODIFIERS,
   ACCELERATOR_KEYS,
 };
