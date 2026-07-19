@@ -159,6 +159,30 @@ function isSecureUpdateFeedUrl(url) {
   }
 }
 
+function shouldAuditCertificateVerification(hostname, pinnedHosts) {
+  return pinnedHosts.includes(hostname);
+}
+
+/**
+ * Returns an Electron ses.setCertificateVerifyProc-compatible function.
+ * Per this plan's Global Constraints (no real SPKI pin value available
+ * yet), this NEVER overrides Chromium's own trust decision — callback(-3)
+ * unconditionally means "use Chromium's own verification result" per
+ * Electron's session docs. Its only job is visibility: for the hosts we
+ * actually care about, log when Chromium's verification did NOT come
+ * back clean, so an anomaly (e.g. an unexpected corporate TLS proxy) is
+ * observable instead of silently accepted-or-rejected with no trace.
+ */
+function createCertificateVerifyProc(pinnedHosts, logFn) {
+  return function verifyProc(request, callback) {
+    const { hostname, verificationResult } = request;
+    if (shouldAuditCertificateVerification(hostname, pinnedHosts) && verificationResult !== 'net::OK') {
+      logFn(`[SECURITY] TLS verification for pinned host "${hostname}" did not return net::OK: ${verificationResult}`);
+    }
+    callback(-3);
+  };
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
@@ -169,4 +193,6 @@ module.exports = {
   assertSecureElectronDefaults,
   shouldExposeDevToolsMenuItem,
   isSecureUpdateFeedUrl,
+  shouldAuditCertificateVerification,
+  createCertificateVerifyProc,
 };

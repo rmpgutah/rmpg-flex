@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -751,6 +751,10 @@ async function createMainWindow() {
   );
 
   installContentSecurityPolicy(mainWindow.webContents.session);
+
+  mainWindow.webContents.session.setCertificateVerifyProc(
+    createCertificateVerifyProc([TRUSTED_HOST, 'api.rmpgutah.us'], (msg) => console.warn(msg))
+  );
 
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.

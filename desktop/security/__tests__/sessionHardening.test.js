@@ -168,3 +168,42 @@ test('isSecureUpdateFeedUrl: false for an http URL', () => {
 test('isSecureUpdateFeedUrl: false for an unparseable value', () => {
   assert.equal(isSecureUpdateFeedUrl('not a url'), false);
 });
+
+const { shouldAuditCertificateVerification, createCertificateVerifyProc } = require('../sessionHardening');
+
+test('shouldAuditCertificateVerification: true for a pinned host', () => {
+  assert.equal(shouldAuditCertificateVerification('api.rmpgutah.us', ['api.rmpgutah.us', 'rmpgutah.us']), true);
+});
+
+test('shouldAuditCertificateVerification: false for a non-pinned host', () => {
+  assert.equal(shouldAuditCertificateVerification('example.com', ['api.rmpgutah.us', 'rmpgutah.us']), false);
+});
+
+test('createCertificateVerifyProc: always defers to Chromium (-3), never overrides', () => {
+  const logs = [];
+  const proc = createCertificateVerifyProc(['api.rmpgutah.us'], (msg) => logs.push(msg));
+  let calledWith;
+  proc({ hostname: 'api.rmpgutah.us', verificationResult: 'net::OK' }, (v) => { calledWith = v; });
+  assert.equal(calledWith, -3);
+  assert.equal(logs.length, 0, 'should not log when verification succeeded');
+});
+
+test('createCertificateVerifyProc: logs an audit warning for a pinned host with a failed verification result, but still defers to Chromium', () => {
+  const logs = [];
+  const proc = createCertificateVerifyProc(['api.rmpgutah.us'], (msg) => logs.push(msg));
+  let calledWith;
+  proc({ hostname: 'api.rmpgutah.us', verificationResult: 'net::ERR_CERT_AUTHORITY_INVALID' }, (v) => { calledWith = v; });
+  assert.equal(calledWith, -3);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /api\.rmpgutah\.us/);
+  assert.match(logs[0], /ERR_CERT_AUTHORITY_INVALID/);
+});
+
+test('createCertificateVerifyProc: never logs for a non-pinned host, even on failure', () => {
+  const logs = [];
+  const proc = createCertificateVerifyProc(['api.rmpgutah.us'], (msg) => logs.push(msg));
+  let calledWith;
+  proc({ hostname: 'some-other-host.example', verificationResult: 'net::ERR_CERT_AUTHORITY_INVALID' }, (v) => { calledWith = v; });
+  assert.equal(calledWith, -3);
+  assert.equal(logs.length, 0);
+});
