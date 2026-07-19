@@ -40,8 +40,21 @@ function resolveAllowedRoots(appModule) {
   ];
 }
 
+/**
+ * Formats Electron's webContents.getPrintersAsync() resolved shape
+ * (Array<{name, displayName, description, status, isDefault, options}>)
+ * down to the fields the renderer actually needs, preserving order.
+ */
+function formatPrinters(rawPrinterList) {
+  return (rawPrinterList || []).map((printer) => ({
+    name: printer.name,
+    isDefault: printer.isDefault,
+  }));
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
   resolveAllowedRoots,
+  formatPrinters,
 };

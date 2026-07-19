@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -1002,6 +1002,7 @@ guardedHandle('fs:reveal', (event, targetPath) => {
   shell.showItemInFolder(validation.resolved);
 });
 guardedHandle('fs:downloads-path', () => app.getPath('downloads'));
+guardedHandle('fs:printers', async (event) => formatPrinters(await event.sender.getPrintersAsync()));
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →

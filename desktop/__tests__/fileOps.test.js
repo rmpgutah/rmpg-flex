@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters } = require('../fileOps');
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -49,5 +49,40 @@ test('resolveAllowedRoots: returns the 5 roots in documented order', () => {
     'desktop-path',
     'temp-path',
     'userData-path',
+  ]);
+});
+
+test('formatPrinters: maps raw printer list to {name, isDefault} pairs, preserving order', () => {
+  const rawPrinterList = [
+    {
+      name: 'HP_LaserJet',
+      displayName: 'HP LaserJet',
+      description: 'HP LaserJet Pro',
+      status: 0,
+      isDefault: false,
+      options: {},
+    },
+    {
+      name: 'Canon_Pixma',
+      displayName: 'Canon Pixma',
+      description: 'Canon Pixma MG3600',
+      status: 0,
+      isDefault: true,
+      options: {},
+    },
+    {
+      name: 'PDF_Printer',
+      displayName: 'Save as PDF',
+      description: 'Virtual PDF printer',
+      status: 0,
+      isDefault: false,
+      options: {},
+    },
+  ];
+  const printers = formatPrinters(rawPrinterList);
+  assert.deepEqual(printers, [
+    { name: 'HP_LaserJet', isDefault: false },
+    { name: 'Canon_Pixma', isDefault: true },
+    { name: 'PDF_Printer', isDefault: false },
   ]);
 });
