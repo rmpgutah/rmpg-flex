@@ -92,6 +92,66 @@ function decodeBackupForImport(encodedText, safeStorageModule) {
   return Buffer.from(base64, 'base64');
 }
 
+/**
+ * Swaps a validated backup in as the live local DB cache, with an automatic
+ * rollback if the swap doesn't survive reopening. validateBackupFileBeforeImport
+ * (secretsStore.js) only checks a 16-byte magic header — a file that's
+ * genuinely SQLite but has a corrupted/truncated body passes that check and
+ * only fails once initLocalDb()'s own integrity pragmas actually touch it.
+ * Without a rollback, that leaves the working DB already overwritten with no
+ * way back. This function snapshots the current DB file before writing the
+ * new one, and if closing/writing/reopening fails at any point, restores the
+ * snapshot and reopens it so the app comes back up on the DB it started with.
+ *
+ * `deps = { dbPath, fsModule, closeLocalDb, initLocalDb }` — DI pattern
+ * matching the rest of this file: `fsModule` is Node's `fs` module (or a
+ * fake with the same `.promises.{copyFile,writeFile,unlink,access}` shape),
+ * `closeLocalDb`/`initLocalDb` are zero-arg functions (localDb.js).
+ *
+ * Never throws — every path returns a `{ok, error?, rolledBack?}` result so
+ * callers can distinguish "restore failed, offline mode disabled" from a
+ * generic 'Local DB not initialized' error leaking out of the next
+ * unrelated getLocalDb() call.
+ */
+async function swapInLocalDbWithRollback(rawBytes, deps) {
+  const { dbPath, fsModule, closeLocalDb, initLocalDb } = deps;
+  const rollbackPath = dbPath + '.pre-import-backup';
+
+  async function deleteStaleSidecars(basePath) {
+    for (const suffix of ['-wal', '-shm']) {
+      await fsModule.promises.unlink(basePath + suffix).catch(() => {});
+    }
+  }
+
+  try {
+    closeLocalDb();
+    // Best-effort snapshot of the current DB. On a first-ever run there's
+    // no existing dbPath to copy — that failure is expected and swallowed,
+    // since there's nothing to roll back to in that case anyway.
+    await fsModule.promises.copyFile(dbPath, rollbackPath).catch(() => {});
+    await fsModule.promises.writeFile(dbPath, rawBytes);
+    await deleteStaleSidecars(dbPath);
+    initLocalDb();
+    await fsModule.promises.unlink(rollbackPath).catch(() => {});
+    return { ok: true };
+  } catch (err) {
+    const originalError = err.message;
+    try {
+      await fsModule.promises.access(rollbackPath);
+    } catch {
+      return { ok: false, error: originalError, rolledBack: false };
+    }
+    try {
+      await fsModule.promises.copyFile(rollbackPath, dbPath);
+      await deleteStaleSidecars(dbPath);
+      initLocalDb();
+      return { ok: false, error: originalError, rolledBack: true };
+    } catch {
+      return { ok: false, error: originalError, rolledBack: false };
+    }
+  }
+}
+
 module.exports = {
   buildSaveDialogOptions,
   buildOpenDialogOptions,
@@ -100,4 +160,5 @@ module.exports = {
   isKnownPrinterName,
   encodeBackupForExport,
   decodeBackupForImport,
+  swapInLocalDbWithRollback,
 };

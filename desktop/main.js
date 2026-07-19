@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport } = require('./fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -1046,18 +1046,17 @@ guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
   }
   const contentValidation = validateBackupFileBeforeImport(rawBytes);
   if (!contentValidation.ok) return { ok: false, error: contentValidation.error };
-  try {
-    closeLocalDb();
-    const dbPath = getLocalDbPath(app, path);
-    await fs.promises.writeFile(dbPath, rawBytes);
-    for (const suffix of ['-wal', '-shm']) {
-      await fs.promises.unlink(dbPath + suffix).catch(() => {});
-    }
-    initLocalDb();
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  // validateBackupFileBeforeImport only checks the 16-byte SQLite magic
+  // header — a corrupted/truncated-but-genuinely-SQLite file passes that
+  // and only fails once initLocalDb()'s integrity pragmas touch it. Route
+  // the actual swap through swapInLocalDbWithRollback so a failure there
+  // restores the pre-import DB instead of leaving local/offline mode dead.
+  return swapInLocalDbWithRollback(rawBytes, {
+    dbPath: getLocalDbPath(app, path),
+    fsModule: fs,
+    closeLocalDb,
+    initLocalDb,
+  });
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────

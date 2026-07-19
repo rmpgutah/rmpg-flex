@@ -2,7 +2,40 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport } = require('../fileOps');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('../fileOps');
+
+/**
+ * In-memory fake for Node's `fs` module, exposing only the
+ * `.promises.{copyFile,writeFile,unlink,access}` shape swapInLocalDbWithRollback
+ * depends on. `files` is a path -> Buffer map callers can seed/inspect directly.
+ */
+function makeFakeFsModule(initialFiles = {}) {
+  const files = new Map(Object.entries(initialFiles));
+  function missing(op, target) {
+    const err = new Error(`ENOENT: no such file or directory, ${op} '${target}'`);
+    err.code = 'ENOENT';
+    return err;
+  }
+  return {
+    files,
+    promises: {
+      async copyFile(src, dest) {
+        if (!files.has(src)) throw missing('copyfile', src);
+        files.set(dest, files.get(src));
+      },
+      async writeFile(dest, data) {
+        files.set(dest, data);
+      },
+      async unlink(target) {
+        if (!files.has(target)) throw missing('unlink', target);
+        files.delete(target);
+      },
+      async access(target) {
+        if (!files.has(target)) throw missing('access', target);
+      },
+    },
+  };
+}
 
 test('buildSaveDialogOptions: defaults filters to [] when omitted', () => {
   const opts = buildSaveDialogOptions({});
@@ -150,4 +183,89 @@ test('decodeBackupForImport: round-trips exactly with encodeBackupForExport usin
   const encoded = encodeBackupForExport(rawBytes, fakeSafeStorageForEncrypt);
   const decoded = decodeBackupForImport(encoded, fakeSafeStorageForDecrypt);
   assert.deepEqual(decoded, rawBytes);
+});
+
+test('swapInLocalDbWithRollback: happy path swaps in the new DB and cleans up the rollback snapshot', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const newBytes = Buffer.from('NEW DB BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  let closeCalls = 0;
+  let initCalls = 0;
+
+  const result = await swapInLocalDbWithRollback(newBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => { closeCalls++; },
+    initLocalDb: () => { initCalls++; },
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(closeCalls, 1);
+  assert.equal(initCalls, 1);
+  assert.deepEqual(fakeFs.files.get(dbPath), newBytes);
+  assert.equal(fakeFs.files.has(dbPath + '.pre-import-backup'), false);
+});
+
+test('swapInLocalDbWithRollback: first-ever run (no existing DB to snapshot) still succeeds', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const newBytes = Buffer.from('NEW DB BYTES');
+  const fakeFs = makeFakeFsModule({}); // no pre-existing dbPath entry
+
+  const result = await swapInLocalDbWithRollback(newBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {},
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(fakeFs.files.get(dbPath), newBytes);
+});
+
+test('swapInLocalDbWithRollback: rolls back to the pre-import DB when initLocalDb() throws on the new file', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const corruptBytes = Buffer.from('CORRUPT BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  let initCalls = 0;
+
+  const result = await swapInLocalDbWithRollback(corruptBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => {
+      initCalls++;
+      if (initCalls === 1) throw new Error('file is not a database');
+    },
+  });
+
+  assert.deepEqual(result, { ok: false, error: 'file is not a database', rolledBack: true });
+  assert.equal(initCalls, 2, 'initLocalDb() must be called again to reopen the restored DB');
+  assert.deepEqual(fakeFs.files.get(dbPath), oldBytes, 'dbPath content must be restored to the pre-import bytes');
+});
+
+test('swapInLocalDbWithRollback: never throws even when the rollback restore itself fails', async () => {
+  const dbPath = '/fake/userData/rmpg-local.db';
+  const oldBytes = Buffer.from('OLD DB BYTES');
+  const corruptBytes = Buffer.from('CORRUPT BYTES');
+  const fakeFs = makeFakeFsModule({ [dbPath]: oldBytes });
+  const originalCopyFile = fakeFs.promises.copyFile;
+  let copyCalls = 0;
+  fakeFs.promises.copyFile = async (src, dest) => {
+    copyCalls++;
+    if (copyCalls === 1) return originalCopyFile(src, dest); // initial snapshot: succeeds
+    throw new Error('disk full'); // restore copy: fails
+  };
+
+  const result = await swapInLocalDbWithRollback(corruptBytes, {
+    dbPath,
+    fsModule: fakeFs,
+    closeLocalDb: () => {},
+    initLocalDb: () => { throw new Error('file is not a database'); },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.rolledBack, false);
+  assert.equal(result.error, 'file is not a database', 'error must reflect the original failure, not the restore failure');
 });
