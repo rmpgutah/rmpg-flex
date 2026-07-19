@@ -84,11 +84,34 @@ test('migrateOfflineSecretsToSafeStorage: is idempotent — a second run skips a
   assert.deepEqual(second.skipped, ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret']);
 });
 
-const { encryptPasswordHashForCache, decryptPasswordHashFromCache } = require('../secretsStore');
+const { encryptPasswordHashForCache, decryptPasswordHashFromCache, decryptPasswordHashOrFallback } = require('../secretsStore');
 
 test('encryptPasswordHashForCache: round-trips through decryptPasswordHashFromCache', () => {
   const safeStorage = fakeSafeStorage();
   const ciphertext = encryptPasswordHashForCache('$2b$10$examplehash', safeStorage);
   assert.notEqual(ciphertext, '$2b$10$examplehash');
   assert.equal(decryptPasswordHashFromCache(ciphertext, safeStorage), '$2b$10$examplehash');
+});
+
+test('decryptPasswordHashOrFallback: decrypts a genuinely-encrypted hash normally', () => {
+  const safeStorage = fakeSafeStorage();
+  const ciphertext = encryptPasswordHashForCache('$2b$10$examplehash', safeStorage);
+  assert.equal(decryptPasswordHashOrFallback(ciphertext, safeStorage), '$2b$10$examplehash');
+});
+
+test('decryptPasswordHashOrFallback: falls back to the raw value when decrypt fails (pre-Group-C plaintext row)', () => {
+  const safeStorage = fakeSafeStorage();
+  const plaintextHash = '$2b$10$plaintextlegacyhash';
+  // A real bcrypt hash does not start with "ENC:", so fakeSafeStorage's
+  // decryptString throws — exactly the shape of a not-yet-migrated row.
+  assert.equal(decryptPasswordHashOrFallback(plaintextHash, safeStorage), plaintextHash);
+});
+
+test('decryptPasswordHashOrFallback: returns falsy input unchanged without calling safeStorage', () => {
+  const safeStorage = {
+    decryptString: () => { throw new Error('should not be called'); },
+  };
+  assert.equal(decryptPasswordHashOrFallback(null, safeStorage), null);
+  assert.equal(decryptPasswordHashOrFallback('', safeStorage), '');
+  assert.equal(decryptPasswordHashOrFallback(undefined, safeStorage), undefined);
 });

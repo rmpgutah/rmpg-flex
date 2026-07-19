@@ -90,10 +90,32 @@ function decryptPasswordHashFromCache(ciphertext, safeStorage) {
   return decryptSecretForStorage(ciphertext, safeStorage);
 }
 
+/**
+ * Fail-safe variant of decryptPasswordHashFromCache for read sites that may
+ * encounter a users.password_hash value written before the encrypted-write
+ * path (localDb.js's upsertUserWithEncryptedHash) was wired into
+ * syncManager.js — i.e. rows still holding a legacy plaintext bcrypt hash.
+ * Same "attempt decrypt, fall back to raw on failure" shape as
+ * pinManager.js's readSecretConfig(). A decrypt failure here is an expected
+ * transitional state (every un-migrated cached user hits it until the sync
+ * side is cut over), not an anomaly — do not log at error/warn level.
+ */
+function decryptPasswordHashOrFallback(hash, safeStorage) {
+  if (!hash) return hash;
+  try {
+    return decryptPasswordHashFromCache(hash, safeStorage);
+  } catch {
+    // Not our ciphertext — treat as an already-plaintext legacy value
+    // rather than throwing and breaking offline login.
+    return hash;
+  }
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
   migrateOfflineSecretsToSafeStorage,
   encryptPasswordHashForCache,
   decryptPasswordHashFromCache,
+  decryptPasswordHashOrFallback,
 };

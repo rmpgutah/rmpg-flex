@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { decryptPasswordHashFromCache } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -2622,7 +2622,7 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
        FROM users WHERE username = ? AND status = 'active'`
     ).get(username);
     if (!user) return null;
-    return { ...user, password_hash: decryptPasswordHashFromCache(user.password_hash, safeStorage) };
+    return { ...user, password_hash: decryptPasswordHashOrFallback(user.password_hash, safeStorage) };
   } catch (err) {
     console.error('[OFFLINE:CACHED-USER] Error:', err.message);
     return null;
