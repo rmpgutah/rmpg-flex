@@ -80,3 +80,14 @@ const { getLogsDirectory } = require('../systemInfo');
 test('getLogsDirectory: returns the directory containing the log file', () => {
   assert.equal(getLogsDirectory('/Users/officer/Library/Application Support/RMPG Flex/rmpg-flex.log', path), '/Users/officer/Library/Application Support/RMPG Flex');
 });
+
+const { buildDiagnosticsBundleText } = require('../systemInfo');
+
+test('buildDiagnosticsBundleText: combines system info and log tail into one text block', () => {
+  const info = { os: 'darwin', arch: 'arm64', cpuModel: 'Apple M2', totalMem: 100, freeMem: 50, diskFree: 1000 };
+  const text = buildDiagnosticsBundleText(info, 'log line 1\nlog line 2');
+  assert.match(text, /=== System Info ===/);
+  assert.match(text, /"os": "darwin"/);
+  assert.match(text, /=== Recent Logs ===/);
+  assert.match(text, /log line 1/);
+});

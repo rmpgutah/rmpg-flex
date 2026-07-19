@@ -46,10 +46,22 @@ function getLogsDirectory(logFilePath, pathModule) {
   return pathModule.dirname(logFilePath);
 }
 
+/** Plain-text diagnostics bundle body — redaction/encryption happens after this, at the call site. */
+function buildDiagnosticsBundleText(systemInfoObj, logTail) {
+  return [
+    '=== System Info ===',
+    JSON.stringify(systemInfoObj, null, 2),
+    '',
+    '=== Recent Logs ===',
+    logTail,
+  ].join('\n');
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
   appendToLogFile,
   tailLogFile,
   getLogsDirectory,
+  buildDiagnosticsBundleText,
 };

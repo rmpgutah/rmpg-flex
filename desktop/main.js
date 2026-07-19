@@ -11,7 +11,8 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText } = require('./systemInfo');
+const { encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -899,6 +900,32 @@ guardedHandle('sys:logs', (_event, lines = 500) => {
 });
 guardedHandle('sys:open-logs-folder', () => {
   shell.openPath(getLogsDirectory(LOG_FILE_PATH, path));
+});
+guardedHandle('sys:export-diagnostics', async () => {
+  const os = require('os');
+  const fs = require('fs');
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), fs);
+  } catch {
+    freeBytes = null;
+  }
+  const info = formatSystemInfo(os, freeBytes);
+  const logTail = tailLogFile(LOG_FILE_PATH, 500, fs);
+  const bundleText = buildDiagnosticsBundleText(info, logTail);
+  let encrypted;
+  try {
+    encrypted = encryptDiagnosticsBundleOnExport(bundleText, safeStorage);
+  } catch (err) {
+    return { ok: false, error: `Diagnostics encryption failed: ${err.message}` };
+  }
+  const outPath = path.join(app.getPath('temp'), `rmpg-flex-diagnostics-${Date.now()}.enc`);
+  try {
+    fs.writeFileSync(outPath, encrypted, 'utf8');
+  } catch (err) {
+    return { ok: false, error: `Failed to write diagnostics bundle: ${err.message}` };
+  }
+  return { ok: true, path: outPath };
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────
