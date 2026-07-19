@@ -94,9 +94,26 @@ function validatePinInput(pin) {
   return { ok: true };
 }
 
+/**
+ * Validates a userId before it reaches pinManager.generatePinForUser().
+ * Accepts a positive integer or a numeric string (both are legitimate forms
+ * as pinManager compares using String(s.user_id) === String(userId)).
+ */
+function validateUserIdInput(userId) {
+  if (userId === null || userId === undefined) {
+    return { ok: false, error: 'userId is required' };
+  }
+  const asNumber = Number(userId);
+  if (!Number.isInteger(asNumber) || asNumber <= 0) {
+    return { ok: false, error: 'userId must be a positive integer' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
   sanitizeReconToolArgs,
   validatePinInput,
+  validateUserIdInput,
 };

@@ -149,3 +149,27 @@ test('validatePinInput: rejects non-digit characters', () => {
   const result = validatePinInput('12345a');
   assert.equal(result.ok, false);
 });
+
+const { validateUserIdInput } = require('../ipcGuard');
+
+test('validateUserIdInput: accepts a positive integer', () => {
+  assert.deepEqual(validateUserIdInput(42), { ok: true });
+});
+
+test('validateUserIdInput: accepts a numeric string', () => {
+  assert.deepEqual(validateUserIdInput('42'), { ok: true });
+});
+
+test('validateUserIdInput: rejects zero or negative', () => {
+  assert.equal(validateUserIdInput(0).ok, false);
+  assert.equal(validateUserIdInput(-1).ok, false);
+});
+
+test('validateUserIdInput: rejects a non-numeric string', () => {
+  assert.equal(validateUserIdInput('DROP TABLE users').ok, false);
+});
+
+test('validateUserIdInput: rejects null/undefined', () => {
+  assert.equal(validateUserIdInput(null).ok, false);
+  assert.equal(validateUserIdInput(undefined).ok, false);
+});
