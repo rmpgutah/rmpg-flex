@@ -75,8 +75,25 @@ function migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage 
   return { migrated, skipped };
 }
 
+/**
+ * Semantically-named wrappers around encryptSecretForStorage/
+ * decryptSecretForStorage for the cached users.password_hash column
+ * specifically — same mechanism today, kept as distinct exports so a
+ * future password-hash-specific change (e.g. an added integrity tag)
+ * doesn't ripple into unrelated secret call sites.
+ */
+function encryptPasswordHashForCache(passwordHash, safeStorage) {
+  return encryptSecretForStorage(passwordHash, safeStorage);
+}
+
+function decryptPasswordHashFromCache(ciphertext, safeStorage) {
+  return decryptSecretForStorage(ciphertext, safeStorage);
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
   migrateOfflineSecretsToSafeStorage,
+  encryptPasswordHashForCache,
+  decryptPasswordHashFromCache,
 };

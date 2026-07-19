@@ -7,7 +7,8 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const { app } = require('electron');
+const { app, safeStorage } = require('electron');
+const { encryptPasswordHashForCache, decryptPasswordHashFromCache } = require('./security/secretsStore');
 
 let db = null;
 
@@ -363,6 +364,21 @@ function deltaSync(tableName, rows) {
   tx();
 }
 
+// ─── Helper: Upsert a users row with password_hash encrypted ─
+
+/**
+ * Upserts a single users row with password_hash encrypted via safeStorage
+ * before it touches disk. Callers (syncManager.js's user mirror sync)
+ * should use this instead of the generic upsertRow('users', row) for
+ * rows that include a password_hash field.
+ */
+function upsertUserWithEncryptedHash(row) {
+  const encryptedRow = row.password_hash
+    ? { ...row, password_hash: encryptPasswordHashForCache(row.password_hash, safeStorage) }
+    : row;
+  upsertRow('users', encryptedRow);
+}
+
 // ─── Sync Metadata ───────────────────────────────────────────
 
 function updateSyncMeta(tableName, rowCount) {
@@ -431,6 +447,7 @@ module.exports = {
   upsertRow,
   replaceTable,
   deltaSync,
+  upsertUserWithEncryptedHash,
   getSyncMeta,
   updateSyncMeta,
   getConfig,

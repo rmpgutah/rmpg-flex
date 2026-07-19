@@ -83,3 +83,12 @@ test('migrateOfflineSecretsToSafeStorage: is idempotent — a second run skips a
   assert.deepEqual(second.migrated, []);
   assert.deepEqual(second.skipped, ['admin_offline_secret', 'all_user_secrets', 'my_offline_secret']);
 });
+
+const { encryptPasswordHashForCache, decryptPasswordHashFromCache } = require('../secretsStore');
+
+test('encryptPasswordHashForCache: round-trips through decryptPasswordHashFromCache', () => {
+  const safeStorage = fakeSafeStorage();
+  const ciphertext = encryptPasswordHashForCache('$2b$10$examplehash', safeStorage);
+  assert.notEqual(ciphertext, '$2b$10$examplehash');
+  assert.equal(decryptPasswordHashFromCache(ciphertext, safeStorage), '$2b$10$examplehash');
+});

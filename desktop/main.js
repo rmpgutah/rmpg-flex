@@ -6,10 +6,11 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { decryptPasswordHashFromCache } = require('./security/secretsStore');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -2620,7 +2621,8 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
               email, role, badge_number, phone, status, avatar_url, created_at
        FROM users WHERE username = ? AND status = 'active'`
     ).get(username);
-    return user || null;
+    if (!user) return null;
+    return { ...user, password_hash: decryptPasswordHashFromCache(user.password_hash, safeStorage) };
   } catch (err) {
     console.error('[OFFLINE:CACHED-USER] Error:', err.message);
     return null;
