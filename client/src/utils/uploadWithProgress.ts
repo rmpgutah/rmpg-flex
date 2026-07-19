@@ -114,6 +114,72 @@ export function uploadWithProgress(
   });
 }
 
+/**
+ * PUT raw file bytes to a presigned URL (R2 direct upload) with progress
+ * tracking. Unlike uploadWithProgress, this sends the raw file body (not
+ * FormData) and never attaches an Authorization header — the presigned
+ * URL's own signature is the auth; the target is a foreign origin
+ * (*.r2.cloudflarestorage.com), not this app's API.
+ */
+export function putFileDirect(
+  url: string,
+  file: File,
+  onProgress?: (progress: UploadProgress) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const startTime = Date.now();
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException('Upload aborted', 'AbortError'));
+        return;
+      }
+      signal.addEventListener('abort', () => xhr.abort());
+    }
+
+    xhr.upload.onprogress = (e: ProgressEvent) => {
+      if (!onProgress || !e.lengthComputable) return;
+      const elapsed = (Date.now() - startTime) / 1000;
+      const speed = elapsed > 0 ? e.loaded / elapsed : 0;
+      const remaining = speed > 0 ? (e.total - e.loaded) / speed : 0;
+      onProgress({
+        loaded: e.loaded,
+        total: e.total,
+        percent: Math.round((e.loaded / e.total) * 100),
+        speed,
+        eta: remaining,
+        phase: 'uploading',
+      });
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.({ loaded: file.size, total: file.size, percent: 100, speed: 0, eta: 0, phase: 'done' });
+        resolve();
+      } else {
+        onProgress?.({ loaded: 0, total: 0, percent: 0, speed: 0, eta: 0, phase: 'error' });
+        reject(new Error(`Direct upload failed with status ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      onProgress?.({ loaded: 0, total: 0, percent: 0, speed: 0, eta: 0, phase: 'error' });
+      reject(new Error('Network error during direct upload'));
+    };
+
+    xhr.onabort = () => {
+      onProgress?.({ loaded: 0, total: 0, percent: 0, speed: 0, eta: 0, phase: 'error' });
+      reject(new DOMException('Upload aborted', 'AbortError'));
+    };
+
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.send(file);
+  });
+}
+
 // ─── Format Helpers ──────────────────────────────────────────
 
 export function formatBytes(bytes: number): string {

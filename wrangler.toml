@@ -270,6 +270,10 @@ CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:517
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
+# Cloudflare account id (from the R2 S3-compatible endpoint host) — not
+# secret. Used by src/utils/r2Presign.ts to build the presigned-PUT host
+# for both R2 buckets (rmpg-flex-uploads, system-essentials).
+R2_ACCOUNT_ID = "5caa95c5789f4fc4ed3934b2a2c29ed4"
 # Analytics warehouse id from `wrangler pipelines setup` (= "<account_id>_<bucket>").
 # Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
 # token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).

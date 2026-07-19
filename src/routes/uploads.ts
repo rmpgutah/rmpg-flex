@@ -3,6 +3,7 @@ import { jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
+import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
 
 const uploads = new Hono<Env>();
 
@@ -29,6 +30,22 @@ const ALLOWED_MIME = new Set([
 ]);
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
+
+const UPLOADS_BUCKET_NAME = 'rmpg-flex-uploads';
+const PRESIGN_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB — single-PUT ceiling
+const PRESIGN_TTL_SECONDS = 1800; // 30 min — KV metadata TTL and presigned-URL expiry
+const PRESIGN_KV_PREFIX = 'upload-presign:';
+
+interface PresignMeta {
+  r2Key: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  entityType: string | null;
+  entityId: number | null;
+  folderId: number | null;
+  userId: number;
+}
 
 function extFor(name: string, type: string): string {
   const fromName = name && name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : '';
@@ -352,6 +369,136 @@ uploads.post('/', async (c) => {
   } catch (err) {
     console.error('Upload error:', err);
     return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
+  }
+});
+
+uploads.post('/presign', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+
+    if (!r2CredentialsConfigured(c.env)) {
+      return c.json({ ok: false, code: 'not_configured' });
+    }
+
+    const body = await c.req.json<{
+      filename?: string; contentType?: string; size?: number;
+      entity_type?: string; entity_id?: number | string; folder_id?: number | string;
+    }>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+    const filename = String(body.filename || '').trim();
+    const contentType = String(body.contentType || '').trim();
+    const size = Number(body.size);
+    if (!filename) return c.json({ error: 'filename is required' }, 400);
+    if (!ALLOWED_MIME.has(contentType)) {
+      return c.json({ error: `File type ${contentType} is not allowed` }, 400);
+    }
+    if (!Number.isFinite(size) || size <= 0) {
+      return c.json({ error: 'size must be positive' }, 400);
+    }
+    if (size > PRESIGN_MAX_FILE_SIZE) {
+      return c.json({ error: `File too large — max ${PRESIGN_MAX_FILE_SIZE / 1024 / 1024} MB`, code: 'FILE_TOO_LARGE' }, 400);
+    }
+
+    const fileId = crypto.randomUUID();
+    const ext = extFor(filename, contentType);
+    const r2Key = `attachments/${fileId}${ext}`;
+
+    const entityType = body.entity_type ? String(body.entity_type) : null;
+    const entityIdRaw = body.entity_id != null ? String(body.entity_id) : null;
+    const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
+    const folderIdRaw = body.folder_id != null ? String(body.folder_id) : null;
+    const folderId = folderIdRaw && /^\d+$/.test(folderIdRaw) ? parseInt(folderIdRaw, 10) : null;
+
+    const meta: PresignMeta = {
+      r2Key, filename, contentType, size,
+      entityType, entityId, folderId, userId: auth.userId,
+    };
+    await c.env.KV.put(`${PRESIGN_KV_PREFIX}${fileId}`, JSON.stringify(meta), {
+      expirationTtl: PRESIGN_TTL_SECONDS,
+    });
+
+    const uploadUrl = await presignPutUrl(c.env, UPLOADS_BUCKET_NAME, r2Key, PRESIGN_TTL_SECONDS);
+
+    return c.json({ file_id: fileId, upload_url: uploadUrl, key: r2Key });
+  } catch (err) {
+    console.error('Presign upload error:', err);
+    return c.json({ error: 'Failed to create upload URL', code: 'PRESIGN_ERROR' }, 500);
+  }
+});
+
+uploads.post('/presign/:fileId/complete', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+
+    const fileId = c.req.param('fileId');
+    const raw = await c.env.KV.get(`${PRESIGN_KV_PREFIX}${fileId}`);
+    if (!raw) return c.json({ error: 'Upload session not found or expired', code: 'PRESIGN_EXPIRED' }, 410);
+    const meta = JSON.parse(raw) as PresignMeta;
+
+    if (meta.userId !== auth.userId) {
+      return c.json({ error: 'Not authorized to complete this upload' }, 403);
+    }
+
+    const head = await c.env.UPLOADS.head(meta.r2Key);
+    if (!head) {
+      return c.json({ error: 'File was not found in storage — upload may have failed', code: 'UPLOAD_NOT_FOUND' }, 400);
+    }
+    if (head.size !== meta.size) {
+      return c.json({
+        error: 'Uploaded file size does not match the presigned request',
+        code: 'SIZE_MISMATCH', expected: meta.size, actual: head.size,
+      }, 400);
+    }
+
+    const db = getDb(c.env);
+
+    let effectiveFolderId = meta.folderId;
+    if (effectiveFolderId == null && meta.entityType == null) {
+      try {
+        effectiveFolderId = await ensureDefaultDocumentsFolder(db, auth.userId);
+      } catch (e) {
+        console.warn('[uploads] default documents folder resolve failed', e);
+      }
+    }
+
+    const storedName = meta.r2Key.split('/').pop() || meta.r2Key;
+    await execute(
+      db,
+      `INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      fileId, meta.filename, storedName, meta.r2Key, meta.contentType, meta.size,
+      meta.entityType, meta.entityId, auth.userId,
+    );
+
+    if (effectiveFolderId != null) {
+      try {
+        await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', effectiveFolderId, fileId);
+      } catch (e) {
+        console.warn('Upload: folder placement failed for', fileId, e);
+      }
+    }
+
+    await c.env.KV.delete(`${PRESIGN_KV_PREFIX}${fileId}`).catch(() => undefined);
+
+    await execute(
+      db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+       VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
+      auth.userId,
+      meta.entityType || 'attachment',
+      meta.entityId,
+      `Uploaded file: ${meta.filename}`,
+      c.req.header('CF-Connecting-IP') || 'unknown',
+    );
+
+    const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    return c.json(row, 201);
+  } catch (err) {
+    console.error('Complete presigned upload error:', err);
+    return c.json({ error: 'Failed to finalize upload', code: 'COMPLETE_UPLOAD_ERROR' }, 500);
   }
 });
 

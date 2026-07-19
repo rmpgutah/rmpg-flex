@@ -63,6 +63,7 @@ import pawn from './routes/pawn';
 import tips from './routes/tips';
 import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
+import adminMapData from './routes/adminMapData';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import oidc from './routes/oidc';
@@ -362,6 +363,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/admin/map-data', router: adminMapData, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },

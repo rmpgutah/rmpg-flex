@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { uploadWithProgress } from '../utils/uploadWithProgress';
+import { uploadWithProgress, putFileDirect } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
 import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
@@ -9,6 +9,12 @@ import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
 // don't wait minutes for the browser's default ~120s timeout to fire.
 // Callers can override per-request via apiFetch(url, { timeoutMs }).
 export const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
+
+// Files at or below this size go through the existing Worker-proxied
+// multipart upload (POST /api/uploads); files above it go straight to R2
+// via a presigned PUT, bypassing the Worker's memory ceiling. Matches the
+// design spec's threshold — see docs/superpowers/specs/2026-07-18-r2-presigned-direct-upload-design.md.
+const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20 MB
 
 /**
  * Thrown by `fetchWithTimeout` (and `apiFetch` / `apiFetchBlob` /
@@ -505,7 +511,50 @@ function isRetryableUploadError(err: Error): boolean {
   return true; // no status ⇒ network/transport throw (TypeError, TimeoutError) ⇒ retry
 }
 
-export async function apiUploadFiles(
+async function presignAttachmentUpload(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+): Promise<{ file_id: string; upload_url: string; key: string } | { ok: false; code: string }> {
+  return apiFetch('/uploads/presign', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: file.name,
+      contentType: file.type || 'application/octet-stream',
+      size: file.size,
+      entity_type: entityType,
+      entity_id: entityId,
+    }),
+  });
+}
+
+async function completeAttachmentUpload(fileId: string): Promise<any> {
+  return apiFetch(`/uploads/presign/${fileId}/complete`, { method: 'POST', body: '{}' });
+}
+
+/** Upload one large file straight to R2 via a presigned PUT (see design spec). */
+export async function apiUploadFileDirect(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<any> {
+  const presign = await presignAttachmentUpload(file, entityType, entityId);
+  // R2 direct-upload credentials aren't configured yet (server's established
+  // "unset secret → 200 { ok: false, code: 'not_configured' }" convention —
+  // never a 4xx/5xx, so apiFetch's !res.ok branch never fires). Fall back to
+  // the existing Worker-proxied multipart path instead of PUTing to an
+  // undefined upload_url, per the design spec's rollout requirement.
+  if ((presign as { ok?: false }).ok === false) {
+    const [result] = await apiUploadFilesMultipart([file], entityType, entityId);
+    return result;
+  }
+  const { file_id: fileId, upload_url: uploadUrl } = presign as { file_id: string; upload_url: string; key: string };
+  await putFileDirect(uploadUrl, file, onProgress);
+  return completeAttachmentUpload(fileId);
+}
+
+async function apiUploadFilesMultipart(
   files: File[],
   entityType?: string,
   entityId?: string | number,
@@ -554,6 +603,39 @@ export async function apiUploadFiles(
   throw lastErr ?? new Error('Upload failed');
 }
 
+export async function apiUploadFiles(
+  files: File[],
+  entityType?: string,
+  entityId?: string | number,
+  opts?: UploadOptions,
+): Promise<any[]> {
+  const smallIndices: number[] = [];
+  const smallFiles: File[] = [];
+  const largeIndices: number[] = [];
+
+  files.forEach((f, i) => {
+    if (f.size <= DIRECT_UPLOAD_THRESHOLD_BYTES) {
+      smallIndices.push(i);
+      smallFiles.push(f);
+    } else {
+      largeIndices.push(i);
+    }
+  });
+
+  const results: any[] = new Array(files.length);
+
+  if (smallFiles.length > 0) {
+    const smallResults = await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts);
+    smallIndices.forEach((origIdx, i) => { results[origIdx] = smallResults[i]; });
+  }
+
+  for (const origIdx of largeIndices) {
+    results[origIdx] = await apiUploadFileDirect(files[origIdx], entityType, entityId);
+  }
+
+  return results;
+}
+
 // Upload files with per-file progress tracking via XHR
 export async function apiUploadFilesWithProgress(
   files: File[],
@@ -572,6 +654,13 @@ export async function apiUploadFilesWithProgress(
   // Upload files one at a time so progress tracks per-file
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+
+    if (file.size > DIRECT_UPLOAD_THRESHOLD_BYTES) {
+      const result = await apiUploadFileDirect(file, entityType, entityId, (progress) => onProgress(progress, i, files.length));
+      results.push(result);
+      continue;
+    }
+
     const formData = new FormData();
     formData.append('files', file);
     if (entityType) formData.append('entity_type', entityType);

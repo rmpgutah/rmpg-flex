@@ -17,6 +17,14 @@ export type Bindings = {
   // Desktop/mobile installers R2 bucket. Served via /downloads/* and
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
+  // R2 S3-API credentials for presigned direct uploads (src/utils/r2Presign.ts).
+  // Optional — presign routes return `{ ok:false, code:'not_configured' }` when
+  // unset instead of crashing. Set via `wrangler secret put R2_ACCESS_KEY_ID`
+  // and `wrangler secret put R2_SECRET_ACCESS_KEY` (never committed).
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  // Cloudflare account id — not secret, also set as a plain var below.
+  R2_ACCOUNT_ID?: string;
   JWT_SECRET: string;
   // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
   // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
