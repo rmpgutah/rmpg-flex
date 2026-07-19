@@ -173,3 +173,31 @@ test('validateUserIdInput: rejects null/undefined', () => {
   assert.equal(validateUserIdInput(null).ok, false);
   assert.equal(validateUserIdInput(undefined).ok, false);
 });
+
+const path = require('node:path');
+const { validateFilePathInput } = require('../ipcGuard');
+
+test('validateFilePathInput: accepts a path under an allowed root', () => {
+  const root = path.resolve('/tmp/rmpg-exports');
+  const result = validateFilePathInput(path.join(root, 'backup.sqlite'), [root]);
+  assert.equal(result.ok, true);
+  assert.equal(result.resolved, path.join(root, 'backup.sqlite'));
+});
+
+test('validateFilePathInput: rejects a path outside every allowed root', () => {
+  const root = path.resolve('/tmp/rmpg-exports');
+  const result = validateFilePathInput('/etc/passwd', [root]);
+  assert.equal(result.ok, false);
+});
+
+test('validateFilePathInput: rejects a traversal attempt that escapes the root', () => {
+  const root = path.resolve('/tmp/rmpg-exports');
+  const result = validateFilePathInput(path.join(root, '..', '..', 'etc', 'passwd'), [root]);
+  assert.equal(result.ok, false);
+});
+
+test('validateFilePathInput: rejects a non-string path', () => {
+  const root = path.resolve('/tmp/rmpg-exports');
+  const result = validateFilePathInput(null, [root]);
+  assert.equal(result.ok, false);
+});

@@ -8,6 +8,7 @@
 'use strict';
 
 const { URL } = require('url');
+const path = require('path');
 
 /**
  * Throws if the IPC call's sender frame doesn't match expectedHost.
@@ -110,10 +111,31 @@ function validateUserIdInput(userId) {
   return { ok: true };
 }
 
+/**
+ * Resolves candidatePath and confirms it falls under one of allowedRoots.
+ * Used by any future handler that writes/reads a renderer-chosen file path
+ * (exports, backups) so a crafted path can't escape the intended directory.
+ */
+function validateFilePathInput(candidatePath, allowedRoots) {
+  if (typeof candidatePath !== 'string' || candidatePath.length === 0) {
+    return { ok: false, error: 'path must be a non-empty string' };
+  }
+  const resolved = path.resolve(candidatePath);
+  const isUnderAnyRoot = allowedRoots.some((root) => {
+    const resolvedRoot = path.resolve(root);
+    return resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep);
+  });
+  if (!isUnderAnyRoot) {
+    return { ok: false, error: `path "${resolved}" is outside all allowed directories` };
+  }
+  return { ok: true, resolved };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
   sanitizeReconToolArgs,
   validatePinInput,
   validateUserIdInput,
+  validateFilePathInput,
 };
