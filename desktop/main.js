@@ -993,6 +993,14 @@ guardedHandle('fs:read-import', async (event, sourcePath) => {
     return { ok: false, error: err.message };
   }
 });
+guardedHandle('fs:reveal', (event, targetPath) => {
+  const validation = validateFilePathInput(targetPath, resolveAllowedRoots(app));
+  if (!validation.ok) {
+    console.error('[FS:REVEAL] Rejected path:', validation.error);
+    return;
+  }
+  shell.showItemInFolder(validation.resolved);
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
