@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory } = require('./systemInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -896,6 +896,9 @@ guardedHandle('sys:info', () => {
 });
 guardedHandle('sys:logs', (_event, lines = 500) => {
   return tailLogFile(LOG_FILE_PATH, lines, require('fs'));
+});
+guardedHandle('sys:open-logs-folder', () => {
+  shell.openPath(getLogsDirectory(LOG_FILE_PATH, path));
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────

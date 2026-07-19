@@ -73,3 +73,10 @@ test('tailLogFile: returns everything when fewer lines exist than requested', ()
   const fs = fakeFsWithStore('only-line\n');
   assert.equal(tailLogFile('/logs/app.log', 500, fs), 'only-line');
 });
+
+const path = require('node:path');
+const { getLogsDirectory } = require('../systemInfo');
+
+test('getLogsDirectory: returns the directory containing the log file', () => {
+  assert.equal(getLogsDirectory('/Users/officer/Library/Application Support/RMPG Flex/rmpg-flex.log', path), '/Users/officer/Library/Application Support/RMPG Flex');
+});

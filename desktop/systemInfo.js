@@ -41,9 +41,15 @@ function tailLogFile(logFilePath, lines, fsModule) {
   return allLines.slice(-lines).join('\n');
 }
 
+/** Directory containing the log file — pure path math, no fs access. */
+function getLogsDirectory(logFilePath, pathModule) {
+  return pathModule.dirname(logFilePath);
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
   appendToLogFile,
   tailLogFile,
+  getLogsDirectory,
 };

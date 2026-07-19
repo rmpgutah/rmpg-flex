@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),
   getAppLogs: (lines) => ipcRenderer.invoke('sys:logs', lines),
+  openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
