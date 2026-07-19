@@ -217,3 +217,26 @@ test('validateSyncQueueIdInput: rejects zero, negative, or non-integer', () => {
 test('validateSyncQueueIdInput: rejects a non-numeric value', () => {
   assert.equal(validateSyncQueueIdInput('all').ok, false);
 });
+
+const { validateGlobalShortcutAccelerator } = require('../ipcGuard');
+
+test('validateGlobalShortcutAccelerator: accepts a valid modifier+key combo', () => {
+  assert.deepEqual(validateGlobalShortcutAccelerator('CommandOrControl+Shift+P'), { ok: true });
+});
+
+test('validateGlobalShortcutAccelerator: accepts a valid function key combo', () => {
+  assert.deepEqual(validateGlobalShortcutAccelerator('Alt+F9'), { ok: true });
+});
+
+test('validateGlobalShortcutAccelerator: rejects an unknown token', () => {
+  const result = validateGlobalShortcutAccelerator('CommandOrControl+Banana');
+  assert.equal(result.ok, false);
+});
+
+test('validateGlobalShortcutAccelerator: rejects a non-string', () => {
+  assert.equal(validateGlobalShortcutAccelerator(null).ok, false);
+});
+
+test('validateGlobalShortcutAccelerator: rejects an empty string', () => {
+  assert.equal(validateGlobalShortcutAccelerator('').ok, false);
+});

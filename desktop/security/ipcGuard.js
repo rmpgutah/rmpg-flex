@@ -142,6 +142,40 @@ function validateSyncQueueIdInput(id) {
   return { ok: true };
 }
 
+const ACCELERATOR_MODIFIERS = new Set([
+  'CommandOrControl', 'CmdOrCtrl', 'Command', 'Cmd', 'Control', 'Ctrl',
+  'Alt', 'Option', 'AltGr', 'Shift', 'Super', 'Meta',
+]);
+
+const ACCELERATOR_KEYS = new Set([
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split(''),
+  ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
+  'Plus', 'Space', 'Tab', 'Backspace', 'Delete', 'Insert', 'Return', 'Enter',
+  'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown', 'Escape', 'Esc',
+]);
+
+/**
+ * Validates an Electron globalShortcut Accelerator string: zero or more
+ * known modifiers joined by "+", ending in exactly one known key token.
+ */
+function validateGlobalShortcutAccelerator(accelerator) {
+  if (typeof accelerator !== 'string' || accelerator.length === 0) {
+    return { ok: false, error: 'accelerator must be a non-empty string' };
+  }
+  const parts = accelerator.split('+');
+  const key = parts[parts.length - 1];
+  const modifiers = parts.slice(0, -1);
+  if (!ACCELERATOR_KEYS.has(key)) {
+    return { ok: false, error: `unknown key token "${key}"` };
+  }
+  for (const mod of modifiers) {
+    if (!ACCELERATOR_MODIFIERS.has(mod)) {
+      return { ok: false, error: `unknown modifier token "${mod}"` };
+    }
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
@@ -150,4 +184,7 @@ module.exports = {
   validateUserIdInput,
   validateFilePathInput,
   validateSyncQueueIdInput,
+  validateGlobalShortcutAccelerator,
+  ACCELERATOR_MODIFIERS,
+  ACCELERATOR_KEYS,
 };
