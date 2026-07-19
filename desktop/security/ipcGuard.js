@@ -239,6 +239,4 @@ module.exports = {
   createRateLimiter,
   requireOfflineAuthForSensitiveIpc,
   auditIpcHandlerRegistry,
-  ACCELERATOR_MODIFIERS,
-  ACCELERATOR_KEYS,
 };

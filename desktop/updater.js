@@ -21,8 +21,13 @@ class AppUpdater {
    * Call AFTER the server is confirmed running and mainWindow is created.
    *
    * @param {string} serverUrl - e.g. "http://localhost:3001" or "https://rmpgutah.us"
+   * @param {Function} guardedOn - sender-origin-validated wrapper around
+   *   ipcMain.on, from createIpcGuards(ipcMain, TRUSTED_HOST) in main.js.
+   *   Required so the renderer-facing 'updater:check'/'updater:install'
+   *   channels get the same sender-origin validation as every other IPC
+   *   handler in the app.
    */
-  init(serverUrl) {
+  init(serverUrl, guardedOn) {
     if (this.initialized) return;
     this.initialized = true;
     this.serverUrl = serverUrl;
@@ -61,12 +66,12 @@ class AppUpdater {
     this._setupEventHandlers();
 
     // ─── IPC handlers from renderer ───────────────────
-    ipcMain.on('updater:check', () => {
+    guardedOn('updater:check', () => {
       console.log('[UPDATER] Manual check triggered from renderer');
       this.checkForUpdates();
     });
 
-    ipcMain.on('updater:install', () => {
+    guardedOn('updater:install', () => {
       console.log('[UPDATER] Install triggered from renderer');
       autoUpdater.quitAndInstall(false, true);
     });

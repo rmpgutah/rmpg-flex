@@ -2819,7 +2819,8 @@ app.whenReady().then(async () => {
 
     if (DEV_MODE) {
       const mainJsSource = fs.readFileSync(__filename, 'utf8');
-      const auditResult = auditIpcHandlerRegistry(mainJsSource);
+      const updaterJsSource = fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8');
+      const auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
       if (!auditResult.ok) {
         console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
       }
@@ -2837,7 +2838,7 @@ app.whenReady().then(async () => {
 
     // Initialize auto-updater
     console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);
-    appUpdater.init(REMOTE_SERVER_URL);
+    appUpdater.init(REMOTE_SERVER_URL, guardedOn);
 
     // Initialize offline modules (lazy-loaded after local DB is ready)
     try {
