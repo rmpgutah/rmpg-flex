@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('electron', {
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // ─── System & Diagnostics ───────────────────────────
+  getSystemInfo: () => ipcRenderer.invoke('sys:info'),
+
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
   // segfaults the app on macOS 26 (see main.js 'print:to-pdf').

@@ -11,6 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
+const { getDiskFreeBytes, formatSystemInfo } = require('./systemInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -873,6 +874,18 @@ guardedOn('window:maximize', () => {
 });
 guardedOn('window:close', () => mainWindow?.close());
 guardedHandle('app:version', () => app.getVersion());
+guardedHandle('sys:info', () => {
+  const os = require('os');
+  const fs = require('fs');
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), fs);
+  } catch (err) {
+    console.error('[SYS:INFO] Disk space check failed:', err.message);
+    freeBytes = null;
+  }
+  return formatSystemInfo(os, freeBytes);
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
