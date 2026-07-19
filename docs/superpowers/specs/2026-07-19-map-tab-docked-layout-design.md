@@ -30,6 +30,25 @@ reachable, just organized into a fixed structure instead of a flat list.
   currently docked left and toggleable via `sidebarOpen`. This is a separate, larger
   panel than "legend + counts" and gets its own dock in the new structure (see below)
   rather than being folded into Info & Tools.
+- There's a **second, separate toolbar system**: an "Advanced Map Tools Toolbar"
+  (`MapboxMapPage.tsx:1494-1776`, top-right, `showAdvancedToolbar` state) with its own
+  dropdown groups ("Overlays," "Analysis") duplicating ~12 toggles already in
+  `layerGroups` (beats, terrain, isochrone, selfpos, breadcrumbs, daylight, grid,
+  weather, deck, heatmap, traffic, clustering) — same state, a second button. It also
+  hosts a genuinely separate measure/draw subsystem (`measure.mode` for distance/area,
+  `drawing.mode` for polygon/polyline/circle, `glDraw` for vertex editing) with no
+  `layerGroups` equivalent, functionally overlapping with the newer `RulerTool`/
+  `DrawGeofenceTool` floating panels. Resolution (confirmed with the user): the
+  duplicate toggles consolidate to their single dock entry — the Advanced Toolbar's
+  copies are deleted, not preserved as a second surface — and measure/draw/GL Draw
+  fold into Right Dock → Analysis as more launcher entries alongside Ruler/Draw
+  Geofence, accepting that this means two functionally-overlapping implementations
+  will sit side by side in the same dock section (consolidating them into one is a
+  separate, later cleanup, not part of this redesign).
+- The current "Layers Panel" (`<MapOverlaysPanel>`, toggled via `layersPanelOpen`) is
+  entirely superseded by the new `MapLeftDock` — it becomes dead code once the
+  redesign lands and is deleted (component + its existing test), rather than left
+  orphaned.
 
 ## Non-goals
 
@@ -50,9 +69,11 @@ reachable, just organized into a fixed structure instead of a flat list.
 Six regions, always present at ≥1024px viewport width:
 
 1. **Top toolbar** (slim, full width, sits above everything else): address search, then
-   map chrome — Scale Bar, Fullscreen, Minimap — then Bookmarks and Capture Snapshot
-   (export). These are the controls least tied to any "layer" and most tied to the
-   viewport itself.
+   map chrome — `scale`, `fullscreen`, `minimap` (all three are existing `layerGroups`
+   `base`-section ids, pulled out into the toolbar since they're viewport chrome, not
+   layers) plus the existing Map Style Selector (`showStyleMenu`/`handleStyleChange`,
+   currently a separate bottom-left floating control) — then Bookmarks and `snapshot`
+   (Capture Snapshot / export).
 2. **Roster dock** (far-left, ~280px): the existing Units/Calls tabbed roster panel,
    moved as-is into a dock slot — same toggle-open/closed behavior (`sidebarOpen`),
    same tab/list content and component internals, just repositioned to sit at the
@@ -118,7 +139,7 @@ below, not four; no "Status" section, since there's nothing live to relocate int
 | Section | Contents |
 |---|---|
 | **Dispatch Tools** | `directions`, `places`, `bookmarks`, `optimize` (multi-stop route planner) toggles, plus the existing `MapboxDispatchConnections` component |
-| **Analysis** | `speed-analytics` (opens the existing `SpeedAnalyticsPanel`), `gps-replay` (opens the existing `GpsReplayTool`), `ruler`, `buffer-ring`, `annotation`, `draw-geofence` (each opens its existing floating tool component — `RulerTool`, `BufferRingTool`, `AnnotationTool`, `DrawGeofenceTool`) |
+| **Analysis** | `speed-analytics` (opens the existing `SpeedAnalyticsPanel`), `gps-replay` (opens the existing `GpsReplayTool`), `ruler`, `buffer-ring`, `annotation`, `draw-geofence` (each opens its existing floating tool component — `RulerTool`, `BufferRingTool`, `AnnotationTool`, `DrawGeofenceTool`), plus `measure` (distance/area — opens the existing inline dropdown), `draw` (polygon/polyline/circle — opens the existing inline dropdown), `gl-draw` (`glDraw.toggle()`) from the Advanced Toolbar's separate measure/draw subsystem |
 | **Diagnostics** | `identify`, `inspect` (Feature Inspector), `mapmatch` (Map Match Trace), plus the existing `MapDiagnosticsOverlay` component |
 
 Note: items in Analysis and some in Dispatch Tools don't render their content *inside*
@@ -182,3 +203,8 @@ single undifferentiated change.
   etc.) have their own existing tests (`client/src/pages/map/components/__tests__/`).
   Since only their *launcher* moves (not their internals), those tests should need no
   changes — worth confirming during implementation rather than assuming.
+- **Deleting the Advanced Toolbar's duplicate buttons and `MapOverlaysPanel`** removes
+  real, currently-shipping JSX (not just reorganizing it) — higher regression risk than
+  a pure move. Mitigated by keeping the underlying toggle *state* untouched (only the
+  button/panel markup is deleted) and by the plan covering this as its own reviewable
+  task rather than folding it silently into a larger one.
