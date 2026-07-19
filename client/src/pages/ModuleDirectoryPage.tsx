@@ -22,6 +22,27 @@ export default function ModuleDirectoryPage() {
   const [activeCategory, setActiveCategory] = useState(NAV_CATEGORIES[0].id);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+
+  const toggleBulkSelected = useCallback((path: string) => {
+    setBulkSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const commitBulkPin = useCallback(() => {
+    setFavorites(prev => {
+      const next = new Set(prev);
+      bulkSelected.forEach(path => next.add(path));
+      saveFavorites(next);
+      return next;
+    });
+    setBulkSelected(new Set());
+    setBulkMode(false);
+  }, [bulkSelected]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const { badges, isLoading: badgesLoading } = useNavBadges();
 
@@ -306,6 +327,23 @@ export default function ModuleDirectoryPage() {
             </button>
           </div>
 
+          <div className="flex items-center gap-2 px-2">
+            <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              <input
+                type="checkbox"
+                aria-label="Select multiple"
+                checked={bulkMode}
+                onChange={(e) => { setBulkMode(e.target.checked); setBulkSelected(new Set()); }}
+              />
+              Select multiple
+            </label>
+            {bulkMode && bulkSelected.size > 0 && (
+              <button type="button" onClick={commitBulkPin} className="text-[10px] px-2 py-0.5" style={{ color: 'var(--brand-400)', border: '1px solid var(--border-default)' }}>
+                Pin {bulkSelected.size} selected
+              </button>
+            )}
+          </div>
+
           {/* Badge loading indicator */}
           {badgesLoading && (
             <p className="text-[8px] text-rmpg-600 font-mono text-right pr-1 select-none">Loading live counts&#8230;</p>
@@ -474,7 +512,7 @@ export default function ModuleDirectoryPage() {
         </button>
 
         <div
-          className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+          className={`absolute right-1 top-1 flex items-center gap-0.5 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity ${bulkMode ? 'opacity-100' : 'opacity-0'}`}
         >
           {canPopOut && (
             <button
@@ -486,6 +524,15 @@ export default function ModuleDirectoryPage() {
             >
               <ExternalLink className="w-3 h-3" />
             </button>
+          )}
+          {bulkMode && (
+            <input
+              type="checkbox"
+              aria-label={`Select ${fn.label}`}
+              checked={bulkSelected.has(fn.path)}
+              onChange={() => toggleBulkSelected(fn.path)}
+              onClick={(e) => e.stopPropagation()}
+            />
           )}
           <button
             type="button"

@@ -720,6 +720,11 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             key={person.id}
             role="listitem"
             tabIndex={0}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/json', JSON.stringify({ type: 'person', id: person.id, name: `${person.first_name} ${person.last_name}` }));
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
