@@ -8,7 +8,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const { app, safeStorage } = require('electron');
-const { encryptPasswordHashForCache, decryptPasswordHashFromCache, enableSecureDelete } = require('./security/secretsStore');
+const { encryptPasswordHashForCache, decryptPasswordHashFromCache, enableSecureDelete, verifyLocalDbIntegrity } = require('./security/secretsStore');
 
 let db = null;
 
@@ -35,6 +35,11 @@ function initLocalDb() {
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   enableSecureDelete(db);
+
+  const integrityResult = verifyLocalDbIntegrity(db);
+  if (!integrityResult.ok) {
+    console.error('[LOCAL-DB] Integrity check failed — local cache may be corrupted:', integrityResult.errors);
+  }
 
   createMirrorTables();
   createLocalTables();

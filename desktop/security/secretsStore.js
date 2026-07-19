@@ -131,6 +131,19 @@ function secureDeleteLocalCache(db, table, allowedTables) {
   return { ok: true };
 }
 
+/**
+ * Runs SQLite's built-in integrity_check. A healthy database returns
+ * exactly one row, { integrity_check: 'ok' } — anything else (including
+ * multiple rows) indicates corruption/tampering.
+ */
+function verifyLocalDbIntegrity(db) {
+  const rows = db.pragma('integrity_check');
+  if (rows.length === 1 && rows[0].integrity_check === 'ok') {
+    return { ok: true };
+  }
+  return { ok: false, errors: rows.map((r) => r.integrity_check) };
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -140,4 +153,5 @@ module.exports = {
   decryptPasswordHashOrFallback,
   enableSecureDelete,
   secureDeleteLocalCache,
+  verifyLocalDbIntegrity,
 };

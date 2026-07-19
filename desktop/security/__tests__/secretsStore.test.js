@@ -146,3 +146,17 @@ test('secureDeleteLocalCache: rejects a table not on the allowlist', () => {
   assert.equal(result.ok, false);
   assert.equal(db._calls.length, 0, 'must not run any SQL for a disallowed table');
 });
+
+const { verifyLocalDbIntegrity } = require('../secretsStore');
+
+test('verifyLocalDbIntegrity: ok when the pragma returns the single "ok" row', () => {
+  const db = { pragma: () => [{ integrity_check: 'ok' }] };
+  assert.deepEqual(verifyLocalDbIntegrity(db), { ok: true });
+});
+
+test('verifyLocalDbIntegrity: reports errors when the pragma returns problem rows', () => {
+  const db = { pragma: () => [{ integrity_check: 'row 4 missing from index idx_foo' }, { integrity_check: '*** in database main ***' }] };
+  const result = verifyLocalDbIntegrity(db);
+  assert.equal(result.ok, false);
+  assert.equal(result.errors.length, 2);
+});
