@@ -111,6 +111,26 @@ function decryptPasswordHashOrFallback(hash, safeStorage) {
   }
 }
 
+/** SQLite's own secure-delete: overwrites freed page content with zeros. */
+function enableSecureDelete(db) {
+  db.pragma('secure_delete = ON');
+}
+
+/**
+ * Deletes all rows from an allowlisted table. The allowlist is passed in
+ * by the caller (rather than hardcoded here) so this stays a generic,
+ * reusable primitive — Group C's future clearLocalCache(table) handler
+ * is expected to be the real caller, passing the actual mirror-table
+ * list from localDb.js's schema.
+ */
+function secureDeleteLocalCache(db, table, allowedTables) {
+  if (!allowedTables.includes(table)) {
+    return { ok: false, error: `table "${table}" is not in the allowed list` };
+  }
+  db.prepare(`DELETE FROM ${table}`).run();
+  return { ok: true };
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -118,4 +138,6 @@ module.exports = {
   encryptPasswordHashForCache,
   decryptPasswordHashFromCache,
   decryptPasswordHashOrFallback,
+  enableSecureDelete,
+  secureDeleteLocalCache,
 };

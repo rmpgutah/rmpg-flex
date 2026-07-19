@@ -115,3 +115,34 @@ test('decryptPasswordHashOrFallback: returns falsy input unchanged without calli
   assert.equal(decryptPasswordHashOrFallback('', safeStorage), '');
   assert.equal(decryptPasswordHashOrFallback(undefined, safeStorage), undefined);
 });
+
+const { enableSecureDelete, secureDeleteLocalCache } = require('../secretsStore');
+
+function fakeDb() {
+  const calls = [];
+  return {
+    pragma: (stmt) => { calls.push({ type: 'pragma', stmt }); },
+    prepare: (sql) => ({ run: () => { calls.push({ type: 'run', sql }); } }),
+    _calls: calls,
+  };
+}
+
+test('enableSecureDelete: issues the secure_delete pragma', () => {
+  const db = fakeDb();
+  enableSecureDelete(db);
+  assert.deepEqual(db._calls, [{ type: 'pragma', stmt: 'secure_delete = ON' }]);
+});
+
+test('secureDeleteLocalCache: deletes an allowlisted table', () => {
+  const db = fakeDb();
+  const result = secureDeleteLocalCache(db, 'gps_breadcrumbs', ['gps_breadcrumbs', 'pin_attempts']);
+  assert.equal(result.ok, true);
+  assert.equal(db._calls[0].sql, 'DELETE FROM gps_breadcrumbs');
+});
+
+test('secureDeleteLocalCache: rejects a table not on the allowlist', () => {
+  const db = fakeDb();
+  const result = secureDeleteLocalCache(db, 'users', ['gps_breadcrumbs', 'pin_attempts']);
+  assert.equal(result.ok, false);
+  assert.equal(db._calls.length, 0, 'must not run any SQL for a disallowed table');
+});
