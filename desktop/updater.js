@@ -40,6 +40,9 @@ class AppUpdater {
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
+    // forceDevUpdateConfig is never set here, and electron-updater defaults
+    // it to false in a packaged build (app.isPackaged) — the https feed-URL
+    // assertion below is the other half of "no insecure update transport."
 
     // Point at the Cloudflare Worker update feed.
     // The GitHub repo is private — GitHub Releases asset URLs return 404

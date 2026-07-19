@@ -2,9 +2,12 @@
 // RMPG Flex — Session Hardening
 // Electron process/session-level hardening: CSP, permission
 // scoping, navigation guard, hardened webPreferences defaults,
-// window-open restriction, TLS pinned-host audit, remote-module
-// lockdown, auto-updater transport lock, production DevTools
-// restriction, preload-path restriction.
+// window-open restriction, TLS pinned-host audit, auto-updater
+// transport lock, production DevTools restriction, preload-path
+// restriction. (No separate remote-module lockdown here — the
+// `remote` module was removed from Electron core in v14; this
+// shell is on v40 with no `@electron/remote` dependency, so
+// there is nothing to disable.)
 // ============================================================
 
 'use strict';
