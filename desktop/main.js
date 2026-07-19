@@ -6,7 +6,7 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
@@ -927,6 +927,9 @@ guardedHandle('sys:battery', () => {
     console.error('[SYS:BATTERY] pmset failed:', err.message);
     return null;
   }
+});
+guardedHandle('sys:idle-time', () => {
+  return powerMonitor.getSystemIdleTime();
 });
 guardedHandle('sys:export-diagnostics', async () => {
   const os = require('os');

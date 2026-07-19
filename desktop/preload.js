@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electron', {
   checkDiskSpace: () => ipcRenderer.invoke('sys:disk-space'),
   getNetworkInterfaces: () => ipcRenderer.invoke('sys:network-interfaces'),
   getBatteryStatus: () => ipcRenderer.invoke('sys:battery'),
+  getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
