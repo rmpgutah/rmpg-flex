@@ -28,7 +28,22 @@ function formatSystemInfo(osModule, freeBytes) {
   };
 }
 
+/** Appends one timestamped line to the log file. Never throws on the format — a real fs error still propagates. */
+function appendToLogFile(message, logFilePath, fsModule) {
+  fsModule.appendFileSync(logFilePath, `[${new Date().toISOString()}] ${message}\n`);
+}
+
+/** Returns the last `lines` lines of logFilePath, or '' if it doesn't exist yet. */
+function tailLogFile(logFilePath, lines, fsModule) {
+  if (!fsModule.existsSync(logFilePath)) return '';
+  const content = fsModule.readFileSync(logFilePath, 'utf8');
+  const allLines = content.split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[arr.length - 1] === ''));
+  return allLines.slice(-lines).join('\n');
+}
+
 module.exports = {
   getDiskFreeBytes,
   formatSystemInfo,
+  appendToLogFile,
+  tailLogFile,
 };

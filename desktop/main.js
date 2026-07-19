@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
-const { getDiskFreeBytes, formatSystemInfo } = require('./systemInfo');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile } = require('./systemInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -69,6 +69,8 @@ try {
   TRUSTED_HOST = 'rmpgutah.us';
 }
 
+const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
+
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
 
 // Shared per-channel call-rate limiter for the recon spawn/catalog and
@@ -124,6 +126,9 @@ process.on('unhandledRejection', (reason) => {
     return;
   }
   console.error('[APP] Unhandled rejection:', reason);
+  try {
+    appendToLogFile(`Unhandled rejection: ${reason && reason.message}`, LOG_FILE_PATH, require('fs'));
+  } catch { /* logging must never crash the crash handler */ }
   throw reason;
 });
 
@@ -133,6 +138,9 @@ process.on('uncaughtException', (err) => {
     return;
   }
   console.error('[APP] Uncaught exception:', err);
+  try {
+    appendToLogFile(`Uncaught exception: ${err && err.message}`, LOG_FILE_PATH, require('fs'));
+  } catch { /* logging must never crash the crash handler */ }
   // Re-throw on next tick so Electron's default crash dialog still
   // fires for real bugs, but our log line lands first.
   setImmediate(() => { throw err; });
@@ -885,6 +893,9 @@ guardedHandle('sys:info', () => {
     freeBytes = null;
   }
   return formatSystemInfo(os, freeBytes);
+});
+guardedHandle('sys:logs', (_event, lines = 500) => {
+  return tailLogFile(LOG_FILE_PATH, lines, require('fs'));
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────
