@@ -128,3 +128,24 @@ test('sanitizeReconToolArgs: rejects args exceeding the size cap', () => {
   assert.equal(result.ok, false);
   assert.match(result.error, /too large/);
 });
+
+const { validatePinInput } = require('../ipcGuard');
+
+test('validatePinInput: accepts a 6-digit numeric string', () => {
+  assert.deepEqual(validatePinInput('123456'), { ok: true });
+});
+
+test('validatePinInput: rejects a non-string', () => {
+  const result = validatePinInput(123456);
+  assert.equal(result.ok, false);
+});
+
+test('validatePinInput: rejects the wrong length', () => {
+  const result = validatePinInput('12345');
+  assert.equal(result.ok, false);
+});
+
+test('validatePinInput: rejects non-digit characters', () => {
+  const result = validatePinInput('12345a');
+  assert.equal(result.ok, false);
+});

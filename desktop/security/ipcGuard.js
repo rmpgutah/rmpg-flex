@@ -84,8 +84,19 @@ function sanitizeReconToolArgs(toolId, args, catalog) {
   return { ok: true };
 }
 
+const PIN_SHAPE = /^\d{6}$/;
+
+/** Defense-in-depth shape check — the renderer UI already constrains this. */
+function validatePinInput(pin) {
+  if (typeof pin !== 'string' || !PIN_SHAPE.test(pin)) {
+    return { ok: false, error: 'PIN must be a 6-digit numeric string' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   validateIpcSenderOrigin,
   createIpcGuards,
   sanitizeReconToolArgs,
+  validatePinInput,
 };
