@@ -778,7 +778,7 @@ git commit -m "desktop: add checkDiskSpace (sys:disk-space), reuses getDiskFreeB
 - Test: `desktop/__tests__/systemInfo.test.js`
 
 **Interfaces:**
-- Produces: `formatNetworkInterfaces(rawInterfaces)` — pure, takes the raw object `os.networkInterfaces()` returns, returns `Array<{name, address, type}>`, filtering out internal/loopback interfaces and non-IPv4 entries (`type` is `'IPv4'`/`'IPv6'` per Node's own `family` field, normalized to a string).
+- Produces: `formatNetworkInterfaces(rawInterfaces)` — pure, takes the raw object `os.networkInterfaces()` returns, returns `Array<{name, address, type}>`, filtering out internal/loopback interfaces only (both IPv4 and IPv6 non-internal entries are kept; `type` is `'IPv4'`/`'IPv6'` per Node's own `family` field, passed through as-is).
 
 - [ ] **Step 1: Write the failing test**
 
