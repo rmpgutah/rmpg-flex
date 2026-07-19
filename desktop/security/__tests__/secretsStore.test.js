@@ -265,3 +265,26 @@ test('encryptDiagnosticsBundleOnExport: redacts sensitive content, then encrypts
   assert.doesNotMatch(decrypted, /482913/);
   assert.match(decrypted, /\[REDACTED\]/);
 });
+
+const { validateBackupFileBeforeImport } = require('../secretsStore');
+
+test('validateBackupFileBeforeImport: accepts a buffer starting with the SQLite magic header', () => {
+  const header = Buffer.from('SQLite format 3\0', 'utf8');
+  const fakeDbFile = Buffer.concat([header, Buffer.from('...rest of file...')]);
+  assert.deepEqual(validateBackupFileBeforeImport(fakeDbFile), { ok: true });
+});
+
+test('validateBackupFileBeforeImport: rejects a buffer without the magic header', () => {
+  const result = validateBackupFileBeforeImport(Buffer.from('not a sqlite file'));
+  assert.equal(result.ok, false);
+});
+
+test('validateBackupFileBeforeImport: rejects a buffer shorter than the header', () => {
+  const result = validateBackupFileBeforeImport(Buffer.from('short'));
+  assert.equal(result.ok, false);
+});
+
+test('validateBackupFileBeforeImport: rejects a non-Buffer input', () => {
+  const result = validateBackupFileBeforeImport('not a buffer');
+  assert.equal(result.ok, false);
+});

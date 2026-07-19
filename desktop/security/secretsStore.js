@@ -205,6 +205,29 @@ function encryptDiagnosticsBundleOnExport(plainText, safeStorage) {
   return encryptSecretForStorage(redactSensitiveFieldsInLogs(plainText), safeStorage);
 }
 
+const SQLITE_MAGIC_HEADER = Buffer.from('SQLite format 3\0', 'utf8');
+
+/**
+ * Cheap, dependency-free sanity check that a chosen "restore" file is
+ * actually a SQLite database (matches its fixed 16-byte magic header)
+ * before anything attempts to open it as the local cache. UNWIRED today
+ * — Group B's future importLocalDbBackup (not yet built) is the
+ * intended caller.
+ */
+function validateBackupFileBeforeImport(fileBuffer) {
+  if (!Buffer.isBuffer(fileBuffer)) {
+    return { ok: false, error: 'input must be a Buffer' };
+  }
+  if (fileBuffer.length < SQLITE_MAGIC_HEADER.length) {
+    return { ok: false, error: 'file is too short to be a SQLite database' };
+  }
+  const header = fileBuffer.subarray(0, SQLITE_MAGIC_HEADER.length);
+  if (!header.equals(SQLITE_MAGIC_HEADER)) {
+    return { ok: false, error: 'file does not have a valid SQLite header' };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   encryptSecretForStorage,
   decryptSecretForStorage,
@@ -218,4 +241,5 @@ module.exports = {
   restrictLocalDbFilePermissions,
   redactSensitiveFieldsInLogs,
   encryptDiagnosticsBundleOnExport,
+  validateBackupFileBeforeImport,
 };
