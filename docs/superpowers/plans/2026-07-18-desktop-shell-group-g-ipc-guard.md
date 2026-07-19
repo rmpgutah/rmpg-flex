@@ -303,7 +303,7 @@ git commit -m "desktop: add guardedHandle/guardedOn IPC wrapper factories"
 ### Task 3: Retrofit `desktop/main.js` to use `guardedHandle`/`guardedOn`
 
 **Files:**
-- Modify: `desktop/main.js:9` (imports), `desktop/main.js:822-827` (reuse host derivation), all 34 `ipcMain.handle(`/`ipcMain.on(` call sites listed below.
+- Modify: `desktop/main.js:9` (imports), `desktop/main.js:822-827` (reuse host derivation), all 36 `ipcMain.handle(`/`ipcMain.on(` call sites listed below.
 
 **Interfaces:**
 - Consumes: `createIpcGuards` from Task 2.
@@ -358,7 +358,7 @@ After the `TRUSTED_HOST` block from Step 1, add:
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
 ```
 
-- [ ] **Step 3: Convert all 34 existing registrations**
+- [ ] **Step 3: Convert all 36 existing registrations**
 
 Every top-level `ipcMain.handle(` and `ipcMain.on(` call in `main.js` becomes `guardedHandle(`/`guardedOn(` — the channel name and handler body are unchanged. Two full worked examples (the pattern is identical for the rest):
 
@@ -408,25 +408,25 @@ sed -i '' \
 
 (macOS/BSD `sed` — the `-i ''` empty-string argument is required on macOS; on Linux, drop it: `sed -i -e ... main.js`.)
 
-- [ ] **Step 2: Verify no raw registrations remain**
+- [ ] **Step 4: Verify no raw registrations remain**
 
 Run: `grep -n "^ipcMain\.\(handle\|on\)(" desktop/main.js`
 Expected: no output (empty) — every registration now goes through `guardedHandle`/`guardedOn`.
 
 Run: `grep -c "^guardedHandle(\|^guardedOn(" desktop/main.js`
-Expected: `34` (matches the pre-change count of top-level `ipcMain.handle`/`ipcMain.on` registrations).
+Expected: `36` (matches the pre-change count of top-level `ipcMain.handle`/`ipcMain.on` registrations).
 
-- [ ] **Step 3: Sanity-check the file still parses**
+- [ ] **Step 5: Sanity-check the file still parses**
 
 Run: `node --check desktop/main.js`
 Expected: no output (exit code 0) — confirms the sed pass didn't break syntax.
 
-- [ ] **Step 4: Manual smoke test (dev-run)**
+- [ ] **Step 6: Manual smoke test (dev-run)**
 
 Run: `cd desktop && npm start`
-Expected: app launches, reaches the normal login/dashboard screen exactly as before this change (window controls, offline banner, etc. all still function) — confirms the guarded wrappers don't reject same-origin renderer calls in the real app, not just the unit-test mocks.
+Expected: app launches, reaches the normal login/dashboard screen exactly as before this change (window controls, offline banner, etc. all still function) — confirms the guarded wrappers don't reject same-origin renderer calls in the real app, not just the unit-test mocks. If the sandboxed execution environment cannot launch a real Electron window, say so explicitly and rely on Steps 4-5's static checks instead — do not skip this step silently.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add desktop/main.js
