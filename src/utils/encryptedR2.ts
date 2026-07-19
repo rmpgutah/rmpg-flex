@@ -1,0 +1,154 @@
+// ============================================================
+// RMPG Flex — Envelope-encrypted R2 access
+// ============================================================
+// Wraps R2Bucket.put()/.get() so every consumer of a protected prefix gets
+// AES-GCM encryption at rest automatically — the encryption step is
+// structurally unavoidable rather than a convention callers must remember.
+//
+// Envelope model: each file gets a fresh random 256-bit Data Encryption Key
+// (DEK). The DEK is itself AES-GCM-wrapped by a master Key-Encryption-Key
+// (env.FILE_ENCRYPTION_KEK, a Worker secret) and stored in the
+// file_encryption_keys D1 table alongside the file's R2 key — never in R2
+// object metadata. Deleting that D1 row ("crypto-shredding") permanently
+// destroys access to that one file without touching any other file or the
+// R2 object itself.
+//
+// Fails CLOSED: a missing/malformed KEK throws FileEncryptionError rather
+// than silently storing/serving plaintext — unlike src/utils/pdfSign.ts's
+// graceful JWT_SECRET fallback, silently skipping encryption here would
+// defeat the whole feature without anyone noticing.
+//
+// See docs/superpowers/specs/2026-07-18-file-encryption-at-rest-design.md.
+// ============================================================
+
+export class FileEncryptionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FileEncryptionError';
+  }
+}
+
+const ALGORITHM_VERSION = 'file-enc-v1';
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
+  if (!kekB64) {
+    throw new FileEncryptionError('FILE_ENCRYPTION_KEK is not set (wrangler secret put FILE_ENCRYPTION_KEK)');
+  }
+  let raw: Uint8Array;
+  try {
+    raw = base64ToBytes(kekB64.trim());
+  } catch {
+    throw new FileEncryptionError('FILE_ENCRYPTION_KEK is not valid base64');
+  }
+  if (raw.length !== 32) {
+    throw new FileEncryptionError(`FILE_ENCRYPTION_KEK must decode to 32 bytes (got ${raw.length})`);
+  }
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+interface EncryptionKeyRow {
+  wrapped_dek: string;
+  dek_iv: string;
+  file_iv: string;
+}
+
+/** Encrypt `bytes` with a fresh random per-file DEK, wrap the DEK with the
+ *  KEK, write the ciphertext to R2 and the wrapped key to D1. */
+export async function putEncrypted(
+  bucket: R2Bucket,
+  db: D1Database,
+  kekB64: string | undefined,
+  key: string,
+  bytes: ArrayBuffer | Uint8Array,
+  opts?: { httpMetadata?: R2HTTPMetadata },
+): Promise<void> {
+  const kek = await importKek(kekB64);
+
+  const dekRaw = crypto.getRandomValues(new Uint8Array(32));
+  const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, false, ['encrypt']);
+
+  const plainBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const fileIv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: fileIv }, dek, plainBytes);
+
+  const dekIv = crypto.getRandomValues(new Uint8Array(12));
+  const wrappedDek = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: dekIv }, kek, dekRaw);
+
+  // Write the D1 row before the R2 object: if the INSERT fails (transient
+  // error or an unexpected r2_key collision), nothing lands in R2 and the
+  // caller gets a clean error to retry. The reverse order would risk an
+  // orphaned R2 object with no key row — indistinguishable from a
+  // deliberately crypto-shredded file. getDecrypted() checks bucket.get()
+  // before it ever queries D1, so the failure mode this order leaves behind
+  // (a D1 row with no R2 object) is harmless dead data, not silent evidence
+  // loss.
+  await db.prepare(
+    'INSERT INTO file_encryption_keys (r2_key, wrapped_dek, dek_iv, file_iv, algorithm_version) VALUES (?, ?, ?, ?, ?)',
+  ).bind(
+    key,
+    bytesToBase64(new Uint8Array(wrappedDek)),
+    bytesToBase64(dekIv),
+    bytesToBase64(fileIv),
+    ALGORITHM_VERSION,
+  ).run();
+  await bucket.put(key, ciphertext, opts);
+}
+
+/** Fetch and decrypt a file. Returns null if the R2 object doesn't exist,
+ *  or if it exists but has no file_encryption_keys row (e.g. already
+ *  crypto-shredded) — either way, there's nothing decryptable to return. */
+export async function getDecrypted(
+  bucket: R2Bucket,
+  db: D1Database,
+  kekB64: string | undefined,
+  key: string,
+): Promise<{ bytes: Uint8Array; httpMetadata?: R2HTTPMetadata } | null> {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+
+  const row = await db.prepare(
+    'SELECT wrapped_dek, dek_iv, file_iv FROM file_encryption_keys WHERE r2_key = ?',
+  ).bind(key).first<EncryptionKeyRow>();
+  if (!row) return null;
+
+  const kek = await importKek(kekB64);
+  const dekRaw = new Uint8Array(await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kek, base64ToBytes(row.wrapped_dek),
+  ));
+  const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, false, ['decrypt']);
+
+  const ciphertext = await obj.arrayBuffer();
+  const plainBuf = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToBytes(row.file_iv) }, dek, ciphertext,
+  );
+
+  return { bytes: new Uint8Array(plainBuf), httpMetadata: obj.httpMetadata };
+}
+
+/** Crypto-shred: permanently destroy the ability to decrypt one file,
+ *  without touching the R2 object or any other file's key.
+ *
+ *  WARNING: fieldPhotos.ts's `GET /file/*` route falls back to serving an
+ *  object's raw R2 bytes whenever it has no key row here — that fallback
+ *  exists for pre-encryption legacy uploads and assumes standalone
+ *  crypto-shredding (calling this function WITHOUT also deleting the R2
+ *  object) never happens. If you call this on its own, leaving the R2
+ *  object in place, that route will serve the shredded object's raw
+ *  ciphertext bytes instead of a clean 404. Always delete the R2 object
+ *  in the same operation when you actually intend to shred. */
+export async function deleteEncryptionKey(db: D1Database, key: string): Promise<void> {
+  await db.prepare('DELETE FROM file_encryption_keys WHERE r2_key = ?').bind(key).run();
+}
