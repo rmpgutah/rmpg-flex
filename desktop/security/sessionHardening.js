@@ -135,6 +135,16 @@ function assertSecureElectronDefaults(app) {
   return violations.length === 0 ? { ok: true } : { ok: false, violations };
 }
 
+/**
+ * The application menu's "Toggle DevTools" item exposes the renderer's
+ * DevTools console, which can call every window.electron.* preload API
+ * directly — fine for development, an unnecessary attack surface in a
+ * packaged production build handed to an officer.
+ */
+function shouldExposeDevToolsMenuItem(isPackaged) {
+  return !isPackaged;
+}
+
 module.exports = {
   buildCspHeaderValue,
   installContentSecurityPolicy,
@@ -143,4 +153,5 @@ module.exports = {
   shouldAllowNewWindow,
   hardenWebPreferencesDefaults,
   assertSecureElectronDefaults,
+  shouldExposeDevToolsMenuItem,
 };

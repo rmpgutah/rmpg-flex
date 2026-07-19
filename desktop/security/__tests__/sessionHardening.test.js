@@ -144,3 +144,13 @@ test('assertSecureElectronDefaults: flags multiple insecure switches at once', (
   const result = assertSecureElectronDefaults(fakeApp(['disable-web-security', 'allow-file-access-from-files']));
   assert.equal(result.violations.length, 2);
 });
+
+const { shouldExposeDevToolsMenuItem } = require('../sessionHardening');
+
+test('shouldExposeDevToolsMenuItem: true when not packaged (dev run)', () => {
+  assert.equal(shouldExposeDevToolsMenuItem(false), true);
+});
+
+test('shouldExposeDevToolsMenuItem: false when packaged (production build)', () => {
+  assert.equal(shouldExposeDevToolsMenuItem(true), false);
+});

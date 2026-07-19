@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -2727,12 +2727,14 @@ function createMenu() {
     {
       label: 'View',
       submenu: [
-        {
-          label: 'Toggle DevTools',
-          accelerator: 'CmdOrCtrl+Shift+I',
-          click: () => mainWindow?.webContents.toggleDevTools(),
-        },
-        { type: 'separator' },
+        ...(shouldExposeDevToolsMenuItem(app.isPackaged) ? [
+          {
+            label: 'Toggle DevTools',
+            accelerator: 'CmdOrCtrl+Shift+I',
+            click: () => mainWindow?.webContents.toggleDevTools(),
+          },
+          { type: 'separator' },
+        ] : []),
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
