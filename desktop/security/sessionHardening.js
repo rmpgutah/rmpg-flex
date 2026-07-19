@@ -77,6 +77,27 @@ function shouldAllowNavigation(targetUrl, expectedHost) {
 }
 
 /**
+ * Decision function for setWindowOpenHandler. Replaces the pre-existing
+ * inline check (which implicitly allowed anything that merely CONTAINED
+ * serverHost as a substring, and implicitly allowed non-http(s) schemes
+ * by falling through to { action: 'allow' }) with an explicit allow-list:
+ * only http(s) URLs are ever considered; same-host opens in-app, a
+ * different host opens externally, anything else is denied outright.
+ */
+function shouldAllowNewWindow(targetUrl, expectedHost) {
+  let parsed;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    return { action: 'deny' };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { action: 'deny' };
+  }
+  return parsed.host === expectedHost ? { action: 'allow' } : { action: 'external' };
+}
+
+/**
  * Single source of truth for webPreferences security defaults. Every
  * BrowserWindow this shell creates should build its webPreferences via
  * this function rather than hand-rolling the flag list, so a future
@@ -101,5 +122,6 @@ module.exports = {
   installContentSecurityPolicy,
   isPermissionAllowed,
   shouldAllowNavigation,
+  shouldAllowNewWindow,
   hardenWebPreferencesDefaults,
 };

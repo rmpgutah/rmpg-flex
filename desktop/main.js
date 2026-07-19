@@ -10,7 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
-const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, hardenWebPreferencesDefaults } = require('./security/sessionHardening');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults } = require('./security/sessionHardening');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -846,13 +846,14 @@ async function createMainWindow() {
   // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
   const serverHost = TRUSTED_HOST;
 
-  // Open external links in default browser
+  // Open external links in default browser; deny anything that isn't http(s)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http') && !url.includes(serverHost)) {
+    const decision = shouldAllowNewWindow(url, serverHost);
+    if (decision.action === 'external') {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return decision.action === 'allow' ? { action: 'allow' } : { action: 'deny' };
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {

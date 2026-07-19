@@ -97,3 +97,25 @@ test('hardenWebPreferencesDefaults: an override cannot silently re-enable a secu
   const prefs = hardenWebPreferencesDefaults({ contextIsolation: false });
   assert.equal(prefs.contextIsolation, false);
 });
+
+const { shouldAllowNewWindow } = require('../sessionHardening');
+
+test('shouldAllowNewWindow: allows same-host http(s)', () => {
+  assert.deepEqual(shouldAllowNewWindow('https://rmpgutah.us/print', 'rmpgutah.us'), { action: 'allow' });
+});
+
+test('shouldAllowNewWindow: routes a different http(s) host external', () => {
+  assert.deepEqual(shouldAllowNewWindow('https://maps.google.com/?q=1', 'rmpgutah.us'), { action: 'external' });
+});
+
+test('shouldAllowNewWindow: denies a javascript: URL', () => {
+  assert.deepEqual(shouldAllowNewWindow('javascript:alert(1)', 'rmpgutah.us'), { action: 'deny' });
+});
+
+test('shouldAllowNewWindow: denies a data: URL', () => {
+  assert.deepEqual(shouldAllowNewWindow('data:text/html,x', 'rmpgutah.us'), { action: 'deny' });
+});
+
+test('shouldAllowNewWindow: denies an unparseable URL', () => {
+  assert.deepEqual(shouldAllowNewWindow('not a url', 'rmpgutah.us'), { action: 'deny' });
+});
