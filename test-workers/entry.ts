@@ -8,6 +8,7 @@ import redactions from '../src/routes/redactions';
 import fieldPhotos from '../src/routes/fieldPhotos';
 import radio from '../src/routes/radio';
 import intel from '../src/routes/intel';
+import citations from '../src/routes/citations';
 import { bodycamVideosRouter } from '../src/routes/personnel/bodyCameras';
 import '../src/routes/personnel/bodyCameraUploads'; // attaches handlers to bodycamVideosRouter
 
@@ -23,6 +24,7 @@ app.route('/api/redactions', redactions);
 app.route('/api/field-photos', fieldPhotos);
 app.route('/api/radio', radio);
 app.route('/api/intel', intel);
+app.route('/api/citations', citations);
 app.route('/api/personnel/bodycam-videos', bodycamVideosRouter);
 
 export default app;
