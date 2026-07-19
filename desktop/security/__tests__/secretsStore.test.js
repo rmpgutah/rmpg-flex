@@ -163,11 +163,16 @@ test('verifyLocalDbIntegrity: reports errors when the pragma returns problem row
 
 const { restrictLocalDbFilePermissions } = require('../secretsStore');
 
-function fakeFs({ existing = [] } = {}) {
+function fakeFs({ existing = [], throwOnChmod = [] } = {}) {
   const chmoded = [];
   return {
     existsSync: (p) => existing.includes(p),
-    chmodSync: (p, mode) => { chmoded.push({ path: p, mode }); },
+    chmodSync: (p, mode) => {
+      if (throwOnChmod.includes(p)) {
+        throw new Error(`EPERM: operation not permitted, chmod '${p}'`);
+      }
+      chmoded.push({ path: p, mode });
+    },
     _chmoded: chmoded,
   };
 }
@@ -191,4 +196,33 @@ test('restrictLocalDbFilePermissions: skips sidecars that do not exist yet', () 
   const fs = fakeFs({ existing: ['/data/rmpg-local.db'] });
   const result = restrictLocalDbFilePermissions('/data/rmpg-local.db', fs);
   assert.deepEqual(result.chmoded, ['/data/rmpg-local.db']);
+});
+
+test('restrictLocalDbFilePermissions: a sidecar whose chmodSync throws is logged and non-fatal', () => {
+  const fs = fakeFs({
+    existing: ['/data/rmpg-local.db', '/data/rmpg-local.db-wal', '/data/rmpg-local.db-shm'],
+    throwOnChmod: ['/data/rmpg-local.db-wal'],
+  });
+  const originalConsoleError = console.error;
+  const errorCalls = [];
+  console.error = (...args) => { errorCalls.push(args); };
+  let result;
+  try {
+    assert.doesNotThrow(() => {
+      result = restrictLocalDbFilePermissions('/data/rmpg-local.db', fs);
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+  // Overall result still reflects success — the main db file chmod (the
+  // only fatal path) succeeded; a sidecar-only failure is non-fatal.
+  assert.equal(result.ok, true);
+  // The failed sidecar was never actually chmoded, so it must not appear
+  // in the returned chmoded list — but the main file and the other,
+  // successfully-chmoded sidecar still should.
+  assert.deepEqual(result.chmoded, ['/data/rmpg-local.db', '/data/rmpg-local.db-shm']);
+  assert.ok(!result.chmoded.includes('/data/rmpg-local.db-wal'));
+  // The failure was logged, not swallowed silently.
+  assert.equal(errorCalls.length, 1);
+  assert.ok(String(errorCalls[0][0]).includes('/data/rmpg-local.db-wal'));
 });

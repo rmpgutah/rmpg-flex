@@ -160,8 +160,17 @@ function restrictLocalDbFilePermissions(dbPath, fsModule) {
   }
   for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
     if (fsModule.existsSync(sidecar)) {
-      fsModule.chmodSync(sidecar, 0o600);
-      chmoded.push(sidecar);
+      try {
+        fsModule.chmodSync(sidecar, 0o600);
+        chmoded.push(sidecar);
+      } catch (err) {
+        // Sidecar chmod failures are logged but non-fatal (see doc comment
+        // above) — a WAL/SHM sidecar can vanish between the existsSync
+        // check and this call (checkpoint race), or hit a permission
+        // error independent of the main db file. Either way, local DB
+        // init must not crash over a sidecar-only failure.
+        console.error(`[LOCAL-DB] Failed to restrict permissions on sidecar ${sidecar}:`, err.message);
+      }
     }
   }
   return { ok: true, chmoded };
