@@ -111,4 +111,109 @@ function formatTrayTooltip(state) {
   }
 }
 
-module.exports = { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip };
+/**
+ * Standard 2D axis-aligned-bounding-box intersection test: does the window's
+ * saved rectangle overlap AT LEAST ONE currently-connected display's
+ * rectangle? Used by restoreWindowBounds() to reject a saved position that
+ * lived entirely on a monitor that's no longer plugged in (e.g. a laptop
+ * undocked from a second external display) — without this check the window
+ * would restore fully off-screen with no way for the user to drag it back.
+ *
+ * ANY overlap counts as "recoverable", including a sliver at the edge — as
+ * long as some part of the titlebar/window is reachable on a live display,
+ * the user can drag the rest back into view. This is intentionally lenient
+ * (vs. e.g. requiring the full window or its titlebar to be on-screen).
+ *
+ * displays is an array shaped like Electron's screen.getAllDisplays() result
+ * (each entry has a `.bounds` rectangle `{x, y, width, height}`) — fake test
+ * displays only need to match that shape, not be real Display instances.
+ *
+ * Never throws: an empty displays array, or malformed/missing bounds fields
+ * (non-finite x/y/width/height), simply return false rather than blowing up
+ * — this runs during window creation and a thrown error here must not be
+ * able to prevent the app from starting.
+ */
+function boundsIntersectSomeDisplay(bounds, displays) {
+  if (!bounds || typeof bounds !== 'object') return false;
+  const { x, y, width, height } = bounds;
+  if (![x, y, width, height].every((n) => typeof n === 'number' && Number.isFinite(n))) {
+    return false;
+  }
+  if (!Array.isArray(displays)) return false;
+
+  return displays.some((display) => {
+    const db = display && display.bounds;
+    if (!db || typeof db !== 'object') return false;
+    const { x: dx, y: dy, width: dw, height: dh } = db;
+    if (![dx, dy, dw, dh].every((n) => typeof n === 'number' && Number.isFinite(n))) {
+      return false;
+    }
+    return x < dx + dw && x + width > dx && y < dy + dh && y + height > dy;
+  });
+}
+
+/**
+ * Persists the main window's current bounds (position + size) to the local
+ * config store so they can be restored on the next launch. Main-internal
+ * only — per spec, there is no IPC channel exposing this to the renderer;
+ * it's called exclusively from main.js's own window-lifecycle code (the
+ * debounced resize/move listeners and the close-to-tray handler).
+ *
+ * Takes the live BrowserWindow and a setConfig-shaped function as PARAMETERS
+ * (rather than importing them directly) purely for DI-testability — a fake
+ * `{ getBounds: () => ({...}) }` object and a spy function are enough to
+ * exercise this without booting Electron or the real local DB. It's placed
+ * here alongside the other window-related helpers (rather than inline in
+ * main.js) for the same reason the rest of this file exists: keep anything
+ * that can be unit-tested without Electron out of main.js's IPC-wiring bulk.
+ */
+function saveWindowBounds(win, setConfigFn) {
+  setConfigFn('main_window_bounds', JSON.stringify(win.getBounds()));
+}
+
+/**
+ * Reads the main window's last-saved bounds from the local config store and
+ * returns them only if they're still usable — i.e. they overlap at least one
+ * currently-connected display (see boundsIntersectSomeDisplay above). Returns
+ * `null` (meaning "fall back to the hardcoded default size/position") when:
+ *   - nothing has been saved yet (getConfigFn returns a falsy value)
+ *   - the stored value isn't valid JSON (corrupt config row)
+ *   - the parsed bounds don't intersect any current display (e.g. saved from
+ *     a second monitor that's now disconnected)
+ *
+ * Never throws — this runs synchronously at the top of createMainWindow(),
+ * before the BrowserWindow even exists, so a thrown error here must not be
+ * able to prevent the app from starting.
+ *
+ * Takes getConfig and something shaped like screen.getAllDisplays as
+ * PARAMETERS for the same DI-testability reason as saveWindowBounds — fake
+ * functions returning canned JSON / a fake display list exercise the full
+ * read -> parse -> validate path without Electron or the real local DB.
+ * Main-internal only — no IPC channel (see saveWindowBounds doc above).
+ */
+function restoreWindowBounds(getConfigFn, getAllDisplaysFn) {
+  const raw = getConfigFn('main_window_bounds');
+  if (!raw) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const displays = getAllDisplaysFn();
+  if (!boundsIntersectSomeDisplay(parsed, displays)) return null;
+
+  return parsed;
+}
+
+module.exports = {
+  buildSecondaryWindowUrl,
+  coerceBadgeCount,
+  isValidTrayStatus,
+  formatTrayTooltip,
+  boundsIntersectSomeDisplay,
+  saveWindowBounds,
+  restoreWindowBounds,
+};

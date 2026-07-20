@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip } = require('../windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, boundsIntersectSomeDisplay, saveWindowBounds, restoreWindowBounds } = require('../windowManager');
 
 const BASE_URL = 'https://rmpgutah.us';
 
@@ -162,4 +162,110 @@ test('formatTrayTooltip: "alert" maps to the expected tooltip', () => {
 test('formatTrayTooltip: invalid state returns a fallback, not a throw', () => {
   assert.doesNotThrow(() => formatTrayTooltip('bogus'));
   assert.equal(formatTrayTooltip('bogus'), 'RMPG Flex');
+});
+
+// ─── boundsIntersectSomeDisplay ─────────────────────────────
+
+const SINGLE_DISPLAY = [{ bounds: { x: 0, y: 0, width: 1920, height: 1080 } }];
+const TWO_DISPLAYS = [
+  { bounds: { x: 0, y: 0, width: 1920, height: 1080 } },
+  { bounds: { x: 1920, y: 0, width: 1920, height: 1080 } },
+];
+
+test('boundsIntersectSomeDisplay: bounds fully within a single display returns true', () => {
+  const bounds = { x: 100, y: 100, width: 800, height: 600 };
+  assert.equal(boundsIntersectSomeDisplay(bounds, SINGLE_DISPLAY), true);
+});
+
+test('boundsIntersectSomeDisplay: bounds fully outside all displays returns false', () => {
+  const bounds = { x: 5000, y: 5000, width: 800, height: 600 };
+  assert.equal(boundsIntersectSomeDisplay(bounds, SINGLE_DISPLAY), false);
+});
+
+test('boundsIntersectSomeDisplay: bounds partially overlapping a display edge returns true', () => {
+  // Mostly off the left edge of display 0, but 50px of it still overlaps.
+  const bounds = { x: -750, y: 100, width: 800, height: 600 };
+  assert.equal(boundsIntersectSomeDisplay(bounds, SINGLE_DISPLAY), true);
+});
+
+test('boundsIntersectSomeDisplay: bounds intersecting the second of multiple displays returns true', () => {
+  const bounds = { x: 2000, y: 100, width: 800, height: 600 };
+  assert.equal(boundsIntersectSomeDisplay(bounds, TWO_DISPLAYS), true);
+});
+
+test('boundsIntersectSomeDisplay: empty displays array returns false', () => {
+  const bounds = { x: 100, y: 100, width: 800, height: 600 };
+  assert.equal(boundsIntersectSomeDisplay(bounds, []), false);
+});
+
+test('boundsIntersectSomeDisplay: missing bounds fields returns false, not a throw', () => {
+  assert.doesNotThrow(() => boundsIntersectSomeDisplay({ x: 100, y: 100 }, SINGLE_DISPLAY));
+  assert.equal(boundsIntersectSomeDisplay({ x: 100, y: 100 }, SINGLE_DISPLAY), false);
+});
+
+test('boundsIntersectSomeDisplay: null bounds returns false, not a throw', () => {
+  assert.doesNotThrow(() => boundsIntersectSomeDisplay(null, SINGLE_DISPLAY));
+  assert.equal(boundsIntersectSomeDisplay(null, SINGLE_DISPLAY), false);
+});
+
+test('boundsIntersectSomeDisplay: undefined displays returns false, not a throw', () => {
+  const bounds = { x: 100, y: 100, width: 800, height: 600 };
+  assert.doesNotThrow(() => boundsIntersectSomeDisplay(bounds, undefined));
+  assert.equal(boundsIntersectSomeDisplay(bounds, undefined), false);
+});
+
+// ─── saveWindowBounds ───────────────────────────────────────
+
+test('saveWindowBounds: calls setConfigFn with the JSON-stringified bounds from win.getBounds()', () => {
+  const fixedBounds = { x: 50, y: 60, width: 1200, height: 800 };
+  const fakeWin = { getBounds: () => fixedBounds };
+  const calls = [];
+  const setConfigFn = (key, value) => calls.push([key, value]);
+
+  saveWindowBounds(fakeWin, setConfigFn);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'main_window_bounds');
+  assert.equal(calls[0][1], JSON.stringify(fixedBounds));
+});
+
+// ─── restoreWindowBounds ────────────────────────────────────
+
+test('restoreWindowBounds: valid stored bounds intersecting a display returns the parsed bounds', () => {
+  const stored = { x: 100, y: 100, width: 800, height: 600 };
+  const getConfigFn = () => JSON.stringify(stored);
+  const getAllDisplaysFn = () => SINGLE_DISPLAY;
+
+  const result = restoreWindowBounds(getConfigFn, getAllDisplaysFn);
+  assert.deepEqual(result, stored);
+});
+
+test('restoreWindowBounds: no stored value returns null', () => {
+  const getConfigFn = () => null;
+  const getAllDisplaysFn = () => SINGLE_DISPLAY;
+
+  assert.equal(restoreWindowBounds(getConfigFn, getAllDisplaysFn), null);
+});
+
+test('restoreWindowBounds: undefined stored value returns null', () => {
+  const getConfigFn = () => undefined;
+  const getAllDisplaysFn = () => SINGLE_DISPLAY;
+
+  assert.equal(restoreWindowBounds(getConfigFn, getAllDisplaysFn), null);
+});
+
+test('restoreWindowBounds: malformed JSON returns null, not a throw', () => {
+  const getConfigFn = () => '{not valid json';
+  const getAllDisplaysFn = () => SINGLE_DISPLAY;
+
+  assert.doesNotThrow(() => restoreWindowBounds(getConfigFn, getAllDisplaysFn));
+  assert.equal(restoreWindowBounds(getConfigFn, getAllDisplaysFn), null);
+});
+
+test('restoreWindowBounds: valid JSON but bounds outside all displays returns null', () => {
+  const stored = { x: 5000, y: 5000, width: 800, height: 600 };
+  const getConfigFn = () => JSON.stringify(stored);
+  const getAllDisplaysFn = () => SINGLE_DISPLAY;
+
+  assert.equal(restoreWindowBounds(getConfigFn, getAllDisplaysFn), null);
 });

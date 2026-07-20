@@ -15,7 +15,7 @@ const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validat
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
-const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip } = require('./windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -89,6 +89,13 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// Debounce timer for the main window's 'resize'/'move' listeners below —
+// those events fire continuously (every pixel) during a drag/resize
+// gesture, so writing to the local DB on every single one would be
+// wasteful and could add jank to the gesture itself. See createMainWindow().
+let boundsSaveDebounceTimer = null;
+const BOUNDS_SAVE_DEBOUNCE_MS = 500;
 
 // Secondary (non-main) windows opened via 'window:open-secondary', keyed by
 // a server-generated UUID so the renderer never handles a raw BrowserWindow
@@ -717,9 +724,18 @@ async function createMainWindow() {
     console.warn('[APP] createMainWindow called before app.isReady — deferring');
     await app.whenReady();
   }
+
+  // Restore the window's last-saved position/size, if any is on record AND
+  // it still lands on a currently-connected display (see
+  // boundsIntersectSomeDisplay in windowManager.js — a bounds saved from a
+  // second monitor that's since been unplugged is discarded here rather
+  // than restored off-screen with no way to drag it back).
+  const restoredBounds = restoreWindowBounds(getConfig, screen.getAllDisplays);
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
+    ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
     minWidth: 1024,
     minHeight: 700,
     title: APP_TITLE,
@@ -891,6 +907,9 @@ async function createMainWindow() {
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
+      // One-time event (not a rapid-fire stream like resize/move below), so
+      // save synchronously/directly rather than through the debounce.
+      saveWindowBounds(mainWindow, setConfig);
       mainWindow.hide();
     }
   });
@@ -902,6 +921,23 @@ async function createMainWindow() {
   mainWindow.on('focus', () => {
     mainWindow.flashFrame(false);
   });
+
+  // 'resize'/'move' fire continuously (every pixel) during a drag/resize
+  // gesture — debounce the actual persistence write so we're not hitting
+  // the local DB dozens of times per second while the user drags the
+  // window. BOUNDS_SAVE_DEBOUNCE_MS (500ms) is reset on every event, so the
+  // write only happens once the gesture has been idle for that long.
+  const debouncedSaveWindowBounds = () => {
+    if (boundsSaveDebounceTimer) clearTimeout(boundsSaveDebounceTimer);
+    boundsSaveDebounceTimer = setTimeout(() => {
+      boundsSaveDebounceTimer = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        saveWindowBounds(mainWindow, setConfig);
+      }
+    }, BOUNDS_SAVE_DEBOUNCE_MS);
+  };
+  mainWindow.on('resize', debouncedSaveWindowBounds);
+  mainWindow.on('move', debouncedSaveWindowBounds);
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
