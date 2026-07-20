@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { getSavedPosition, saveWindowPosition } from '../../utils/desktopWindowPositions';
 import { getDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
+import { playDesktopSound } from '../../utils/desktopSounds';
 
 export interface DesktopWindowState {
   id: string;
@@ -107,11 +108,13 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
     };
     commit([...prev, win]);
+    playDesktopSound();
     return true;
   }, [commit]);
 
   const closeWindow = useCallback((id: string) => {
     commit(windowsRef.current.filter(w => w.id !== id));
+    playDesktopSound();
   }, [commit]);
 
   const focusWindow = useCallback((id: string) => {
@@ -122,6 +125,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   const minimizeWindow = useCallback((id: string) => {
     commit(windowsRef.current.map(w => w.id === id ? { ...w, minimized: !w.minimized } : w));
+    playDesktopSound();
   }, [commit]);
 
   const toggleMaximize = useCallback((id: string) => {

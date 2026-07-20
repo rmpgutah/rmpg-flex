@@ -1,6 +1,6 @@
 // client/src/components/desktop/DesktopWindowManager.test.tsx
 import { useRef } from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import { setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
@@ -175,6 +175,61 @@ describe('DesktopWindowManager', () => {
     // the "remembered" position for a path.
     const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
     expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
+  });
+});
+
+vi.mock('../../utils/desktopSounds', () => ({ playDesktopSound: vi.fn() }));
+import { playDesktopSound } from '../../utils/desktopSounds';
+
+describe('DesktopWindowManager — desktop sounds on window events', () => {
+  beforeEach(() => { sessionStorage.clear(); vi.mocked(playDesktopSound).mockClear(); });
+
+  it('plays a sound when a genuinely new window opens, not when an existing one is refocused', () => {
+    function Harness() {
+      const { openWindow } = useDesktopWindows();
+      return <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open</button>;
+    }
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    expect(playDesktopSound).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText('open')); // same path — refocus, not a new window
+    expect(playDesktopSound).toHaveBeenCalledTimes(1); // still 1, not 2
+  });
+
+  it('plays a sound when a window closes', () => {
+    function Harness() {
+      const { openWindow, closeWindow, windows } = useDesktopWindows();
+      return (
+        <>
+          <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open</button>
+          {windows.map(w => <button key={w.id} onClick={() => closeWindow(w.id)}>close</button>)}
+        </>
+      );
+    }
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    vi.mocked(playDesktopSound).mockClear();
+    fireEvent.click(screen.getByText('close'));
+    expect(playDesktopSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays a sound when a window is minimized or restored', () => {
+    function Harness() {
+      const { openWindow, minimizeWindow, windows } = useDesktopWindows();
+      return (
+        <>
+          <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open</button>
+          {windows.map(w => <button key={w.id} onClick={() => minimizeWindow(w.id)}>toggle-min</button>)}
+        </>
+      );
+    }
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    vi.mocked(playDesktopSound).mockClear();
+    fireEvent.click(screen.getByText('toggle-min'));
+    expect(playDesktopSound).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText('toggle-min'));
+    expect(playDesktopSound).toHaveBeenCalledTimes(2);
   });
 });
 
