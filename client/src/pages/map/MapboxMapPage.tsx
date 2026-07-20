@@ -490,6 +490,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [scaleEnabled, setScaleEnabled] = useState(false);
   const [fullscreenEnabled, setFullscreenEnabled] = useState(false);
   const [minimapOpen, setMinimapOpen] = useState(false);
+  const [snapshotGalleryOpen, setSnapshotGalleryOpen] = useState(false);
   useScaleControl(mapLoaded ? mapRef.current : null, scaleEnabled);
   useFullscreenControl(mapLoaded ? mapRef.current : null, fullscreenEnabled);
   // Layout.tsx already mounts the single upload-enabled GPS tracker for every
@@ -1177,6 +1178,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     onSnapshot: () => {
       const c = mapRef.current?.getCenter();
       if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 });
+      setSnapshotGalleryOpen(true);
     },
   };
 
@@ -1543,6 +1545,61 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {minimapOpen && mapRef.current && (
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
+      )}
+
+      {snapshotGalleryOpen && (
+        <div
+          className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
+          style={{ borderRadius: 2, width: 220, maxHeight: 340, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+        >
+          <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border-subtle">
+            <span className="text-[10px] font-black tracking-wider text-brand-gold-500 flex-1 uppercase">
+              Snapshots
+            </span>
+            {snapshot.snapshots.length > 0 && (
+              <button
+                onClick={() => snapshot.clearSnapshots()}
+                aria-label="Clear all snapshots"
+                className="text-[8px] text-rmpg-500 hover:text-red-400 uppercase tracking-wider"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              onClick={() => setSnapshotGalleryOpen(false)}
+              aria-label="Close snapshot gallery"
+              className="text-rmpg-500 hover:text-rmpg-300 flex"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="scrollbar-dark overflow-y-auto p-2 grid grid-cols-2 gap-2" style={{ maxHeight: 280 }}>
+            {snapshot.snapshots.length === 0 ? (
+              <div className="col-span-2 text-[10px] text-rmpg-500 py-2 text-center">
+                No snapshots yet.
+              </div>
+            ) : (
+              snapshot.snapshots.map((s) => (
+                <div key={s.timestamp} className="relative group">
+                  <img
+                    src={s.url}
+                    alt={`Snapshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+                    className="w-full h-auto border border-border-subtle"
+                    style={{ borderRadius: 2 }}
+                  />
+                  <button
+                    onClick={() => snapshot.removeSnapshot(s.timestamp)}
+                    aria-label="Remove snapshot"
+                    className="absolute top-0.5 right-0.5 bg-surface-base/90 text-rmpg-400 hover:text-red-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ borderRadius: 2 }}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
 
       {legendOpen && (
