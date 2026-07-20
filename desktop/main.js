@@ -898,6 +898,10 @@ async function createMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  mainWindow.on('focus', () => {
+    mainWindow.flashFrame(false);
+  });
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
@@ -952,6 +956,10 @@ guardedHandle('window:close-secondary', (event, id) => {
 guardedHandle('notify:dock-badge', (event, count) => {
   const n = coerceBadgeCount(count);
   if (app.setBadgeCount) app.setBadgeCount(n);
+});
+
+guardedHandle('notify:flash-frame', () => {
+  mainWindow?.flashFrame(true);
 });
 
 guardedHandle('app:version', () => app.getVersion());

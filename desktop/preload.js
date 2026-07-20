@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electron', {
   // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).
   setDockBadge: (count) => ipcRenderer.invoke('notify:dock-badge', count),
 
+  // Flash the window frame to grab the user's attention (e.g., for alerts).
+  // Auto-clears when the window receives focus.
+  flashFrame: () => ipcRenderer.invoke('notify:flash-frame'),
+
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
