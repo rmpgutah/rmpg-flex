@@ -15,6 +15,7 @@ const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validat
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
+const { buildSecondaryWindowUrl } = require('./windowManager');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -88,6 +89,12 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// Secondary (non-main) windows opened via 'window:open-secondary', keyed by
+// a server-generated UUID so the renderer never handles a raw BrowserWindow
+// reference. Entries are removed on the window's own 'closed' event so this
+// map never accumulates references to destroyed windows.
+const secondaryWindows = new Map();
 
 // ─── Last-resort error guards ────────────────────────────────
 // Without these, an unhandled rejection (e.g. loadURL rejecting
@@ -903,6 +910,41 @@ guardedOn('window:maximize', () => {
   }
 });
 guardedOn('window:close', () => mainWindow?.close());
+
+// Opens a secondary BrowserWindow loading an in-app route (never a
+// renderer-supplied arbitrary URL — see buildSecondaryWindowUrl in
+// windowManager.js). routePath is resolved against the SAME trusted
+// REMOTE_SERVER_URL base the main window itself loads, and the window
+// gets the same hardened webPreferences (contextIsolation, no node
+// integration, trusted preload) createMainWindow() uses.
+guardedHandle('window:open-secondary', (event, routePath, opts) => {
+  const built = buildSecondaryWindowUrl(REMOTE_SERVER_URL, routePath);
+  if (typeof built !== 'string') {
+    return { ok: false, error: built && built.error ? built.error : 'invalid routePath' };
+  }
+  const win = new BrowserWindow({
+    width: (opts && opts.width) || 1024,
+    height: (opts && opts.height) || 768,
+    title: APP_TITLE,
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+    }),
+  });
+  const { randomUUID } = require('crypto');
+  const id = randomUUID();
+  secondaryWindows.set(id, win);
+  win.on('closed', () => secondaryWindows.delete(id));
+  win.loadURL(built).catch((err) => {
+    console.warn('[APP] Secondary window loadURL failed:', err && err.message);
+  });
+  return { id };
+});
+
+guardedHandle('window:close-secondary', (event, id) => {
+  const win = secondaryWindows.get(id);
+  if (win && !win.isDestroyed()) win.close();
+});
+
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
   const os = require('os');

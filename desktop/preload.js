@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld('electron', {
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
 
+  // Open/close a secondary in-app window (e.g. a detached panel). `path`
+  // must be an in-app route ('/dispatch-board') — it is resolved against
+  // the same trusted server the main window loads, never treated as an
+  // arbitrary URL. Returns { id } on success or { ok:false, error } on
+  // an invalid route.
+  openSecondaryWindow: (path, opts) => ipcRenderer.invoke('window:open-secondary', path, opts),
+  closeSecondaryWindow: (id) => ipcRenderer.invoke('window:close-secondary', id),
+
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
