@@ -69,7 +69,7 @@ export default function MapTopToolbar({
       <IconButton
         aria-label={showBookmarksPanel ? 'Hide bookmarks' : 'Show bookmarks'}
         onClick={onToggleBookmarks}
-        className={`${ITEM_CLASS} ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
+        className={`${ITEM_CLASS} ${showBookmarksPanel ? 'text-brand-gold-500' : 'text-rmpg-300 hover:text-brand-gold-500'}`}
       >
         <Star className="w-4 h-4" />
       </IconButton>
