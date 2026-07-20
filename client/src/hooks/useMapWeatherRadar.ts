@@ -1,41 +1,51 @@
 /**
- * useMapWeatherRadar — Google Weather Layer equivalent for Mapbox GL.
+ * useMapWeatherRadar — live NOAA/NWS precipitation radar overlay for Mapbox GL.
  *
- * Adds an animated weather radar tile overlay using OpenWeatherMap free
- * radar tiles. Supports precipitation, temperature, wind, and clouds layers.
- * Replaces Google Maps WeatherLayer / CloudLayer.
+ * Backed by RainViewer's public API (https://www.rainviewer.com/api.html),
+ * which republishes NOAA/global radar composites — no API key required.
+ * Replaces the earlier OpenWeatherMap-backed version, which pointed at an
+ * `appid=demo` placeholder key that OpenWeatherMap does not honor.
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { hasLayer, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { devLog, devWarn } from '../utils/devLog';
 
 // ── Types ─────────────────────────────────────────────────
 
-export type WeatherLayerType = 'precipitation' | 'temperature' | 'wind' | 'clouds' | 'pressure';
-
-interface WeatherLayerConfig {
-  id: string;
-  label: string;
-  owmLayer: string;
-  color: string;
+export interface RainviewerFrame {
+  time: number; // unix seconds
+  path: string; // e.g. "/v2/radar/1700000000"
 }
 
-const WEATHER_LAYERS: Record<WeatherLayerType, WeatherLayerConfig> = {
-  precipitation: { id: 'weather-precip', label: 'Precipitation', owmLayer: 'precipitation_new', color: '#3b82f6' },
-  temperature: { id: 'weather-temp', label: 'Temperature', owmLayer: 'temp_new', color: '#ef4444' },
-  wind: { id: 'weather-wind', label: 'Wind Speed', owmLayer: 'wind_new', color: '#22c55e' },
-  clouds: { id: 'weather-clouds', label: 'Cloud Cover', owmLayer: 'clouds_new', color: '#888' },
-  pressure: { id: 'weather-pressure', label: 'Pressure', owmLayer: 'pressure_new', color: '#a855f7' },
-};
+interface RainviewerApiResponse {
+  host: string;
+  radar: { past: RainviewerFrame[]; nowcast?: RainviewerFrame[] };
+}
 
-// OpenWeatherMap free tile URL format:
-// https://tile.openweathermap.org/map/{layer}/{z}/{x}/{y}.png?appid={API_KEY}
-// For demo/development, we use the free tier which works without API key for basic layers
+export interface UseMapWeatherRadarResult {
+  enabled: boolean;
+  toggle: () => void;
+  setEnabled: (v: boolean) => void;
+  opacity: number;
+  setOpacity: (v: number) => void;
+  /** Frames fetched from RainViewer's last poll — unused today, exposed for a future radar-timeline scrubber. */
+  frames: RainviewerFrame[];
+}
 
-function getOWMTileUrl(owmLayer: string): string {
-  // Use the free OWM tile endpoint — in production, configure API key in admin
-  return `https://tile.openweathermap.org/map/${owmLayer}/{z}/{x}/{y}.png?appid=demo`;
+// ── Constants ─────────────────────────────────────────────
+
+const WEATHER_SOURCE = 'rmpg-weather-radar';
+const WEATHER_LAYER = 'rmpg-weather-radar-layer';
+const RAINVIEWER_FRAMES_URL = 'https://api.rainviewer.com/public/weather-maps.json';
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // RainViewer publishes a new frame roughly every 5-10 min
+const TILE_SIZE = 256;
+const COLOR_SCHEME = 2; // "Universal Blue" — the common blue->green->red precip ramp
+const TILE_OPTIONS = '1_1'; // smooth=1, snow-color=1
+
+function buildTileUrl(host: string, path: string): string {
+  return `${host}${path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTIONS}.png`;
 }
 
 // ── Hook ──────────────────────────────────────────────────
@@ -43,91 +53,107 @@ function getOWMTileUrl(owmLayer: string): string {
 export function useMapWeatherRadar(
   map: mapboxgl.Map | null,
   mapLoaded: boolean,
-) {
-  const [activeLayer, setActiveLayer] = useState<WeatherLayerType | null>(null);
+): UseMapWeatherRadarResult {
+  const [enabled, setEnabled] = useState(false);
   const [opacity, setOpacity] = useState(0.6);
-  const activeRef = useRef<WeatherLayerType | null>(null);
+  const [frames, setFrames] = useState<RainviewerFrame[]>([]);
+  const opacityRef = useRef(opacity);
+  useEffect(() => { opacityRef.current = opacity; }, [opacity]);
+  const renderedFrameKeyRef = useRef<string | null>(null);
+  const hostRef = useRef<string | null>(null);
+  const enabledRef = useRef(enabled);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
-  const removeCurrentLayer = useCallback(() => {
-    if (!map || !activeRef.current) return;
-    const config = WEATHER_LAYERS[activeRef.current];
-    if (!config) return;
-    safeRemoveLayer(map, config.id);
-    safeRemoveSource(map, config.id);
-    activeRef.current = null;
+  const removeLayer = useCallback(() => {
+    if (!map) return;
+    safeRemoveLayer(map, WEATHER_LAYER);
+    safeRemoveSource(map, WEATHER_SOURCE);
+    renderedFrameKeyRef.current = null;
   }, [map]);
 
-  const showLayer = useCallback((layerType: WeatherLayerType) => {
-    if (!map || !mapLoaded) return;
+  const addOrReplaceLayer = useCallback((host: string, path: string) => {
+    if (!map) return;
+    if (renderedFrameKeyRef.current === path) return; // already showing this frame
+    removeLayer();
+    map.addSource(WEATHER_SOURCE, {
+      type: 'raster',
+      tiles: [buildTileUrl(host, path)],
+      tileSize: TILE_SIZE,
+      attribution: '&copy; <a href="https://www.rainviewer.com">RainViewer</a>',
+    });
+    map.addLayer({
+      id: WEATHER_LAYER,
+      type: 'raster',
+      source: WEATHER_SOURCE,
+      paint: { 'raster-opacity': opacityRef.current, 'raster-fade-duration': 300 },
+    });
+    renderedFrameKeyRef.current = path;
+    hostRef.current = host;
+    devLog('[WeatherRadar] Rendering frame', path);
+  }, [map, removeLayer]);
 
-    // If same layer is active, toggle off
-    if (activeRef.current === layerType) {
-      removeCurrentLayer();
-      setActiveLayer(null);
+  const fetchFrames = useCallback(async (signal: AbortSignal) => {
+    try {
+      const res = await fetch(RAINVIEWER_FRAMES_URL, { signal });
+      if (!res.ok) throw new Error(`RainViewer responded ${res.status}`);
+      const data: RainviewerApiResponse = await res.json();
+      const past = data.radar?.past ?? [];
+      setFrames(past);
+      const latest = past[past.length - 1];
+      if (latest) addOrReplaceLayer(data.host, latest.path);
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      devWarn('[WeatherRadar] Failed to fetch RainViewer frames', err);
+    }
+  }, [addOrReplaceLayer]);
+
+  // Fetch on enable + poll every 5 min while enabled; tear down when disabled.
+  useEffect(() => {
+    if (!map || !mapLoaded || !enabled) {
+      removeLayer();
       return;
     }
+    const controller = new AbortController();
+    fetchFrames(controller.signal);
+    const interval = setInterval(() => fetchFrames(controller.signal), POLL_INTERVAL_MS);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [map, mapLoaded, enabled, fetchFrames, removeLayer]);
 
-    // Remove previous
-    removeCurrentLayer();
-
-    const config = WEATHER_LAYERS[layerType];
-    if (!config) return;
-
-    // Add raster source + layer
-    map.addSource(config.id, {
-      type: 'raster',
-      tiles: [getOWMTileUrl(config.owmLayer)],
-      tileSize: 256,
-      attribution: '&copy; <a href="https://openweathermap.org">OpenWeatherMap</a>',
-    });
-
-    map.addLayer({
-      id: config.id,
-      type: 'raster',
-      source: config.id,
-      paint: {
-        'raster-opacity': opacity,
-        'raster-fade-duration': 300,
-      },
-    });
-
-    activeRef.current = layerType;
-    setActiveLayer(layerType);
-  }, [map, mapLoaded, opacity, removeCurrentLayer]);
-
-  const toggle = useCallback(() => {
-    if (activeLayer) {
-      removeCurrentLayer();
-      setActiveLayer(null);
-    } else {
-      showLayer('precipitation');
-    }
-  }, [activeLayer, removeCurrentLayer, showLayer]);
-
-  // Update opacity when slider changes
+  // Live-update opacity on the rendered layer without refetching.
   useEffect(() => {
-    if (!map || !activeRef.current) return;
-    const config = WEATHER_LAYERS[activeRef.current];
-    if (config && hasLayer(map, config.id)) {
-      map.setPaintProperty(config.id, 'raster-opacity', opacity);
-    }
+    if (!map || !hasLayer(map, WEATHER_LAYER)) return;
+    map.setPaintProperty(WEATHER_LAYER, 'raster-opacity', opacity);
   }, [map, opacity]);
 
-  // Cleanup on unmount
+  // A basemap style swap (e.g. NavMapView's manual `map.setStyle()` path)
+  // wipes all custom sources/layers but does NOT reset `mapLoaded` the way
+  // a full map recreation does (that's how the main Map page picks up style
+  // swaps for free). Re-add the already-known latest frame from the cached
+  // host/path instead of re-fetching RainViewer — the frame we had was
+  // still valid, only the map's rendering of it was wiped.
   useEffect(() => {
-    return () => {
-      removeCurrentLayer();
+    if (!map) return;
+    const onStyleLoad = () => {
+      if (!enabledRef.current) return;
+      const host = hostRef.current;
+      const path = renderedFrameKeyRef.current;
+      if (!host || !path) return;
+      renderedFrameKeyRef.current = null; // clear so addOrReplaceLayer's dedup guard doesn't skip the re-add
+      addOrReplaceLayer(host, path);
     };
-  }, [removeCurrentLayer]);
+    map.on('style.load', onStyleLoad);
+    return () => {
+      map.off('style.load', onStyleLoad);
+    };
+  }, [map, addOrReplaceLayer]);
 
-  return {
-    activeLayer,
-    enabled: activeLayer !== null,
-    opacity,
-    setOpacity,
-    showLayer,
-    toggle,
-    layerTypes: Object.keys(WEATHER_LAYERS) as WeatherLayerType[],
-    layerConfigs: WEATHER_LAYERS,
-  };
+  // Cleanup on unmount.
+  useEffect(() => () => removeLayer(), [removeLayer]);
+
+  const toggle = useCallback(() => setEnabled((v) => !v), []);
+
+  return { enabled, toggle, setEnabled, opacity, setOpacity, frames };
 }
