@@ -5,7 +5,7 @@ import type { DesktopGroup } from '../../utils/normalizeDesktopLayout';
 import { getWindowConfig, activateNavFunction } from '../../utils/windowManager';
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
-import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
+import { useToast } from '../ToastProvider';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
@@ -27,13 +27,18 @@ export default function DesktopIconGrid({
   const ICON_SIZE = ICON_SIZE_PX[iconSize];
   const navigate = useNavigate();
   const { openWindow } = useDesktopWindows();
+  const { addToast } = useToast();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [, forceRerender] = useState(0);
 
   const handleActivate = useCallback((fn: NavFunction) => {
-    activateNavFunction(fn, { openWindow, navigate });
-  }, [navigate, openWindow]);
+    activateNavFunction(fn, {
+      openWindow,
+      navigate,
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+    });
+  }, [navigate, openWindow, addToast]);
 
   const handleIconClick = useCallback((fn: NavFunction, e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) {

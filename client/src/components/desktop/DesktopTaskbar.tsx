@@ -104,6 +104,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
       openWindow: (path, title, size) => {
         if (!openWindow(path, title, size)) capHit = true;
       },
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
     });
     if (capHit) addToast('Close a window to open another', 'error');
     setLauncherOpen(false);

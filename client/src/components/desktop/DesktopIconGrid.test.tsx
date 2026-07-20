@@ -19,6 +19,11 @@ vi.mock('react-router-dom', async (orig) => ({
   useNavigate: () => navigateSpy,
 }));
 
+const addToastMock = vi.fn();
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: addToastMock }),
+}));
+
 const ICONS: NavFunction[] = [
   { path: '/dispatch', label: 'Dispatch', icon: LayoutDashboard, description: 'd' },
   { path: '/map', label: 'Live Map', icon: MapIcon, description: 'm' },
