@@ -162,6 +162,16 @@ describe('DesktopPage', () => {
   });
 });
 
+describe('DesktopPage — Ctrl+, opens Settings', () => {
+  it('pressing Ctrl+, opens the Settings app', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    fireEvent.keyDown(window, { key: ',', ctrlKey: true });
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByLabelText('Close Settings')).toBeInTheDocument();
+  });
+});
+
 describe('DesktopPage — empty-desktop right-click shortcuts', () => {
   it('offers Sort/View/Icon-size items and each calls the matching handler', async () => {
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);

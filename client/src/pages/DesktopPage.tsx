@@ -224,6 +224,17 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     clearNotes();
   }, [favorites, clearNotes]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === ',') {
+        e.preventDefault();
+        setWidgetSettingsOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const accentStyle = useMemo(() => {
     const accent = getAccent(accentId);
     return { '--desktop-shell-accent': accent.accent, '--desktop-shell-accent-shadow': accent.shadow } as React.CSSProperties;

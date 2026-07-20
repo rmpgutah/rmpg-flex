@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
-import { DESKTOP_WALLPAPERS } from '../../data/desktopWallpapers';
-import { DESKTOP_ACCENTS } from '../../data/desktopAccents';
+import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID } from '../../data/desktopWallpapers';
+import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
+import { SETTINGS_SEARCH_INDEX } from '../../data/settingsSearchIndex';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { isSnapEnabled, setSnapEnabled } from '../../utils/snapPreference';
 import { isMultiMonitorSupported, isMultiMonitorEnabled, requestMultiMonitorAccess } from '../../utils/multiMonitor';
@@ -11,6 +12,7 @@ import {
   getTaskbarPosition, setTaskbarPosition, type TaskbarPosition,
   getTaskbarSize, setTaskbarSize, type TaskbarSize,
 } from '../../utils/taskbarPreferences';
+import { exportSettings, importSettings } from '../../utils/settingsExportImport';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -35,7 +37,7 @@ const CATEGORIES = [
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
 ] as const;
 
-type CategoryId = typeof CATEGORIES[number]['id'];
+export type CategoryId = typeof CATEGORIES[number]['id'];
 
 export interface DesktopSettingsAppProps {
   widgets: DesktopWidgetState[];
@@ -69,12 +71,14 @@ export default function DesktopSettingsApp({
   wallpaperId, onWallpaperChange, accentId, onAccentChange, onResetToDefault, onClose,
 }: DesktopSettingsAppProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('personalization');
+  const [searchQuery, setSearchQuery] = useState('');
   const [snapEnabled, setSnapEnabledState] = useState(() => isSnapEnabled());
   const [multiMonitorEnabled, setMultiMonitorEnabledState] = useState(() => isMultiMonitorEnabled());
   const multiMonitorSupported = isMultiMonitorSupported();
   const [autoHide, setAutoHideState] = useState(() => isTaskbarAutoHideEnabled());
   const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
   const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -104,7 +108,35 @@ export default function DesktopSettingsApp({
     window.addEventListener('pointerup', onUp);
   }, [size.width, size.height]);
 
+  const handleExport = useCallback(() => {
+    const blob = new Blob([exportSettings()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rmpg-desktop-settings.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const result = importSettings(text);
+    setImportMessage(result.ok ? 'Settings imported.' : (result.error ?? 'Import failed.'));
+    e.target.value = '';
+  }, []);
+
   const enabledIds = new Set(widgets.filter(w => w.on).map(w => w.id));
+
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchedIds = new Set(
+      SETTINGS_SEARCH_INDEX.filter(entry => entry.keywords.some(k => k.toLowerCase().includes(q))).map(e => e.categoryId),
+    );
+    return CATEGORIES.filter(cat => matchedIds.has(cat.id));
+  }, [searchQuery]);
 
   return (
     <div
@@ -125,13 +157,31 @@ export default function DesktopSettingsApp({
         </button>
       </div>
 
+      <div className="flex items-center gap-2 px-2 py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+        <button type="button" onClick={handleExport} className="text-[10px] px-2 py-0.5" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
+          Export Settings
+        </button>
+        <label className="text-[10px] px-2 py-0.5 cursor-pointer" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
+          Import Settings
+          <input type="file" accept="application/json" aria-label="Import Settings" onChange={handleImportFile} className="hidden" />
+        </label>
+        {importMessage && <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{importMessage}</span>}
+      </div>
+
       <div className="flex flex-1 overflow-hidden">
         <div style={{ width: 160, borderRight: '1px solid var(--border-subtle)', flexShrink: 0, overflowY: 'auto' }}>
-          {CATEGORIES.map(cat => (
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search settings…"
+            aria-label="Search settings"
+            className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
+          />
+          {(searchMatches ?? CATEGORIES).map(cat => (
             <button
               key={cat.id}
               type="button"
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => { setActiveCategory(cat.id); setSearchQuery(''); }}
               className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px]"
               style={{ background: activeCategory === cat.id ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
             >
@@ -162,6 +212,17 @@ export default function DesktopSettingsApp({
                     style={{ width: 20, height: 20, borderRadius: '50%', background: a.accent, border: accentId === a.id ? '2px solid var(--text-primary)' : '1px solid var(--border-default)' }}
                   />
                 ))}
+              </div>
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => { if (window.confirm('Reset wallpaper and accent color to default?')) { onWallpaperChange(DEFAULT_WALLPAPER_ID); onAccentChange(DEFAULT_ACCENT_ID); } }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
               </div>
             </div>
           )}
@@ -264,6 +325,17 @@ export default function DesktopSettingsApp({
               ) : (
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not supported in this browser.</p>
               )}
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => { if (window.confirm('Reset window management settings (snap to edge) to default?')) { setSnapEnabled(true); setSnapEnabledState(true); } }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
+              </div>
             </div>
           )}
 
@@ -306,6 +378,22 @@ export default function DesktopSettingsApp({
                     {size === 'small' ? 'Small' : 'Large'}
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm('Reset taskbar position, size, and auto-hide to default? (Pinned apps are kept.)')) return;
+                    setTaskbarPosition('bottom'); setTaskbarPositionState('bottom');
+                    setTaskbarSize('small'); setTaskbarSizeState('small');
+                    setTaskbarAutoHide(false); setAutoHideState(false);
+                  }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
               </div>
             </div>
           )}

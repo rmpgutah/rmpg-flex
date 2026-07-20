@@ -158,3 +158,98 @@ describe('DesktopSettingsApp — Taskbar category', () => {
     expect(getTaskbarSize()).toBe('large');
   });
 });
+
+describe('DesktopSettingsApp — search', () => {
+  it('typing a search term shows only matching category results instead of the full sidebar', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'auto-hide' } });
+    expect(screen.getByText('Taskbar')).toBeInTheDocument();
+    expect(screen.queryByText('Personalization')).not.toBeInTheDocument();
+  });
+
+  it('clicking a search result switches to that category and clears the search', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'auto-hide' } });
+    fireEvent.click(screen.getByText('Taskbar'));
+    expect(screen.getByText('Auto-Hide')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/search settings/i)).toHaveValue('');
+  });
+
+  it('clearing the search query restores the full category sidebar', () => {
+    renderApp();
+    const input = screen.getByPlaceholderText(/search settings/i);
+    fireEvent.change(input, { target: { value: 'auto-hide' } });
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByText('Personalization')).toBeInTheDocument();
+    expect(screen.getByText('Taskbar')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopSettingsApp — export/import', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('clicking Export Settings triggers a download of the current exportSettings() output', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    const createElementSpy = vi.spyOn(document, 'createElement');
+    renderApp();
+    fireEvent.click(screen.getByText('Export Settings'));
+    const anchorCall = createElementSpy.mock.results.find(r => (r.value as HTMLElement)?.tagName === 'A');
+    expect(anchorCall).toBeTruthy();
+    createElementSpy.mockRestore();
+  });
+
+  it('importing a valid settings file writes the values back and shows a success message', async () => {
+    renderApp();
+    const file = new File([JSON.stringify({ rmpg_desktop_taskbar_position: 'top' })], 'settings.json', { type: 'application/json' });
+    const input = screen.getByLabelText('Import Settings') as HTMLInputElement;
+    await fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText(/settings imported/i);
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('top');
+  });
+
+  it('importing a malformed file shows an error message and does not throw', async () => {
+    renderApp();
+    const file = new File(['not json'], 'bad.json', { type: 'application/json' });
+    const input = screen.getByLabelText('Import Settings') as HTMLInputElement;
+    await fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText(/not valid json/i);
+  });
+});
+
+describe('DesktopSettingsApp — per-category reset', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('Personalization reset calls onWallpaperChange/onAccentChange with the defaults', () => {
+    const props = renderApp();
+    fireEvent.click(screen.getByText('Personalization'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(props.onWallpaperChange).toHaveBeenCalledWith('blue-silver-default');
+    expect(props.onAccentChange).toHaveBeenCalled();
+  });
+
+  it('Window Management reset re-enables snap without touching taskbar keys', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    renderApp();
+    fireEvent.click(screen.getByText('Window Management'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(localStorage.getItem('rmpg_desktop_snap_enabled')).toBe('1');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('top');
+  });
+
+  it('Taskbar reset restores position/size/auto-hide defaults without touching pinned apps', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    localStorage.setItem('rmpg_desktop_taskbar_size', 'large');
+    localStorage.setItem('rmpg_desktop_taskbar_autohide', '1');
+    localStorage.setItem('rmpg_desktop_pinned_apps', JSON.stringify(['/dispatch']));
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('bottom');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_size')).toBe('small');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_autohide')).toBe('0');
+    expect(localStorage.getItem('rmpg_desktop_pinned_apps')).toBe(JSON.stringify(['/dispatch']));
+  });
+});
