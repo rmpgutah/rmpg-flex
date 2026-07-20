@@ -22,7 +22,7 @@ import {
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
   Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
-  Navigation, Globe, Zap, Hash, BarChart3,
+  Navigation, Globe, Zap, Hash, BarChart3, X,
 } from 'lucide-react';
 
 import {
@@ -1039,7 +1039,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'nav-overlay', label: 'Manual Route', active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay'), color: '#3b82f6', description: 'Draw a route between two typed coordinates' },
         { id: 'identify', label: 'Identify', active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), color: '#eab308', description: 'Click the map for place/district info', loading: tilequery.loading },
         { id: 'places', label: 'Places Search', active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant'), color: '#10b981', description: 'Nearby POI search' },
-        { id: 'bookmarks', label: 'Bookmarks', active: mapBookmarks.bookmarks.length > 0, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Save map locations' },
+        { id: 'bookmarks', label: 'Drop Bookmark', active: mapBookmarks.dropMode, onToggle: () => mapBookmarks.dropMode ? mapBookmarks.setDropMode(false) : mapBookmarks.setDropMode(true), color: '#eab308', description: 'Click the map to save a location' },
         { id: 'optimize', label: 'Route Optimizer', active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v), color: '#8b5cf6', description: 'Queue calls, pick a unit, optimize the visiting order' },
       ],
     },
@@ -1490,6 +1490,54 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {minimapOpen && mapRef.current && (
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
+      )}
+
+      {showBookmarksPanel && (
+        <div
+          className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
+          style={{ borderRadius: 2, width: 260, maxHeight: 320, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+        >
+          <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border-subtle">
+            <Star className="w-3.5 h-3.5 text-brand-gold-500" />
+            <span className="text-[10px] font-black tracking-wider text-brand-gold-500 flex-1 uppercase">
+              Bookmarks
+            </span>
+            <span className="text-[8px] font-black text-surface-base bg-brand-gold-500 px-1.5 py-px" style={{ borderRadius: 2 }}>
+              {mapBookmarks.bookmarks.length}
+            </span>
+          </div>
+          <div className="scrollbar-dark overflow-y-auto" style={{ maxHeight: 260 }}>
+            {mapBookmarks.bookmarks.length === 0 ? (
+              <div className="px-2.5 py-3 text-[10px] text-rmpg-500">
+                No bookmarks yet — use "Drop Bookmark" to save a location.
+              </div>
+            ) : (
+              mapBookmarks.bookmarks.map((bm) => (
+                <div
+                  key={bm.id}
+                  className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border-subtle cursor-pointer hover:bg-surface-overlay"
+                  onClick={() => mapBookmarks.flyToBookmark(bm.id)}
+                >
+                  <span
+                    className="w-2 h-2 shrink-0"
+                    style={{ borderRadius: '50%', background: bm.color, boxShadow: `0 0 4px ${bm.color}80` }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
+                    <div className="text-[8px] text-rmpg-500">{new Date(bm.createdAt).toLocaleDateString()}</div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}
+                    aria-label={`Remove bookmark ${bm.name}`}
+                    className="text-rmpg-500 hover:text-red-400 shrink-0 p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
 
       {/* Status Bar */}
