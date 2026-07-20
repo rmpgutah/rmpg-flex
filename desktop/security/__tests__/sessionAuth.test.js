@@ -606,5 +606,6 @@ test('assertWebPreferencesNotWeaker: reports the FIRST violated key when multipl
   const candidate = { ...SECURE_REFERENCE_PREFS, contextIsolation: false, nodeIntegration: true };
   const result = assertWebPreferencesNotWeaker(candidate, SECURE_REFERENCE_PREFS);
   assert.equal(result.ok, false);
-  assert.match(result.error, /weaker webPreferences:/);
+  assert.match(result.error, /weaker webPreferences: contextIsolation/);
+  assert.doesNotMatch(result.error, /nodeIntegration/);
 });

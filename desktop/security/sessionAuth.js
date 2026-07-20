@@ -343,6 +343,15 @@ const SECURE_WEBPREFERENCES_DIRECTION = {
  *   (e.g. a fresh hardenWebPreferencesDefaults() call with no overrides)
  * @returns {{ok:true}|{ok:false,error:string}} error names the first
  *   violated key found, in the fixed key order above
+ *
+ * NOTE: a key is only enforced when `referencePrefs` itself already holds
+ * the secure value for that key. This does NOT flag a caller who passes an
+ * already-weakened reference — it only guards drift in `candidatePrefs`
+ * relative to whatever reference it's compared against. The current call
+ * site always passes a fresh, override-free hardenWebPreferencesDefaults()
+ * as the reference (maximally secure on every key), so this distinction is
+ * a no-op today — but a future second caller must supply a genuinely-secure
+ * reference for this check to mean anything.
  */
 function assertWebPreferencesNotWeaker(candidatePrefs, referencePrefs) {
   const candidate = candidatePrefs || {};
