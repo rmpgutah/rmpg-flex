@@ -3,6 +3,56 @@
 // Opens secondary browser windows for reports, records, pages, etc.
 // ============================================================
 
+import { NAV_CATEGORIES, type NavFunction } from '../data/navCatalog';
+
+const ALL_NAV_FUNCTIONS: NavFunction[] = NAV_CATEGORIES.flatMap(cat => cat.functions);
+const NAV_FUNCTION_BY_PATH: Record<string, NavFunction> = Object.fromEntries(
+  ALL_NAV_FUNCTIONS.map(fn => [fn.path, fn]),
+);
+
+const DEFAULT_WINDOW_WIDTH = 1050;
+const DEFAULT_WINDOW_HEIGHT = 800;
+
+export interface WindowConfig {
+  title: string;
+  width: number;
+  height: number;
+}
+
+/** Windowability + size for a nav function. null means "not windowable — navigate() instead." */
+export function getWindowConfig(fn: NavFunction): WindowConfig | null {
+  if (fn.notWindowable) return null;
+  const size = fn.windowSize ?? { width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT };
+  return { title: fn.label, width: size.width, height: size.height };
+}
+
+/** Same as getWindowConfig, but looked up by raw path — for callers that only have a path (e.g. location.pathname). */
+export function getWindowConfigByPath(path: string): WindowConfig | null {
+  const fn = NAV_FUNCTION_BY_PATH[path];
+  return fn ? getWindowConfig(fn) : null;
+}
+
+export function isWindowablePath(path: string): boolean {
+  return getWindowConfigByPath(path) !== null;
+}
+
+/** Shared activation logic for desktop icon clicks and taskbar search results: open a
+ *  floating window for windowable pages, otherwise fall back to a normal SPA navigate(). */
+export function activateNavFunction(
+  fn: NavFunction,
+  handlers: {
+    openWindow: (path: string, title: string, size?: { width: number; height: number }) => void;
+    navigate: (path: string) => void;
+  },
+): void {
+  const config = getWindowConfig(fn);
+  if (config) {
+    handlers.openWindow(fn.path, config.title, { width: config.width, height: config.height });
+  } else {
+    handlers.navigate(fn.path);
+  }
+}
+
 /** Pages that can be popped out into separate windows */
 export const POPOUT_PAGES: Record<string, { title: string; width: number; height: number }> = {
   '/dispatch':       { title: 'Dispatch',           width: 1200, height: 900 },
@@ -68,11 +118,11 @@ export function openReportWindow(reportType: string) {
  * route so auth, state, and WebSocket all carry over via localStorage tokens.
  */
 export function openPageWindow(routePath: string) {
-  const page = POPOUT_PAGES[routePath];
-  if (page) {
-    return openDetachedWindow(routePath, page.title, page.width, page.height);
+  const config = getWindowConfigByPath(routePath);
+  if (config) {
+    return openDetachedWindow(routePath, config.title, config.width, config.height);
   }
-  // Fallback for unknown routes
+  // Fallback for unknown/non-windowable routes
   return openDetachedWindow(routePath, 'RMPG Flex', 1100, 850);
 }
 
