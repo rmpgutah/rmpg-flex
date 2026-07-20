@@ -11,6 +11,8 @@ export interface DesktopWindowState {
   zIndex: number;
   minimized: boolean;
   maximized: boolean;
+  alwaysOnTop: boolean;
+  opacity: number;
 }
 
 interface DesktopWindowManagerContextValue {
@@ -27,6 +29,7 @@ interface DesktopWindowManagerContextValue {
   /** Minimizes every currently non-minimized window and returns the ids it touched, so a caller can later restore exactly those and leave anything the user had already minimized alone. */
   minimizeAll: () => string[];
   restoreAll: (ids: string[]) => void;
+  toggleAlwaysOnTop: (id: string) => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
@@ -91,6 +94,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       x: 80 + offset, y: 60 + offset,
       width: size?.width ?? 1050, height: size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
+      alwaysOnTop: false, opacity: 1,
     };
     commit([...prev, win]);
     return true;
@@ -135,9 +139,13 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => ids.includes(w.id) ? { ...w, minimized: false } : w));
   }, [commit]);
 
+  const toggleAlwaysOnTop = useCallback((id: string) => {
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, alwaysOnTop: !w.alwaysOnTop } : w));
+  }, [commit]);
+
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

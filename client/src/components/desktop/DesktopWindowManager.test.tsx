@@ -5,7 +5,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
   const lastMinimizedIds = useRef<string[]>([]);
   return (
@@ -20,8 +20,10 @@ function Harness() {
       <button onClick={() => windows[0] && updateWindowTitle(windows[0].id, 'Retitled')}>retitle-first</button>
       <button onClick={() => { const ids = minimizeAll(); lastMinimizedIds.current = ids; }}>minimize-all</button>
       <button onClick={() => restoreAll(lastMinimizedIds.current)}>restore-all</button>
+      <button onClick={() => windows[0] && toggleAlwaysOnTop(windows[0].id)}>toggle-pin-first</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
+      <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
       <ul>{windows.map(w => <li key={w.id}>{w.title}-{w.zIndex}-{w.minimized ? 'min' : 'open'}-{w.width}x{w.height}</li>)}</ul>
     </div>
   );
@@ -105,5 +107,15 @@ describe('DesktopWindowManager', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     act(() => screen.getByText('minimize-all').click());
     expect(screen.queryAllByRole('listitem').length).toBe(0);
+  });
+
+  it('toggleAlwaysOnTop flips a window\'s pinned state', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-pinned').textContent).toBe('unpinned');
+    act(() => screen.getByText('toggle-pin-first').click());
+    expect(screen.getByTestId('first-pinned').textContent).toBe('pinned');
+    act(() => screen.getByText('toggle-pin-first').click());
+    expect(screen.getByTestId('first-pinned').textContent).toBe('unpinned');
   });
 });

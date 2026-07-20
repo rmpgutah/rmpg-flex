@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Minus, Square } from 'lucide-react';
+import { X, Minus, Square, Pin, PinOff } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
 import { isSnapEnabled } from '../../utils/snapPreference';
@@ -15,7 +15,7 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop } = useDesktopWindows();
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -158,12 +158,18 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     window.addEventListener('pointerup', onUp);
   }, [win.id, win.width, win.height, focusWindow, moveResize]);
 
+  // Pinned windows always render above unpinned ones, regardless of normal
+  // focus-based zIndex — a flat offset large enough to clear any realistic
+  // focus-order zIndex value keeps focus order working correctly *within*
+  // each of the two bands (pinned vs. unpinned) while pinned always wins
+  // across them.
+  const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? 10000 : 0);
   const style: React.CSSProperties = win.maximized
-    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: win.zIndex }
+    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex }
     : {
         position: 'fixed', left: win.x, top: win.y,
         width: win.width, height: win.minimized ? TITLE_BAR_HEIGHT : win.height,
-        zIndex: win.zIndex,
+        zIndex: effectiveZIndex,
       };
 
   return (
@@ -197,6 +203,14 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label={win.alwaysOnTop ? `Unpin ${win.title}` : `Pin ${win.title} on top`}
+            onClick={() => toggleAlwaysOnTop(win.id)}
+            className="p-1 hover:bg-surface-hover"
+          >
+            {win.alwaysOnTop ? <Pin className="w-3 h-3" style={{ color: 'var(--brand-400)' }} /> : <PinOff className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />}
+          </button>
           <button type="button" aria-label={`Minimize ${win.title}`} onClick={() => minimizeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <Minus className="w-3 h-3" style={{ color: 'var(--rmpg-400)' }} />
           </button>

@@ -160,3 +160,35 @@ describe('FloatingWindow — snap to edge', () => {
     setSnapEnabled(true);
   });
 });
+
+describe('FloatingWindow — always-on-top', () => {
+  it('clicking the pin button toggles the aria-label between Pin and Unpin', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    expect(screen.getByLabelText('Pin Dispatch on top')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Pin Dispatch on top'));
+    expect(screen.getByLabelText('Unpin Dispatch')).toBeInTheDocument();
+  });
+
+  it('a pinned-but-unfocused window renders above an unpinned, more-recently-focused window', () => {
+    function Harness2() {
+      const { windows, openWindow, focusWindow } = useDesktopWindows();
+      return (
+        <>
+          <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open-a</button>
+          <button onClick={() => openWindow('/map', 'Live Map')}>open-b</button>
+          <button onClick={() => windows[1] && focusWindow(windows[1].id)}>focus-second</button>
+          {windows.map(w => <FloatingWindow key={w.id} win={w} />)}
+        </>
+      );
+    }
+    render(<DesktopWindowManagerProvider><Harness2 /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open-a'));
+    fireEvent.click(screen.getByText('open-b'));
+    fireEvent.click(screen.getByLabelText('Pin Dispatch on top'));
+    fireEvent.click(screen.getByText('focus-second'));
+    const dispatchWindowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    const mapWindowEl = screen.getByTitle('Live Map').parentElement as HTMLElement;
+    expect(parseInt(dispatchWindowEl.style.zIndex, 10)).toBeGreaterThan(parseInt(mapWindowEl.style.zIndex, 10));
+  });
+});
