@@ -1,8 +1,9 @@
 // client/src/components/desktop/DesktopWindowManager.test.tsx
 import { useRef } from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
+import { setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 
 function Harness() {
   const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, moveResize } = useDesktopWindows();
@@ -174,5 +175,45 @@ describe('DesktopWindowManager', () => {
     // the "remembered" position for a path.
     const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
     expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
+  });
+});
+
+describe('DesktopWindowManager — default window opacity baseline', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('a newly-opened window starts at the configured default opacity', () => {
+    setDefaultWindowOpacity(0.7);
+    function Harness() {
+      const { openWindow, windows } = useDesktopWindows();
+      return (
+        <>
+          <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open</button>
+          <ul>{windows.map(w => <li key={w.id}>{w.opacity}</li>)}</ul>
+        </>
+      );
+    }
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    expect(screen.getByText('0.7')).toBeInTheDocument();
+    setDefaultWindowOpacity(1); // cleanup for other tests
+  });
+
+  it('an already-open window is unaffected when the default opacity setting later changes', () => {
+    setDefaultWindowOpacity(1);
+    function Harness() {
+      const { openWindow, windows } = useDesktopWindows();
+      return (
+        <>
+          <button onClick={() => openWindow('/dispatch', 'Dispatch')}>open</button>
+          <ul>{windows.map(w => <li key={w.id}>{w.opacity}</li>)}</ul>
+        </>
+      );
+    }
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    expect(screen.getByText('1')).toBeInTheDocument();
+    setDefaultWindowOpacity(0.5); // changing the setting AFTER the window opened
+    expect(screen.getByText('1')).toBeInTheDocument(); // still 1, not retroactively changed
+    setDefaultWindowOpacity(1); // cleanup
   });
 });

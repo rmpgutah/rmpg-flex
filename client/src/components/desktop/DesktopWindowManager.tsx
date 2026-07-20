@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { getSavedPosition, saveWindowPosition } from '../../utils/desktopWindowPositions';
+import { getDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 
 export interface DesktopWindowState {
   id: string;
@@ -103,7 +104,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       x: saved?.x ?? (80 + offset), y: saved?.y ?? (60 + offset),
       width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
-      alwaysOnTop: false, opacity: 1,
+      alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
     };
     commit([...prev, win]);
     return true;
