@@ -1,17 +1,54 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { X, Minus, Square } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
+import { getWindowConfigByPath } from '../../utils/windowManager';
 
 const TITLE_BAR_HEIGHT = 30;
+const TITLE_SYNC_POLL_MS = 500;
 
 interface FloatingWindowProps {
   win: DesktopWindowState;
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle } = useDesktopWindows();
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  // These track the iframe's OWN internal navigation, independent of win.path (which
+  // stays fixed at the URL the window was opened with — see the effect below for why
+  // the two must never be conflated). Seeded once from the initial render, then only
+  // ever mutated by this effect.
+  const lastPathRef = useRef(win.path);
+  const lastTitleRef = useRef(win.title);
+
+  // Same-origin iframes let the parent read contentWindow.location directly. The app's
+  // own in-page nav bar can navigate the iframe to an entirely different route via
+  // client-side routing, with no signal reaching this component otherwise — so we poll
+  // for it and resync just the display title. We deliberately never write the observed
+  // pathname back into win.path: that value also drives the iframe's `src` below, and
+  // setting `src` to a new value is a real navigation command in the browser even when
+  // it already matches the current location — that would fight the very navigation
+  // we're reacting to.
+  useEffect(() => {
+    if (win.minimized) return;
+    const interval = setInterval(() => {
+      let pathname: string | null = null;
+      try {
+        pathname = iframeRef.current?.contentWindow?.location?.pathname ?? null;
+      } catch {
+        pathname = null;
+      }
+      if (!pathname || pathname === lastPathRef.current) return;
+      lastPathRef.current = pathname;
+      const config = getWindowConfigByPath(pathname);
+      if (config && config.title !== lastTitleRef.current) {
+        lastTitleRef.current = config.title;
+        updateWindowTitle(win.id, config.title);
+      }
+    }, TITLE_SYNC_POLL_MS);
+    return () => clearInterval(interval);
+  }, [win.id, win.minimized, updateWindowTitle]);
 
   const onTitleBarPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -98,6 +135,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       {!win.minimized && (
         <>
           <iframe
+            ref={iframeRef}
             title={win.title}
             src={win.path}
             allow="microphone; camera; fullscreen"
