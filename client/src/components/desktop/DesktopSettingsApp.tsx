@@ -1,11 +1,16 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, X } from 'lucide-react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS } from '../../data/desktopAccents';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { isSnapEnabled, setSnapEnabled } from '../../utils/snapPreference';
 import { isMultiMonitorSupported, isMultiMonitorEnabled, requestMultiMonitorAccess } from '../../utils/multiMonitor';
+import {
+  isTaskbarAutoHideEnabled, setTaskbarAutoHide,
+  getTaskbarPosition, setTaskbarPosition, type TaskbarPosition,
+  getTaskbarSize, setTaskbarSize, type TaskbarSize,
+} from '../../utils/taskbarPreferences';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -26,6 +31,7 @@ const CATEGORIES = [
   { id: 'personalization', label: 'Personalization', icon: Sliders },
   { id: 'desktop-icons', label: 'Desktop & Icons', icon: LayoutGrid },
   { id: 'window-management', label: 'Window Management', icon: AppWindow },
+  { id: 'taskbar', label: 'Taskbar', icon: PanelBottom },
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
 ] as const;
 
@@ -66,6 +72,9 @@ export default function DesktopSettingsApp({
   const [snapEnabled, setSnapEnabledState] = useState(() => isSnapEnabled());
   const [multiMonitorEnabled, setMultiMonitorEnabledState] = useState(() => isMultiMonitorEnabled());
   const multiMonitorSupported = isMultiMonitorSupported();
+  const [autoHide, setAutoHideState] = useState(() => isTaskbarAutoHideEnabled());
+  const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
+  const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -255,6 +264,49 @@ export default function DesktopSettingsApp({
               ) : (
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not supported in this browser.</p>
               )}
+            </div>
+          )}
+
+          {activeCategory === 'taskbar' && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Auto-Hide</div>
+              <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Auto-hide taskbar"
+                  checked={autoHide}
+                  onChange={(e) => { setTaskbarAutoHide(e.target.checked); setAutoHideState(e.target.checked); }}
+                />
+                Hide the taskbar until you move the mouse to the screen edge
+              </label>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Position</div>
+              <div className="flex gap-1">
+                {(['bottom', 'top'] as const).map(position => (
+                  <button
+                    key={position} type="button"
+                    onClick={() => { setTaskbarPosition(position); setTaskbarPositionState(position); }}
+                    className="text-[10px] px-2 py-0.5 capitalize"
+                    style={{ border: '1px solid var(--border-default)', background: taskbarPosition === position ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                  >
+                    {position === 'bottom' ? 'Bottom' : 'Top'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Size</div>
+              <div className="flex gap-1">
+                {(['small', 'large'] as const).map(size => (
+                  <button
+                    key={size} type="button"
+                    onClick={() => { setTaskbarSize(size); setTaskbarSizeState(size); }}
+                    className="text-[10px] px-2 py-0.5 capitalize"
+                    style={{ border: '1px solid var(--border-default)', background: taskbarSize === size ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                  >
+                    {size === 'small' ? 'Small' : 'Large'}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

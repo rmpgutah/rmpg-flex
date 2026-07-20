@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DesktopSettingsApp from './DesktopSettingsApp';
 import { normalizeDesktopWidgets } from '../../utils/normalizeDesktopWidgets';
+import { isTaskbarAutoHideEnabled, getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
 
 function renderApp(overrides: Partial<React.ComponentProps<typeof DesktopSettingsApp>> = {}) {
   const props = {
@@ -120,5 +121,40 @@ describe('DesktopSettingsApp', () => {
     const props = renderApp();
     fireEvent.click(screen.getByLabelText('Close Settings'));
     expect(props.onClose).toHaveBeenCalled();
+  });
+});
+
+describe('DesktopSettingsApp — Taskbar category', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('shows Auto-hide, Position, and Size controls under the Taskbar category', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    expect(screen.getByText(/auto-hide/i)).toBeInTheDocument();
+    expect(screen.getByText('Bottom')).toBeInTheDocument();
+    expect(screen.getByText('Top')).toBeInTheDocument();
+    expect(screen.getByText('Small')).toBeInTheDocument();
+    expect(screen.getByText('Large')).toBeInTheDocument();
+  });
+
+  it('toggling auto-hide persists via setTaskbarAutoHide', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    fireEvent.click(screen.getByLabelText(/auto-hide/i));
+    expect(isTaskbarAutoHideEnabled()).toBe(true);
+  });
+
+  it('clicking Top sets the taskbar position', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    fireEvent.click(screen.getByText('Top'));
+    expect(getTaskbarPosition()).toBe('top');
+  });
+
+  it('clicking Large sets the taskbar size', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    fireEvent.click(screen.getByText('Large'));
+    expect(getTaskbarSize()).toBe('large');
   });
 });
