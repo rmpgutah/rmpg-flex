@@ -37,6 +37,7 @@ vi.mock('../components/ToastProvider', () => ({
 }));
 
 import { saveFavorites } from '../utils/navFavorites';
+import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
 describe('DesktopPage', () => {
@@ -168,5 +169,163 @@ describe('DesktopPage — Ctrl+, opens Settings', () => {
     fireEvent.keyDown(window, { key: ',', ctrlKey: true });
     expect(screen.getByText('Settings')).toBeInTheDocument();
     expect(screen.getByLabelText('Close Settings')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopPage — empty-desktop right-click shortcuts', () => {
+  it('offers Sort/View/Icon-size items and each calls the matching handler', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Sort: Alphabetical')).toBeInTheDocument();
+    expect(screen.getByText('View: List')).toBeInTheDocument();
+    expect(screen.getByText('Icon size: Large')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Sort: Alphabetical'));
+    // Re-open to check View next (ContextMenu closes itself after a click).
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('View: List'));
+  });
+});
+
+describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('toggles the Auto-arrange menu label and persists via setAutoArrangeEnabled', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Auto-arrange: Off')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Auto-arrange: Off'));
+    expect(isAutoArrangeEnabled()).toBe(true);
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Auto-arrange: On')).toBeInTheDocument();
+  });
+
+  it('toggles the Hide/Show icons menu label and persists via setIconsHidden', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Hide icons')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Hide icons'));
+    expect(areIconsHidden()).toBe(true);
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Show icons')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopPage — auto-arrange fills gaps for newly-pinned icons', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('assigns a newly-favorited path a position that does not overlap an existing icon, when auto-arrange is on', async () => {
+    setAutoArrangeEnabled(true);
+    // Seed a layout that already positions /dispatch at (20,20), but favorites
+    // (loaded synchronously by DesktopPage's useState(loadFavorites) initializer)
+    // contains a SECOND path, /records, with no entry in desktop_layout_json.
+    // This reproduces the exact gap the reconciliation effect fixes: on this
+    // same initial render, pinnedIcons has 2 entries but layout.icons only
+    // positions 1 — without reconciliation, /records would fall back to
+    // DesktopIconGrid's hardcoded {x:20,y:20}, stacking directly on /dispatch.
+    const seededLayout = JSON.stringify({
+      icons: [{ path: '/dispatch', x: 20, y: 20 }],
+      groups: [],
+      iconSize: 'medium',
+      viewMode: 'grid',
+      sortMode: 'manual',
+    });
+    mockUseUserPreferences.mockReturnValue({
+      prefs: { ...mockPrefs, desktop_layout_json: seededLayout },
+      reload: vi.fn(),
+      isLoading: false,
+      error: null,
+    });
+    saveFavorites(new Set(['/dispatch', '/records']));
+
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Records (RMS)').length).toBeGreaterThan(0));
+
+    const recordsButton = screen.getAllByText('Records (RMS)')[0].closest('button');
+    expect(recordsButton).not.toBeNull();
+    // The reconciled position must not collide with /dispatch's real (20,20),
+    // and (per nextAutoArrangeSlot's gap-filling) should land in the next
+    // free grid cell rather than at the DesktopIconGrid fallback of (20,20).
+    expect(recordsButton!.style.left).not.toBe('20px');
+
+    // /dispatch's own already-placed position must be left untouched by the
+    // reconciliation effect (auto-arrange must never retroactively move an
+    // existing icon).
+    const dispatchButton = screen.getAllByText('Dispatch Console')[0].closest('button');
+    expect(dispatchButton!.style.left).toBe('20px');
+    expect(dispatchButton!.style.top).toBe('20px');
+
+    setAutoArrangeEnabled(false); // cleanup for other tests
+  });
+
+  it('assigns a newly-favorited path a cascaded position when auto-arrange is off', async () => {
+    const seededLayout = JSON.stringify({
+      icons: [{ path: '/dispatch', x: 20, y: 20 }],
+      groups: [],
+      iconSize: 'medium',
+      viewMode: 'grid',
+      sortMode: 'manual',
+    });
+    mockUseUserPreferences.mockReturnValue({
+      prefs: { ...mockPrefs, desktop_layout_json: seededLayout },
+      reload: vi.fn(),
+      isLoading: false,
+      error: null,
+    });
+    saveFavorites(new Set(['/dispatch', '/records']));
+
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Records (RMS)').length).toBeGreaterThan(0));
+
+    const recordsButton = screen.getAllByText('Records (RMS)')[0].closest('button');
+    expect(recordsButton!.style.left).not.toBe('20px');
+
+    const dispatchButton = screen.getAllByText('Dispatch Console')[0].closest('button');
+    expect(dispatchButton!.style.left).toBe('20px');
+    expect(dispatchButton!.style.top).toBe('20px');
+  });
+});
+
+describe('DesktopPage — hidden icons layer', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('hides the icon grid (and empty-state message) but not sticky notes when icons are hidden', async () => {
+    saveFavorites(new Set(['/dispatch']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    // Before hiding: "Dispatch Console" renders twice — once as the icon
+    // grid's own tile, once via the always-on-by-default quick-access widget
+    // (a separate code path, unaffected by this feature). This baseline count
+    // is what proves the later drop to 1 instance is the icon grid itself
+    // disappearing, not some unrelated re-render fluke.
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBe(2));
+
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('New sticky note'));
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('Hide icons'));
+
+    // Icon grid's tile is gone — only the quick-access widget's instance remains.
+    expect(screen.getAllByText('Dispatch Console').length).toBe(1);
+    // Sticky note (no text-fixture collision with the widget) is unaffected.
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+  });
+
+  it('hides the empty-state prompt too when icons are hidden with zero favorites', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/star modules from Module Directory/i)).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('Hide icons'));
+    expect(screen.queryByText(/star modules from Module Directory/i)).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ permissions:
 jobs:
   swift-tests:
     runs-on: macos-14
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +53,7 @@ jobs:
   # than catch a break in it, so it needs a real xcodebuild instead.
   swift-build-carplay:
     runs-on: macos-14
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
