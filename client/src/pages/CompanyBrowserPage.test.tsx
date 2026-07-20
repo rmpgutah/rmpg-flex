@@ -37,6 +37,19 @@ describe('CompanyBrowserPage', () => {
     expect(webview?.getAttribute('src')).toBe('https://example.com');
   });
 
+  it('blocks a disallowed scheme entered in the address bar without navigating the webview', () => {
+    render(<CompanyBrowserPage />);
+    const webview = document.querySelector('webview');
+    const srcBefore = webview?.getAttribute('src');
+
+    const addressBar = screen.getByRole('textbox', { name: /address/i });
+    fireEvent.change(addressBar, { target: { value: 'file:///etc/passwd' } });
+    fireEvent.submit(addressBar.closest('form')!);
+
+    expect(document.querySelector('webview')?.getAttribute('src')).toBe(srcBefore);
+    expect(screen.getByText(/only http\/https urls can be opened/i)).toBeInTheDocument();
+  });
+
   it('adds and removes a bookmark for the active tab URL', () => {
     render(<CompanyBrowserPage />);
     const addressBar = screen.getByRole('textbox', { name: /address/i });

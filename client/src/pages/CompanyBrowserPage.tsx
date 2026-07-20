@@ -86,6 +86,25 @@ function normalizeAddressInput(raw: string): string {
   return `https://${trimmed}`;
 }
 
+// Mirrors desktop/main.js's will-navigate gate (shouldAllowGuestNavigation in
+// desktop/security/webviewHardening.js), same duplication rationale as
+// FATAL_NET_ERRORS above: that's a CommonJS Electron-main module and this is
+// an ES module bundled for the renderer, so there's no clean shared-import
+// path. This is load-bearing on its own, not just defense-in-depth — Electron
+// does not fire 'will-navigate' for a programmatic <webview src> change (the
+// address bar / bookmark-click path here), so the main-process gate never
+// sees this navigation at all. Keep the two rules in sync if either changes.
+function isAllowedBrowserUrl(url: string): boolean {
+  if (url === NEW_TAB_URL) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
+
 function parseJsonArray<T>(raw: string | null | undefined): T[] {
   try {
     const parsed = raw ? JSON.parse(raw) : [];
@@ -149,6 +168,10 @@ export default function CompanyBrowserPage() {
 
   const navigateActiveTab = useCallback((rawUrl: string) => {
     const url = normalizeAddressInput(rawUrl);
+    if (!isAllowedBrowserUrl(url)) {
+      updateTab(activeTab.id, { error: 'Blocked: only http/https URLs can be opened' });
+      return;
+    }
     updateTab(activeTab.id, { url, loading: true, error: null });
   }, [activeTab.id, updateTab]);
 
