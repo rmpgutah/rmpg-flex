@@ -84,7 +84,7 @@ function makeFakeTimer() {
 
 test('scheduleChildProcessTimeout: sends SIGTERM once the fake timeout fires', () => {
   const killSpy = [];
-  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
+  const fakeChild = { exitCode: null, signalCode: null, kill: (...args) => killSpy.push(args) };
   const fakeTimer = makeFakeTimer();
 
   const handle = scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
@@ -103,7 +103,7 @@ test('scheduleChildProcessTimeout: sends SIGTERM once the fake timeout fires', (
 
 test('scheduleChildProcessTimeout: escalates to SIGKILL if the child has not exited by the escalation delay', () => {
   const killSpy = [];
-  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
+  const fakeChild = { exitCode: null, signalCode: null, kill: (...args) => killSpy.push(args) };
   const fakeTimer = makeFakeTimer();
 
   scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
@@ -121,13 +121,13 @@ test('scheduleChildProcessTimeout: escalates to SIGKILL if the child has not exi
 
 test('scheduleChildProcessTimeout: does NOT escalate to SIGKILL if the child already exited after SIGTERM', () => {
   const killSpy = [];
-  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
+  const fakeChild = { exitCode: null, signalCode: null, kill: (...args) => killSpy.push(args) };
   const fakeTimer = makeFakeTimer();
 
   scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
 
   fakeTimer.calls[0].callback();
-  fakeChild.killed = true; // child honored SIGTERM and exited before escalation fires
+  fakeChild.exitCode = 0; // child honored SIGTERM and exited before escalation fires
 
   fakeTimer.calls[1].callback();
   assert.deepEqual(killSpy, [['SIGTERM']]);

@@ -103,16 +103,25 @@ const SIGKILL_ESCALATION_DELAY_MS = 1500;
  * the failure mode this timeout exists to guard against, and SIGTERM
  * alone doesn't guarantee it actually terminates.
  *
+ * The escalation check deliberately does NOT use `child.killed` — Node
+ * sets that flag synchronously once `kill()` successfully SENDS a signal,
+ * not once the process has actually terminated (see Node's own docs on
+ * `ChildProcess.killed`), so `!child.killed` is false almost immediately
+ * after the SIGTERM call above and would make this escalation branch
+ * effectively dead code against exactly the hung-process case it exists
+ * for. Instead this checks `exitCode`/`signalCode`, which Node only sets
+ * once the process has genuinely exited (via the real `'exit'` event
+ * internally) — still both `null` means still running.
+ *
  * Returns the handle `killFn` produced for the INITIAL timeout, so the
  * caller can `clearTimeout` it (with the matching real `clearTimeout`)
  * from the child's own `exit` handler — a child that exits naturally
  * before the timeout elapses must not leave a dangling timer. (The
  * escalation timer, if scheduled, is not returned — it's a fire-and-forget
- * check-and-kill against `child.killed`, harmless if it runs after the
- * child has already exited some other way, matching the existing
- * `recon:term-kill` pattern's own escalation semantics.)
+ * check-and-kill, harmless if it runs after the child has already exited
+ * some other way.)
  *
- * @param {{kill: Function, killed?: boolean}} child - live child-process-shaped handle
+ * @param {{kill: Function, exitCode?: number|null, signalCode?: string|null}} child - live child-process-shaped handle
  * @param {number} timeoutMs - milliseconds to wait before the initial SIGTERM
  * @param {Function} killFn - setTimeout-shaped scheduler (DI)
  * @returns {*} the timer handle returned by killFn for the initial timeout
@@ -121,7 +130,8 @@ function scheduleChildProcessTimeout(child, timeoutMs, killFn) {
   return killFn(() => {
     child.kill('SIGTERM');
     killFn(() => {
-      if (!child.killed) {
+      const stillRunning = child.exitCode == null && child.signalCode == null;
+      if (stillRunning) {
         try {
           child.kill('SIGKILL');
         } catch {
