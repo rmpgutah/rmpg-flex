@@ -6,6 +6,8 @@ import { getWindowConfig, activateNavFunction } from '../../utils/windowManager'
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
 import { getIconLabelOverride, setIconLabelOverride, clearIconLabelOverride } from '../../utils/desktopIconPreferences';
+import { useToast } from '../ToastProvider';
+import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
@@ -27,13 +29,19 @@ export default function DesktopIconGrid({
   const ICON_SIZE = ICON_SIZE_PX[iconSize];
   const navigate = useNavigate();
   const { openWindow } = useDesktopWindows();
+  const { addToast } = useToast();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [, forceRerender] = useState(0);
 
   const handleActivate = useCallback((fn: NavFunction) => {
-    activateNavFunction(fn, { openWindow, navigate });
-  }, [navigate, openWindow]);
+    activateNavFunction(fn, {
+      openWindow,
+      navigate,
+      onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+    });
+  }, [navigate, openWindow, addToast]);
 
   const handleIconClick = useCallback((fn: NavFunction, e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
@@ -118,6 +126,13 @@ export default function DesktopIconGrid({
               ...(eligible ? [{ label: 'Open in new browser tab', onClick: () => window.open(fn.path, '_blank', 'noopener,noreferrer') }] : []),
               { label: 'Rename', onClick: () => setRenamingPath(fn.path) },
               ...(multiSelected ? [{ label: 'Group as...', onClick: handleGroupAs }] : []),
+              {
+                label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
+                onClick: () => {
+                  if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path);
+                  forceRerender(n => n + 1);
+                },
+              },
               { label: 'Unpin', onClick: () => onUnpin(fn.path) },
             ]}
           >

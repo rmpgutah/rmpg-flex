@@ -17,7 +17,8 @@ import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/d
 import FloatingWindow from '../components/desktop/FloatingWindow';
 import DesktopWindowSwitcher from '../components/desktop/DesktopWindowSwitcher';
 import DesktopIconGrid from '../components/desktop/DesktopIconGrid';
-import DesktopTaskbar from '../components/desktop/DesktopTaskbar';
+import DesktopTaskbar, { TASKBAR_HEIGHT_PX } from '../components/desktop/DesktopTaskbar';
+import { getTaskbarSize } from '../utils/taskbarPreferences';
 import DesktopWidgetPanel from '../components/desktop/DesktopWidgetPanel';
 import DesktopSettingsApp from '../components/desktop/DesktopSettingsApp';
 import DesktopStickyNote from '../components/desktop/DesktopStickyNote';
@@ -248,7 +249,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'New sticky note', onClick: () => addNote(60, 60) },
           ]}
         >
-          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
+          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>
             <DesktopWallpaper wallpaperId={wallpaperId}>
               {!areIconsHidden() && (
                 pinnedIcons.length === 0 ? (

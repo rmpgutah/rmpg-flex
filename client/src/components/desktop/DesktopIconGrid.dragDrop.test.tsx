@@ -6,6 +6,13 @@ import DesktopIconGrid from './DesktopIconGrid';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import type { NavFunction } from '../../data/navCatalog';
 
+// DesktopIconGrid calls useToast() unconditionally (for the Company Browser
+// electron-only-unavailable path) — mock it the same way DesktopIconGrid.test.tsx
+// does, since this file renders DesktopIconGrid outside a real ToastProvider.
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
+
 const RECORDS_ICON: NavFunction[] = [
   { path: '/records', label: 'Records', icon: Database, description: 'r' },
 ];

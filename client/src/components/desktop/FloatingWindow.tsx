@@ -3,12 +3,13 @@ import { X, Minus, Square, Pin, PinOff } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
 import { isSnapEnabled } from '../../utils/snapPreference';
+import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
+import { getTaskbarSize } from '../../utils/taskbarPreferences';
 import ContextMenu from '../ContextMenu';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
 const SNAP_EDGE_THRESHOLD = 24;
-const TASKBAR_HEIGHT = 48;
 const MIN_SNAP_HALF_WIDTH = 360;
 // Any pinned (always-on-top) window renders at win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET
 // (see effectiveZIndex below). Window zIndex values are small incrementing integers from
@@ -25,6 +26,7 @@ interface FloatingWindowProps {
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
   const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity } = useDesktopWindows();
+  const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -125,7 +127,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     const onUp = () => {
       if (snapEdgeRef.current) {
-        const desktopHeight = window.innerHeight - TASKBAR_HEIGHT;
+        const desktopHeight = window.innerHeight - taskbarHeight;
         const halfWidth = window.innerWidth / 2;
         if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
           preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
@@ -149,7 +151,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight]);
 
   const onResizeHandlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
@@ -180,7 +182,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // across them.
   const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? ALWAYS_ON_TOP_ZINDEX_OFFSET : 0);
   const style: React.CSSProperties = win.maximized
-    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
+    ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: taskbarHeight, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
         position: 'fixed', left: win.x, top: win.y,
         width: win.width, height: win.minimized ? TITLE_BAR_HEIGHT : win.height,
@@ -194,7 +196,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         data-testid={`snap-preview-${snapPreview}`}
         style={{
           position: 'fixed', top: 0, left: snapPreview === 'left' ? 0 : '50%',
-          width: '50%', height: `calc(100vh - ${TASKBAR_HEIGHT}px)`,
+          width: '50%', height: `calc(100vh - ${taskbarHeight}px)`,
           background: 'rgba(var(--rmpg-500-rgb),0.15)', border: '2px solid var(--brand-400)',
           zIndex: SNAP_PREVIEW_ZINDEX, pointerEvents: 'none',
         }}

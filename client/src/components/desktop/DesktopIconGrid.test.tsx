@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { LayoutDashboard, Map as MapIcon, Package } from 'lucide-react';
+import { LayoutDashboard, Map as MapIcon, Package, Radio } from 'lucide-react';
 import DesktopIconGrid from './DesktopIconGrid';
 import { DesktopWindowManagerProvider, useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import type { NavFunction } from '../../data/navCatalog';
 import { getIconLabelOverride, setIconLabelOverride } from '../../utils/desktopIconPreferences';
+import { isAppPinned } from '../../utils/taskbarPreferences';
 
 // `vi.mock` factories are hoisted above all other module-level code, including
 // `const` declarations further down this file. A spy referenced by the factory
@@ -17,6 +18,11 @@ const { navigateSpy } = vi.hoisted(() => ({ navigateSpy: vi.fn() }));
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig<typeof import('react-router-dom')>()),
   useNavigate: () => navigateSpy,
+}));
+
+const addToastMock = vi.fn();
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: addToastMock }),
 }));
 
 const ICONS: NavFunction[] = [
@@ -223,5 +229,29 @@ describe('DesktopIconGrid — Rename', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(screen.getByText('Dispatch')).toBeInTheDocument();
     expect(getIconLabelOverride('/dispatch')).toBeNull();
+  });
+});
+
+describe('DesktopIconGrid — Pin to Taskbar', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('right-clicking an icon offers "Pin to Taskbar" when unpinned, and pinning toggles it to "Unpin from Taskbar"', () => {
+    render(
+      <MemoryRouter><DesktopWindowManagerProvider>
+        <DesktopIconGrid
+          icons={[{ path: '/dispatch', label: 'Dispatch', icon: Radio, description: 'd' }]}
+          positions={{}} onReposition={() => {}} onUnpin={() => {}}
+          groups={[]} onCreateGroup={() => {}} onUngroup={() => {}}
+          iconSize="medium" viewMode="grid"
+        />
+      </DesktopWindowManagerProvider></MemoryRouter>
+    );
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Pin to Taskbar'));
+    expect(isAppPinned('/dispatch')).toBe(true);
+
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    expect(screen.getByText('Unpin from Taskbar')).toBeInTheDocument();
   });
 });

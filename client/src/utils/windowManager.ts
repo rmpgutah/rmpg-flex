@@ -48,8 +48,19 @@ export function activateNavFunction(
   handlers: {
     openWindow: (path: string, title: string, size?: { width: number; height: number }) => void;
     navigate: (path: string) => void;
+    /** Called instead of navigate() when fn.electronOnly is set and window.electron is unavailable/fails. */
+    onElectronOnlyUnavailable?: (fn: NavFunction) => void;
   },
 ): void {
+  if (fn.electronOnly === 'company-browser') {
+    const electron = (window as any).electron;
+    if (electron?.isElectron && typeof electron.openCompanyBrowser === 'function') {
+      Promise.resolve(electron.openCompanyBrowser()).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
+    } else {
+      handlers.onElectronOnlyUnavailable?.(fn);
+    }
+    return;
+  }
   const config = getWindowConfig(fn);
   if (config) {
     handlers.openWindow(fn.path, config.title, { width: config.width, height: config.height });

@@ -9,6 +9,7 @@ vi.mock('../context/AuthContext', () => ({
 }));
 
 import ModuleDirectoryPage from './ModuleDirectoryPage';
+import { isAppPinned } from '../utils/taskbarPreferences';
 
 describe('ModuleDirectoryPage (post-catalog-extraction regression)', () => {
   beforeEach(() => {
@@ -38,5 +39,23 @@ describe('ModuleDirectoryPage (post-catalog-extraction regression)', () => {
     const star = screen.getByLabelText(/Add Dispatch Console to favorites/i);
     fireEvent.click(star);
     expect(JSON.parse(localStorage.getItem('rmpg_nav_favorites')!)).toContain('/dispatch');
+  });
+});
+
+describe('ModuleDirectoryPage — Pin to Taskbar', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    apiFetchMock.mockClear();
+  });
+
+  it('right-clicking a module card offers "Pin to Taskbar"', () => {
+    render(<MemoryRouter><ModuleDirectoryPage /></MemoryRouter>);
+    const search = screen.getByPlaceholderText(/Search modules/i);
+    fireEvent.change(search, { target: { value: 'Dispatch Console' } });
+    fireEvent.contextMenu(screen.getByText('Dispatch Console'));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Pin to Taskbar'));
+    expect(isAppPinned('/dispatch')).toBe(true);
   });
 });

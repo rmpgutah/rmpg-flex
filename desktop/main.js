@@ -11,6 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
+const { hardenGuestWebPreferences, shouldAllowGuestNavigation } = require('./security/webviewHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
@@ -1053,6 +1054,67 @@ guardedHandle('window:open-secondary', (event, routePath, opts) => {
 guardedHandle('window:close-secondary', (event, id) => {
   const win = secondaryWindows.get(id);
   if (win && !win.isDestroyed()) win.close();
+});
+
+// Opens the Company Browser: a dedicated BrowserWindow with webviewTag
+// enabled, used ONLY for this feature. webviewTag stays false on every
+// other window this app creates (see hardenWebPreferencesDefaults) —
+// this is the single, intentional, narrowly-scoped exception, which is
+// why this handler builds its own webPreferences object rather than
+// reusing assertWebPreferencesNotWeaker (that assertion would always
+// fail here, since it exists specifically to catch an ACCIDENTAL
+// weakening relative to the secure default, and enabling webviewTag is
+// a deliberate one). Every guest <webview> opened inside this window is
+// re-hardened individually via the 'will-attach-webview' handler below,
+// which is what actually keeps this safe.
+let companyBrowserWindow = null;
+guardedHandle('window:open-company-browser', () => {
+  if (companyBrowserWindow && !companyBrowserWindow.isDestroyed()) {
+    companyBrowserWindow.focus();
+    return { ok: true };
+  }
+  const built = buildSecondaryWindowUrl(REMOTE_SERVER_URL, '/desktop-company-browser');
+  if (typeof built !== 'string') {
+    return { ok: false, error: built && built.error ? built.error : 'invalid route' };
+  }
+  companyBrowserWindow = new BrowserWindow({
+    width: 1200,
+    height: 850,
+    title: 'Company Browser — RMPG Flex',
+    webPreferences: hardenWebPreferencesDefaults({
+      webviewTag: true,
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+    }),
+  });
+  companyBrowserWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    Object.assign(webPreferences, hardenGuestWebPreferences(webPreferences));
+    if (!shouldAllowGuestNavigation(params.src)) {
+      event.preventDefault();
+    }
+  });
+  // will-attach-webview only gates the INITIAL src — it fires once, before
+  // the guest even attaches. Later navigation (address-bar entry, an
+  // in-page redirect to file:/javascript:/chrome:, etc.) is a completely
+  // separate event and is never gated by the block above. did-attach-webview
+  // hands us the actual guest webContents once attached, which does emit
+  // its own cancelable 'will-navigate' for every subsequent navigation —
+  // unlike the <webview> DOM element's own 'will-navigate' event (wired up
+  // client-side in CompanyBrowserPage.tsx for its OBSERVATIONAL events
+  // only), which cannot preventDefault(). This is the only place capable of
+  // actually blocking a later non-http(s) navigation.
+  companyBrowserWindow.webContents.on('did-attach-webview', (event, guestWebContents) => {
+    guestWebContents.on('will-navigate', (navEvent, url) => {
+      if (!shouldAllowGuestNavigation(url)) {
+        console.warn('[SECURITY] Blocked Company Browser guest navigation to disallowed scheme:', url);
+        navEvent.preventDefault();
+      }
+    });
+  });
+  companyBrowserWindow.on('closed', () => { companyBrowserWindow = null; });
+  companyBrowserWindow.loadURL(built).catch((err) => {
+    console.warn('[APP] Company Browser loadURL failed:', err && err.message);
+  });
+  return { ok: true };
 });
 
 // Sets the dock/taskbar badge count (unread alerts, active calls, etc).

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { Radio } from 'lucide-react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Radio, Globe } from 'lucide-react';
 import { getWindowConfig, getWindowConfigByPath, isWindowablePath, activateNavFunction } from './windowManager';
 import type { NavFunction } from '../data/navCatalog';
 
@@ -52,5 +52,52 @@ describe('activateNavFunction', () => {
     activateNavFunction(EXCLUDED, { openWindow, navigate });
     expect(navigate).toHaveBeenCalledWith('/baz');
     expect(openWindow).not.toHaveBeenCalled();
+  });
+});
+
+const COMPANY_BROWSER_FN: NavFunction = {
+  path: '/desktop-company-browser',
+  label: 'Company Browser',
+  icon: Globe,
+  description: 'test',
+  notWindowable: 'test',
+  electronOnly: 'company-browser',
+};
+
+describe('activateNavFunction — electronOnly', () => {
+  const originalElectron = (window as any).electron;
+  afterEach(() => { (window as any).electron = originalElectron; });
+
+  it('calls window.electron.openCompanyBrowser when running in Electron', () => {
+    const openCompanyBrowser = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electron = { isElectron: true, openCompanyBrowser };
+    const openWindow = vi.fn();
+    const navigate = vi.fn();
+    const onElectronOnlyUnavailable = vi.fn();
+
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow, navigate, onElectronOnlyUnavailable });
+
+    expect(openCompanyBrowser).toHaveBeenCalledTimes(1);
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(onElectronOnlyUnavailable).not.toHaveBeenCalled();
+  });
+
+  it('calls onElectronOnlyUnavailable when NOT running in Electron', () => {
+    (window as any).electron = undefined;
+    const openWindow = vi.fn();
+    const navigate = vi.fn();
+    const onElectronOnlyUnavailable = vi.fn();
+
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow, navigate, onElectronOnlyUnavailable });
+
+    expect(onElectronOnlyUnavailable).toHaveBeenCalledWith(COMPANY_BROWSER_FN);
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when onElectronOnlyUnavailable is omitted and Electron is absent', () => {
+    (window as any).electron = undefined;
+    expect(() => activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn() })).not.toThrow();
   });
 });
