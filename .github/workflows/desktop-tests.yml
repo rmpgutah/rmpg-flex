@@ -40,4 +40,11 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: cd desktop && npm ci
+      # npm ci's postinstall runs electron-rebuild, leaving better-sqlite3 built
+      # for Electron's ABI. The DB-backed tests run under plain `node --test`
+      # (Node's ABI), so without this they fail with a NODE_MODULE_VERSION
+      # mismatch — mirrors the same rebuild .husky/pre-push does locally.
+      # No need to rebuild back to the Electron ABI afterward: this is a
+      # throwaway CI runner, not a dev environment that later runs `npm start`.
+      - run: cd desktop && npm rebuild better-sqlite3
       - run: cd desktop && npm test
