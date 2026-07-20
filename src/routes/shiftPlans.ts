@@ -156,7 +156,7 @@ sp.post('/shift-plans/bulk-activate', async (c) => {
     const ph = body.plan_ids.map(() => '?').join(',');
     const r = await execute(
       db,
-      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime')
+      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
          WHERE id IN (${ph}) AND status = 'draft'`,
       ...body.plan_ids,
     );
@@ -164,7 +164,7 @@ sp.post('/shift-plans/bulk-activate', async (c) => {
   } else if (body.start_date && body.end_date) {
     const r = await execute(
       db,
-      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime')
+      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
          WHERE date BETWEEN ? AND ? AND status = 'draft'`,
       body.start_date, body.end_date,
     );
@@ -213,13 +213,13 @@ sp.post('/shift-plans/:id/activate', async (c) => {
   // Demote every other active plan for the same date.
   await execute(
     db,
-    `UPDATE shift_plans SET status = 'draft', updated_at = datetime('now','localtime')
+    `UPDATE shift_plans SET status = 'draft', updated_at = datetime('now')
        WHERE date = ? AND id != ? AND status = 'active'`,
     existing.date, id,
   );
   await execute(
     db,
-    `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE shift_plans SET status = 'active', updated_at = datetime('now') WHERE id = ?`,
     id,
   );
   const updated = await queryFirst<any>(
@@ -316,7 +316,7 @@ sp.post('/shift-plans', async (c) => {
       db,
       `UPDATE shift_plans
          SET name = ?, date = ?, shift_type = ?, assignments = ?, status = ?,
-             updated_at = COALESCE(?, datetime('now','localtime'))
+             updated_at = COALESCE(?, datetime('now'))
          WHERE id = ?`,
       cleanName, date, shiftType || 'day', assignmentsJson, status || 'draft', updatedAt ?? null, id,
     );
@@ -325,8 +325,8 @@ sp.post('/shift-plans', async (c) => {
       db,
       `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
        VALUES (?,?,?,?,?,?, ?,
-               COALESCE(?, datetime('now','localtime')),
-               COALESCE(?, datetime('now','localtime')))`,
+               COALESCE(?, datetime('now')),
+               COALESCE(?, datetime('now')))`,
       id, cleanName, date, shiftType || 'day', assignmentsJson, status || 'draft', user?.id ?? null,
       createdAt ?? null, updatedAt ?? null,
     );
@@ -368,7 +368,7 @@ sp.put('/shift-plans/:id', async (c) => {
     args.push(v === '' ? null : v ?? null);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now','localtime')");
+  sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE shift_plans SET ${sets.join(', ')} WHERE id = ?`, ...args);
 
@@ -433,7 +433,7 @@ sp.post('/shift-swaps', async (c) => {
     `INSERT INTO shift_swap_requests (
        requester_id, requester_name, target_id, target_name, plan_id,
        shift_date, original_shift, requested_shift, reason, status, created_at
-     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now','localtime'))`,
+     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now'))`,
     user.id, user.full_name ?? null, body.target_id ?? null, targetName,
     body.plan_id ?? null, body.shift_date, body.original_shift ?? null,
     body.requested_shift ?? null, body.reason ?? null,
@@ -455,7 +455,7 @@ sp.put('/shift-swaps/:id', async (c) => {
   await execute(
     db,
     `UPDATE shift_swap_requests SET status = ?, reviewed_by = ?, reviewed_by_name = ?,
-       reviewed_at = datetime('now','localtime'), review_notes = ?
+       reviewed_at = datetime('now'), review_notes = ?
      WHERE id = ?`,
     body.status, user?.id ?? null, user?.full_name ?? null, body.review_notes ?? null, id,
   );

@@ -125,9 +125,9 @@ tasks.put('/:id', async (c) => {
     const b = await c.req.json<Record<string, unknown>>();
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (TASK_UPDATABLE.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
-    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now','localtime'))"); }
+    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now'))"); }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE task_assignments SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM task_assignments WHERE id = ?', id);
     return c.json({ data: updated });

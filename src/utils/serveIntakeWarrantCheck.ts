@@ -87,7 +87,7 @@ export async function serveIntakeWarrantCheck(
 
     // Mark screened regardless of hits so we don't re-run on every status change.
     await execute(db,
-      "UPDATE serve_queue SET intake_screened_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET intake_screened_at = datetime('now') WHERE id = ?",
       serveQueueId,
     ).catch(() => {});
 
@@ -110,7 +110,7 @@ export async function serveIntakeWarrantCheck(
     for (const sup of supervisors) {
       await execute(db,
         `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-         VALUES ('serve_intake_hit', 'high', 'Serve intake — record hit', ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+         VALUES ('serve_intake_hit', 'high', 'Serve intake — record hit', ?, 'serve_job', ?, ?, 0, datetime('now'))`,
         `${recipientName} has ${hitSummary}${chargeNote} — Job #${serveQueueId}`,
         serveQueueId, sup.id,
       );

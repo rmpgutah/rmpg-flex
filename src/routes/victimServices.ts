@@ -34,7 +34,7 @@ victimServices.put('/victims/:id', async (c) => {
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     if (!body.case_number) return c.json({ error: 'case_number required' }, 400);
   await execute(db,
-    'UPDATE victim_services_records SET victim_name=?, case_number=?, crime_type=?, status=?, advocate_id=?, phone=?, email=?, address=?, safety_plan=?, protective_order=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE victim_services_records SET victim_name=?, case_number=?, crime_type=?, status=?, advocate_id=?, phone=?, email=?, address=?, safety_plan=?, protective_order=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     body.victim_name, body.case_number, body.crime_type || null, body.status || 'active', body.advocate_id || null, body.phone || null, body.email || null, body.address || null, body.safety_plan || 0, body.protective_order || 0, body.notes || null, id
   );
   return c.json({ success: true });

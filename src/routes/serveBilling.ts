@@ -94,7 +94,7 @@ psb.put('/ps-pricing/items/:id', async (c) => {
   await execute(db,
     `UPDATE ps_pricing_items SET
        label = ?, unit = ?, amount = ?, taxable = ?, attempts_included = ?, is_active = ?, sort_order = ?,
-       updated_at = datetime('now','localtime'), updated_by = ?
+       updated_at = datetime('now'), updated_by = ?
      WHERE id = ?`,
     b.label ?? before.label, b.unit ?? before.unit,
     b.amount !== undefined ? Number(b.amount) : before.amount,
@@ -116,7 +116,7 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   // Soft-delete: charges reference codes historically.
-  await execute(db, `UPDATE ps_pricing_items SET is_active = 0, updated_at = datetime('now','localtime'), updated_by = ? WHERE id = ?`, user?.id ?? null, id);
+  await execute(db, `UPDATE ps_pricing_items SET is_active = 0, updated_at = datetime('now'), updated_by = ? WHERE id = ?`, user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'deactivate', 'ps_pricing_item', id, {});
   return c.json({ success: true });
 });
@@ -153,7 +153,7 @@ psb.put('/contracts/:id/ps-terms', async (c) => {
        billing_trigger = excluded.billing_trigger, sla_days = excluded.sla_days,
        retainer_amount = excluded.retainer_amount, doc_types_json = excluded.doc_types_json,
        rate_overrides_json = excluded.rate_overrides_json, notes = excluded.notes,
-       updated_at = datetime('now','localtime'), updated_by = excluded.updated_by`,
+       updated_at = datetime('now'), updated_by = excluded.updated_by`,
     id, b.billing_trigger ?? 'on_completion', b.sla_days ?? null, b.retainer_amount ?? null,
     docTypesJson, overridesJson, b.notes ?? null, user?.id ?? null);
   await logAudit(db, user?.id ?? null, before ? 'update' : 'create', 'ps_contract', id, { before, after: b });
@@ -239,7 +239,7 @@ psb.post('/serve-charges/:id/approve', async (c) => {
   if (!cur) return c.json({ error: 'Not found' }, 404);
   if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
   const user = c.get('user') as { id: number } | undefined;
-  await execute(db, `UPDATE serve_charges SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now','localtime') WHERE id = ?`, user?.id ?? null, id);
+  await execute(db, `UPDATE serve_charges SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?`, user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'approve', 'serve_charge', id, {});
   return c.json({ success: true });
 });

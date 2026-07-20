@@ -98,7 +98,7 @@ pawn.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE pawn_transactions SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
@@ -116,7 +116,7 @@ pawn.post('/:id/flag', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const result = await execute(db,
-      `UPDATE pawn_transactions SET flagged_stolen = 1, status = 'flagged', updated_at = datetime('now','localtime') WHERE id = ?`, id);
+      `UPDATE pawn_transactions SET flagged_stolen = 1, status = 'flagged', updated_at = datetime('now') WHERE id = ?`, id);
     if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', id);
     return c.json(updated);

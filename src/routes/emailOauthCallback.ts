@@ -45,14 +45,14 @@ async function writeCfg(db: D1Database, key: string, value: string): Promise<voi
   if (existing) {
     await execute(
       db,
-      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
       value, key,
     );
   } else {
     await execute(
       db,
       `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-       VALUES (?, ?, 'email', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+       VALUES (?, ?, 'email', 1, datetime('now'), datetime('now'))`,
       key, value,
     );
   }

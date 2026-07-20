@@ -441,7 +441,7 @@ export async function createInvoiceWithItems(
        (invoice_number, client_id, contract_id, issue_date, due_date,
         subtotal, tax_rate, tax_amount, total_amount, paid_amount, status, created_at)
      VALUES (?, ?, (SELECT contract_id FROM serve_queue WHERE id = ?),
-             date('now','localtime'), ?, ?, ?, ?, ?, 0, 'draft', datetime('now','localtime'))`,
+             date('now'), ?, ?, ?, ?, ?, 0, 'draft', datetime('now'))`,
     invoiceNumber,
     clientId,
     queueId,
@@ -530,7 +530,7 @@ export async function trackPayment(
   const payResult = await execute(
     db,
     `INSERT INTO payments (invoice_id, client_id, payment_date, amount, payment_method, reference_number, created_at)
-     VALUES (?, ?, date('now','localtime'), ?, ?, ?, datetime('now','localtime'))`,
+     VALUES (?, ?, date('now'), ?, ?, ?, datetime('now'))`,
     invoiceId,
     inv.client_id,
     amount,
@@ -541,7 +541,7 @@ export async function trackPayment(
   await execute(
     db,
     `UPDATE invoices
-     SET paid_amount = ?, status = ?, updated_at = datetime('now','localtime')
+     SET paid_amount = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`,
     newPaidAmount,
     newStatus,
@@ -620,13 +620,13 @@ export async function getOverdueInvoices(
        i.paid_amount,
        i.due_date,
        i.status,
-       CAST(julianday('now','localtime') - julianday(i.due_date) AS INTEGER) as days_since_due
+       CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_since_due
      FROM invoices i
      JOIN clients c ON c.id = i.client_id
-     WHERE i.due_date < date('now','localtime')
+     WHERE i.due_date < date('now')
        AND i.status IN ('sent', 'partial', 'overdue')
        AND (i.total_amount - i.paid_amount) > 0
-       AND CAST(julianday('now','localtime') - julianday(i.due_date) AS INTEGER) >= ?
+       AND CAST(julianday('now') - julianday(i.due_date) AS INTEGER) >= ?
      ORDER BY i.due_date ASC`,
     daysOverdue,
   );
@@ -637,7 +637,7 @@ export async function getOverdueInvoices(
     const placeholders = invoiceIds.map(() => '?').join(',');
     await execute(
       db,
-      `UPDATE invoices SET status = 'overdue', updated_at = datetime('now','localtime')
+      `UPDATE invoices SET status = 'overdue', updated_at = datetime('now')
        WHERE id IN (${placeholders}) AND status != 'overdue'`,
       ...invoiceIds,
     ).catch(() => {});
@@ -914,9 +914,9 @@ async function _deprecatedNotifyServeCompletion(
   await execute(
     db,
     `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-     VALUES (?, ?, datetime('now','localtime'))
+     VALUES (?, ?, datetime('now'))
      ON CONFLICT(serve_queue_id, condition)
-     DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+     DO UPDATE SET last_notified_at = datetime('now')`,
     queueId,
     `completion_notify_${attempt.result ?? 'update'}_${attemptId}`,
   ).catch(() => {});

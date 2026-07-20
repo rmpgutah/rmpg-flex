@@ -106,7 +106,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       if (existing) {
         // Update the cached job row
         await execute(db,
-          `UPDATE sm_jobs SET job_status=?, service_status=?, updated_at=datetime('now','localtime') WHERE sm_job_id=?`,
+          `UPDATE sm_jobs SET job_status=?, service_status=?, updated_at=datetime('now') WHERE sm_job_id=?`,
           job.job_status, job.service_status, job.id);
         synced++;
         continue;
@@ -136,7 +136,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         callData.caller_name];
       const placeholders = colNames.map(() => '?').join(',');
       const result = await execute(db,
-        `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now','localtime'), datetime('now','localtime'))`,
+        `INSERT INTO calls_for_service (${colNames.join(',')}, created_at, updated_at) VALUES (${placeholders}, datetime('now'), datetime('now'))`,
         ...values,
       );
       const callId = Number(result.meta.last_row_id);
@@ -146,7 +146,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
         `INSERT INTO sm_jobs (sm_job_id, sm_job_number, client_company_name, recipient_name,
            job_status, service_status, court_case_number, due_date, linked_call_id,
            process_type, addresses_json, documents_json, synced_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))`,
         job.id, job.job_number, clientName, job.recipient?.full_name || null,
         job.job_status, job.service_status, job.court_case_number || null,
         job.due_date || null, callId,
@@ -173,7 +173,7 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
       `DELETE FROM system_config WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'`);
     await execute(db,
       `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
-       VALUES ('servemanager_last_poll_at', datetime('now','localtime'), 'integrations', 0, 1, datetime('now','localtime'), datetime('now','localtime'))`);
+       VALUES ('servemanager_last_poll_at', datetime('now'), 'integrations', 0, 1, datetime('now'), datetime('now'))`);
 
     return { synced, callsCreated };
   } catch (err) {

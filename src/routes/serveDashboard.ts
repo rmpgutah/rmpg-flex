@@ -314,7 +314,7 @@ sd.get('/workload-distribution', async (c) => {
        u.full_name AS officer_name,
        SUM(CASE WHEN q.status IN ('assigned', 'in_progress', 'attempted') THEN 1 ELSE 0 END) AS assigned_count,
        SUM(CASE WHEN q.deadline IS NOT NULL
-                  AND q.deadline < datetime('now','localtime')
+                  AND q.deadline < datetime('now')
                   AND q.status NOT IN ('served', 'cancelled', 'failed')
              THEN 1 ELSE 0 END) AS overdue_count,
        COALESCE(todays.cnt, 0) AS todays_attempts
@@ -388,7 +388,7 @@ sd.get('/stale-attempts', async (c) => {
        q.recipient_city,
        q.status,
        la.last_attempt_at,
-       ROUND((JULIANDAY(datetime('now','localtime')) - JULIANDAY(la.last_attempt_at)), 0) AS days_stale,
+       ROUND((JULIANDAY(datetime('now')) - JULIANDAY(la.last_attempt_at)), 0) AS days_stale,
        q.officer_id,
        u.full_name AS officer_name,
        q.attempt_count,
@@ -401,7 +401,7 @@ sd.get('/stale-attempts', async (c) => {
      LEFT JOIN users u ON u.id = q.officer_id
      WHERE q.status NOT IN ('served', 'cancelled', 'failed')
        AND la.last_attempt_at IS NOT NULL
-       AND la.last_attempt_at < datetime('now','localtime', '-' || ? || ' days')
+       AND la.last_attempt_at < datetime('now', '-' || ? || ' days')
      ORDER BY la.last_attempt_at ASC
      LIMIT 200`,
     staleDays,
@@ -583,7 +583,7 @@ sd.post('/bulk-reassign', async (c) => {
   // Update officer_id on the parent queue entries
   const stmts = Array.from(queueIds).map((qid) =>
     db.prepare(
-      "UPDATE serve_queue SET officer_id = ?, status = CASE WHEN status = 'pending' THEN 'assigned' ELSE status END, updated_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET officer_id = ?, status = CASE WHEN status = 'pending' THEN 'assigned' ELSE status END, updated_at = datetime('now') WHERE id = ?",
     ).bind(body.toServerId, qid),
   );
 
@@ -715,14 +715,14 @@ sd.post('/bulk-status-update', async (c) => {
   );
 
   const closedAt = (body.status === 'served' || body.status === 'failed')
-    ? "datetime('now','localtime')"
+    ? "datetime('now')"
     : 'NULL';
 
   // Update queue status for each affected queue
   const stmts = affectedQueues.map((q) =>
     db.prepare(
       `UPDATE serve_queue
-       SET status = ?, closed_at = ${closedAt}, updated_at = datetime('now','localtime')
+       SET status = ?, closed_at = ${closedAt}, updated_at = datetime('now')
        WHERE id = ?`,
     ).bind(body.status, q.serve_queue_id),
   );

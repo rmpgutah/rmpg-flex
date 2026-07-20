@@ -16,6 +16,7 @@
 import type { CallForService } from '../../../types';
 import { applyCallPdfAutofill } from './callPdfAutofill';
 import { importWithRetry } from '../../../utils/importWithRetry';
+import { formatDate } from '../../../utils/dateUtils';
 import type {
   NoticeOfCommunicationData,
   NoticeOfCommunicationAttempt,
@@ -207,11 +208,10 @@ export function buildNoticeOfCommunicationFromCall(
   // Notice Date renders in the same MM/DD/YYYY format as the attempt
   // dates below — having one slot read "June 21, 2026" and the table
   // read "06/20/2026" made the document look like two different forms.
-  // toLocaleDateString('en-US') defaults to M/D/YYYY; manual zero-pad
-  // keeps the field grid columns aligned.
-  const now = new Date();
-  const pad2 = (n: number) => String(n).padStart(2, '0');
-  const noticeDate = `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()}`;
+  // formatDate() resolves the display timezone (America/Denver); raw Date
+  // getters here would read the host's local zone (UTC) instead, printing
+  // tomorrow's date on notices generated in the evening Mountain Time.
+  const noticeDate = formatDate(new Date().toISOString());
 
   return {
     noticeDate,

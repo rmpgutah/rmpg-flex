@@ -1239,7 +1239,7 @@ cases.post('/:id/tasks', async (c) => {
     const res = await execute(
       db,
       `INSERT INTO case_tasks (case_id, title, description, status, priority, assignee_id, assignee_name, due_date, created_by, updated_at)
-       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, datetime('now'))`,
       id, title, b.description ?? null, priority, b.assignee_id ?? null, assigneeName, b.due_date ?? null, userId ?? null,
     );
     const taskId = Number(res.meta.last_row_id);
@@ -1272,7 +1272,7 @@ cases.post('/:id/tasks/apply-template', async (c) => {
       await execute(
         db,
         `INSERT INTO case_tasks (case_id, title, status, priority, created_by, updated_at)
-         VALUES (?, ?, 'open', ?, ?, datetime('now','localtime'))`,
+         VALUES (?, ?, 'open', ?, ?, datetime('now'))`,
         id, item.title, item.priority, userId ?? null,
       );
       added++;
@@ -1320,7 +1320,7 @@ cases.put('/:id/tasks/:taskId', async (c) => {
       sets.push('completed_at = ?'); vals.push(completedAtFor(b.status, new Date().toISOString(), existing.completed_at));
     }
     if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`);
+    sets.push(`updated_at = datetime('now')`);
     vals.push(taskId, id);
     await execute(db, `UPDATE case_tasks SET ${sets.join(', ')} WHERE id = ? AND case_id = ?`, ...vals);
 

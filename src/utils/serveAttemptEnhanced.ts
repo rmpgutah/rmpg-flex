@@ -321,7 +321,7 @@ export async function logAttemptGpsBreadcrumb(
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy_meters REAL,
-        logged_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        logged_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
     );
   } catch { /* race or pre-existing — tolerated */ }
@@ -468,7 +468,7 @@ export async function retryWithBackoff(
       db,
       `UPDATE serve_queue
           SET next_attempt_note = ?,
-              updated_at = datetime('now','localtime')
+              updated_at = datetime('now')
         WHERE id = ?`,
       `Retry scheduled ${backoffDays} days out (${nextDateStr})`,
       attempt.serve_queue_id,
@@ -557,7 +557,7 @@ export async function autoEscalateStale(
         db,
         `UPDATE serve_queue
             SET urgency_tier = 'critical',
-                urgency_computed_at = datetime('now','localtime')
+                urgency_computed_at = datetime('now')
                 ${priorityClause}
           WHERE id = ?`,
         job.id,
@@ -592,7 +592,7 @@ export async function autoEscalateStale(
             reassignedTo = leastLoaded.id;
             await execute(
               db,
-              `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+              `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now') WHERE id = ?`,
               reassignedTo,
               job.id,
             );
@@ -620,7 +620,7 @@ export async function autoEscalateStale(
           db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
            VALUES ('serve_stale_escalation', 'high', 'Stale serve job escalated',
-                   ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+                   ?, 'serve_job', ?, ?, 0, datetime('now'))`,
           `Job stale >${staleDays}d: ${who}${caseRef}${reassignNote}`,
           job.id, uid,
         );

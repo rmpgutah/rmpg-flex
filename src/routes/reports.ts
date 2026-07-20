@@ -537,7 +537,7 @@ reports.get('/command-center', async (c) => {
   };
 
   const kpis = {
-    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now','localtime')"),
+    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now')"),
     active_calls: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed')"),
     avg_response_min: 0,
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
@@ -560,7 +560,7 @@ reports.get('/command-center', async (c) => {
   );
   const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
   const calls_by_hour = await list(
-    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now','localtime') GROUP BY strftime('%H', created_at) ORDER BY hour",
+    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now') GROUP BY strftime('%H', created_at) ORDER BY hour",
   );
   const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
 
@@ -1037,7 +1037,7 @@ reports.get('/daily-briefing', async (c) => {
                SUM(CASE WHEN priority='P1' THEN 1 ELSE 0 END) AS p1_calls,
                SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
                ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_response
-             FROM calls_for_service WHERE date(created_at)=date('now','localtime','-1 day')`),
+             FROM calls_for_service WHERE date(created_at)=date('now','-1 day')`),
       safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
       safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
       safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now','-7 days') GROUP BY incident_type ORDER BY count DESC LIMIT 5`),

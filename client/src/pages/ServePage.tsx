@@ -342,7 +342,7 @@ export default function ServePage() {
   const handleJobSheet = async (jobId: number) => {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
-      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+      const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
       const fullAddress = [
         job.recipient_address,
@@ -352,16 +352,12 @@ export default function ServePage() {
         job.recipient_zip,
       ].filter(Boolean).join(', ');
 
-      const pad = (n: number) => String(n).padStart(2, '0');
-
       const attempts = (job.attempts || []).map((a, i) => {
         const ts = a.attempt_at || a.created_at || null;
-        const at = ts ? parseTimestamp(ts) : null;
-        const valid = at && !isNaN(at.getTime());
         return {
           number: a.attempt_number ?? i + 1,
-          date: valid ? `${pad(at!.getMonth() + 1)}/${pad(at!.getDate())}/${at!.getFullYear()}` : '',
-          time: valid ? at!.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+          date: ts ? formatDate(ts) : '',
+          time: ts ? formatShortTime(ts) : '',
           type: toDisplayLabel(a.attempt_type),
           result: (a as any).disposition_code || a.result || 'other',
           officerName: a.officer_name || '',
@@ -372,11 +368,9 @@ export default function ServePage() {
       });
 
       const skipTraces = (job.skipTraces || []).map((t: any) => {
-        const tTs = t.created_at ? parseTimestamp(t.created_at) : null;
-        const tValid = tTs && !isNaN(tTs.getTime());
         const addrs = Array.isArray(t.addresses_found) ? t.addresses_found : [];
         return {
-          date: tValid ? `${pad(tTs!.getMonth() + 1)}/${pad(tTs!.getDate())}/${tTs!.getFullYear()}` : '',
+          date: t.created_at ? formatDate(t.created_at) : '',
           searchType: t.search_type || '',
           addressesFound: addrs.length,
           addressesTried: addrs.map((a: any) =>
@@ -426,7 +420,7 @@ export default function ServePage() {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
-      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+      const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
       // Find the attempt that resulted in service
       const serviceAttempt = (job.attempts || []).find((a) => {
@@ -440,8 +434,6 @@ export default function ServePage() {
       }
 
       const ts = serviceAttempt.attempt_at || serviceAttempt.created_at || null;
-      const at = ts ? parseTimestamp(ts) : new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
 
       const method = serviceAttempt.attempt_type === 'substitute' ? 'substitute'
         : serviceAttempt.attempt_type === 'posting' ? 'posting'
@@ -466,12 +458,8 @@ export default function ServePage() {
         recipientName: job.recipient_name,
         recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
         documentType: job.document_type || 'Legal Documents',
-        serviceDate: !isNaN(at.getTime())
-          ? `${pad(at.getMonth() + 1)}/${pad(at.getDate())}/${at.getFullYear()}`
-          : new Date().toLocaleDateString('en-US'),
-        serviceTime: !isNaN(at.getTime())
-          ? at.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-          : '',
+        serviceDate: ts ? formatDate(ts) : formatDate(new Date().toISOString()),
+        serviceTime: ts ? formatShortTime(ts) : '',
         serviceMethod: method,
         gpsLat: serviceAttempt.latitude ?? 0,
         gpsLng: serviceAttempt.longitude ?? 0,
@@ -493,7 +481,7 @@ export default function ServePage() {
       const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
-      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+      const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
       // Filter to only unsuccessful attempts
       const attempts = (job.attempts || [])
@@ -505,13 +493,11 @@ export default function ServePage() {
         })
         .map((a, i) => {
           const ts = a.attempt_at || a.created_at || null;
-          const at = ts ? parseTimestamp(ts) : null;
           const resultText = (a as any).disposition_code || a.result || 'other';
-          const pad = (n: number) => String(n).padStart(2, '0');
           return {
             number: a.attempt_number ?? i + 1,
-            date: at && !isNaN(at.getTime()) ? `${pad(at.getMonth() + 1)}/${pad(at.getDate())}/${at.getFullYear()}` : '',
-            time: at && !isNaN(at.getTime()) ? at.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+            date: ts ? formatDate(ts) : '',
+            time: ts ? formatShortTime(ts) : '',
             gpsLat: a.latitude ?? 0,
             gpsLng: a.longitude ?? 0,
             result: resultText,
@@ -526,7 +512,7 @@ export default function ServePage() {
 
       // Map skip traces if available
       const skipTraces = ((job as any).skipTraces || []).map((st: any) => ({
-        date: st.searched_at || '',
+        date: st.searched_at ? formatDate(st.searched_at) : '',
         searchType: st.search_type || 'Skip Trace',
         addressesFound: st.addresses_found || 0,
         addressesTried: st.addresses_tried_json ? JSON.parse(st.addresses_tried_json) : [],

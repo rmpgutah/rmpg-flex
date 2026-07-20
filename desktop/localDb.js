@@ -63,6 +63,20 @@ function initLocalDb() {
   createMirrorTables();
   createLocalTables();
 
+  // Reconciliation: add pin_sessions.device_id for installs whose local DB
+  // predates device-binding (the CREATE TABLE IF NOT EXISTS above only
+  // applies to genuinely fresh installs — it's a no-op against an existing
+  // table, so upgrades need this explicit ALTER). Must run after
+  // createLocalTables() so the pin_sessions table is guaranteed to exist
+  // first. Idempotent: a second run against a DB that already has the
+  // column hits SQLite's "duplicate column name" error, which is swallowed;
+  // any other failure is rethrown.
+  try {
+    db.exec('ALTER TABLE pin_sessions ADD COLUMN device_id TEXT');
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message)) throw err;
+  }
+
   console.log('[LOCAL-DB] Ready');
   return db;
 }
@@ -299,7 +313,8 @@ function createLocalTables() {
       authorized_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       is_active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      device_id TEXT
     );
 
     -- PIN Attempts: brute-force tracking

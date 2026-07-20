@@ -24,8 +24,8 @@ announcements.get('/', async (c) => {
       `SELECT id, title, body, type, priority, target_roles, starts_at, expires_at, created_at
          FROM announcements
         WHERE is_active = 1
-          AND (starts_at IS NULL OR starts_at <= datetime('now','localtime'))
-          AND (expires_at IS NULL OR expires_at >= datetime('now','localtime'))
+          AND (starts_at IS NULL OR starts_at <= datetime('now'))
+          AND (expires_at IS NULL OR expires_at >= datetime('now'))
         ORDER BY
           CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
           created_at DESC`,

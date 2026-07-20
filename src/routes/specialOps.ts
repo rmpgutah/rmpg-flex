@@ -76,7 +76,7 @@ specialOps.put('/equipment/:id', async (c) => {
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
-    'UPDATE special_ops_equipment SET equipment_type=?, serial_number=?, condition=?, assigned_to=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE special_ops_equipment SET equipment_type=?, serial_number=?, condition=?, assigned_to=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     body.equipment_type, body.serial_number || null, body.condition || 'ready', body.assigned_to || null, body.notes || null, id
   );
   return c.json({ success: true });

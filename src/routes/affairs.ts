@@ -140,7 +140,7 @@ affairs.put('/complaints/:id', async (c) => {
     if (b.status === 'closed' || b.status === 'sustained' || b.status === 'not_sustained' || b.status === 'exonerated' || b.status === 'unfounded') {
       sets.push("closed_date = COALESCE(closed_date, date('now'))");
     }
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE ia_complaints SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_complaints WHERE id = ?', id);
     // Capture which fields actually changed (status / disposition transitions
@@ -218,7 +218,7 @@ affairs.post('/complaints/:id/investigations', async (c) => {
     const b = await c.req.json<Record<string, unknown>>();
     const result = await execute(db,
       `INSERT INTO ia_investigations (complaint_id, investigator_id, started_at, summary, status)
-       VALUES (?, ?, COALESCE(?, datetime('now','localtime')), ?, ?)`,
+       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?)`,
       id, b.investigator_id ?? null, b.started_at ?? null, b.summary ?? null, b.status ?? 'open',
     );
     const newId = Number(result.meta.last_row_id);
@@ -250,11 +250,11 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
     const updatable = new Set(['investigator_id','completed_at','summary','findings','recommendations','reviewed_by','reviewed_at','status']);
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
-    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now','localtime'))"); }
+    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now'))"); }
     // Mirror the auto-stamp for 'reviewed' — without this, a reviewer-only
     // transition (completed → reviewed) leaves reviewed_at unset unless the
     // client explicitly passes it, which they don't today.
-    if (b.status === 'reviewed') { sets.push("reviewed_at = COALESCE(reviewed_at, datetime('now','localtime'))"); }
+    if (b.status === 'reviewed') { sets.push("reviewed_at = COALESCE(reviewed_at, datetime('now'))"); }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
     vals.push(iid, cid);
     await execute(db, `UPDATE ia_investigations SET ${sets.join(', ')} WHERE id = ? AND complaint_id = ?`, ...vals);
