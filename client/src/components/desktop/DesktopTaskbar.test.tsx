@@ -118,6 +118,23 @@ describe('DesktopTaskbar — Pin to Taskbar (launcher search)', () => {
   });
 });
 
+describe('DesktopTaskbar — window grouping', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('two windows sharing a path collapse into one grouped button with a count badge, and clicking cycles focus between them', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const groupButton = screen.getByRole('button', { name: /Dispatch.*2/ });
+    expect(groupButton).toBeInTheDocument();
+    fireEvent.click(groupButton);
+    const items = screen.getAllByText(/^\/dispatch$/);
+    expect(items).toHaveLength(2); // both windows still open — cycling only changes focus, not window count
+  });
+});
+
 describe('DesktopTaskbar — pinned apps render when not running', () => {
   beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
 

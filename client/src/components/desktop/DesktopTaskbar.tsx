@@ -129,6 +129,18 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
       .filter((fn): fn is NavFunction => !!fn);
   }, [windows, catalog]);
 
+  const cycleIndexRef = useRef<Record<string, number>>({});
+
+  const windowGroups = useMemo(() => {
+    const byPath = new Map<string, typeof windows>();
+    for (const w of windows) {
+      const list = byPath.get(w.path) ?? [];
+      list.push(w);
+      byPath.set(w.path, list);
+    }
+    return [...byPath.entries()].map(([path, group]) => ({ path, group }));
+  }, [windows]);
+
   return (
     <div
       className="flex items-center justify-between px-2 gap-2"
@@ -198,17 +210,46 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
             {fn.label}
           </button>
         ))}
-        {windows.map(w => (
-          <button
-            key={w.id}
-            type="button"
-            onClick={() => focusWindow(w.id)}
-            className="px-3 py-1 text-[11px] truncate"
-            style={{ maxWidth: 160, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
-          >
-            {w.title}
-          </button>
-        ))}
+        {windowGroups.map(({ path, group }) => {
+          if (group.length === 1) {
+            const w = group[0];
+            return (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => focusWindow(w.id)}
+                className="px-3 py-1 text-[11px] truncate"
+                style={{ maxWidth: 160, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+              >
+                {w.title}
+              </button>
+            );
+          }
+          const handleGroupClick = () => {
+            const current = cycleIndexRef.current[path] ?? 0;
+            const next = (current + 1) % group.length;
+            cycleIndexRef.current[path] = next;
+            focusWindow(group[next].id);
+          };
+          return (
+            <button
+              key={path}
+              type="button"
+              aria-label={`${group[0].title} (${group.length})`}
+              onClick={handleGroupClick}
+              className="relative px-3 py-1 text-[11px] truncate"
+              style={{ maxWidth: 160, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+            >
+              {group[0].title}
+              <span
+                className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"
+                style={{ minWidth: 12, height: 12, padding: '0 2px', fontSize: 7, borderRadius: 6 }}
+              >
+                {group.length}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-3">
