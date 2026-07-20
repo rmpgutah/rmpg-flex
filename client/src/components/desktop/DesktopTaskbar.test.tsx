@@ -158,3 +158,36 @@ describe('DesktopTaskbar — pinned apps render when not running', () => {
     expect(screen.getAllByRole('button', { name: 'Dispatch Console' })).toHaveLength(1);
   });
 });
+
+describe('DesktopTaskbar — window button context menu', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('right-clicking a single window button offers Pin to Taskbar and Close', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Dispatch' }));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+    expect(screen.getByText('Close')).toBeInTheDocument();
+    expect(screen.queryByText('Close all')).not.toBeInTheDocument();
+  });
+
+  it('clicking Close on a window button closes that window', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Dispatch' }));
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).not.toBeInTheDocument();
+  });
+
+  it('a grouped window button offers Close all in addition to Close', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Dispatch.*2/ }));
+    expect(screen.getByText('Close all')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Close all'));
+    expect(screen.queryByRole('button', { name: /Dispatch/ })).not.toBeInTheDocument();
+  });
+});

@@ -17,7 +17,7 @@ export interface DesktopTaskbarProps {
 }
 
 export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) {
-  const { windows, focusWindow, openWindow, minimizeAll, restoreAll } = useDesktopWindows();
+  const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
   const [, forceRerender] = useState(0);
 
@@ -214,15 +214,22 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
           if (group.length === 1) {
             const w = group[0];
             return (
-              <button
+              <ContextMenu
                 key={w.id}
-                type="button"
-                onClick={() => focusWindow(w.id)}
-                className="px-3 py-1 text-[11px] truncate"
-                style={{ maxWidth: 160, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                items={[
+                  { label: isAppPinned(w.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(w.path)) unpinApp(w.path); else pinApp(w.path); forceRerender(n => n + 1); } },
+                  { label: 'Close', onClick: () => closeWindow(w.id) },
+                ]}
               >
-                {w.title}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => focusWindow(w.id)}
+                  className="px-3 py-1 text-[11px] truncate"
+                  style={{ maxWidth: 160, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                >
+                  {w.title}
+                </button>
+              </ContextMenu>
             );
           }
           const handleGroupClick = () => {
@@ -232,22 +239,30 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
             focusWindow(group[next].id);
           };
           return (
-            <button
+            <ContextMenu
               key={path}
-              type="button"
-              aria-label={`${group[0].title} (${group.length})`}
-              onClick={handleGroupClick}
-              className="relative px-3 py-1 text-[11px] truncate"
-              style={{ maxWidth: 160, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+              items={[
+                { label: isAppPinned(path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(path)) unpinApp(path); else pinApp(path); forceRerender(n => n + 1); } },
+                { label: 'Close', onClick: () => closeWindow(group[cycleIndexRef.current[path] ?? 0].id) },
+                { label: 'Close all', onClick: () => group.forEach(w => closeWindow(w.id)) },
+              ]}
             >
-              {group[0].title}
-              <span
-                className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"
-                style={{ minWidth: 12, height: 12, padding: '0 2px', fontSize: 7, borderRadius: 6 }}
+              <button
+                type="button"
+                aria-label={`${group[0].title} (${group.length})`}
+                onClick={handleGroupClick}
+                className="relative px-3 py-1 text-[11px] truncate"
+                style={{ maxWidth: 160, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
               >
-                {group.length}
-              </span>
-            </button>
+                {group[0].title}
+                <span
+                  className="absolute -top-1 -right-1 flex items-center justify-center font-bold bg-red-600 text-white"
+                  style={{ minWidth: 12, height: 12, padding: '0 2px', fontSize: 7, borderRadius: 6 }}
+                >
+                  {group.length}
+                </span>
+              </button>
+            </ContextMenu>
           );
         })}
       </div>
