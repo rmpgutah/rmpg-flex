@@ -14,6 +14,7 @@ import { sortIconPositions, snapToGrid } from '../utils/desktopLayoutOps';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import FloatingWindow from '../components/desktop/FloatingWindow';
+import DesktopWindowSwitcher from '../components/desktop/DesktopWindowSwitcher';
 import DesktopIconGrid from '../components/desktop/DesktopIconGrid';
 import DesktopTaskbar from '../components/desktop/DesktopTaskbar';
 import DesktopWidgetPanel from '../components/desktop/DesktopWidgetPanel';
@@ -227,6 +228,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               ))}
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <WindowLayer />
+              <DesktopWindowSwitcher />
             </DesktopWallpaper>
           </div>
         </ContextMenu>

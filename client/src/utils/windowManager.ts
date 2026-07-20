@@ -36,6 +36,10 @@ export function isWindowablePath(path: string): boolean {
   return getWindowConfigByPath(path) !== null;
 }
 
+export function getWindowIconByPath(path: string): NavFunction['icon'] | undefined {
+  return NAV_FUNCTION_BY_PATH[path]?.icon;
+}
+
 /** Shared activation logic for desktop icon clicks and taskbar search results: open a
  *  floating window for windowable pages, otherwise fall back to a normal SPA navigate(). */
 export function activateNavFunction(
