@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -164,4 +164,46 @@ test('getSyncQueueDetail: defaults to a limit of 100', () => {
 
   const detail = getSyncQueueDetail();
   assert.equal(detail.length, 3);
+});
+
+test('retrySyncQueueItem: resets an existing failed row to pending/attempts=0/error=null', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM sync_queue');
+
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'calls_for_service',
+    attempts: 5,
+    status: 'failed',
+    error: 'some error',
+  });
+  const seeded = db.prepare('SELECT id FROM sync_queue').get();
+
+  const result = retrySyncQueueItem(seeded.id);
+  assert.deepEqual(result, { ok: true });
+
+  const row = db.prepare('SELECT status, attempts, error FROM sync_queue WHERE id = ?').get(seeded.id);
+  assert.deepEqual(row, { status: 'pending', attempts: 0, error: null });
+});
+
+test('retrySyncQueueItem: non-existent id returns {ok:false, error} without touching other rows', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM sync_queue');
+
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'units',
+    attempts: 2,
+    status: 'failed',
+    error: 'unrelated error',
+  });
+  const unrelated = db.prepare('SELECT id, status, attempts, error FROM sync_queue').get();
+
+  const missingId = unrelated.id + 9999;
+  const result = retrySyncQueueItem(missingId);
+  assert.equal(result.ok, false);
+  assert.equal(typeof result.error, 'string');
+
+  const unchanged = db.prepare('SELECT id, status, attempts, error FROM sync_queue WHERE id = ?').get(unrelated.id);
+  assert.deepEqual(unchanged, unrelated, 'unrelated row must be untouched');
 });

@@ -9,7 +9,7 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateSyncQueueIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
@@ -23,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -39,6 +39,7 @@ try {
   getQueueDepth = () => 0;
   getSyncMeta = () => null;
   getSyncQueueDetail = () => [];
+  retrySyncQueueItem = () => ({ ok: false, error: 'local DB unavailable' });
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2845,6 +2846,13 @@ guardedHandle('sync:resume', () => {
 
 // Per-item sync queue detail (pending + failed rows) for diagnostics UI
 guardedHandle('sync:queue-detail', () => getSyncQueueDetail());
+
+// Reset a single sync_queue item back to pending so it replays on the next sync cycle
+guardedHandle('sync:retry-item', (event, id) => {
+  const idCheck = validateSyncQueueIdInput(id);
+  if (!idCheck.ok) return { ok: false, error: idCheck.error };
+  return retrySyncQueueItem(id);
+});
 
 // Get locally cached user for offline authentication
 guardedHandle('offline:get-cached-user', (_event, { username }) => {

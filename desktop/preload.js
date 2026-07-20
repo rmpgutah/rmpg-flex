@@ -183,6 +183,9 @@ contextBridge.exposeInMainWorld('electron', {
   // Per-item sync queue detail (pending + failed rows) for diagnostics UI
   getSyncQueueDetail: () => ipcRenderer.invoke('sync:queue-detail'),
 
+  // Reset a single failed/stuck sync queue item back to pending
+  retryFailedSyncItem: (id) => ipcRenderer.invoke('sync:retry-item', id),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),

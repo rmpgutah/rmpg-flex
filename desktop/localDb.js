@@ -485,6 +485,28 @@ function getSyncQueueDetail(limit = 100) {
   }));
 }
 
+/**
+ * Resets a single sync_queue row back to a fresh 'pending' state so it will
+ * be replayed on the next sync cycle. Performs its own existence check —
+ * ipcGuard's validateSyncQueueIdInput() only validates shape (positive
+ * integer), per its own doc comment ("no existence check — that's deferred
+ * to the handler itself"); this function is that handler-side check.
+ * Resets attempts/error too (not just status) so a fresh retry doesn't
+ * immediately look like it already failed several times.
+ */
+function retrySyncQueueItem(id) {
+  const existing = db.prepare('SELECT id FROM sync_queue WHERE id = ?').get(id);
+  if (!existing) {
+    return { ok: false, error: 'no sync queue item with that id' };
+  }
+  db.prepare(`
+    UPDATE sync_queue
+    SET status = 'pending', attempts = 0, error = NULL
+    WHERE id = ?
+  `).run(id);
+  return { ok: true };
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -503,4 +525,5 @@ module.exports = {
   markQueueItem,
   getQueueDepth,
   getSyncQueueDetail,
+  retrySyncQueueItem,
 };
