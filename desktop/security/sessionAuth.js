@@ -149,7 +149,7 @@ function pruneOldPinAttempts(db, maxRowsPerUser = 500) {
  * 0`), forcing every offline PIN session to be re-authenticated. Shared by
  * multiple independent triggers that all mean "we can no longer trust the
  * current PIN session state":
- *   - clock-skew detection at startup (see `detectClockSkew` above) — an
+ *   - clock-skew detection at startup (see `detectClockSkew` below) — an
  *     attacker rolling the system clock backward to replay an expired
  *     session window.
  *   - `powerMonitor`'s `'suspend'` event — the machine went to sleep, a
