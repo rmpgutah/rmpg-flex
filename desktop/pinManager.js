@@ -7,6 +7,21 @@
 
 const crypto = require('crypto');
 const { getLocalDb, getConfig, setConfig } = require('./localDb');
+const { safeStorage } = require('electron');
+const { migrateOfflineSecretsToSafeStorage, decryptSecretForStorage } = require('./security/secretsStore');
+
+function readSecretConfig(key) {
+  const raw = getConfig(key);
+  if (!raw) return null;
+  try {
+    return decryptSecretForStorage(raw, safeStorage);
+  } catch {
+    // Not yet migrated (shouldn't happen post-init(), but fail safe by
+    // treating the raw value as already-plaintext rather than crashing
+    // the PIN flow) — decrypt failure means "wasn't our ciphertext".
+    return raw;
+  }
+}
 
 let mainWindow = null;
 let expiryTimer = null;
@@ -21,6 +36,15 @@ const LOCKOUT_MINUTES = 15;
 
 function init(window) {
   mainWindow = window;
+
+  try {
+    const migrationResult = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+    if (migrationResult.migrated.length > 0) {
+      console.log('[PIN-MANAGER] Migrated offline secrets to safeStorage:', migrationResult.migrated);
+    }
+  } catch (err) {
+    console.error('[PIN-MANAGER] Offline secret migration failed (continuing with unmigrated secrets):', err.message);
+  }
 
   // Start expiry check timer (every 60 seconds)
   expiryTimer = setInterval(checkExpiredSessions, 60_000);
@@ -42,14 +66,14 @@ function destroy() {
  * @returns {{ pin: string, expiresAt: string } | { error: string }}
  */
 function generatePinForUser(userId) {
-  const adminSecret = getConfig('admin_offline_secret');
+  const adminSecret = readSecretConfig('admin_offline_secret');
   if (!adminSecret) {
     return { error: 'Admin offline secret not configured. Sync with server first.' };
   }
 
   // Get the target user's secret
   let userSecret;
-  const allSecrets = getConfig('all_user_secrets');
+  const allSecrets = readSecretConfig('all_user_secrets');
   if (allSecrets) {
     const parsed = JSON.parse(allSecrets);
     const match = parsed.find(s => String(s.user_id) === String(userId));
@@ -100,8 +124,8 @@ function validatePin(inputPin) {
   }
 
   // Get secrets for validation
-  const userSecret = getConfig('my_offline_secret');
-  const adminSecret = getConfig('admin_offline_secret');
+  const userSecret = readSecretConfig('my_offline_secret');
+  const adminSecret = readSecretConfig('admin_offline_secret');
 
   if (!userSecret || !adminSecret) {
     return { success: false, error: 'Offline secrets not configured. Must be online at least once.' };
