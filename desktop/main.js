@@ -6,12 +6,13 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
+const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -69,6 +70,8 @@ try {
   TRUSTED_HOST = 'rmpgutah.us';
 }
 
+const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
+
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
 
 // Shared per-channel call-rate limiter for the recon spawn/catalog and
@@ -124,6 +127,9 @@ process.on('unhandledRejection', (reason) => {
     return;
   }
   console.error('[APP] Unhandled rejection:', reason);
+  try {
+    appendToLogFile(`Unhandled rejection: ${reason && reason.message}`, LOG_FILE_PATH, require('fs'));
+  } catch { /* logging must never crash the crash handler */ }
   throw reason;
 });
 
@@ -133,6 +139,9 @@ process.on('uncaughtException', (err) => {
     return;
   }
   console.error('[APP] Uncaught exception:', err);
+  try {
+    appendToLogFile(`Uncaught exception: ${err && err.message}`, LOG_FILE_PATH, require('fs'));
+  } catch { /* logging must never crash the crash handler */ }
   // Re-throw on next tick so Electron's default crash dialog still
   // fires for real bugs, but our log line lands first.
   setImmediate(() => { throw err; });
@@ -892,6 +901,86 @@ guardedOn('window:maximize', () => {
 });
 guardedOn('window:close', () => mainWindow?.close());
 guardedHandle('app:version', () => app.getVersion());
+guardedHandle('sys:info', () => {
+  const os = require('os');
+  const fs = require('fs');
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), fs);
+  } catch (err) {
+    console.error('[SYS:INFO] Disk space check failed:', err.message);
+    freeBytes = null;
+  }
+  return formatSystemInfo(os, freeBytes);
+});
+guardedHandle('sys:logs', (_event, lines = 500) => {
+  return tailLogFile(LOG_FILE_PATH, lines, require('fs'));
+});
+guardedHandle('sys:open-logs-folder', () => {
+  shell.openPath(getLogsDirectory(LOG_FILE_PATH, path));
+});
+guardedHandle('sys:crash-reports', () => {
+  return listCrashReports(app.getPath('crashDumps'), require('fs'));
+});
+guardedHandle('sys:disk-space', () => {
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), require('fs'));
+  } catch (err) {
+    console.error('[SYS:DISK-SPACE] Disk space check failed:', err.message);
+    return { freeBytes: null, warn: false };
+  }
+  return evaluateDiskSpace(freeBytes);
+});
+guardedHandle('sys:network-interfaces', () => {
+  return formatNetworkInterfaces(require('os').networkInterfaces());
+});
+guardedHandle('sys:battery', async () => {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync('pmset', ['-g', 'batt'], { timeout: 3000 });
+    return parsePmsetBatteryOutput(stdout);
+  } catch (err) {
+    console.error('[SYS:BATTERY] pmset failed:', err.message);
+    return null;
+  }
+});
+guardedHandle('sys:idle-time', () => {
+  return powerMonitor.getSystemIdleTime();
+});
+guardedHandle('sys:export-diagnostics', async () => {
+  const os = require('os');
+  const fs = require('fs');
+  let freeBytes;
+  try {
+    freeBytes = getDiskFreeBytes(app.getPath('userData'), fs);
+  } catch {
+    freeBytes = null;
+  }
+  const info = formatSystemInfo(os, freeBytes);
+  const logTail = tailLogFile(LOG_FILE_PATH, 500, fs);
+  const bundleText = buildDiagnosticsBundleText(info, logTail);
+  let encrypted;
+  try {
+    encrypted = encryptDiagnosticsBundleOnExport(bundleText, safeStorage);
+  } catch (err) {
+    return { ok: false, error: `Diagnostics encryption failed: ${err.message}` };
+  }
+  const outPath = path.join(app.getPath('temp'), `rmpg-flex-diagnostics-${Date.now()}.enc`);
+  try {
+    fs.writeFileSync(outPath, encrypted, 'utf8');
+  } catch (err) {
+    return { ok: false, error: `Failed to write diagnostics bundle: ${err.message}` };
+  }
+  return { ok: true, path: outPath };
+});
+guardedHandle('sys:restart', () => {
+  app.relaunch();
+  app.exit();
+});
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
