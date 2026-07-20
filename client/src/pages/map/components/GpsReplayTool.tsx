@@ -91,7 +91,9 @@ export default function GpsReplayTool({ map, onClose }: Props) {
       features: [{ type: 'Feature', geometry: { type: 'Point',
         coordinates: [marker.lng, marker.lat] }, properties: {} }],
     });
-    if (autoFollowRef.current) map.flyTo({ center: [marker.lng, marker.lat], speed: 0.5 });
+    if (autoFollowRef.current && Number.isFinite(marker.lng) && Number.isFinite(marker.lat)) {
+      map.flyTo({ center: [marker.lng, marker.lat], speed: 0.5 });
+    }
   }, [map]);
 
   const loadPositions = async (unitId: number, hours: number) => {
@@ -101,9 +103,11 @@ export default function GpsReplayTool({ map, onClose }: Props) {
       const data = await apiFetch<{ points: { latitude: number; longitude: number; recorded_at: string; speed?: number; heading?: number }[] }>(
         `/dispatch/gps/history?unit_id=${unitId}&from=${encodeURIComponent(toIsoStr(from))}&to=${encodeURIComponent(toIsoStr(to))}`
       );
-      const pts: GpsPosition[] = (data?.points ?? []).map(p => ({
-        lat: p.latitude, lng: p.longitude, timestamp: p.recorded_at, speed: p.speed, heading: p.heading,
-      }));
+      const pts: GpsPosition[] = (data?.points ?? [])
+        .filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
+        .map(p => ({
+          lat: p.latitude, lng: p.longitude, timestamp: p.recorded_at, speed: p.speed, heading: p.heading,
+        }));
       setPositions(pts);
       setCurrentIdx(0);
       setPlaying(false);
