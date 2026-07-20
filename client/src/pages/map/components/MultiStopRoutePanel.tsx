@@ -10,7 +10,6 @@
 import { Route, X, Trash2, Zap, GripVertical } from 'lucide-react';
 import type { MultiStopRoute } from '../../../hooks/useMapRouting';
 import type { MapUnit } from '../utils/mapConstants';
-import { UNIT_STATUS_HEX } from '../../../utils/statusColors';
 
 export interface QueuedStop {
   callNumber: string;
@@ -32,9 +31,6 @@ interface Props {
   onOptimize: () => void;
 }
 
-const GOLD = '#d4a017';
-const PANEL_BG = 'rgba(10,10,10,0.96)';
-
 export default function MultiStopRoutePanel({
   queue,
   units,
@@ -55,77 +51,43 @@ export default function MultiStopRoutePanel({
 
   return (
     <div
-      className="absolute z-[1001] backdrop-blur-md"
+      className={`absolute z-30 bg-surface-raised/95 border border-border-default backdrop-blur-md font-mono overflow-hidden ${
+        isMobile ? '' : ''
+      }`}
       style={{
         ...(isMobile
           ? { top: 56, left: 8, right: 8 }
           : { top: 64, right: 16, width: 300 }),
-        background: PANEL_BG,
-        border: `1px solid ${GOLD}55`,
         borderRadius: 2,
         boxShadow: '0 8px 28px rgba(0,0,0,0.55)',
-        fontFamily: "'JetBrains Mono','Courier New',monospace",
-        overflow: 'hidden',
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 10px',
-          borderBottom: `1px solid ${GOLD}33`,
-          background: `linear-gradient(to right, ${GOLD}12, transparent)`,
-        }}
-      >
-        <Route className="w-3.5 h-3.5" style={{ color: GOLD }} />
-        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.08em', color: GOLD, flex: 1 }}>
-          PATROL ROUTE
+      <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border-subtle">
+        <Route className="w-3.5 h-3.5 text-brand-gold-500" />
+        <span className="text-[10px] font-black tracking-wider text-brand-gold-500 flex-1 uppercase">
+          Patrol Route
         </span>
-        <span
-          style={{
-            fontSize: 8,
-            fontWeight: 900,
-            color: '#0a0a0a',
-            background: GOLD,
-            borderRadius: 2,
-            padding: '1px 5px',
-          }}
-        >
+        <span className="text-[8px] font-black text-surface-base bg-brand-gold-500 px-1.5 py-px" style={{ borderRadius: 2 }}>
           {queue.length} STOP{queue.length === 1 ? '' : 'S'}
         </span>
-        <button
-          onClick={onClear}
-          aria-label="Clear patrol route"
-          style={{ background: 'none', border: 'none', color: 'var(--rmpg-500)', cursor: 'pointer', padding: 0, display: 'flex' }}
-        >
+        <button onClick={onClear} aria-label="Clear patrol route" className="text-rmpg-500 hover:text-rmpg-300 flex">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {/* Unit selector */}
-      <div style={{ padding: '8px 10px', borderBottom: '1px solid #1a1a1a' }}>
-        <div style={{ fontSize: 7, color: 'var(--rmpg-500)', letterSpacing: '0.06em', marginBottom: 3, textTransform: 'uppercase' }}>
-          Responding Unit
-        </div>
+      <div className="px-2.5 py-2 border-b border-border-subtle">
+        <div className="text-[7px] text-rmpg-500 tracking-wider mb-1 uppercase">Responding Unit</div>
         {routableUnits.length === 0 ? (
-          <div style={{ fontSize: 9, color: '#ef4444' }}>No units with GPS available</div>
+          <div className="text-[9px] text-red-400">No units with GPS available</div>
         ) : (
-          <select id="ff-multistoproutepanel-0"
+          <select
+            id="ff-multistoproutepanel-0"
             value={selectedUnit ?? ''}
             onChange={(e) => onSelectUnit(e.target.value)}
-            style={{
-              width: '100%',
-              background: 'var(--surface-overlay)',
-              color: 'var(--text-secondary)',
-              border: '1px solid #2e2e2e',
-              borderRadius: 2,
-              fontSize: 10,
-              fontFamily: "'JetBrains Mono',monospace",
-              padding: '4px 6px',
-              outline: 'none',
-            }}
+            className="w-full bg-surface-overlay text-rmpg-300 border border-border-subtle px-1.5 py-1 text-[10px] outline-none"
+            style={{ borderRadius: 2 }}
           >
             <option value="" disabled>
               Select unit…
@@ -140,79 +102,37 @@ export default function MultiStopRoutePanel({
       </div>
 
       {/* Stops list — optimized order if we have a result, else queue order */}
-      <div style={{ maxHeight: isMobile ? 180 : 260, overflowY: 'auto' }} className="scrollbar-dark">
+      <div className="scrollbar-dark overflow-y-auto" style={{ maxHeight: isMobile ? 180 : 260 }}>
         {result
           ? result.stops.map((s) => (
-              <div
-                key={s.callNumber}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 10px',
-                  borderBottom: '1px solid #141414',
-                }}
-              >
+              <div key={s.callNumber} className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border-subtle">
                 <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    flexShrink: 0,
-                    borderRadius: 2,
-                    border: `1.5px solid ${GOLD}`,
-                    background: 'linear-gradient(180deg,#1a1a1a,#070707)',
-                    color: GOLD,
-                    fontSize: 10,
-                    fontWeight: 900,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className="w-[18px] h-[18px] shrink-0 flex items-center justify-center border text-brand-gold-500 text-[10px] font-black bg-surface-base"
+                  style={{ borderRadius: 2 }}
                 >
                   {s.order}
                 </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.callNumber}
-                  </div>
-                  {s.label && (
-                    <div style={{ fontSize: 8, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.label}
-                    </div>
-                  )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-bold text-rmpg-200 truncate">{s.callNumber}</div>
+                  {s.label && <div className="text-[8px] text-rmpg-500 truncate">{s.label}</div>}
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 9, color: GOLD, fontWeight: 800 }}>{s.legEta}</div>
-                  <div style={{ fontSize: 7, color: 'var(--rmpg-500)' }}>{s.legDistance}</div>
+                <div className="text-right shrink-0">
+                  <div className="text-[9px] text-brand-gold-500 font-bold">{s.legEta}</div>
+                  <div className="text-[7px] text-rmpg-500">{s.legDistance}</div>
                 </div>
               </div>
             ))
           : queue.map((s) => (
-              <div
-                key={s.callNumber}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 10px',
-                  borderBottom: '1px solid #141414',
-                }}
-              >
-                <GripVertical className="w-3 h-3" style={{ color: '#444', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.callNumber}
-                  </div>
-                  {s.label && (
-                    <div style={{ fontSize: 8, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.label}
-                    </div>
-                  )}
+              <div key={s.callNumber} className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border-subtle">
+                <GripVertical className="w-3 h-3 text-rmpg-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-bold text-rmpg-200 truncate">{s.callNumber}</div>
+                  {s.label && <div className="text-[8px] text-rmpg-500 truncate">{s.label}</div>}
                 </div>
                 <button
                   onClick={() => onRemoveStop(s.callNumber)}
                   aria-label={`Remove ${s.callNumber}`}
-                  style={{ background: 'none', border: 'none', color: 'var(--rmpg-500)', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}
+                  className="text-rmpg-500 hover:text-red-400 shrink-0 flex p-0.5"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -222,46 +142,24 @@ export default function MultiStopRoutePanel({
 
       {/* Result totals */}
       {result && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 10,
-            padding: '8px 10px',
-            borderTop: `1px solid ${GOLD}33`,
-            background: `linear-gradient(to right, ${GOLD}10, transparent)`,
-          }}
-        >
-          <span style={{ fontSize: 7, color: 'var(--rmpg-500)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Total</span>
-          <span style={{ fontSize: 15, fontWeight: 900, color: GOLD }}>{result.totalEta}</span>
-          <span style={{ fontSize: 10, color: '#999' }}>{result.totalDistance}</span>
+        <div className="flex items-baseline gap-2.5 px-2.5 py-2 border-t border-border-subtle">
+          <span className="text-[7px] text-rmpg-500 tracking-wider uppercase">Total</span>
+          <span className="text-[15px] font-black text-brand-gold-500">{result.totalEta}</span>
+          <span className="text-[10px] text-rmpg-400">{result.totalDistance}</span>
         </div>
       )}
 
       {/* Action */}
-      <div style={{ padding: '8px 10px' }}>
+      <div className="px-2.5 py-2">
         <button
           onClick={onOptimize}
           disabled={!canOptimize}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            padding: '6px 8px',
-            background: canOptimize ? GOLD : 'var(--surface-raised)',
-            color: canOptimize ? '#0a0a0a' : '#555',
-            border: `1px solid ${canOptimize ? GOLD : '#2e2e2e'}`,
-            borderRadius: 2,
-            fontSize: 9,
-            fontWeight: 900,
-            letterSpacing: '0.06em',
-            fontFamily: "'JetBrains Mono',monospace",
-            cursor: canOptimize ? 'pointer' : 'not-allowed',
-            textTransform: 'uppercase',
-            transition: 'background 0.15s ease',
-          }}
+          className={`w-full flex items-center justify-center gap-1.5 py-1.5 text-[9px] font-black tracking-wider uppercase transition-colors ${
+            canOptimize
+              ? 'bg-brand-gold-500 text-surface-base border border-brand-gold-500'
+              : 'bg-surface-raised text-rmpg-600 border border-border-subtle cursor-not-allowed'
+          }`}
+          style={{ borderRadius: 2 }}
         >
           <Zap className="w-3 h-3" />
           {loading ? 'Optimizing…' : result ? 'Re-optimize' : 'Optimize & Route'}
