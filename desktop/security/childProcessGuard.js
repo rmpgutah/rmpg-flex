@@ -376,6 +376,113 @@ function parseIpLocateResponse(rawBody) {
   };
 }
 
+/**
+ * Default bound for a single, interactive, IPC-triggered `net.request`
+ * round trip (`geo:ip-locate`'s Google geolocation lookup, and
+ * `syncManager.js`'s token-refresh request) — see `withRequestTimeout`
+ * below.
+ *
+ * Set to 20 seconds: comfortably past what a slow-but-real mobile/cellular
+ * connection needs for one small JSON request/response, but short enough
+ * that a renderer waiting on the IPC round trip (e.g. a login flow blocked
+ * on token refresh, or the geolocation fallback) isn't left hanging for
+ * anywhere close to a minute when the far end has actually gone dark —
+ * sits in the middle of the brief's suggested 15-30s range rather than
+ * either edge, mirroring the reasoning already used for
+ * `DEFAULT_CHILD_PROCESS_TIMEOUT_MS`/`MAX_CONCURRENT_TOOLS` above.
+ */
+const DEFAULT_IPC_REQUEST_TIMEOUT_MS = 20 * 1000;
+
+/**
+ * Bound for `offline:trigger-sync`'s call to `syncManager.pullAll()`.
+ *
+ * Unlike `geo:ip-locate`'s single `net.request`, `pullAll()` is a
+ * sequential loop over every entry in `PULL_INTERVALS` (9 tables as of
+ * this writing), each pulled via `serverFetch`/`pullTable`, which already
+ * carries its own internal 15s per-request timeout+abort
+ * (`syncManager.js`'s `serverFetch`). A single-request-sized bound applied
+ * to the whole loop would false-positive-timeout a legitimate multi-table
+ * sync well before it could finish under normal (if slow) conditions.
+ *
+ * Set to 60 seconds: enough headroom for several sequential per-table
+ * pulls (each individually bounded at 15s) to complete even on a slow
+ * connection, while still giving the "sync now" IPC call a hard ceiling
+ * so a user who manually triggers a sync during a genuine outage isn't
+ * left waiting indefinitely for the renderer promise to settle. (The
+ * underlying `pullAll()` call keeps running in the background past this
+ * timeout if it hasn't returned yet — this bounds only how long the IPC
+ * handler waits on it, not the sync engine's own internal locking, which
+ * already force-releases a stuck lock after `SYNC_LOCK_TIMEOUT` (60s) via
+ * `acquireSyncLock()`.)
+ */
+const OFFLINE_TRIGGER_SYNC_TIMEOUT_MS = 60 * 1000;
+
+/**
+ * Races `requestPromise` against a `timeoutFn`-scheduled rejection,
+ * bounding how long an interactive, IPC-triggered network call can leave
+ * its handler (and the renderer awaiting the IPC round trip) hanging.
+ * DI-testable: `timeoutFn` is a `setTimeout`-shaped dependency
+ * (`timeoutFn(callback, delayMs) -> handle`) — real call sites pass the
+ * global `setTimeout`; tests pass a fake that records the callback/delay
+ * instead of waiting on real wall-clock time.
+ *
+ * Whichever side settles first wins, and the timer is always cleaned up
+ * afterwards via the real global `clearTimeout` (paired with whatever
+ * handle `timeoutFn` returned) — never left dangling:
+ *
+ *  - Request wins (resolves or rejects before the timeout fires): the
+ *    pending timer is cleared immediately, so it never fires later and
+ *    can't leak a dangling handle that keeps the event loop alive or
+ *    fires a stray, ignored rejection well after the caller has already
+ *    moved on.
+ *  - Timeout wins (the timer fires before the request settles): this
+ *    function rejects with a distinct, clearly-labeled timeout `Error`
+ *    (not a generic/ambiguous one) so callers can tell "the server never
+ *    answered in time" apart from "the server answered with an error."
+ *    If `requestPromise` eventually does settle after that, its result is
+ *    silently discarded — `Promise`s can only settle once, so this
+ *    function's own `.then` handler runs (as it must, since it's always
+ *    attached — an unattached rejection handler is how you get an
+ *    "unhandled rejection" warning) but has no further effect because
+ *    this outer promise already settled.
+ *
+ * Calling `clearTimeout` on whatever `timerHandle` a fake `timeoutFn`
+ * returns in tests is harmless — the real global `clearTimeout` silently
+ * no-ops on a value it doesn't recognize as one of its own timer ids,
+ * exactly like calling it twice on an already-cleared real timer.
+ *
+ * @param {Promise<*>} requestPromise - the in-flight network request to bound
+ * @param {number} timeoutMs - milliseconds to wait before timing out
+ * @param {Function} timeoutFn - setTimeout-shaped scheduler (DI)
+ * @returns {Promise<*>} resolves/rejects with `requestPromise`'s outcome, or rejects with a timeout Error if the timer fires first
+ */
+function withRequestTimeout(requestPromise, timeoutMs, timeoutFn) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const timerHandle = timeoutFn(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    requestPromise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerHandle);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerHandle);
+        reject(err);
+      }
+    );
+  });
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -386,4 +493,7 @@ module.exports = {
   isAllowedBinaryName,
   isAllowedApiHost,
   parseIpLocateResponse,
+  DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+  OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
+  withRequestTimeout,
 };

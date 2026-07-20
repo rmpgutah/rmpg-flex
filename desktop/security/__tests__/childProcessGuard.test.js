@@ -12,6 +12,9 @@ const {
   isAllowedBinaryName,
   isAllowedApiHost,
   parseIpLocateResponse,
+  withRequestTimeout,
+  DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+  OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -389,4 +392,121 @@ test('parseIpLocateResponse: non-object top-level JSON (e.g. array/string/number
   assert.equal(parseIpLocateResponse('42').ok, false);
   assert.equal(parseIpLocateResponse('"just a string"').ok, false);
   assert.equal(parseIpLocateResponse('[]').ok, false);
+});
+
+// --- withRequestTimeout ---
+
+test('withRequestTimeout: resolves normally with the request value when the request wins, and clears the timer', async () => {
+  let capturedCallback;
+  const fakeHandle = { id: 'fake-timer-handle' };
+  const fakeTimeoutFn = (callback, delayMs) => {
+    capturedCallback = callback;
+    assert.equal(delayMs, 20000);
+    return fakeHandle;
+  };
+
+  const originalClearTimeout = global.clearTimeout;
+  const clearedHandles = [];
+  global.clearTimeout = (handle) => clearedHandles.push(handle);
+
+  try {
+    const requestPromise = Promise.resolve({ latitude: 40.1, longitude: -111.8 });
+    const result = await withRequestTimeout(requestPromise, 20000, fakeTimeoutFn);
+
+    assert.deepEqual(result, { latitude: 40.1, longitude: -111.8 });
+    // The timer scheduled via fakeTimeoutFn must be cleared once the
+    // request wins — no leaked timer on the request-wins path.
+    assert.deepEqual(clearedHandles, [fakeHandle]);
+    assert.equal(typeof capturedCallback, 'function');
+  } finally {
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
+test('withRequestTimeout: propagates the request rejection when the request loses (rejects) before the timeout, and clears the timer', async () => {
+  const fakeHandle = { id: 'fake-timer-handle-2' };
+  const fakeTimeoutFn = (callback, delayMs) => fakeHandle;
+
+  const originalClearTimeout = global.clearTimeout;
+  const clearedHandles = [];
+  global.clearTimeout = (handle) => clearedHandles.push(handle);
+
+  try {
+    const requestPromise = Promise.reject(new Error('connection reset'));
+    await assert.rejects(
+      withRequestTimeout(requestPromise, 20000, fakeTimeoutFn),
+      /connection reset/
+    );
+    assert.deepEqual(clearedHandles, [fakeHandle]);
+  } finally {
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
+test('withRequestTimeout: rejects with a clear timeout error when the request never resolves and the timer fires first', async () => {
+  let capturedCallback;
+  const fakeTimeoutFn = (callback) => {
+    capturedCallback = callback;
+    return {};
+  };
+
+  const neverSettles = new Promise(() => {}); // simulates a hung TCP connection
+  const resultPromise = withRequestTimeout(neverSettles, 20000, fakeTimeoutFn);
+
+  // Simulate the fake timer elapsing — request never had a chance to settle.
+  capturedCallback();
+
+  await assert.rejects(resultPromise, (err) => {
+    assert.match(err.message, /timed out/i);
+    assert.match(err.message, /20000/);
+    return true;
+  });
+});
+
+test('withRequestTimeout: a late request settlement after the timeout already fired is silently discarded (no crash, no unhandled rejection)', async () => {
+  let capturedCallback;
+  const fakeTimeoutFn = (callback) => {
+    capturedCallback = callback;
+    return {};
+  };
+
+  let deferredResolve;
+  const slowRequest = new Promise((resolve) => { deferredResolve = resolve; });
+  const resultPromise = withRequestTimeout(slowRequest, 20000, fakeTimeoutFn);
+
+  // Timer fires first — the outer promise rejects with the timeout error.
+  capturedCallback();
+  await assert.rejects(resultPromise, /timed out/i);
+
+  // The real request finally "arrives" after the timeout already won.
+  // This must not throw, and must not be observable by the caller — the
+  // outer promise already settled.
+  assert.doesNotThrow(() => deferredResolve('too-late-value'));
+});
+
+test('withRequestTimeout: does not schedule a competing timer callback once the request has already won (no double-settle)', async () => {
+  let capturedCallback;
+  const fakeTimeoutFn = (callback) => {
+    capturedCallback = callback;
+    return {};
+  };
+
+  const requestPromise = Promise.resolve('fast-value');
+  const result = await withRequestTimeout(requestPromise, 20000, fakeTimeoutFn);
+  assert.equal(result, 'fast-value');
+
+  // Even if the timer callback were invoked after the request already won
+  // (simulating a real timer that fired anyway, e.g. clearTimeout being a
+  // no-op in some hypothetical broken environment), it must not throw or
+  // change the already-settled outcome.
+  assert.doesNotThrow(() => capturedCallback());
+});
+
+test('DEFAULT_IPC_REQUEST_TIMEOUT_MS: is within the documented 15-30s range', () => {
+  assert.ok(DEFAULT_IPC_REQUEST_TIMEOUT_MS >= 15 * 1000);
+  assert.ok(DEFAULT_IPC_REQUEST_TIMEOUT_MS <= 30 * 1000);
+});
+
+test('OFFLINE_TRIGGER_SYNC_TIMEOUT_MS: is longer than DEFAULT_IPC_REQUEST_TIMEOUT_MS (bounds a multi-table pull, not a single request)', () => {
+  assert.ok(OFFLINE_TRIGGER_SYNC_TIMEOUT_MS > DEFAULT_IPC_REQUEST_TIMEOUT_MS);
 });

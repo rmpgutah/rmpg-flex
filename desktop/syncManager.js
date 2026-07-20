@@ -8,7 +8,7 @@ const { net } = require('electron');
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
-const { isAllowedApiHost } = require('./security/childProcessGuard');
+const { isAllowedApiHost, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS } = require('./security/childProcessGuard');
 
 let serverUrl = '';
 // Hostname-only (no port) form of serverUrl, computed once when
@@ -498,37 +498,48 @@ async function refreshAndRetry(endpoint, options) {
   const refreshToken = getConfig('refresh_token');
   if (!refreshToken) throw new Error('No refresh token available');
 
-  const refreshResponse = await new Promise((resolve, reject) => {
-    const refreshUrl = `${serverUrl}/api/auth/refresh`;
-    if (!isAllowedApiHost(refreshUrl, [allowedSyncHost])) {
-      reject(new Error('Blocked outbound sync request: host not allowlisted'));
-      return;
-    }
+  // Task 7: unlike serverFetch (which already carries its own inline
+  // 15s timeout+abort), this net.request had no timeout at all — a hung
+  // TCP connection or a server that accepts the connection but never
+  // responds would leave a token refresh (and every caller awaiting it,
+  // including offline:trigger-sync's pullAll() loop) hanging indefinitely.
+  // Wrapped in withRequestTimeout (childProcessGuard.js) for consistency
+  // with serverFetch's bound and geo:ip-locate's Task 7 wiring.
+  const refreshResponse = await withRequestTimeout(
+    new Promise((resolve, reject) => {
+      const refreshUrl = `${serverUrl}/api/auth/refresh`;
+      if (!isAllowedApiHost(refreshUrl, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
 
-    const request = net.request({
-      url: refreshUrl,
-      method: 'POST',
-    });
-    request.setHeader('Content-Type', 'application/json');
-
-    let body = '';
-    request.on('response', (response) => {
-      response.on('data', (chunk) => { body += chunk.toString(); });
-      response.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (response.statusCode === 200) {
-            resolve(data);
-          } else {
-            reject(new Error('Refresh failed'));
-          }
-        } catch { reject(new Error('Refresh parse error')); }
+      const request = net.request({
+        url: refreshUrl,
+        method: 'POST',
       });
-    });
-    request.on('error', reject);
-    request.write(JSON.stringify({ refreshToken }));
-    request.end();
-  });
+      request.setHeader('Content-Type', 'application/json');
+
+      let body = '';
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { body += chunk.toString(); });
+        response.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (response.statusCode === 200) {
+              resolve(data);
+            } else {
+              reject(new Error('Refresh failed'));
+            }
+          } catch { reject(new Error('Refresh parse error')); }
+        });
+      });
+      request.on('error', reject);
+      request.write(JSON.stringify({ refreshToken }));
+      request.end();
+    }),
+    DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+    setTimeout
+  );
 
   // Check the freshly-issued token's embedded identity against this
   // device's cached identity BEFORE trusting it for anything — see the

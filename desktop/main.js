@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2992,34 +2992,43 @@ guardedHandle('geo:ip-locate', async () => {
       console.error('[GEO] IP geolocation blocked: URL host not allowlisted');
       return null;
     }
-    return await new Promise((resolve, reject) => {
-      const request = net.request({ method: 'POST', url });
-      request.setHeader('Content-Type', 'application/json');
-      let body = '';
-      request.on('response', (response) => {
-        response.on('data', (chunk) => { body += chunk.toString(); });
-        response.on('end', () => {
-          // Task 6: shape-validate the response body via parseIpLocateResponse
-          // (childProcessGuard.js) instead of trusting JSON.parse + direct
-          // data.location.lat/.lng access — fails closed on malformed JSON
-          // or non-finite/missing coordinates so a bad response can never
-          // hand the renderer a NaN/string coordinate.
-          const parsed = parseIpLocateResponse(body);
-          if (parsed.ok) {
-            resolve({
-              latitude: parsed.latitude,
-              longitude: parsed.longitude,
-              accuracy: parsed.accuracy,
-            });
-          } else {
-            reject(new Error(parsed.error));
-          }
+    // Task 7: bound the whole request/response cycle via withRequestTimeout
+    // (childProcessGuard.js) — without this, a hung TCP connection or a
+    // server that accepts the connection but never responds (net.request
+    // never emits 'response' or 'error' in that case) would leave this IPC
+    // handler — and the renderer awaiting it — hanging indefinitely.
+    return await withRequestTimeout(
+      new Promise((resolve, reject) => {
+        const request = net.request({ method: 'POST', url });
+        request.setHeader('Content-Type', 'application/json');
+        let body = '';
+        request.on('response', (response) => {
+          response.on('data', (chunk) => { body += chunk.toString(); });
+          response.on('end', () => {
+            // Task 6: shape-validate the response body via parseIpLocateResponse
+            // (childProcessGuard.js) instead of trusting JSON.parse + direct
+            // data.location.lat/.lng access — fails closed on malformed JSON
+            // or non-finite/missing coordinates so a bad response can never
+            // hand the renderer a NaN/string coordinate.
+            const parsed = parseIpLocateResponse(body);
+            if (parsed.ok) {
+              resolve({
+                latitude: parsed.latitude,
+                longitude: parsed.longitude,
+                accuracy: parsed.accuracy,
+              });
+            } else {
+              reject(new Error(parsed.error));
+            }
+          });
         });
-      });
-      request.on('error', reject);
-      request.write(JSON.stringify({}));
-      request.end();
-    });
+        request.on('error', reject);
+        request.write(JSON.stringify({}));
+        request.end();
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+      setTimeout
+    );
   } catch (err) {
     console.error('[GEO] IP geolocation fallback failed:', err.message);
     return null;
@@ -3181,7 +3190,16 @@ guardedHandle('offline:trigger-sync', async () => {
   if (!rateCheck.ok) return { success: false, error: rateCheck.error };
   try {
     if (syncManager && connectivityMonitor?.isOnline) {
-      await syncManager.pullAll();
+      // Task 7: bound the manual "sync now" trigger via withRequestTimeout
+      // (childProcessGuard.js) — pullAll() loops sequentially over every
+      // mirrored table; without an outer bound, a network outage mid-loop
+      // (each individual pull already timing out+retrying internally)
+      // could leave this IPC call — and the renderer's "sync now" button —
+      // hanging far longer than a manual trigger should ever block for.
+      // OFFLINE_TRIGGER_SYNC_TIMEOUT_MS is deliberately longer than
+      // DEFAULT_IPC_REQUEST_TIMEOUT_MS since it bounds a multi-table pull,
+      // not a single request — see its doc comment in childProcessGuard.js.
+      await withRequestTimeout(syncManager.pullAll(), OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, setTimeout);
       return { success: true };
     }
     return { success: false, error: 'Sync not available (offline or not initialized)' };
