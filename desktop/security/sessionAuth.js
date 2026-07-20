@@ -103,9 +103,49 @@ function isPinSessionBoundToDevice(session, currentDeviceId) {
   return session.device_id === currentDeviceId;
 }
 
+/**
+ * Retention sweep for `pin_attempts` (brute-force tracking log): for each
+ * distinct `user_id`, deletes all but the most recent `maxRowsPerUser` rows
+ * (ordered by `attempted_at`), so the table doesn't grow unbounded on a
+ * long-lived install. This is retention/rotation, not real-time PIN
+ * enforcement — intended to run once per app launch, not on every attempt.
+ *
+ * Unlike the other helpers in this file, this genuinely needs SQL, so it
+ * takes a real `better-sqlite3` `db` instance as an explicit parameter
+ * (matching this file's DI-testable style) rather than reaching into
+ * localDb.js's module-level singleton itself.
+ *
+ * @param {import('better-sqlite3').Database} db
+ * @param {number} [maxRowsPerUser]
+ * @returns {{ prunedRows: number }} total number of rows deleted across all users
+ */
+function pruneOldPinAttempts(db, maxRowsPerUser = 500) {
+  const userIds = db.prepare('SELECT DISTINCT user_id FROM pin_attempts').all().map((row) => row.user_id);
+
+  const deleteStale = db.prepare(`
+    DELETE FROM pin_attempts
+    WHERE user_id = ?
+      AND id NOT IN (
+        SELECT id FROM pin_attempts
+        WHERE user_id = ?
+        ORDER BY attempted_at DESC, id DESC
+        LIMIT ?
+      )
+  `);
+
+  let prunedRows = 0;
+  for (const userId of userIds) {
+    const result = deleteStale.run(userId, userId, maxRowsPerUser);
+    prunedRows += result.changes;
+  }
+
+  return { prunedRows };
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
   getOrCreateDeviceId,
   isPinSessionBoundToDevice,
+  pruneOldPinAttempts,
 };
