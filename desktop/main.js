@@ -2851,6 +2851,9 @@ guardedHandle('sync:resume', () => {
 // Per-item sync queue detail (pending + failed rows) for diagnostics UI
 guardedHandle('sync:queue-detail', () => getSyncQueueDetail());
 
+// Get current write queue size
+guardedHandle('sync:write-queue-size', () => getQueueDepth());
+
 // Reset a single sync_queue item back to pending so it replays on the next sync cycle
 guardedHandle('sync:retry-item', (event, id) => {
   const idCheck = validateSyncQueueIdInput(id);
