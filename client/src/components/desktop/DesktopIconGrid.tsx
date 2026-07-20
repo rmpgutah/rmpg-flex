@@ -5,6 +5,7 @@ import type { DesktopGroup } from '../../utils/normalizeDesktopLayout';
 import { getWindowConfig, activateNavFunction } from '../../utils/windowManager';
 import { useDesktopWindows } from './DesktopWindowManager';
 import ContextMenu from '../ContextMenu';
+import { getIconLabelOverride, setIconLabelOverride, clearIconLabelOverride } from '../../utils/desktopIconPreferences';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
@@ -28,6 +29,7 @@ export default function DesktopIconGrid({
   const { openWindow } = useDesktopWindows();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
 
   const handleActivate = useCallback((fn: NavFunction) => {
     activateNavFunction(fn, { openWindow, navigate });
@@ -72,6 +74,13 @@ export default function DesktopIconGrid({
     }
   }, [selected, onCreateGroup]);
 
+  const commitRename = useCallback((path: string, value: string) => {
+    const trimmed = value.trim();
+    if (trimmed) setIconLabelOverride(path, trimmed);
+    else clearIconLabelOverride(path);
+    setRenamingPath(null);
+  }, []);
+
   return (
     <div style={viewMode === 'grid' ? { position: 'absolute', inset: 0 } : { position: 'relative' }}>
       {viewMode === 'grid' && groups.map(group => (
@@ -107,6 +116,7 @@ export default function DesktopIconGrid({
             items={[
               { label: 'Open', onClick: () => handleActivate(fn) },
               ...(eligible ? [{ label: 'Open in new browser tab', onClick: () => window.open(fn.path, '_blank', 'noopener,noreferrer') }] : []),
+              { label: 'Rename', onClick: () => setRenamingPath(fn.path) },
               ...(multiSelected ? [{ label: 'Group as...', onClick: handleGroupAs }] : []),
               { label: 'Unpin', onClick: () => onUnpin(fn.path) },
             ]}
@@ -139,7 +149,21 @@ export default function DesktopIconGrid({
               >
                 <Icon className="w-6 h-6" style={{ color: 'var(--rmpg-300)' }} />
               </div>
-              <span className="text-[10px] leading-tight" style={{ color: 'var(--text-primary)' }}>{fn.label}</span>
+              {renamingPath === fn.path ? (
+                <input
+                  autoFocus
+                  defaultValue={getIconLabelOverride(fn.path) ?? fn.label}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={(e) => commitRename(fn.path, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.currentTarget.blur(); }
+                    if (e.key === 'Escape') { setRenamingPath(null); }
+                  }}
+                  className="text-[10px] leading-tight w-full text-center bg-surface-sunken border border-rmpg-700 text-rmpg-100 focus:outline-none"
+                />
+              ) : (
+                <span className="text-[10px] leading-tight" style={{ color: 'var(--text-primary)' }}>{getIconLabelOverride(fn.path) ?? fn.label}</span>
+              )}
             </button>
           </ContextMenu>
         );
