@@ -22,6 +22,8 @@ interface DesktopWindowManagerContextValue {
   minimizeWindow: (id: string) => void;
   toggleMaximize: (id: string) => void;
   moveResize: (id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => void;
+  /** Updates a window's display title only — never its path/iframe src. See FloatingWindow.tsx's title-sync effect for why those must stay decoupled. */
+  updateWindowTitle: (id: string, title: string) => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
@@ -113,9 +115,13 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w));
   }, [commit]);
 
+  const updateWindowTitle = useCallback((id: string, title: string) => {
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, title } : w));
+  }, [commit]);
+
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

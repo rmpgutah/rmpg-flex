@@ -5,7 +5,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
 function Harness() {
-  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow } = useDesktopWindows();
+  const { windows, openWindow, closeWindow, focusWindow, minimizeWindow, updateWindowTitle } = useDesktopWindows();
   const capResults = useRef<boolean[]>([]);
   return (
     <div>
@@ -16,7 +16,9 @@ function Harness() {
       <button onClick={() => windows[0] && closeWindow(windows[0].id)}>close-first</button>
       <button onClick={() => windows[0] && focusWindow(windows[0].id)}>focus-first</button>
       <button onClick={() => windows[0] && minimizeWindow(windows[0].id)}>minimize-first</button>
+      <button onClick={() => windows[0] && updateWindowTitle(windows[0].id, 'Retitled')}>retitle-first</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
+      <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <ul>{windows.map(w => <li key={w.id}>{w.title}-{w.zIndex}-{w.minimized ? 'min' : 'open'}-{w.width}x{w.height}</li>)}</ul>
     </div>
   );
@@ -67,5 +69,16 @@ describe('DesktopWindowManager', () => {
     expect(screen.getAllByRole('listitem').length).toBe(10);
     const results = screen.getByTestId('cap-results').textContent!.split(',').map(v => v === 'true');
     expect(results).toEqual([true, true, true, true, true, true, true, true, true, true, false]);
+  });
+
+  it('updateWindowTitle changes only the title, leaving path untouched', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    expect(screen.getByTestId('first-path').textContent).toBe('/dispatch');
+
+    act(() => screen.getByText('retitle-first').click());
+    expect(screen.getByText(/^Retitled-/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Dispatch-/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('first-path').textContent).toBe('/dispatch');
   });
 });

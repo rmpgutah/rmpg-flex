@@ -6,7 +6,7 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
@@ -15,6 +15,7 @@ const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validat
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
+const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -24,9 +25,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -39,6 +40,12 @@ try {
   setConfig = () => {};
   getQueueDepth = () => 0;
   getSyncMeta = () => null;
+  getSyncQueueDetail = () => [];
+  retrySyncQueueItem = () => ({ ok: false, error: 'local DB unavailable' });
+  clearFailedSyncItems = () => ({ cleared: 0 });
+  getLastSyncError = () => null;
+  getLocalCacheStats = () => [];
+  clearLocalCache = () => ({ ok: false, error: 'local DB unavailable' });
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -88,6 +95,19 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// Debounce timer for the main window's 'resize'/'move' listeners below —
+// those events fire continuously (every pixel) during a drag/resize
+// gesture, so writing to the local DB on every single one would be
+// wasteful and could add jank to the gesture itself. See createMainWindow().
+let boundsSaveDebounceTimer = null;
+const BOUNDS_SAVE_DEBOUNCE_MS = 500;
+
+// Secondary (non-main) windows opened via 'window:open-secondary', keyed by
+// a server-generated UUID so the renderer never handles a raw BrowserWindow
+// reference. Entries are removed on the window's own 'closed' event so this
+// map never accumulates references to destroyed windows.
+const secondaryWindows = new Map();
 
 // ─── Last-resort error guards ────────────────────────────────
 // Without these, an unhandled rejection (e.g. loadURL rejecting
@@ -710,9 +730,18 @@ async function createMainWindow() {
     console.warn('[APP] createMainWindow called before app.isReady — deferring');
     await app.whenReady();
   }
+
+  // Restore the window's last-saved position/size, if any is on record AND
+  // it still lands on a currently-connected display (see
+  // boundsIntersectSomeDisplay in windowManager.js — a bounds saved from a
+  // second monitor that's since been unplugged is discarded here rather
+  // than restored off-screen with no way to drag it back).
+  const restoredBounds = restoreWindowBounds(getConfig, screen.getAllDisplays);
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
+    ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
     minWidth: 1024,
     minHeight: 700,
     title: APP_TITLE,
@@ -884,6 +913,9 @@ async function createMainWindow() {
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
+      // One-time event (not a rapid-fire stream like resize/move below), so
+      // save synchronously/directly rather than through the debounce.
+      saveWindowBounds(mainWindow, setConfig);
       mainWindow.hide();
     }
   });
@@ -891,6 +923,27 @@ async function createMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  mainWindow.on('focus', () => {
+    mainWindow.flashFrame(false);
+  });
+
+  // 'resize'/'move' fire continuously (every pixel) during a drag/resize
+  // gesture — debounce the actual persistence write so we're not hitting
+  // the local DB dozens of times per second while the user drags the
+  // window. BOUNDS_SAVE_DEBOUNCE_MS (500ms) is reset on every event, so the
+  // write only happens once the gesture has been idle for that long.
+  const debouncedSaveWindowBounds = () => {
+    if (boundsSaveDebounceTimer) clearTimeout(boundsSaveDebounceTimer);
+    boundsSaveDebounceTimer = setTimeout(() => {
+      boundsSaveDebounceTimer = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        saveWindowBounds(mainWindow, setConfig);
+      }
+    }, BOUNDS_SAVE_DEBOUNCE_MS);
+  };
+  mainWindow.on('resize', debouncedSaveWindowBounds);
+  mainWindow.on('move', debouncedSaveWindowBounds);
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
@@ -903,6 +956,72 @@ guardedOn('window:maximize', () => {
   }
 });
 guardedOn('window:close', () => mainWindow?.close());
+guardedHandle('window:toggle-fullscreen', () => { mainWindow?.setFullScreen(!mainWindow.isFullScreen()); });
+
+// Opens a secondary BrowserWindow loading an in-app route (never a
+// renderer-supplied arbitrary URL — see buildSecondaryWindowUrl in
+// windowManager.js). routePath is resolved against the SAME trusted
+// REMOTE_SERVER_URL base the main window itself loads, and the window
+// gets the same hardened webPreferences (contextIsolation, no node
+// integration, trusted preload) createMainWindow() uses.
+guardedHandle('window:open-secondary', (event, routePath, opts) => {
+  const built = buildSecondaryWindowUrl(REMOTE_SERVER_URL, routePath);
+  if (typeof built !== 'string') {
+    return { ok: false, error: built && built.error ? built.error : 'invalid routePath' };
+  }
+  const win = new BrowserWindow({
+    width: (opts && opts.width) || 1024,
+    height: (opts && opts.height) || 768,
+    title: APP_TITLE,
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+    }),
+  });
+  const { randomUUID } = require('crypto');
+  const id = randomUUID();
+  secondaryWindows.set(id, win);
+  win.on('closed', () => secondaryWindows.delete(id));
+  win.loadURL(built).catch((err) => {
+    console.warn('[APP] Secondary window loadURL failed:', err && err.message);
+  });
+  return { id };
+});
+
+guardedHandle('window:close-secondary', (event, id) => {
+  const win = secondaryWindows.get(id);
+  if (win && !win.isDestroyed()) win.close();
+});
+
+// Sets the dock/taskbar badge count (unread alerts, active calls, etc).
+// app.setBadgeCount only exists on Linux/macOS — guard its presence and
+// no-op on unsupported platforms (same "gracefully degrade" pattern as
+// getBatteryStatus returning null on non-macOS).
+guardedHandle('notify:dock-badge', (event, count) => {
+  const n = coerceBadgeCount(count);
+  if (app.setBadgeCount) app.setBadgeCount(n);
+});
+
+guardedHandle('notify:flash-frame', () => {
+  mainWindow?.flashFrame(true);
+});
+
+// Reflects the officer's shift state in the tray icon's tooltip text.
+// There is no per-status icon asset shipped for the tray (createTray() uses
+// a single static icon via getIconPath()), so this is tooltip-text-only —
+// not icon-swapping. Silently no-ops on an invalid state or if the tray
+// hasn't been created yet (same fail-safe pattern as fs:reveal's
+// validation-failure handling) — void return per spec.
+guardedHandle('notify:tray-status', (event, state) => {
+  if (!isValidTrayStatus(state)) return;
+  if (tray) tray.setToolTip(formatTrayTooltip(state));
+});
+
+// Plain clipboard read/write wrappers. Per the Group E task-7 scope decision,
+// this is deliberately unenforced — the future sessionAuth.disableClipboardAutoSyncOfSecrets
+// guard against syncing secret values is Group I's (Auth/Session Hardening) responsibility.
+guardedHandle('clipboard:get', () => clipboard.readText());
+guardedHandle('clipboard:set', (event, text) => { clipboard.writeText(String(text)); });
+
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
   const os = require('os');
@@ -2875,6 +2994,70 @@ guardedHandle('offline:trigger-sync', async () => {
     console.error('[OFFLINE:TRIGGER-SYNC] Error:', err.message);
     return { success: false, error: err.message };
   }
+});
+
+// Pause background sync (pull timers + pullAll/pushAll become no-ops)
+guardedHandle('sync:pause', () => {
+  if (syncManager) syncManager.pauseSync();
+});
+
+// Resume background sync
+guardedHandle('sync:resume', () => {
+  if (syncManager) syncManager.resumeSync();
+});
+
+// Per-item sync queue detail (pending + failed rows) for diagnostics UI
+guardedHandle('sync:queue-detail', () => getSyncQueueDetail());
+
+// Get current write queue size
+guardedHandle('sync:write-queue-size', () => getQueueDepth());
+
+// Reset a single sync_queue item back to pending so it replays on the next sync cycle
+guardedHandle('sync:retry-item', (event, id) => {
+  const idCheck = validateSyncQueueIdInput(id);
+  if (!idCheck.ok) return { ok: false, error: idCheck.error };
+  return retrySyncQueueItem(id);
+});
+
+// Bulk-clear every 'failed' sync_queue row (diagnostics UI "clear failed" action)
+guardedHandle('sync:clear-failed', () => clearFailedSyncItems());
+
+// Most recent sync error (pullTable/pushAll failure), for diagnostics UI
+guardedHandle('sync:last-error', () => getLastSyncError());
+
+// Read-only per-table row-count + on-disk-size report for the local SQLite
+// cache (offline-status panel). Works even when syncManager is still null
+// (not yet online this session) — see getLocalCacheStats()'s doc comment
+// in localDb.js for why it doesn't depend on syncManager's PULL_INTERVALS.
+guardedHandle('sync:cache-stats', () => getLocalCacheStats());
+
+// Destructive (single table): clears one mirrored cache table + its
+// sync_metadata row, from the diagnostics UI. `table` comes directly from
+// renderer/IPC input, so the allowlist check against
+// MIRRORED_CACHE_TABLE_NAMES happens inside clearLocalCache() itself,
+// before any SQL string is built — see that function's doc comment in
+// localDb.js for the SQL-injection-via-identifier reasoning.
+guardedHandle('sync:clear-cache', (event, table) => clearLocalCache(table));
+
+// Destructive: wipes the mirrored/reference cache tables (never sync_queue
+// or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics
+// UI "force full resync" action.
+//
+// Requires live connectivity, checked here (not inside syncManager, which
+// has no connectivityMonitor dependency). syncManager.forceFullResync()
+// already refuses while paused, but pullAll()'s per-table pullTable() calls
+// only console.warn on fetch failure — they never throw — so pullAll()
+// resolves cleanly even when every pull silently failed. Offline, that
+// would let forceFullResync() wipe the cache (including `users`, which
+// backs offline PIN auth) and report {ok:true} with nothing repopulated.
+// Checking connectivity before ever calling into syncManager keeps the
+// wipe from running at all in that case.
+guardedHandle('sync:force-full', async () => {
+  if (!syncManager) return { ok: false, error: 'sync not initialized' };
+  if (!connectivityMonitor?.isOnline) {
+    return { ok: false, error: 'cannot force a full resync while offline' };
+  }
+  return syncManager.forceFullResync();
 });
 
 // Get locally cached user for offline authentication
