@@ -2412,13 +2412,16 @@ export default function NavigationPage() {
   ) : (
     <div ref={rootRef} className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden">
       {/* #103 — brightness/dim overlay (manual slider or auto time-of-day curve),
-          same visual treatment as NavPage.tsx's #76 overlay. z-index above the
-          map/HUD but pointer-events-none so it never blocks touch. */}
+          same visual treatment as NavPage.tsx's #76 overlay. Sits above the
+          map/HUD but BELOW the z-20/z-40 alert banners (arrived, over-speed,
+          zone-entry, proximity) — those are safety-critical and must stay at
+          full brightness even in dim/night mode, not get darkened along with
+          the map. pointer-events-none so it never blocks touch either way. */}
       {effectiveBrightness < 1 && (
         <div
           aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6, zIndex: 45 }}
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6 }}
         />
       )}
       {/* Map (or dark backdrop on failure) */}
@@ -2892,24 +2895,26 @@ export default function NavigationPage() {
         />
       )}
 
-      {/* ── #64 — Destination-reached confirmation (lower HUD overlay) ── */}
-      {arrivedLabel && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
-          <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
-        </div>
-      )}
-
-      {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
-      {showOverSpeedBanner && limitMph != null && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 268 }}>
-          <HudOverSpeedBanner limitMph={limitMph} />
-        </div>
-      )}
-
-      {/* ── Generic geofence zone-entry alert (lower HUD overlay) ── */}
-      {zoneAlert?.show && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 326 }}>
-          <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
+      {/* ── Lower HUD overlay banners — arrived / over-speed / zone-entry ──
+          Stacked with flex + gap instead of individually hand-computed
+          `bottom` pixel offsets (previously 210/268/326, i.e. hardcoded 58px
+          gaps). All three can be simultaneously true (arriving while over
+          the speed limit while entering a geofenced zone), and a hardcoded
+          gap overlaps as soon as any banner's rendered height — which varies
+          with text length, font scaling, or accessibility zoom — exceeds
+          ~58px. flex-col-reverse + gap keeps them stacked bottom-up and
+          auto-sized regardless of content height. */}
+      {(arrivedLabel || (showOverSpeedBanner && limitMph != null) || zoneAlert?.show) && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2 bottom-[150px] flex flex-col-reverse items-center gap-2">
+          {arrivedLabel && (
+            <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+          )}
+          {showOverSpeedBanner && limitMph != null && (
+            <HudOverSpeedBanner limitMph={limitMph} />
+          )}
+          {zoneAlert?.show && (
+            <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
+          )}
         </div>
       )}
 
