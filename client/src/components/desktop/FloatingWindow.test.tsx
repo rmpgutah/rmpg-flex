@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import FloatingWindow from './FloatingWindow';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
+import { setSnapEnabled } from '../../utils/snapPreference';
 
 function Harness() {
   const { windows, openWindow } = useDesktopWindows();
@@ -111,5 +112,51 @@ describe('FloatingWindow — title sync', () => {
     act(() => { vi.advanceTimersByTime(500); });
     expect(iframe.src).toContain('/dispatch');
     expect(iframe.src).not.toContain('/warrants');
+  });
+});
+
+describe('FloatingWindow — snap to edge', () => {
+  // getByText('Dispatch') is the <span> inside the title-bar div; .closest('div')
+  // from a <span> returns its nearest div ancestor, which IS the title-bar div
+  // itself (the span has no wrapping div of its own) — this is the element
+  // onTitleBarPointerDown is actually attached to.
+  function dragTitleBarTo(clientX: number, clientY: number) {
+    const titleBar = screen.getByText('Dispatch').closest('div')!;
+    fireEvent.pointerDown(titleBar, { clientX: 500, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX, clientY });
+  }
+  function releaseDrag() {
+    fireEvent.pointerUp(window);
+  }
+
+  it('shows a snap preview and snaps to the left half when dropped near the left edge', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(10, 300);
+    expect(screen.getByTestId('snap-preview-left')).toBeInTheDocument();
+    releaseDrag();
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.left).toBe('0px');
+    expect(windowEl.style.width).toBe(`${window.innerWidth / 2}px`);
+  });
+
+  it('does not snap when the drop point is away from an edge', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(500, 300);
+    expect(screen.queryByTestId('snap-preview-left')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('snap-preview-right')).not.toBeInTheDocument();
+    releaseDrag();
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.width).not.toBe(`${window.innerWidth / 2}px`);
+  });
+
+  it('does not snap when snapping is disabled via preference', () => {
+    setSnapEnabled(false);
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(10, 300);
+    expect(screen.queryByTestId('snap-preview-left')).not.toBeInTheDocument();
+    setSnapEnabled(true);
   });
 });

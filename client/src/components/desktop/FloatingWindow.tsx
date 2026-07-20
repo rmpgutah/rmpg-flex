@@ -1,10 +1,14 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Minus, Square } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
+import { isSnapEnabled } from '../../utils/snapPreference';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
+const SNAP_EDGE_THRESHOLD = 24;
+const TASKBAR_HEIGHT = 48;
+const MIN_SNAP_HALF_WIDTH = 360;
 
 interface FloatingWindowProps {
   win: DesktopWindowState;
@@ -15,6 +19,21 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
+  // Tracks which edge the cursor is near during the drag — used in onUp to
+  // determine if a snap should be applied. We need a ref here because the state
+  // update from setSnapPreview is not visible in the onUp closure.
+  const snapEdgeRef = useRef<'left' | 'right' | null>(null);
+  // Captured the instant a snap is applied — lets a subsequent drag "pull the
+  // window away" from the edge to restore its pre-snap bounds, matching the
+  // real OS un-snap feel. Not persisted: a transient drag-interaction detail.
+  const preSnapBounds = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const snappedSide = useRef<'left' | 'right' | null>(null);
+  // Tracks the window's live position during a title-bar drag (title-bar
+  // drags never change width/height, only x/y) — needed because win.x/win.y
+  // in this closure are stale (captured at pointerdown), but preSnapBounds
+  // must reflect wherever the window actually is at the moment of release.
+  const liveDragPos = useRef({ x: win.x, y: win.y });
   // These track the iframe's OWN internal navigation, independent of win.path (which
   // stays fixed at the URL the window was opened with — see the effect below for why
   // the two must never be conflated). Seeded once from the initial render, then only
@@ -54,22 +73,68 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     if ((e.target as HTMLElement).closest('button')) return;
     focusWindow(win.id);
     dragState.current = { startX: e.clientX, startY: e.clientY, originX: win.x, originY: win.y };
+    liveDragPos.current = { x: win.x, y: win.y };
     const onMove = (ev: PointerEvent) => {
       if (!dragState.current) return;
       const dx = ev.clientX - dragState.current.startX;
       const dy = ev.clientY - dragState.current.startY;
-      const nextX = Math.max(0, dragState.current.originX + dx);
+      let nextX = Math.max(0, dragState.current.originX + dx);
       const nextY = Math.max(0, dragState.current.originY + dy);
+
+      if (isSnapEnabled()) {
+        if (ev.clientX <= SNAP_EDGE_THRESHOLD) {
+          snapEdgeRef.current = 'left';
+          setSnapPreview('left');
+        } else if (ev.clientX >= window.innerWidth - SNAP_EDGE_THRESHOLD) {
+          snapEdgeRef.current = 'right';
+          setSnapPreview('right');
+        } else {
+          snapEdgeRef.current = null;
+          setSnapPreview(null);
+        }
+
+        // Un-snap: dragging a currently-snapped window away from the edge
+        // restores its pre-snap size before continuing the drag normally.
+        if (snappedSide.current && Math.abs(dx) > SNAP_EDGE_THRESHOLD) {
+          const restore = preSnapBounds.current;
+          snappedSide.current = null;
+          preSnapBounds.current = null;
+          if (restore) {
+            nextX = restore.x;
+            moveResize(win.id, { x: nextX, y: nextY, width: restore.width, height: restore.height });
+            liveDragPos.current = { x: nextX, y: nextY };
+            return;
+          }
+        }
+      }
+
       moveResize(win.id, { x: nextX, y: nextY });
+      liveDragPos.current = { x: nextX, y: nextY };
     };
     const onUp = () => {
+      if (snapEdgeRef.current) {
+        const desktopHeight = window.innerHeight - TASKBAR_HEIGHT;
+        const halfWidth = window.innerWidth / 2;
+        if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
+          preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
+          snappedSide.current = snapEdgeRef.current;
+          moveResize(win.id, {
+            x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
+            y: 0,
+            width: halfWidth,
+            height: desktopHeight,
+          });
+        }
+        setSnapPreview(null);
+        snapEdgeRef.current = null;
+      }
       dragState.current = null;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, focusWindow, moveResize]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview]);
 
   const onResizeHandlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
@@ -102,6 +167,18 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       };
 
   return (
+    <>
+    {snapPreview && (
+      <div
+        data-testid={`snap-preview-${snapPreview}`}
+        style={{
+          position: 'fixed', top: 0, left: snapPreview === 'left' ? 0 : '50%',
+          width: '50%', height: `calc(100vh - ${TASKBAR_HEIGHT}px)`,
+          background: 'rgba(var(--rmpg-500-rgb),0.15)', border: '2px solid var(--brand-400)',
+          zIndex: 4999, pointerEvents: 'none',
+        }}
+      />
+    )}
     <div
       style={{ ...style, background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
       onPointerDown={(e) => {
@@ -150,5 +227,6 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         </>
       )}
     </div>
+    </>
   );
 }
