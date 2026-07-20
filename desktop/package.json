@@ -41,6 +41,7 @@
       "systemInfo.js",
       "fileOps.js",
       "deviceInfo.js",
+      "windowManager.js",
       "originalCatalog.json",
       "security"
     ],
