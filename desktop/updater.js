@@ -6,6 +6,7 @@
 
 const { autoUpdater } = require('electron-updater');
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { isSecureUpdateFeedUrl } = require('./security/sessionHardening');
 
 class AppUpdater {
   constructor() {
@@ -39,6 +40,9 @@ class AppUpdater {
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
+    // forceDevUpdateConfig is never set here, and electron-updater defaults
+    // it to false in a packaged build (app.isPackaged) — the https feed-URL
+    // assertion below is the other half of "no insecure update transport."
 
     // Point at the Cloudflare Worker update feed.
     // The GitHub repo is private — GitHub Releases asset URLs return 404
@@ -57,9 +61,13 @@ class AppUpdater {
     // old VPS path). electron-updater's 'generic' provider GETs
     // <url>/latest.yml (win) / latest-mac.yml (mac) and follows the
     // path/sha512 it finds — no auth, no third party.
+    const feedUrl = 'https://api.rmpgutah.us/updates/';
+    if (!isSecureUpdateFeedUrl(feedUrl)) {
+      throw new Error('[UPDATER] Refusing to start: update feed URL is not https');
+    }
     autoUpdater.setFeedURL({
       provider: 'generic',
-      url: 'https://api.rmpgutah.us/updates/',
+      url: feedUrl,
     });
 
     // ─── Event handlers ───────────────────────────────

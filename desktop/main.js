@@ -10,6 +10,7 @@ const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback } = require('./security/secretsStore');
 const fs = require('fs');
 
@@ -212,10 +213,7 @@ function createSplashWindow() {
     alwaysOnTop: true,
     center: true,
     skipTaskbar: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
+    webPreferences: hardenWebPreferencesDefaults(),
   });
 
   const logoUri = getSplashLogoDataUri();
@@ -708,11 +706,8 @@ async function createMainWindow() {
     title: APP_TITLE,
     backgroundColor: '#000000',
     show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: true,
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
       // Keep the renderer running at full rate when the window is minimized,
       // occluded, or otherwise not focused. Chromium throttles background
       // windows by default — setInterval clamped to ~1/min, rAF paused — which
@@ -722,7 +717,7 @@ async function createMainWindow() {
       // upload logic runs here in the renderer, so it must not be throttled for
       // navigation to keep calculating + recording movement off-screen.
       backgroundThrottling: false,
-    },
+    }),
     // macOS titlebar
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 12, y: 12 },
@@ -732,18 +727,34 @@ async function createMainWindow() {
   // Electron denies geolocation by default. For RMPG Flex, GPS
   // tracking is mandatory for all logged-in users — auto-grant it.
   mainWindow.webContents.session.setPermissionRequestHandler(
-    (_webContents, permission, callback) => {
-      const allowed = ['geolocation', 'notifications', 'media'];
-      callback(allowed.includes(permission));
+    (webContents, permission, callback) => {
+      let requestingHost;
+      try {
+        requestingHost = new URL(webContents.getURL()).host;
+      } catch {
+        requestingHost = '';
+      }
+      callback(isPermissionAllowed(requestingHost, TRUSTED_HOST, permission));
     }
   );
 
   // Also handle the newer permission-check API (Electron 20+)
   mainWindow.webContents.session.setPermissionCheckHandler(
-    (_webContents, permission) => {
-      const allowed = ['geolocation', 'notifications', 'media'];
-      return allowed.includes(permission);
+    (webContents, permission) => {
+      let requestingHost;
+      try {
+        requestingHost = new URL(webContents.getURL()).host;
+      } catch {
+        requestingHost = '';
+      }
+      return isPermissionAllowed(requestingHost, TRUSTED_HOST, permission);
     }
+  );
+
+  installContentSecurityPolicy(mainWindow.webContents.session);
+
+  mainWindow.webContents.session.setCertificateVerifyProc(
+    createCertificateVerifyProc([TRUSTED_HOST, 'api.rmpgutah.us'], (msg) => console.warn(msg))
   );
 
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
@@ -840,13 +851,21 @@ async function createMainWindow() {
   // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
   const serverHost = TRUSTED_HOST;
 
-  // Open external links in default browser
+  // Open external links in default browser; deny anything that isn't http(s)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http') && !url.includes(serverHost)) {
+    const decision = shouldAllowNewWindow(url, serverHost);
+    if (decision.action === 'external') {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return decision.action === 'allow' ? { action: 'allow' } : { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!shouldAllowNavigation(url, TRUSTED_HOST)) {
+      console.warn('[SECURITY] Blocked navigation to untrusted URL:', url);
+      event.preventDefault();
+    }
   });
 
   // Prevent closing — minimize to tray instead
@@ -2714,12 +2733,14 @@ function createMenu() {
     {
       label: 'View',
       submenu: [
-        {
-          label: 'Toggle DevTools',
-          accelerator: 'CmdOrCtrl+Shift+I',
-          click: () => mainWindow?.webContents.toggleDevTools(),
-        },
-        { type: 'separator' },
+        ...(shouldExposeDevToolsMenuItem(app.isPackaged) ? [
+          {
+            label: 'Toggle DevTools',
+            accelerator: 'CmdOrCtrl+Shift+I',
+            click: () => mainWindow?.webContents.toggleDevTools(),
+          },
+          { type: 'separator' },
+        ] : []),
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
@@ -2826,6 +2847,11 @@ app.whenReady().then(async () => {
       if (!auditResult.ok) {
         console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
       }
+    }
+
+    const secureDefaultsResult = assertSecureElectronDefaults(app);
+    if (!secureDefaultsResult.ok) {
+      console.error('[SECURITY] Insecure Electron command-line switches active:', secureDefaultsResult.violations);
     }
 
     createMenu();
