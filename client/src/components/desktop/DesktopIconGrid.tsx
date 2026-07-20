@@ -168,7 +168,9 @@ export default function DesktopIconGrid({
                 <input
                   autoFocus
                   defaultValue={getIconLabelOverride(fn.path) ?? fn.label}
+                  aria-label={`Rename ${fn.label}`}
                   onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onBlur={(e) => commitRename(fn.path, e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') { e.currentTarget.blur(); }

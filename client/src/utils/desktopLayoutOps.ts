@@ -34,6 +34,15 @@ export function sortIconPositions(
   return gridLayout(ordered);
 }
 
+// NOTE: this rounds to bare multiples of CELL_W/CELL_H (x=0,96,192,...) while
+// gridLayout()/nextAutoArrangeSlot() below place icons on a grid offset by
+// +20 (x=20,116,212,...). The two grids don't share an origin, so an
+// auto-arranged icon and a manually "snap to grid"-ed icon can end up
+// visually overlapping without nextAutoArrangeSlot's exact-string-match
+// collision check ("${x},${y}") ever detecting it. Pre-existing inconsistency
+// (not introduced here); left as-is to avoid touching snapToGrid's public
+// behavior (used elsewhere, e.g. the Settings "Snap to Grid" button) without
+// a wider audit.
 export function snapToGrid(positions: Record<string, { x: number; y: number }>): Record<string, { x: number; y: number }> {
   const snapped: Record<string, { x: number; y: number }> = {};
   for (const [path, pos] of Object.entries(positions)) {
