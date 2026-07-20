@@ -7,6 +7,7 @@
 const { net } = require('electron');
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
+const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
 
 let serverUrl = '';
 let mainWindow = null;
@@ -454,6 +455,23 @@ function serverFetch(endpoint, options = {}) {
 
 /**
  * Attempt to refresh the JWT token and retry the request.
+ *
+ * A token refresh is the one point in this file where a fresh,
+ * server-authoritative identity claim becomes available — the refresh
+ * response's `token` is a brand-new JWT the server just issued for
+ * whichever user the refresh_token currently maps to. No sync-pull
+ * response (pullAll/pullTable/pullSecrets) carries a user/org identity
+ * field: `/api/offline/sync/pull` only returns `rows`/`fullReplace`, and
+ * `/api/offline/my-secret` / `/api/offline/secrets` only return
+ * `secret`/`admin_secret`/`secrets`. So rather than inventing a
+ * server-response field that doesn't exist, this decodes the refreshed
+ * JWT locally (decodeJwtPayloadLocally — never verifies the signature,
+ * matching this file's other local-only JWT inspection) and compares its
+ * embedded user id against this device's cached current_user_id. If they
+ * disagree (e.g. a different officer's session got refreshed on this
+ * installed desktop shell without the previous user's cache ever being
+ * wiped), the mirrored/reference cache is wiped instead of letting sync
+ * continue writing one user's data into another's local cache.
  */
 async function refreshAndRetry(endpoint, options) {
   const refreshToken = getConfig('refresh_token');
@@ -484,6 +502,18 @@ async function refreshAndRetry(endpoint, options) {
     request.write(JSON.stringify({ refreshToken }));
     request.end();
   });
+
+  // Check the freshly-issued token's embedded identity against this
+  // device's cached identity BEFORE trusting it for anything — see the
+  // doc comment above for why this is the hook point (no sync-pull
+  // response carries a user identity field to compare against instead).
+  const freshPayload = decodeJwtPayloadLocally(refreshResponse.token);
+  const freshUserId = freshPayload ? (freshPayload.user_id ?? freshPayload.userId) : null;
+  if (hasUserOrOrgMismatch(getConfig('current_user_id'), freshUserId)) {
+    console.warn('[SYNC] User/org identity mismatch detected on token refresh — wiping mirrored cache tables');
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    throw new Error('user identity mismatch detected on token refresh — local cache wiped');
+  }
 
   // Store new tokens
   setConfig('auth_token', refreshResponse.token);

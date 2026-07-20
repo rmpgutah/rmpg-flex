@@ -428,6 +428,34 @@ function verifyDownloadedUpdateHash(filePath, expectedSha512, fsModule, cryptoMo
   });
 }
 
+/**
+ * Pure check: does a freshly-observed user/org identity (e.g. decoded from
+ * a just-issued JWT payload) disagree with this device's cached identity
+ * (e.g. `getConfig('current_user_id')`)? Used by syncManager.js to detect
+ * "this device's cached identity no longer matches what the server now
+ * says" — for example a second officer authenticating on a desktop shell
+ * whose local mirror cache still holds the previous officer's data.
+ *
+ * Type-coercion safe: ids are compared via `String(...)` so a numeric id
+ * cached as `42` and a JWT claim that decodes as the string `'42'` are
+ * correctly treated as the SAME identity, not a mismatch.
+ *
+ * Returns `false` (never a "mismatch") whenever EITHER side is
+ * null/undefined — there's nothing to compare against yet (e.g. no cached
+ * user on a fresh install, or a token payload with no identity claim).
+ * A false positive here would wipe an innocent user's local cache, so this
+ * deliberately only flags a mismatch when BOTH ids are genuinely present.
+ *
+ * @param {string|number|null|undefined} cachedUserId
+ * @param {string|number|null|undefined} freshUserId
+ * @returns {boolean}
+ */
+function hasUserOrOrgMismatch(cachedUserId, freshUserId) {
+  if (cachedUserId === null || cachedUserId === undefined) return false;
+  if (freshUserId === null || freshUserId === undefined) return false;
+  return String(cachedUserId) !== String(freshUserId);
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
@@ -440,4 +468,5 @@ module.exports = {
   looksLikeSecretValue,
   assertWebPreferencesNotWeaker,
   verifyDownloadedUpdateHash,
+  hasUserOrOrgMismatch,
 };
