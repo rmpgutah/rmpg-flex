@@ -465,6 +465,26 @@ function getQueueDepth() {
   return db.prepare(`SELECT COUNT(*) as c FROM sync_queue WHERE status = 'pending'`).get().c;
 }
 
+/**
+ * Returns per-item detail for the sync queue's pending + failed rows (for
+ * diagnostics UI), ordered so the most-retried (most likely stuck) items
+ * surface first. Unlike getPendingQueue() (pending only, replay payload),
+ * this also surfaces 'failed' rows and only the fields relevant to a
+ * human-readable status display.
+ */
+function getSyncQueueDetail(limit = 100) {
+  const rows = db.prepare(
+    `SELECT id, table_name, method, attempts, error FROM sync_queue WHERE status IN ('pending', 'failed') ORDER BY attempts DESC, created_at ASC LIMIT ?`
+  ).all(limit);
+  return rows.map((row) => ({
+    id: row.id,
+    table: row.table_name,
+    action: row.method,
+    failCount: row.attempts,
+    lastError: row.error,
+  }));
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -482,4 +502,5 @@ module.exports = {
   getPendingQueue,
   markQueueItem,
   getQueueDepth,
+  getSyncQueueDetail,
 };

@@ -23,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -38,6 +38,7 @@ try {
   setConfig = () => {};
   getQueueDepth = () => 0;
   getSyncMeta = () => null;
+  getSyncQueueDetail = () => [];
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2841,6 +2842,9 @@ guardedHandle('sync:pause', () => {
 guardedHandle('sync:resume', () => {
   if (syncManager) syncManager.resumeSync();
 });
+
+// Per-item sync queue detail (pending + failed rows) for diagnostics UI
+guardedHandle('sync:queue-detail', () => getSyncQueueDetail());
 
 // Get locally cached user for offline authentication
 guardedHandle('offline:get-cached-user', (_event, { username }) => {

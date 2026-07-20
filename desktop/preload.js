@@ -180,6 +180,9 @@ contextBridge.exposeInMainWorld('electron', {
   pauseSync: () => ipcRenderer.invoke('sync:pause'),
   resumeSync: () => ipcRenderer.invoke('sync:resume'),
 
+  // Per-item sync queue detail (pending + failed rows) for diagnostics UI
+  getSyncQueueDetail: () => ipcRenderer.invoke('sync:queue-detail'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),
