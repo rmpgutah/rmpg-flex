@@ -48,7 +48,7 @@ sm.post('/sync', async (c) => {
     const body = await c.req.json().catch(() => ({}));
     type = body?.type === 'full' ? 'full' : 'incremental';
     const inserted = await execute(db,
-      "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now','localtime'))",
+      "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now'))",
       type);
     syncId = inserted.meta?.last_row_id;
 
@@ -62,7 +62,7 @@ sm.post('/sync', async (c) => {
 
     const result = await pollServeManagerJobs(c.env as any);
     await execute(db,
-      "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now') WHERE id = ?",
       result.error ? 'failed' : 'completed', result.synced, 0, result.error || null, syncId);
     return c.json({
       success: !result.error, sync_id: syncId, type,
@@ -72,7 +72,7 @@ sm.post('/sync', async (c) => {
     const message = err instanceof Error ? err.message : 'Sync failed';
     if (syncId != null) {
       await execute(db,
-        "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+        "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now') WHERE id = ?",
         message, syncId).catch(() => {});
     }
     return c.json({ success: false, sync_id: syncId ?? null, type, jobs_synced: 0, attempts_synced: 0, error: message }, 500);
@@ -179,7 +179,7 @@ sm.put('/poller/settings', async (c) => {
     if (body.auto_create_calls !== undefined) pairs['servemanager_auto_create_calls'] = body.auto_create_calls ? 'true' : 'false';
     for (const [key, value] of Object.entries(pairs)) {
       await execute(db, "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'", key);
-      await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now','localtime'), datetime('now','localtime'))`, key, value);
+      await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, key, value);
     }
     return c.json({ success: true });
   } catch { return c.json({ error: 'Failed to save settings' }, 500); }

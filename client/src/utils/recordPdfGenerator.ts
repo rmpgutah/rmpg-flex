@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { loadSealBase64 } from './pdfAssets';
 import QRCode from 'qrcode';
-import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
+import { isPast, isWithinDays, parseTimestamp, formatDateTime } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
@@ -1476,14 +1476,21 @@ function callPriorityLabel(p: string): string {
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS AM/PM */
-/** Convert a date to Mountain Time components */
+/**
+ * Convert a date to Mountain Time components via Intl.DateTimeFormat parts —
+ * not a toLocaleString-round-trip-then-reparse, which is locale-format-fragile
+ * and can misparse depending on runtime ICU data.
+ */
 function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string; min: string; sec: string } {
-  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const mm = String(mt.getMonth() + 1).padStart(2, '0');
-  const dd = String(mt.getDate()).padStart(2, '0');
-  const yyyy = mt.getFullYear();
-  const hh = String(mt.getHours()).padStart(2, '0');
-  return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+  let hh = get('hour');
+  if (hh === '24') hh = '00'; // some engines emit '24' for midnight under hour12:false
+  return { mm: get('month'), dd: get('day'), yyyy: parseInt(get('year'), 10), hh, min: get('minute'), sec: get('second') };
 }
 
 /** Format: MM/DD/YYYY */
@@ -7165,9 +7172,11 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
-    const _p2 = (n: number) => String(n).padStart(2, '0');
-    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
+    // formatDateTime resolves the display timezone (America/Denver) via
+    // Intl.DateTimeFormat internally — raw Date getters here would read the
+    // Workers/browser host's local zone (UTC) instead, offsetting every
+    // printed officer signature date/time by hours.
+    const sigDateStr = formatDateTime(closedDate || new Date().toISOString());
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
@@ -7227,9 +7236,11 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
-    const _p2 = (n: number) => String(n).padStart(2, '0');
-    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
+    // formatDateTime resolves the display timezone (America/Denver) via
+    // Intl.DateTimeFormat internally — raw Date getters here would read the
+    // Workers/browser host's local zone (UTC) instead, offsetting every
+    // printed officer signature date/time by hours.
+    const sigDateStr = formatDateTime(closedDate || new Date().toISOString());
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
