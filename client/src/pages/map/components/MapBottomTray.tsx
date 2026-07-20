@@ -36,7 +36,7 @@ export default function MapBottomTray({ rosterProps, leftSections, rightSections
             <MapRosterDock {...rosterProps} open onOpenChange={() => setActiveTab(null)} />
           )}
           {activeTab === 'layers' && leftSections.map((section) => (
-            <DockSection key={section.title} title={section.title}>
+            <DockSection key={section.title} title={section.title} collapsible={section.collapsible}>
               {section.items.map((item) => <DockToggleRow key={item.id} item={item} />)}
             </DockSection>
           ))}
