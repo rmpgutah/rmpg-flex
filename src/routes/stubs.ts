@@ -16,6 +16,7 @@ const PREF_DEFAULTS = {
   desktop_layout_json: null, desktop_wallpaper: 'blue-silver-default',
   desktop_widgets_json: null,
   desktop_accent: 'default', desktop_notes_json: null,
+  browser_bookmarks_json: null, browser_history_json: null,
 } as const;
 
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
