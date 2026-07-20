@@ -13,6 +13,9 @@ import {
   getTaskbarSize, setTaskbarSize, type TaskbarSize,
 } from '../../utils/taskbarPreferences';
 import { exportSettings, importSettings } from '../../utils/settingsExportImport';
+import { getClockFormat, setClockFormat, type ClockFormat } from '../../utils/clockPreference';
+import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
+import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -79,6 +82,9 @@ export default function DesktopSettingsApp({
   const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
   const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [clockFormat, setClockFormatState] = useState<ClockFormat>(() => getClockFormat());
+  const [soundEnabled, setSoundEnabledState] = useState(() => isDesktopSoundEnabled());
+  const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -214,10 +220,64 @@ export default function DesktopSettingsApp({
                 ))}
               </div>
 
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Clock Format</div>
+              <div className="flex gap-1">
+                {(['12h', '24h'] as const).map(fmt => (
+                  <button
+                    key={fmt} type="button"
+                    onClick={() => { setClockFormat(fmt); setClockFormatState(fmt); }}
+                    className="text-[10px] px-2 py-0.5"
+                    style={{ border: '1px solid var(--border-default)', background: clockFormat === fmt ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                  >
+                    {fmt === '12h' ? '12-hour' : '24-hour'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Desktop Sounds</div>
+              <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Desktop sounds"
+                  checked={soundEnabled}
+                  onChange={(e) => { setDesktopSoundEnabled(e.target.checked); setSoundEnabledState(e.target.checked); }}
+                />
+                Play a sound when opening, closing, minimizing, or snapping a window
+              </label>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Window Transparency</div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { const next = getDefaultWindowOpacity() - 0.1; setDefaultWindowOpacity(next); setWindowOpacityState(getDefaultWindowOpacity()); }}
+                  className="text-[10px] px-2 py-0.5"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+                >
+                  Decrease
+                </button>
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{Math.round(windowOpacity * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => { const next = getDefaultWindowOpacity() + 0.1; setDefaultWindowOpacity(next); setWindowOpacityState(getDefaultWindowOpacity()); }}
+                  className="text-[10px] px-2 py-0.5"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+                >
+                  Increase
+                </button>
+              </div>
+
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
                   type="button"
-                  onClick={() => { if (window.confirm('Reset wallpaper and accent color to default?')) { onWallpaperChange(DEFAULT_WALLPAPER_ID); onAccentChange(DEFAULT_ACCENT_ID); } }}
+                  onClick={() => {
+                    if (window.confirm('Reset wallpaper, accent color, clock format, desktop sounds, and window transparency to default?')) {
+                      onWallpaperChange(DEFAULT_WALLPAPER_ID);
+                      onAccentChange(DEFAULT_ACCENT_ID);
+                      setClockFormat('24h'); setClockFormatState('24h');
+                      setDesktopSoundEnabled(true); setSoundEnabledState(true);
+                      setDefaultWindowOpacity(1); setWindowOpacityState(1);
+                    }
+                  }}
                   className="text-[10px] px-2 py-1 w-full"
                   style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
                 >
