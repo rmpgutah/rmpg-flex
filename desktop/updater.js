@@ -4,9 +4,23 @@
 // new desktop app versions and install them automatically.
 // ============================================================
 
+const fs = require('fs');
+const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { isSecureUpdateFeedUrl } = require('./security/sessionHardening');
+const { verifyDownloadedUpdateHash } = require('./security/sessionAuth');
+
+// Set to true only after a downloaded update package's SHA512 has been
+// explicitly re-verified by this app (verifyDownloadedUpdateHash), on top
+// of whatever internal integrity checking electron-updater already does
+// during download. `updater:install` below is the ONLY call site that
+// invokes autoUpdater.quitAndInstall() in this file — gating it on this
+// flag means a corrupted/tampered download can never be installed via the
+// renderer-triggered path. Reset to false at the top of every fresh
+// 'update-downloaded' event so a stale prior verification can't leak
+// across update cycles.
+let lastUpdateVerified = false;
 
 class AppUpdater {
   constructor() {
@@ -81,6 +95,14 @@ class AppUpdater {
 
     guardedOn('updater:install', () => {
       console.log('[UPDATER] Install triggered from renderer');
+      if (!lastUpdateVerified) {
+        console.error('[UPDATER] Refusing to install: downloaded package failed (or never completed) hash re-verification');
+        this._sendToRenderer('update-status', {
+          status: 'error',
+          message: 'Update package failed integrity verification and was not installed.',
+        });
+        return;
+      }
       autoUpdater.quitAndInstall(false, true);
     });
 
@@ -158,15 +180,45 @@ class AppUpdater {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
-      console.log(`[UPDATER] Update downloaded: v${info.version} — will install on next quit`);
+      console.log(`[UPDATER] Update downloaded: v${info.version} — verifying package integrity`);
       this.isUpdateInProgress = false;
-      this._sendToRenderer('update-status', {
-        status: 'ready',
-        version: info.version,
-      });
+      lastUpdateVerified = false;
 
-      // Silent update — autoInstallOnAppQuit handles installation
-      // No dialog, no forced restart. Update applies next time the app closes.
+      // Explicit app-level re-verification of the downloaded package's
+      // SHA512, on top of electron-updater's own internal checking.
+      // `info.downloadedFile` is the LOCAL path electron-updater just wrote
+      // the package to (set by AppUpdater's dispatchUpdateDownloaded
+      // wrapper) — NOT `info.path`, which is a deprecated field carrying
+      // the manifest's remote path fragment, not a local filesystem path.
+      // `info.sha512` is the base64-encoded expected hash from the update
+      // manifest (latest.yml / latest-mac.yml).
+      verifyDownloadedUpdateHash(info.downloadedFile, info.sha512, fs, crypto)
+        .then((result) => {
+          if (!result.ok) {
+            console.error(`[UPDATER] Downloaded package failed hash re-verification: ${result.error}`);
+            this._sendToRenderer('update-status', {
+              status: 'error',
+              message: 'Downloaded update failed integrity verification.',
+            });
+            return;
+          }
+
+          lastUpdateVerified = true;
+          this._sendToRenderer('update-status', {
+            status: 'ready',
+            version: info.version,
+          });
+
+          // Silent update — autoInstallOnAppQuit handles installation
+          // No dialog, no forced restart. Update applies next time the app closes.
+        })
+        .catch((err) => {
+          console.error('[UPDATER] Hash verification threw unexpectedly:', err && err.message);
+          this._sendToRenderer('update-status', {
+            status: 'error',
+            message: 'Downloaded update failed integrity verification.',
+          });
+        });
     });
 
     autoUpdater.on('error', (err) => {

@@ -370,6 +370,72 @@ function assertWebPreferencesNotWeaker(candidatePrefs, referencePrefs) {
   return { ok: true };
 }
 
+/**
+ * Explicit app-level re-verification of a downloaded auto-update package's
+ * integrity, on top of whatever internal checking electron-updater already
+ * does. Streams the file at `filePath` through a SHA512 digest rather than
+ * reading it into memory in one shot — installer packages can run several
+ * hundred MB, and a `readFileSync` there would briefly double that as a
+ * Buffer in the process's heap for no benefit. A readable stream +
+ * incremental `hash.update()` per chunk (mirroring the same pattern
+ * electron-updater's own internal `hashFile()` helper in
+ * `DownloadedUpdateHelper.js` uses) keeps memory bounded to one chunk at a
+ * time regardless of file size.
+ *
+ * The digest is encoded as BASE64, not hex — electron-updater's own
+ * `latest.yml`/`latest-mac.yml` manifest format (and therefore `info.sha512`
+ * on the `update-downloaded` event) always uses base64-encoded SHA512;
+ * comparing against a hex digest here would make every legitimate update
+ * fail this check.
+ *
+ * DI-testable: `fsModule`/`cryptoModule` are passed in explicitly (matching
+ * this file's existing `getConfig`/`setConfig`/`randomUUIDFn` DI style)
+ * rather than `require`d internally, so tests can supply fakes instead of
+ * touching a real file or computing a real hash.
+ *
+ * Fails CLOSED: any read-stream error (missing file, permission error, etc.)
+ * is treated the same as a hash mismatch — `{ok:false}` — never `{ok:true}`.
+ *
+ * @param {string} filePath - local filesystem path to the downloaded update
+ *   package (e.g. electron-updater's `update-downloaded` event's
+ *   `downloadedFile` field — NOT its deprecated top-level `.path`, which is
+ *   the manifest's remote path fragment, not a local path).
+ * @param {string} expectedSha512 - base64-encoded SHA512 from the update
+ *   manifest (electron-updater's `info.sha512`).
+ * @param {{ createReadStream: (path: string) => NodeJS.ReadableStream }} fsModule
+ * @param {{ createHash: (algorithm: string) => import('crypto').Hash }} cryptoModule
+ * @returns {Promise<{ok:true}|{ok:false,error:string}>}
+ */
+function verifyDownloadedUpdateHash(filePath, expectedSha512, fsModule, cryptoModule) {
+  return new Promise((resolve) => {
+    const hash = cryptoModule.createHash('sha512');
+    let stream;
+    try {
+      stream = fsModule.createReadStream(filePath);
+    } catch {
+      resolve({ ok: false, error: 'update package hash mismatch' });
+      return;
+    }
+
+    stream.on('error', () => {
+      resolve({ ok: false, error: 'update package hash mismatch' });
+    });
+
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+
+    stream.on('end', () => {
+      const actualSha512 = hash.digest('base64');
+      if (actualSha512 === expectedSha512) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: 'update package hash mismatch' });
+      }
+    });
+  });
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
@@ -381,4 +447,5 @@ module.exports = {
   detectClockSkew,
   looksLikeSecretValue,
   assertWebPreferencesNotWeaker,
+  verifyDownloadedUpdateHash,
 };

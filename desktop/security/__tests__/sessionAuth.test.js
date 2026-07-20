@@ -3,7 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('../sessionAuth');
+const { EventEmitter } = require('node:events');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -608,4 +609,65 @@ test('assertWebPreferencesNotWeaker: reports the FIRST violated key when multipl
   assert.equal(result.ok, false);
   assert.match(result.error, /weaker webPreferences: contextIsolation/);
   assert.doesNotMatch(result.error, /nodeIntegration/);
+});
+
+// ─── verifyDownloadedUpdateHash ─────────────────────────────
+// Fakes for fs/crypto — never touch a real filesystem or compute a real
+// SHA512 here. The fake stream is a plain EventEmitter (matching the
+// 'data'/'end'/'error' events a real fs.ReadStream emits); the fake hash
+// object is a stub whose .update() is a no-op and .digest('base64')
+// returns a fixed value, so these tests exercise the comparison/wiring
+// logic in verifyDownloadedUpdateHash, not real cryptography.
+
+function makeFakeFs(chunks, { emitError } = {}) {
+  return {
+    createReadStream: () => {
+      const stream = new EventEmitter();
+      setImmediate(() => {
+        if (emitError) {
+          stream.emit('error', new Error('simulated read failure'));
+          return;
+        }
+        for (const chunk of chunks) stream.emit('data', Buffer.from(chunk));
+        stream.emit('end');
+      });
+      return stream;
+    },
+  };
+}
+
+function makeFakeCrypto(digestValue) {
+  return {
+    createHash: (algorithm) => {
+      assert.equal(algorithm, 'sha512');
+      return {
+        update: () => {},
+        digest: (encoding) => {
+          assert.equal(encoding, 'base64');
+          return digestValue;
+        },
+      };
+    },
+  };
+}
+
+test('verifyDownloadedUpdateHash: matching hash -> {ok:true}', async () => {
+  const fakeFs = makeFakeFs(['fake installer bytes']);
+  const fakeCrypto = makeFakeCrypto('sameHashBase64==');
+  const result = await verifyDownloadedUpdateHash('/fake/path/installer.exe', 'sameHashBase64==', fakeFs, fakeCrypto);
+  assert.deepEqual(result, { ok: true });
+});
+
+test('verifyDownloadedUpdateHash: mismatched hash -> {ok:false, error}', async () => {
+  const fakeFs = makeFakeFs(['fake installer bytes']);
+  const fakeCrypto = makeFakeCrypto('actualHashBase64==');
+  const result = await verifyDownloadedUpdateHash('/fake/path/installer.exe', 'expectedDifferentHashBase64==', fakeFs, fakeCrypto);
+  assert.deepEqual(result, { ok: false, error: 'update package hash mismatch' });
+});
+
+test('verifyDownloadedUpdateHash: fail-closed on a read stream error -> {ok:false, error}', async () => {
+  const fakeFs = makeFakeFs([], { emitError: true });
+  const fakeCrypto = makeFakeCrypto('irrelevant');
+  const result = await verifyDownloadedUpdateHash('/fake/path/installer.exe', 'anyExpectedHash', fakeFs, fakeCrypto);
+  assert.deepEqual(result, { ok: false, error: 'update package hash mismatch' });
 });
