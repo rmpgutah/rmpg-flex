@@ -51,9 +51,7 @@ export default function MultiStopRoutePanel({
 
   return (
     <div
-      className={`absolute z-30 bg-surface-raised/95 border border-border-default backdrop-blur-md font-mono overflow-hidden ${
-        isMobile ? '' : ''
-      }`}
+      className="absolute z-30 bg-surface-raised/95 border border-border-default backdrop-blur-md font-mono overflow-hidden"
       style={{
         ...(isMobile
           ? { top: 56, left: 8, right: 8 }

@@ -153,7 +153,7 @@ export default function GpsReplayTool({ map, onClose }: Props) {
         const id = Number(e.target.value);
         setSelectedUnit(id);
         if (id) loadPositions(id, hoursBack);
-      }} className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+      }} className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
         <option value="">Select unit…</option>
         {units.map(u => (
           <option key={u.unit_id} value={u.unit_id}>
@@ -167,11 +167,11 @@ export default function GpsReplayTool({ map, onClose }: Props) {
           const h = Number(e.target.value);
           setHoursBack(h);
           if (selectedUnit) loadPositions(selectedUnit, h);
-        }} className="bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+        }} className="bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
           {HOURS_OPTIONS.map(h => <option key={h} value={h}>{h}h</option>)}
         </select>
         <select value={speed} onChange={e => setSpeed(Number(e.target.value))}
-          className="ml-auto bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+          className="ml-auto bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
           {SPEEDS.map(s => <option key={s} value={s}>{s}×</option>)}
         </select>
       </div>
