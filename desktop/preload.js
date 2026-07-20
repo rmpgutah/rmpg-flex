@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld('electron', {
   // Auto-clears when the window receives focus.
   flashFrame: () => ipcRenderer.invoke('notify:flash-frame'),
 
+  // Reflects shift state in the tray tooltip. state must be one of
+  // 'on-shift' | 'off-shift' | 'alert' — anything else is silently
+  // ignored by the main-process handler (see main.js's
+  // 'notify:tray-status' handler).
+  setTrayStatus: (state) => ipcRenderer.invoke('notify:tray-status', state),
+
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 

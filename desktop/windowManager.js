@@ -73,4 +73,42 @@ function coerceBadgeCount(count) {
   return Math.min(Math.max(0, Math.floor(Number(count) || 0)), 9999);
 }
 
-module.exports = { buildSecondaryWindowUrl, coerceBadgeCount };
+/**
+ * The complete set of valid tray-status states accepted by the
+ * 'notify:tray-status' IPC channel. A genuine enum check — anything that
+ * isn't an exact string match (wrong case, extra whitespace, a near-match
+ * like 'onshift', or a non-string) is rejected.
+ */
+const VALID_TRAY_STATUSES = ['on-shift', 'off-shift', 'alert'];
+
+/**
+ * Returns true only for the exact strings 'on-shift', 'off-shift', 'alert'.
+ */
+function isValidTrayStatus(state) {
+  return VALID_TRAY_STATUSES.includes(state);
+}
+
+/**
+ * Maps a valid tray status to its human-readable tooltip text for
+ * tray.setToolTip(...). The caller (main.js's 'notify:tray-status' handler)
+ * always validates via isValidTrayStatus() first, so an invalid state here
+ * should be unreachable in practice — but rather than throw (redundant
+ * defensive-programming noise given the caller's gate) or return a blank
+ * string (which would silently produce an empty tooltip), fall back to the
+ * bare app name so a maintainer calling this directly never sees undefined
+ * or blank output.
+ */
+function formatTrayTooltip(state) {
+  switch (state) {
+    case 'on-shift':
+      return 'RMPG Flex — On Shift';
+    case 'off-shift':
+      return 'RMPG Flex — Off Shift';
+    case 'alert':
+      return 'RMPG Flex — ALERT';
+    default:
+      return 'RMPG Flex';
+  }
+}
+
+module.exports = { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip };

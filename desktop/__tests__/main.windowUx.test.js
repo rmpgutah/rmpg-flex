@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSecondaryWindowUrl, coerceBadgeCount } = require('../windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip } = require('../windowManager');
 
 const BASE_URL = 'https://rmpgutah.us';
 
@@ -92,4 +92,74 @@ test('coerceBadgeCount: value above the cap is clamped to 9999', () => {
 
 test('coerceBadgeCount: normal valid integer is unchanged', () => {
   assert.equal(coerceBadgeCount(5), 5);
+});
+
+// ─── isValidTrayStatus ──────────────────────────────────────
+
+test('isValidTrayStatus: "on-shift" is valid', () => {
+  assert.equal(isValidTrayStatus('on-shift'), true);
+});
+
+test('isValidTrayStatus: "off-shift" is valid', () => {
+  assert.equal(isValidTrayStatus('off-shift'), true);
+});
+
+test('isValidTrayStatus: "alert" is valid', () => {
+  assert.equal(isValidTrayStatus('alert'), true);
+});
+
+test('isValidTrayStatus: wrong case "On-Shift" is rejected', () => {
+  assert.equal(isValidTrayStatus('On-Shift'), false);
+});
+
+test('isValidTrayStatus: wrong case "ON-SHIFT" is rejected', () => {
+  assert.equal(isValidTrayStatus('ON-SHIFT'), false);
+});
+
+test('isValidTrayStatus: near-match without hyphen "onshift" is rejected', () => {
+  assert.equal(isValidTrayStatus('onshift'), false);
+});
+
+test('isValidTrayStatus: value with extra whitespace is rejected', () => {
+  assert.equal(isValidTrayStatus('on-shift '), false);
+  assert.equal(isValidTrayStatus(' on-shift'), false);
+});
+
+test('isValidTrayStatus: empty string is rejected', () => {
+  assert.equal(isValidTrayStatus(''), false);
+});
+
+test('isValidTrayStatus: null is rejected', () => {
+  assert.equal(isValidTrayStatus(null), false);
+});
+
+test('isValidTrayStatus: undefined is rejected', () => {
+  assert.equal(isValidTrayStatus(undefined), false);
+});
+
+test('isValidTrayStatus: number is rejected', () => {
+  assert.equal(isValidTrayStatus(123), false);
+});
+
+test('isValidTrayStatus: unrelated string is rejected', () => {
+  assert.equal(isValidTrayStatus('busy'), false);
+});
+
+// ─── formatTrayTooltip ──────────────────────────────────────
+
+test('formatTrayTooltip: "on-shift" maps to the expected tooltip', () => {
+  assert.equal(formatTrayTooltip('on-shift'), 'RMPG Flex — On Shift');
+});
+
+test('formatTrayTooltip: "off-shift" maps to the expected tooltip', () => {
+  assert.equal(formatTrayTooltip('off-shift'), 'RMPG Flex — Off Shift');
+});
+
+test('formatTrayTooltip: "alert" maps to the expected tooltip', () => {
+  assert.equal(formatTrayTooltip('alert'), 'RMPG Flex — ALERT');
+});
+
+test('formatTrayTooltip: invalid state returns a fallback, not a throw', () => {
+  assert.doesNotThrow(() => formatTrayTooltip('bogus'));
+  assert.equal(formatTrayTooltip('bogus'), 'RMPG Flex');
 });

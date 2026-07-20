@@ -15,7 +15,7 @@ const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validat
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
-const { buildSecondaryWindowUrl, coerceBadgeCount } = require('./windowManager');
+const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip } = require('./windowManager');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -960,6 +960,17 @@ guardedHandle('notify:dock-badge', (event, count) => {
 
 guardedHandle('notify:flash-frame', () => {
   mainWindow?.flashFrame(true);
+});
+
+// Reflects the officer's shift state in the tray icon's tooltip text.
+// There is no per-status icon asset shipped for the tray (createTray() uses
+// a single static icon via getIconPath()), so this is tooltip-text-only —
+// not icon-swapping. Silently no-ops on an invalid state or if the tray
+// hasn't been created yet (same fail-safe pattern as fs:reveal's
+// validation-failure handling) — void return per spec.
+guardedHandle('notify:tray-status', (event, state) => {
+  if (!isValidTrayStatus(state)) return;
+  if (tray) tray.setToolTip(formatTrayTooltip(state));
 });
 
 guardedHandle('app:version', () => app.getVersion());
