@@ -42,8 +42,8 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
 | `HeatmapLegend`          | — | Standalone heatmap legend (superseded by `UnifiedMapLegend`) |
 | `HeatmapPresets`         | — | Saved heatmap configurations |
 | `IncidentReportsPanel`   | — | List of incident reports as map sidebar |
-| `MapLayersPanel`         | — | Layer toggle dialog (separate from inline layer chips) |
 | `MapboxDispatchConnections` | — | Mapbox-API diagnostics/demo panel (Directions/Matrix/Geocoding/Isochrone/Map-Matching status) |
+| `MapLayersPanel`         | — | Layer toggle dialog (separate from inline layer chips) |
 | `MapLegend`              | — | Older legend; superseded by `UnifiedMapLegend` |
 | `MapMobileSheet`         | — | Cohesive mobile bottom sheet (today's mobile UX is inline `!isMobile` branches) |
 | `MapOverlays`            | — | Overlay layer dialog |
@@ -56,8 +56,8 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
 | `SafetyDashboardPanel`   | — | Officer-safety dashboard widget |
 | `SafetyZonesPanel`       | — | Safety-zone definition UI |
 | `TacticalSummaryPanel`   | — | Tactical-situation summary card |
-| `ToolbarDropdownGroup`   | — | Generic reusable collapsible toolbar-section wrapper |
 | `ThreatAssessmentPanel`  | — | Threat-level scoring for a location |
+| `ToolbarDropdownGroup`   | — | Generic reusable collapsible toolbar-section wrapper |
 | `WeatherPanel`           | — | Full weather sidebar (vs the inline weather strip) |
 | `WeatherWidget`          | — | Compact weather widget (the dashboard has its own) |
 
