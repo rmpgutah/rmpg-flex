@@ -37,7 +37,7 @@ vi.mock('../components/ToastProvider', () => ({
 }));
 
 import { saveFavorites } from '../utils/navFavorites';
-import { isAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
+import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopPage from './DesktopPage';
 
 describe('DesktopPage', () => {
@@ -203,6 +203,83 @@ describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
     expect(areIconsHidden()).toBe(true);
     fireEvent.contextMenu(desktopSurface);
     expect(screen.getByText('Show icons')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopPage — auto-arrange fills gaps for newly-pinned icons', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('assigns a newly-favorited path a position that does not overlap an existing icon, when auto-arrange is on', async () => {
+    setAutoArrangeEnabled(true);
+    // Seed a layout that already positions /dispatch at (20,20), but favorites
+    // (loaded synchronously by DesktopPage's useState(loadFavorites) initializer)
+    // contains a SECOND path, /records, with no entry in desktop_layout_json.
+    // This reproduces the exact gap the reconciliation effect fixes: on this
+    // same initial render, pinnedIcons has 2 entries but layout.icons only
+    // positions 1 — without reconciliation, /records would fall back to
+    // DesktopIconGrid's hardcoded {x:20,y:20}, stacking directly on /dispatch.
+    const seededLayout = JSON.stringify({
+      icons: [{ path: '/dispatch', x: 20, y: 20 }],
+      groups: [],
+      iconSize: 'medium',
+      viewMode: 'grid',
+      sortMode: 'manual',
+    });
+    mockUseUserPreferences.mockReturnValue({
+      prefs: { ...mockPrefs, desktop_layout_json: seededLayout },
+      reload: vi.fn(),
+      isLoading: false,
+      error: null,
+    });
+    saveFavorites(new Set(['/dispatch', '/records']));
+
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Records (RMS)').length).toBeGreaterThan(0));
+
+    const recordsButton = screen.getAllByText('Records (RMS)')[0].closest('button');
+    expect(recordsButton).not.toBeNull();
+    // The reconciled position must not collide with /dispatch's real (20,20),
+    // and (per nextAutoArrangeSlot's gap-filling) should land in the next
+    // free grid cell rather than at the DesktopIconGrid fallback of (20,20).
+    expect(recordsButton!.style.left).not.toBe('20px');
+
+    // /dispatch's own already-placed position must be left untouched by the
+    // reconciliation effect (auto-arrange must never retroactively move an
+    // existing icon).
+    const dispatchButton = screen.getAllByText('Dispatch Console')[0].closest('button');
+    expect(dispatchButton!.style.left).toBe('20px');
+    expect(dispatchButton!.style.top).toBe('20px');
+
+    setAutoArrangeEnabled(false); // cleanup for other tests
+  });
+
+  it('assigns a newly-favorited path a cascaded position when auto-arrange is off', async () => {
+    const seededLayout = JSON.stringify({
+      icons: [{ path: '/dispatch', x: 20, y: 20 }],
+      groups: [],
+      iconSize: 'medium',
+      viewMode: 'grid',
+      sortMode: 'manual',
+    });
+    mockUseUserPreferences.mockReturnValue({
+      prefs: { ...mockPrefs, desktop_layout_json: seededLayout },
+      reload: vi.fn(),
+      isLoading: false,
+      error: null,
+    });
+    saveFavorites(new Set(['/dispatch', '/records']));
+
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Records (RMS)').length).toBeGreaterThan(0));
+
+    const recordsButton = screen.getAllByText('Records (RMS)')[0].closest('button');
+    expect(recordsButton!.style.left).not.toBe('20px');
+
+    const dispatchButton = screen.getAllByText('Dispatch Console')[0].closest('button');
+    expect(dispatchButton!.style.left).toBe('20px');
+    expect(dispatchButton!.style.top).toBe('20px');
   });
 });
 

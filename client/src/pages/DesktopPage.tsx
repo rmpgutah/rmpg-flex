@@ -10,7 +10,7 @@ import { DEFAULT_WALLPAPER_ID } from '../data/desktopWallpapers';
 import { DEFAULT_ACCENT_ID, getAccent } from '../data/desktopAccents';
 import { normalizeDesktopLayout, serializeDesktopLayout, type DesktopGroup } from '../utils/normalizeDesktopLayout';
 import { normalizeDesktopWidgets, serializeDesktopWidgets } from '../utils/normalizeDesktopWidgets';
-import { sortIconPositions, snapToGrid } from '../utils/desktopLayoutOps';
+import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/desktopLayoutOps';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
@@ -123,6 +123,31 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, wallpaperId, widgets, accentId, notes]);
+
+  // Reconciles `layout.icons` against `pinnedIcons` whenever a favorite lacks
+  // a saved position — e.g. a favorite added elsewhere (Module Directory)
+  // whose position never made it into `desktop_layout_json`. Without this,
+  // DesktopIconGrid falls back to a hardcoded {x:20,y:20} for any unpositioned
+  // icon, stacking it directly on top of whatever else already sits there.
+  // Only ADDS positions for missing paths — never touches an icon that
+  // already has one, so auto-arrange never retroactively moves a placed icon.
+  useEffect(() => {
+    const positioned = new Set(layout.icons.map(p => p.path));
+    const missing = pinnedIcons.filter(fn => !positioned.has(fn.path));
+    if (missing.length === 0) return;
+    setLayout(prev => {
+      const existingPositions = Object.fromEntries(prev.icons.map(p => [p.path, { x: p.x, y: p.y }]));
+      const additions = missing.map(fn => {
+        const slot = isAutoArrangeEnabled()
+          ? nextAutoArrangeSlot(existingPositions)
+          : { x: 20 + prev.icons.length * 24, y: 20 + prev.icons.length * 24 };
+        existingPositions[fn.path] = slot;
+        return { path: fn.path, x: slot.x, y: slot.y };
+      });
+      return { ...prev, icons: [...prev.icons, ...additions] };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinnedIcons]);
 
   const handleReposition = useCallback((path: string, x: number, y: number) => {
     setLayout(prev => ({ ...prev, icons: prev.icons.map(p => p.path === path ? { ...p, x, y } : p) }));
