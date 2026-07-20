@@ -145,6 +145,40 @@ test('assertSecureElectronDefaults: flags multiple insecure switches at once', (
   assert.equal(result.violations.length, 2);
 });
 
+// Group J Task 9: the original 4-switch list only covered flags that
+// directly disable web-platform security checks; it missed switches that
+// widen the app's debug-protocol or OS-sandbox attack surface instead.
+// These cases guard the expanded list.
+test('assertSecureElectronDefaults: flags remote-debugging-port', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['remote-debugging-port']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('remote-debugging-port'));
+});
+
+test('assertSecureElectronDefaults: flags remote-debugging-address', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['remote-debugging-address']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('remote-debugging-address'));
+});
+
+test('assertSecureElectronDefaults: flags no-sandbox', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['no-sandbox']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('no-sandbox'));
+});
+
+test('assertSecureElectronDefaults: flags allow-insecure-localhost', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['allow-insecure-localhost']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('allow-insecure-localhost'));
+});
+
+test('assertSecureElectronDefaults: flags disable-site-isolation-trials', () => {
+  const result = assertSecureElectronDefaults(fakeApp(['disable-site-isolation-trials']));
+  assert.equal(result.ok, false);
+  assert.ok(result.violations.includes('disable-site-isolation-trials'));
+});
+
 const { shouldExposeDevToolsMenuItem } = require('../sessionHardening');
 
 test('shouldExposeDevToolsMenuItem: true when not packaged (dev run)', () => {

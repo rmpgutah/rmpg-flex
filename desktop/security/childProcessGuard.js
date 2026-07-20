@@ -253,6 +253,419 @@ function isAllowedBinaryName(binary, allowedCommands) {
   return false;
 }
 
+/**
+ * Pure predicate: does `url`'s hostname exactly match one of
+ * `allowedHosts`?
+ *
+ * Regression-guard framing (matches Group I Task 8's
+ * `assertWebPreferencesNotWeaker` self-check pattern): every call site
+ * this is wired into today (`geo:ip-locate`'s hardcoded Google
+ * geolocation URL, `syncManager.js`'s requests built from
+ * `REMOTE_SERVER_URL`) already builds its request URL from a `const`/
+ * module-scoped literal, never from renderer-supplied input — so this
+ * function is NOT closing an active vulnerability. Its value is as a
+ * defense-in-depth tripwire: if a future change accidentally threads
+ * renderer-influenced data into one of these URLs (or a copy/paste
+ * mistake points a request at the wrong host), this check fails the
+ * request instead of silently sending it somewhere unintended.
+ *
+ * Parses `url` via the `URL` constructor and fails closed — any
+ * unparseable input (malformed URL, missing protocol, non-string,
+ * `null`/`undefined`) returns `false` rather than throwing, so a caller
+ * can safely gate a request on this function's result without its own
+ * try/catch.
+ *
+ * Hostname comparison is EXACT match only — deliberately not
+ * `endsWith`/`includes`/any substring check, which a crafted subdomain
+ * like `www.googleapis.com.attacker.com` (a real, resolvable hostname
+ * where `www.googleapis.com` is merely a leading label, not the actual
+ * domain) or `evil.googleapis.com` (a subdomain of the real domain, but
+ * not the specific pinned host) could bypass. Similarly, stuffing the
+ * allowed hostname into a query string or path of an unrelated host
+ * (`https://evil.com/?host=www.googleapis.com`) is correctly rejected
+ * since only `.hostname` is ever inspected, never the full URL string.
+ *
+ * This function intentionally does NOT check `.protocol` — host-pinning
+ * and protocol-enforcement are separate concerns, and the existing
+ * `isSecureUpdateFeedUrl` check in `sessionHardening.js` (Group F) is
+ * this codebase's established precedent for protocol validation. Don't
+ * duplicate that here; a caller that also needs a protocol guarantee
+ * should compose both checks.
+ *
+ * @param {*} url - the outbound request URL to validate
+ * @param {Iterable<string>} allowedHosts - known-good hostnames (e.g. a Set or array)
+ * @returns {boolean} true only if `url` parses and its hostname exactly matches an allowed host
+ */
+function isAllowedApiHost(url, allowedHosts) {
+  if (!allowedHosts) return false;
+
+  let hostname;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+
+  for (const candidate of allowedHosts) {
+    if (candidate === hostname) return true;
+  }
+  return false;
+}
+
+/**
+ * Parses and validates the body of a `geo:ip-locate` response (the Google
+ * Geolocation API's `POST /geolocation/v1/geolocate` payload) — pure, no
+ * I/O. Used by the `geo:ip-locate` IPC handler in `main.js` in place of an
+ * inline `JSON.parse(body)` + direct `data.location.lat`/`.lng` access,
+ * so a malformed or unexpected response body can never propagate a
+ * non-numeric/NaN coordinate into the renderer's map/location UI.
+ *
+ * Fails closed in two ways:
+ *  1. Invalid JSON — `JSON.parse` throwing is caught, never propagated.
+ *  2. Valid JSON but the wrong shape — `location` missing, not an object,
+ *     or `location.lat`/`location.lng` not finite numbers (a string like
+ *     `"37.7"`, `null`, `NaN`, `Infinity`, or simply absent all fail via
+ *     `Number.isFinite`, which is the one existence+type+finiteness check
+ *     that also correctly *accepts* a legitimate `0` coordinate — a naive
+ *     `data.location.lat || ...` fallback would incorrectly treat `0` as
+ *     missing).
+ *
+ * Both cases return `{ok:false, error:'malformed geolocation response'}`
+ * rather than throwing, so the caller can branch on `.ok` without its own
+ * try/catch. This intentionally does not attempt to distinguish "the API
+ * returned a structured error" (e.g. `{error:{message:'...'}}`) from
+ * "the API returned garbage" — both are shape violations from this
+ * function's point of view; the caller's own error path already covers
+ * surfacing an API-provided message where one exists.
+ *
+ * On success, extra/unexpected fields alongside a valid `location` are
+ * ignored rather than rejected — this validates the response is *usable*,
+ * not an exact-schema match. `accuracy` is read from the top-level
+ * `data.accuracy` field (matching the pre-existing handler's own
+ * `data.accuracy || 5000` fallback, which is itself matching the actual
+ * Google Geolocation API response shape — `accuracy` is a sibling of
+ * `location`, not nested under it) and defaults to `5000` meters when
+ * absent or falsy.
+ *
+ * @param {string} rawBody - the raw HTTP response body text
+ * @returns {{ok:true, latitude:number, longitude:number, accuracy:number}|{ok:false, error:string}}
+ */
+function parseIpLocateResponse(rawBody) {
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    return { ok: false, error: 'malformed geolocation response' };
+  }
+
+  const location = data && typeof data === 'object' ? data.location : undefined;
+  if (
+    !location ||
+    typeof location !== 'object' ||
+    !Number.isFinite(location.lat) ||
+    !Number.isFinite(location.lng)
+  ) {
+    return { ok: false, error: 'malformed geolocation response' };
+  }
+
+  return {
+    ok: true,
+    latitude: location.lat,
+    longitude: location.lng,
+    accuracy: data.accuracy || 5000,
+  };
+}
+
+/**
+ * Default bound for a single, interactive, IPC-triggered `net.request`
+ * round trip (`geo:ip-locate`'s Google geolocation lookup, and
+ * `syncManager.js`'s token-refresh request) — see `withRequestTimeout`
+ * below.
+ *
+ * Set to 20 seconds: comfortably past what a slow-but-real mobile/cellular
+ * connection needs for one small JSON request/response, but short enough
+ * that a renderer waiting on the IPC round trip (e.g. a login flow blocked
+ * on token refresh, or the geolocation fallback) isn't left hanging for
+ * anywhere close to a minute when the far end has actually gone dark —
+ * sits in the middle of the brief's suggested 15-30s range rather than
+ * either edge, mirroring the reasoning already used for
+ * `DEFAULT_CHILD_PROCESS_TIMEOUT_MS`/`MAX_CONCURRENT_TOOLS` above.
+ */
+const DEFAULT_IPC_REQUEST_TIMEOUT_MS = 20 * 1000;
+
+/**
+ * Bound for `offline:trigger-sync`'s call to `syncManager.pullAll()`.
+ *
+ * Unlike `geo:ip-locate`'s single `net.request`, `pullAll()` is a
+ * sequential loop over every entry in `PULL_INTERVALS` (9 tables as of
+ * this writing), each pulled via `serverFetch`/`pullTable`, which already
+ * carries its own internal 15s per-request timeout+abort
+ * (`syncManager.js`'s `serverFetch`). A single-request-sized bound applied
+ * to the whole loop would false-positive-timeout a legitimate multi-table
+ * sync well before it could finish under normal (if slow) conditions.
+ *
+ * Set to 60 seconds: enough headroom for several sequential per-table
+ * pulls (each individually bounded at 15s) to complete even on a slow
+ * connection, while still giving the "sync now" IPC call a hard ceiling
+ * so a user who manually triggers a sync during a genuine outage isn't
+ * left waiting indefinitely for the renderer promise to settle. (The
+ * underlying `pullAll()` call keeps running in the background past this
+ * timeout if it hasn't returned yet — this bounds only how long the IPC
+ * handler waits on it, not the sync engine's own internal locking, which
+ * already force-releases a stuck lock after `SYNC_LOCK_TIMEOUT` (60s) via
+ * `acquireSyncLock()`.)
+ */
+const OFFLINE_TRIGGER_SYNC_TIMEOUT_MS = 60 * 1000;
+
+/**
+ * Races `requestPromise` against a `timeoutFn`-scheduled rejection,
+ * bounding how long an interactive, IPC-triggered network call can leave
+ * its handler (and the renderer awaiting the IPC round trip) hanging.
+ * DI-testable: `timeoutFn` is a `setTimeout`-shaped dependency
+ * (`timeoutFn(callback, delayMs) -> handle`) — real call sites pass the
+ * global `setTimeout`; tests pass a fake that records the callback/delay
+ * instead of waiting on real wall-clock time.
+ *
+ * Whichever side settles first wins, and the timer is always cleaned up
+ * afterwards via the real global `clearTimeout` (paired with whatever
+ * handle `timeoutFn` returned) — never left dangling:
+ *
+ *  - Request wins (resolves or rejects before the timeout fires): the
+ *    pending timer is cleared immediately, so it never fires later and
+ *    can't leak a dangling handle that keeps the event loop alive or
+ *    fires a stray, ignored rejection well after the caller has already
+ *    moved on.
+ *  - Timeout wins (the timer fires before the request settles): this
+ *    function rejects with a distinct, clearly-labeled timeout `Error`
+ *    (not a generic/ambiguous one) so callers can tell "the server never
+ *    answered in time" apart from "the server answered with an error."
+ *    If `requestPromise` eventually does settle after that, its result is
+ *    silently discarded — `Promise`s can only settle once, so this
+ *    function's own `.then` handler runs (as it must, since it's always
+ *    attached — an unattached rejection handler is how you get an
+ *    "unhandled rejection" warning) but has no further effect because
+ *    this outer promise already settled.
+ *
+ * Calling `clearTimeout` on whatever `timerHandle` a fake `timeoutFn`
+ * returns in tests is harmless — the real global `clearTimeout` silently
+ * no-ops on a value it doesn't recognize as one of its own timer ids,
+ * exactly like calling it twice on an already-cleared real timer.
+ *
+ * @param {Promise<*>} requestPromise - the in-flight network request to bound
+ * @param {number} timeoutMs - milliseconds to wait before timing out
+ * @param {Function} timeoutFn - setTimeout-shaped scheduler (DI)
+ * @returns {Promise<*>} resolves/rejects with `requestPromise`'s outcome, or rejects with a timeout Error if the timer fires first
+ */
+function withRequestTimeout(requestPromise, timeoutMs, timeoutFn) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const timerHandle = timeoutFn(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    requestPromise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerHandle);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerHandle);
+        reject(err);
+      }
+    );
+  });
+}
+
+/**
+ * Formats a single security-relevant IPC audit event as a single-line,
+ * JSON-stringified log entry — a fresh, minimal, desktop-only analog to
+ * the Worker's structured `src/utils/logger.ts` (which runs in an
+ * entirely different runtime, Cloudflare Workers vs Electron's Node main
+ * process, and shares no code with this module by design).
+ *
+ * Pure — does not read the clock or touch the filesystem itself; the
+ * caller supplies `timestamp` (or leaves it out, in which case this
+ * function fills in `new Date().toISOString()` so every emitted line is
+ * still timestamped without every call site having to remember to do it).
+ *
+ * `detail` MUST be pre-scrubbed by the caller to a minimal, non-sensitive
+ * shape (e.g. a tool id, a target user id, a filename) — this function
+ * does no redaction of its own; it is a formatter, not a sanitizer. See
+ * the call sites wired in main.js for what's actually logged at each of
+ * the 4 security-relevant channels this was built for.
+ *
+ * @param {{channel?: string, timestamp?: string, userId?: string, outcome?: string, detail?: object}} event
+ * @returns {string} a single line (no embedded newline) of valid JSON
+ */
+function formatSecurityAuditLine(event) {
+  const safeEvent = event || {};
+  return JSON.stringify({
+    channel: safeEvent.channel ?? null,
+    timestamp: safeEvent.timestamp || new Date().toISOString(),
+    userId: safeEvent.userId ?? null,
+    outcome: safeEvent.outcome ?? null,
+    detail: safeEvent.detail ?? null,
+  });
+}
+
+/**
+ * Appends one already-formatted `line` (see `formatSecurityAuditLine`) to
+ * `logFilePath`, DI-testable via `fsModule` (tests pass a fake
+ * `{appendFileSync}`; the real call site passes Node's `fs`).
+ *
+ * Deliberately does NOT reuse `systemInfo.js`'s `appendToLogFile` — that
+ * helper prepends its own `[<ISO timestamp>] ` prefix ahead of the
+ * message, which would break the "single line of valid JSON" contract
+ * `formatSecurityAuditLine` establishes (the audit log is meant to be
+ * parsed line-by-line as JSON, e.g. by a future log-shipping/ingestion
+ * step — a `[timestamp] {...}` line isn't valid JSON on its own). This
+ * function instead calls `fsModule.appendFileSync` directly with exactly
+ * the line plus a trailing newline, mirroring `appendToLogFile`'s own
+ * append-only (never-overwrite) semantics without its formatting.
+ *
+ * @param {string} line - a pre-formatted line, e.g. from `formatSecurityAuditLine`
+ * @param {{appendFileSync: Function}} fsModule - fs-shaped dependency (DI)
+ * @param {string} logFilePath - absolute path to the security audit log file
+ */
+function appendSecurityAuditLog(line, fsModule, logFilePath) {
+  fsModule.appendFileSync(logFilePath, `${line}\n`);
+}
+
+/**
+ * Group J Task 9: composes Group F's `assertSecureElectronDefaults(app)`
+ * result (unchanged — see sessionHardening.js) with Task 8's audit-log
+ * plumbing (`formatSecurityAuditLine`/`appendSecurityAuditLog`) to decide
+ * whether a detected violation deserves more than the existing plain
+ * `console.error` at the main.js call site.
+ *
+ * Investigation finding (see task-9-report.md for the full writeup): the
+ * existing check already runs unconditionally at startup regardless of
+ * `app.isPackaged` — and that's *correct* to leave unconditional, since
+ * the detection itself is a cheap, always-useful diagnostic. What was
+ * genuinely missing was any distinction in the CONSEQUENCE: a violation
+ * during local development (where `--remote-debugging-port` or similar
+ * may be deliberately passed by a dev/test harness) is expected noise,
+ * but the exact same violation in a PACKAGED build handed to a real
+ * officer is a serious, actionable signal that `console.error` alone
+ * will almost certainly go unseen for (packaged apps don't run with an
+ * attached terminal). This function is the pure decision point for that
+ * distinction — it does no I/O itself; the caller uses its output to
+ * decide whether to call `appendSecurityAuditLog`/`formatSecurityAuditLine`.
+ *
+ * Only escalates when BOTH `isPackaged` is true AND `secureDefaultsResult`
+ * actually reports a violation — a dev-build violation, or a clean
+ * packaged-build result, both correctly produce `shouldEscalate: false`.
+ *
+ * @param {{ok:boolean, violations?:string[]}} secureDefaultsResult - the return value of `assertSecureElectronDefaults(app)`
+ * @param {boolean} isPackaged - `app.isPackaged`
+ * @returns {{shouldEscalate:boolean, auditEvent:{channel:string,outcome:string,detail:object}|null}}
+ */
+function evaluateInsecureElectronFlagsEscalation(secureDefaultsResult, isPackaged) {
+  const hasViolation = !!secureDefaultsResult && secureDefaultsResult.ok === false;
+  if (!isPackaged || !hasViolation) {
+    return { shouldEscalate: false, auditEvent: null };
+  }
+  return {
+    shouldEscalate: true,
+    auditEvent: {
+      channel: 'security:insecure-electron-flags',
+      outcome: 'violation',
+      detail: { violations: secureDefaultsResult.violations },
+    },
+  };
+}
+
+/**
+ * Group J Task 10 (spec #50, `selfTestHardeningOnStartup`): a pure
+ * aggregator that runs an arbitrary list of named, zero-argument
+ * diagnostic checks and rolls them up into a single pass/fail summary.
+ * This is the last function of the entire 10-group hardening program —
+ * its whole job is to let `main.js`'s startup sequence ask "did every
+ * hardening check we know about actually pass?" with ONE call, instead
+ * of hand-wiring a growing pile of individual `if (!result.ok) ...`
+ * blocks as more checks accumulate across groups.
+ *
+ * `checks` is an array of `{name, fn}` pairs. Each `fn` is called with no
+ * arguments and is expected to be one of Group F/G/H/I's existing
+ * pure-check functions (or this task's own lightweight ones) —
+ * `assertSecureElectronDefaults(app)`, `auditIpcHandlerRegistry(...)`,
+ * etc. — already bound/curried by the caller into a zero-arg closure, so
+ * this aggregator stays completely decoupled from any of their individual
+ * signatures.
+ *
+ * Every `fn()` call is wrapped in its own try/catch: a throwing check
+ * produces `{name, ok:false, detail:<error message>}` for THAT check only
+ * and does not abort the loop or propagate out of this function — a bug
+ * in one diagnostic (e.g. a check that assumes a file exists and doesn't
+ * guard against ENOENT) must never take down the whole self-test, let
+ * alone the app itself. This is the non-negotiable "never blocks app
+ * launch" requirement from the spec's Error Handling section, enforced
+ * at the aggregator level as the primary guarantee (the call site in
+ * main.js additionally wraps the whole `runHardeningSelfTest(...)` call
+ * in its own try/catch as defense in depth, per that same requirement).
+ *
+ * A check's return value is interpreted as follows (in order):
+ *   1. `undefined`/no explicit return, or any truthy non-object,
+ *      non-`false` value: treated as a PASS with no `detail`. This
+ *      covers a check written as a plain assertion function that simply
+ *      doesn't throw on success (no return value needed).
+ *   2. A boolean `false`: treated as a FAIL with no `detail`.
+ *   3. An object with a boolean `.ok` property (the `{ok, violations?}`/
+ *      `{ok, error?}` shape already established by
+ *      `assertSecureElectronDefaults`/`auditIpcHandlerRegistry`/
+ *      `parseIpLocateResponse` elsewhere in this codebase): `.ok` is used
+ *      directly — an object is NEVER treated as truthy-therefore-passing
+ *      the way a naive `if (result)` would, which is exactly the trap
+ *      that would silently swallow a real `{ok:false, violations:[...]}`
+ *      failure. On failure, `detail` prefers `.violations`, falling back
+ *      to `.error`, falling back to the whole object if neither is
+ *      present.
+ *
+ * Never throws itself, regardless of `checks`' shape — a non-array/
+ * missing `checks` argument is treated as an empty list (vacuously
+ * `allPassed: true`, matching an actually-empty array), and a malformed
+ * entry (missing `.fn`, `.fn` not a function) is recorded as a failed
+ * check rather than throwing while iterating.
+ *
+ * @param {Array<{name: string, fn: Function}>} checks
+ * @returns {{allPassed: boolean, results: Array<{name: string, ok: boolean, detail?: *}>}}
+ */
+function runHardeningSelfTest(checks) {
+  const safeChecks = Array.isArray(checks) ? checks : [];
+
+  const results = safeChecks.map((check) => {
+    const name = check && check.name;
+    try {
+      if (!check || typeof check.fn !== 'function') {
+        return { name, ok: false, detail: 'check has no callable fn' };
+      }
+      const outcome = check.fn();
+      if (outcome && typeof outcome === 'object' && typeof outcome.ok === 'boolean') {
+        if (outcome.ok) return { name, ok: true };
+        return { name, ok: false, detail: outcome.violations ?? outcome.error ?? outcome };
+      }
+      if (outcome === false) {
+        return { name, ok: false };
+      }
+      return { name, ok: true };
+    } catch (err) {
+      return { name, ok: false, detail: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  return {
+    allPassed: results.every((r) => r.ok),
+    results,
+  };
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -261,4 +674,13 @@ module.exports = {
   MAX_CONCURRENT_TOOLS,
   isAtConcurrencyLimit,
   isAllowedBinaryName,
+  isAllowedApiHost,
+  parseIpLocateResponse,
+  DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+  OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
+  withRequestTimeout,
+  formatSecurityAuditLine,
+  appendSecurityAuditLog,
+  evaluateInsecureElectronFlagsEscalation,
+  runHardeningSelfTest,
 };
