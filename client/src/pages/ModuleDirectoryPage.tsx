@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Star, Clock, ExternalLink, RefreshCw, Grid3X3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { POPOUT_PAGES, openPageWindow } from '../utils/windowManager';
+import { isWindowablePath, openPageWindow } from '../utils/windowManager';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { NAV_CATEGORIES, CLIENT_VIEWER_BLOCKED, CONTRACT_MANAGER_BLOCKED, type NavFunction } from '../data/navCatalog';
 import { loadFavorites, saveFavorites, loadRecent, pushRecent } from '../utils/navFavorites';
@@ -441,7 +441,7 @@ export default function ModuleDirectoryPage() {
   function renderFunctionCard(fn: NavFunction) {
     const Icon = fn.icon;
     const isFavorite = favorites.has(fn.path);
-    const canPopOut = POPOUT_PAGES[fn.path] !== undefined;
+    const canPopOut = isWindowablePath(fn.path);
     const badgeValue = fn.badgeKey ? badges[fn.badgeKey as keyof NavBadges] : undefined;
 
     return (

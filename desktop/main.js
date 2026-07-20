@@ -6,14 +6,15 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateSyncQueueIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
+const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -47,7 +48,7 @@ try {
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
-const { InternalGps, findGpsPort } = require('./internalGps');
+const { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
 // Chromium's Network Location Provider requires a Google API key to resolve
@@ -1099,6 +1100,50 @@ guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
     initLocalDb,
   });
 });
+
+// ─── Device & Hardware ───────────────────────────────────────
+// listAudioDevices/listVideoDevices (spec #32/#33) have no main-process
+// handler here — Electron's main process has no API to enumerate audio/
+// video devices, only the renderer's navigator.mediaDevices does. They're
+// wired directly in preload.js instead (see Group D plan, Scope Decision #1).
+guardedHandle('device:serial-ports', async () => formatSerialPorts(await listSerialPorts()));
+guardedHandle('device:bluetooth', async () => {
+  if (process.platform !== 'darwin') return [];
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync('system_profiler', ['SPBluetoothDataType', '-json'], { timeout: 5000 });
+    return parseSystemProfilerBluetoothOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:BLUETOOTH] system_profiler failed:', err.message);
+    return [];
+  }
+});
+guardedHandle('device:gps-present', async () => {
+  const found = await findGpsPort();
+  if (!found) return classifyGpsPresence(null, null);
+  const probeError = await probeGpsPortOpen(found.path);
+  return classifyGpsPresence(found, probeError);
+});
+guardedHandle('device:set-auto-launch', (event, enabled) => {
+  app.setLoginItemSettings({ openAtLogin: Boolean(enabled) });
+  return { ok: true };
+});
+guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
+guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
+  const validation = validateGlobalShortcutAccelerator(accelerator);
+  if (!validation.ok) return { ok: false, error: validation.error };
+  const registered = globalShortcut.register(accelerator, () => {
+    mainWindow?.webContents.send('device:shortcut-triggered', actionId);
+  });
+  return registered ? { ok: true } : { ok: false, error: 'registration failed (already taken by another app?)' };
+});
+guardedHandle('device:unregister-shortcut', (event, accelerator) => {
+  const validation = validateGlobalShortcutAccelerator(accelerator);
+  if (validation.ok) globalShortcut.unregister(accelerator);
+});
+guardedHandle('device:displays', () => formatDisplays(screen.getAllDisplays(), screen.getPrimaryDisplay().id));
 
 // ─── Crash-safe printing ─────────────────────────────────────
 // macOS 26's native print panel (NSPrintPanel → PrintingUI →
@@ -3193,6 +3238,7 @@ app.on('activate', async () => {
 app.on('before-quit', () => {
   isQuitting = true;
   appUpdater.destroy();
+  globalShortcut.unregisterAll();
 
   // Clean up offline modules
   if (connectivityMonitor) connectivityMonitor.stop();
