@@ -9,10 +9,11 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
+const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -22,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -32,6 +33,7 @@ try {
   initLocalDb = () => { console.warn('[LOCAL-DB] Unavailable — native module failed to load'); };
   getLocalDb = () => null;
   closeLocalDb = () => {};
+  getLocalDbPath = () => null;
   getConfig = () => null;
   setConfig = () => {};
   getQueueDepth = () => 0;
@@ -980,6 +982,116 @@ guardedHandle('sys:export-diagnostics', async () => {
 guardedHandle('sys:restart', () => {
   app.relaunch();
   app.exit();
+});
+
+// ─── File & Data Export/Import ──────────────────────────────
+guardedHandle('fs:save-dialog', async (event, opts) => {
+  const result = await dialog.showSaveDialog(mainWindow, buildSaveDialogOptions(opts || {}));
+  return result.canceled ? null : result.filePath;
+});
+guardedHandle('fs:open-dialog', async (event, opts) => {
+  const result = await dialog.showOpenDialog(mainWindow, buildOpenDialogOptions(opts || {}));
+  return result.canceled ? null : result.filePaths;
+});
+guardedHandle('fs:write-export', async (event, targetPath, data) => {
+  const validation = validateFilePathInput(targetPath, resolveAllowedRoots(app));
+  if (!validation.ok) return { ok: false, error: validation.error };
+  // Defense in depth: userData is no longer an allowed root, but reject the
+  // live local DB file (and its -wal/-shm sidecars) outright regardless of
+  // which root it resolved under — this channel must never be able to
+  // overwrite the offline DB cache (see fs:import-db-backup for the actual,
+  // rollback-guarded way to do that).
+  if (isLocalDbPath(validation.resolved, getLocalDbPath(app, path))) {
+    return { ok: false, error: 'cannot access the local database file via this channel' };
+  }
+  try {
+    await fs.promises.writeFile(validation.resolved, data);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+guardedHandle('fs:read-import', async (event, sourcePath) => {
+  const validation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
+  if (!validation.ok) return { ok: false, error: validation.error };
+  // Defense in depth — see the matching check in fs:write-export above.
+  if (isLocalDbPath(validation.resolved, getLocalDbPath(app, path))) {
+    return { ok: false, error: 'cannot access the local database file via this channel' };
+  }
+  try {
+    const data = await fs.promises.readFile(validation.resolved);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+guardedHandle('fs:reveal', (event, targetPath) => {
+  const validation = validateFilePathInput(targetPath, resolveAllowedRoots(app));
+  if (!validation.ok) {
+    console.error('[FS:REVEAL] Rejected path:', validation.error);
+    return;
+  }
+  shell.showItemInFolder(validation.resolved);
+});
+guardedHandle('fs:downloads-path', () => app.getPath('downloads'));
+guardedHandle('fs:printers', async (event) => formatPrinters(await event.sender.getPrintersAsync()));
+guardedHandle('fs:print-silent', async (event, printerName) => {
+  const printers = formatPrinters(await event.sender.getPrintersAsync());
+  if (!isKnownPrinterName(printerName, printers)) {
+    return { ok: false, error: `unknown printer: ${printerName}` };
+  }
+  return new Promise((resolve) => {
+    event.sender.print({ silent: true, deviceName: printerName }, (success, failureReason) => {
+      resolve(success ? { ok: true } : { ok: false, error: failureReason });
+    });
+  });
+});
+guardedHandle('fs:export-db-backup', async () => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  const dialogResult = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: `rmpg-flex-backup-${Date.now()}.rmpgbak`,
+    filters: [{ name: 'RMPG Flex Backup', extensions: ['rmpgbak'] }],
+  });
+  if (dialogResult.canceled) return { ok: false, error: 'cancelled' };
+  const tempPath = path.join(app.getPath('temp'), `rmpg-db-backup-${Date.now()}.db`);
+  try {
+    await getLocalDb().backup(tempPath);
+    const rawBytes = await fs.promises.readFile(tempPath);
+    const encoded = encodeBackupForExport(rawBytes, safeStorage);
+    await fs.promises.writeFile(dialogResult.filePath, encoded, 'utf8');
+    return { ok: true, path: dialogResult.filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    fs.promises.unlink(tempPath).catch(() => {});
+  }
+});
+guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
+  const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
+  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  const pathValidation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
+  if (!pathValidation.ok) return { ok: false, error: pathValidation.error };
+  let rawBytes;
+  try {
+    const encodedText = await fs.promises.readFile(pathValidation.resolved, 'utf8');
+    rawBytes = decodeBackupForImport(encodedText, safeStorage);
+  } catch (err) {
+    return { ok: false, error: `could not decrypt backup: ${err.message}` };
+  }
+  const contentValidation = validateBackupFileBeforeImport(rawBytes);
+  if (!contentValidation.ok) return { ok: false, error: contentValidation.error };
+  // validateBackupFileBeforeImport only checks the 16-byte SQLite magic
+  // header — a corrupted/truncated-but-genuinely-SQLite file passes that
+  // and only fails once initLocalDb()'s integrity pragmas touch it. Route
+  // the actual swap through swapInLocalDbWithRollback so a failure there
+  // restores the pre-import DB instead of leaving local/offline mode dead.
+  return swapInLocalDbWithRollback(rawBytes, {
+    dbPath: getLocalDbPath(app, path),
+    fsModule: fs,
+    closeLocalDb,
+    initLocalDb,
+  });
 });
 
 // ─── Crash-safe printing ─────────────────────────────────────
