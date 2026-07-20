@@ -143,6 +143,32 @@ function pruneOldPinAttempts(db, maxRowsPerUser = 500) {
 }
 
 /**
+ * Invalidates every currently-active `pin_sessions` row (`is_active = 1 ->
+ * 0`), forcing every offline PIN session to be re-authenticated. Shared by
+ * multiple independent triggers that all mean "we can no longer trust the
+ * current PIN session state":
+ *   - clock-skew detection at startup (see `detectClockSkew` above) — an
+ *     attacker rolling the system clock backward to replay an expired
+ *     session window.
+ *   - `powerMonitor`'s `'suspend'` event — the machine went to sleep, a
+ *     window of physical-access risk.
+ *   - `powerMonitor`'s `'lock-screen'` event (macOS/Windows only) — the OS
+ *     screen was locked.
+ *
+ * Unlike the other helpers in this file, this genuinely needs SQL, so it
+ * takes a real `better-sqlite3` `db` instance as an explicit parameter
+ * (matching `pruneOldPinAttempts`'s DI-testable style) rather than reaching
+ * into localDb.js's module-level singleton itself.
+ *
+ * @param {import('better-sqlite3').Database} db
+ * @returns {{ changes: number }} number of sessions that were invalidated
+ */
+function invalidateAllActivePinSessions(db) {
+  const { changes } = db.prepare('UPDATE pin_sessions SET is_active = 0 WHERE is_active = 1').run();
+  return { changes };
+}
+
+/**
  * Pure check: is a Recon Connect tool launch authorized for the current
  * cached role + active PIN session? Mirrors `offline:state`'s
  * admin-always-allowed / active-PIN-session-required rule exactly (see
@@ -215,6 +241,20 @@ function isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, now
  * Computing first, then updating, guarantees each check is always compared
  * against a genuinely prior point in time.
  *
+ * Reboot handling: `process.hrtime.bigint()` is backed by `CLOCK_MONOTONIC`,
+ * which measures time since the OS booted, not since epoch — it resets to
+ * near-zero on every system reboot. A reboot between two checks (routine,
+ * not tampering) therefore makes `monotonicNs` come back SMALLER than the
+ * stored baseline even though the wall clock advanced completely normally,
+ * which would otherwise be flagged as skew on every single reboot. Because
+ * the monotonic clock only ever increases within one boot, `monotonicNs <
+ * previousMonotonicNs` is only possible across a reboot — so that condition
+ * alone conclusively identifies "a reboot happened" and the check is
+ * skipped for this call (baseline still rolls forward as usual). Wall-clock
+ * tampering WITHIN the same boot can never produce this condition (the
+ * monotonic clock keeps advancing regardless of what the wall clock does),
+ * so this short-circuit cannot be used to hide genuine tampering.
+ *
  * @param {(key: string) => string|null} getConfigFn
  * @param {(key: string, value: string) => void} setConfigFn
  * @param {number} nowMs - current wall-clock time in ms (e.g. `Date.now()`)
@@ -235,10 +275,14 @@ function detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs, tolerance
     const previousWallMs = Number(previousWallRaw);
     const previousMonotonicNs = BigInt(previousMonotonicRaw);
 
-    const wallDeltaMs = nowMs - previousWallMs;
-    const monotonicDeltaMs = Number(monotonicNs - previousMonotonicNs) / 1e6;
+    const rebootDetected = monotonicNs < previousMonotonicNs;
 
-    skewDetected = Math.abs(wallDeltaMs - monotonicDeltaMs) > toleranceMs;
+    if (!rebootDetected) {
+      const wallDeltaMs = nowMs - previousWallMs;
+      const monotonicDeltaMs = Number(monotonicNs - previousMonotonicNs) / 1e6;
+
+      skewDetected = Math.abs(wallDeltaMs - monotonicDeltaMs) > toleranceMs;
+    }
   }
 
   // Update the baseline to THIS check's values (see ordering rationale above)
@@ -255,6 +299,7 @@ module.exports = {
   getOrCreateDeviceId,
   isPinSessionBoundToDevice,
   pruneOldPinAttempts,
+  invalidateAllActivePinSessions,
   isReconLaunchAuthorized,
   detectClockSkew,
 };

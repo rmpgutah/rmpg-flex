@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized, detectClockSkew } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -3195,9 +3195,37 @@ app.whenReady().then(async () => {
         // PIN session so the user must re-enter their PIN.
         const { skewDetected } = detectClockSkew(getConfig, setConfig, Date.now(), process.hrtime.bigint());
         if (skewDetected) {
-          const { changes } = db.prepare('UPDATE pin_sessions SET is_active = 0 WHERE is_active = 1').run();
+          const { changes } = invalidateAllActivePinSessions(db);
           console.warn(`[APP] System clock skew detected — invalidated ${changes} active PIN session(s) on startup`);
         }
+
+        // lockOnSystemSleep: invalidate every active offline PIN session on
+        // system suspend/lock, the same DB update as the clock-skew response
+        // above (shared via invalidateAllActivePinSessions). Both events are
+        // physical-access risk windows — re-fetch getLocalDb() at fire time
+        // (rather than closing over the `db` local here) since these
+        // listeners can fire arbitrarily long after startup, well after this
+        // try block has exited.
+        //
+        // 'suspend' fires on sleep/hibernate across macOS, Windows, and
+        // Linux. 'lock-screen' is macOS/Windows only — Electron's own
+        // powerMonitor docs list it under those two platforms and it is
+        // simply never emitted on Linux, so registering the listener
+        // unconditionally degrades gracefully there (matches this
+        // program's established pattern of no-op-on-unsupported-platform
+        // rather than an explicit platform guard).
+        powerMonitor.on('suspend', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System suspend detected — invalidated ${changes} active PIN session(s)`);
+        });
+        powerMonitor.on('lock-screen', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
+        });
       }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);

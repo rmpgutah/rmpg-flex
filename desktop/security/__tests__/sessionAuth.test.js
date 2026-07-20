@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, isReconLaunchAuthorized, detectClockSkew } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -282,6 +282,68 @@ test('pruneOldPinAttempts: empty pin_attempts table — no-op, returns {prunedRo
   assert.deepEqual(result, { prunedRows: 0 });
 });
 
+// ─── invalidateAllActivePinSessions ─────────────────────────────
+//
+// Same DI-testable-with-a-real-db pattern as pruneOldPinAttempts above —
+// a plain in-memory better-sqlite3 database with just the pin_sessions
+// table is enough to exercise the real SQL.
+
+function makePinSessionsDb() {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pin_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      expires_at TEXT
+    );
+  `);
+  return db;
+}
+
+function seedPinSession(db, { userId, isActive, expiresAt = null }) {
+  db.prepare('INSERT INTO pin_sessions (user_id, is_active, expires_at) VALUES (?, ?, ?)').run(userId, isActive ? 1 : 0, expiresAt);
+}
+
+test('invalidateAllActivePinSessions: flips every active row to inactive, leaves already-inactive rows untouched, returns accurate changes count', () => {
+  const db = makePinSessionsDb();
+
+  seedPinSession(db, { userId: 1, isActive: true, expiresAt: '2026-01-01T00:00:00.000Z' });
+  seedPinSession(db, { userId: 2, isActive: true, expiresAt: '2026-01-02T00:00:00.000Z' });
+  seedPinSession(db, { userId: 3, isActive: false, expiresAt: '2026-01-03T00:00:00.000Z' });
+
+  const inactiveBefore = db.prepare('SELECT * FROM pin_sessions WHERE user_id = 3').get();
+
+  const result = invalidateAllActivePinSessions(db);
+
+  assert.deepEqual(result, { changes: 2 });
+
+  const rows = db.prepare('SELECT user_id, is_active FROM pin_sessions ORDER BY user_id').all();
+  assert.deepEqual(rows, [
+    { user_id: 1, is_active: 0 },
+    { user_id: 2, is_active: 0 },
+    { user_id: 3, is_active: 0 },
+  ]);
+
+  const inactiveAfter = db.prepare('SELECT * FROM pin_sessions WHERE user_id = 3').get();
+  assert.deepEqual(inactiveAfter, inactiveBefore, 'a row that was already inactive must be byte-for-byte untouched');
+});
+
+test('invalidateAllActivePinSessions: no active sessions — no-op, returns {changes: 0}', () => {
+  const db = makePinSessionsDb();
+  seedPinSession(db, { userId: 1, isActive: false });
+
+  const result = invalidateAllActivePinSessions(db);
+
+  assert.deepEqual(result, { changes: 0 });
+});
+
+test('invalidateAllActivePinSessions: empty pin_sessions table — no-op, returns {changes: 0}', () => {
+  const db = makePinSessionsDb();
+  const result = invalidateAllActivePinSessions(db);
+  assert.deepEqual(result, { changes: 0 });
+});
+
 // ─── detectClockSkew ───────────────────────────────────────────
 
 // A genuine round-tripping fake config store — NOT a fixed-return stub.
@@ -409,4 +471,49 @@ test('detectClockSkew: updates the stored baseline to the CURRENT check values a
   detectClockSkew(getConfigFn, setConfigFn, t2Wall, t2Mono);
   assert.equal(store.get('clock_skew_check_wall_ms'), String(t2Wall));
   assert.equal(store.get('clock_skew_check_monotonic_ns'), t2Mono.toString());
+});
+
+test('detectClockSkew: system reboot between launches (monotonic clock reset to near-zero, wall clock advanced normally) -> skewDetected:false, not treated as tampering', () => {
+  const { store, getConfigFn, setConfigFn } = makeConfigFake();
+
+  // Prior launch ran for a while before the machine was shut down — the
+  // monotonic baseline is large (e.g. hours of uptime in ns).
+  const baselineWallMs = 1_700_000_000_000;
+  const baselineMonotonicNs = 8n * 60n * 60n * 1_000_000_000n; // 8 hours of uptime
+
+  detectClockSkew(getConfigFn, setConfigFn, baselineWallMs, baselineMonotonicNs);
+
+  // Machine reboots, then the app is relaunched 10 minutes of real wall-clock
+  // time later. CLOCK_MONOTONIC resets to near-zero on reboot, so the new
+  // monotonic reading is far SMALLER than the stored baseline even though
+  // real time elapsed normally — this must not be flagged as clock tampering.
+  const nowMs = baselineWallMs + 10 * 60 * 1000; // +10 minutes, normal elapsed time
+  const monotonicNs = 3_000_000_000n; // 3s of uptime since the reboot
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: false });
+
+  // Baseline still rolls forward to this check's values afterward.
+  assert.equal(store.get('clock_skew_check_wall_ms'), String(nowMs));
+  assert.equal(store.get('clock_skew_check_monotonic_ns'), monotonicNs.toString());
+});
+
+test('detectClockSkew: reboot-detection short-circuit does not mask genuine backward wall-clock tampering WITHIN the same boot (monotonic still advanced normally)', () => {
+  const { getConfigFn, setConfigFn } = makeConfigFake();
+
+  const baselineWallMs = 1_700_000_000_000;
+  const baselineMonotonicNs = 10_000_000_000n;
+
+  detectClockSkew(getConfigFn, setConfigFn, baselineWallMs, baselineMonotonicNs);
+
+  // No reboot occurred — monotonic clock still only advanced by 5000ms —
+  // but the wall clock was rolled back an hour. This is the real attack
+  // and must still be caught.
+  const nowMs = baselineWallMs - (60 * 60 * 1000);
+  const monotonicNs = baselineMonotonicNs + 5_000_000_000n;
+
+  const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
+
+  assert.deepEqual(result, { skewDetected: true });
 });
