@@ -41,4 +41,22 @@ describe('MapBottomTray', () => {
     fireEvent.click(screen.getByText('Layers'));
     expect(screen.queryByText('Live Traffic')).not.toBeInTheDocument();
   });
+
+  it('opens the Roster tab and renders MapRosterDock content', () => {
+    const rosterWithUnits = {
+      ...rosterProps,
+      units: [{ id: 1, call_sign: 'S-1', officer_name: 'Officer A', status: 'available', latitude: 40.7, longitude: -111.9, current_call_type: null, call_number: null }],
+    };
+    render(<MapBottomTray rosterProps={rosterWithUnits} leftSections={leftSections} rightSections={rightSections} />);
+    fireEvent.click(screen.getByText('Roster'));
+    expect(screen.getByText('S-1')).toBeInTheDocument();
+  });
+
+  it('closes the Roster tab when MapRosterDock\'s own close button is clicked', () => {
+    render(<MapBottomTray rosterProps={rosterProps} leftSections={leftSections} rightSections={rightSections} />);
+    fireEvent.click(screen.getByText('Roster'));
+    expect(screen.getByLabelText('Close sidebar')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Close sidebar'));
+    expect(screen.queryByLabelText('Close sidebar')).not.toBeInTheDocument();
+  });
 });

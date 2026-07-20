@@ -32,7 +32,9 @@ export default function MapBottomTray({ rosterProps, leftSections, rightSections
     <div className="absolute bottom-0 left-0 right-0 z-30">
       {activeTab && (
         <div className="max-h-[45vh] overflow-y-auto bg-surface-raised/95 border-t border-border-default backdrop-blur-sm">
-          {activeTab === 'roster' && <MapRosterDock {...rosterProps} open />}
+          {activeTab === 'roster' && (
+            <MapRosterDock {...rosterProps} open onOpenChange={() => setActiveTab(null)} />
+          )}
           {activeTab === 'layers' && leftSections.map((section) => (
             <DockSection key={section.title} title={section.title}>
               {section.items.map((item) => <DockToggleRow key={item.id} item={item} />)}
