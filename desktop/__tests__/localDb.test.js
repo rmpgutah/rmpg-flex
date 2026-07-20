@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables, getLocalCacheStats, MIRRORED_CACHE_TABLE_NAMES } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables, getLocalCacheStats, clearLocalCache, MIRRORED_CACHE_TABLE_NAMES } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -377,4 +377,73 @@ test('getLocalCacheStats: reports {table, rows, bytes} for every mirrored table 
       `bytes for ${entry.table} must be a number or null, got ${typeof entry.bytes}`
     );
   }
+});
+
+test('clearLocalCache: for a table in the allowlist, empties it + its sync_metadata row, returns {ok:true}', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM sync_metadata');
+  db.exec('DELETE FROM units');
+
+  db.prepare(`
+    INSERT INTO units (id, call_sign, status)
+    VALUES (1, 'U-1', 'on_duty'), (2, 'U-2', 'off_duty')
+  `).run();
+  db.prepare(`
+    INSERT INTO sync_metadata (table_name, last_pull_at, row_count)
+    VALUES ('units', '2026-07-18T00:00:00.000Z', 2)
+  `).run();
+
+  const result = clearLocalCache('units');
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(db.prepare('SELECT COUNT(*) as c FROM units').get().c, 0, 'units table must be empty');
+  const metaAfter = db.prepare(`SELECT table_name FROM sync_metadata WHERE table_name = 'units'`).all();
+  assert.equal(metaAfter.length, 0, 'sync_metadata row for the cleared table must be gone');
+});
+
+test('clearLocalCache: rejects a table not in MIRRORED_CACHE_TABLE_NAMES (e.g. sqlite_master) with {ok:false, error}, and executes no SQL against it', () => {
+  const result = clearLocalCache('sqlite_master');
+
+  assert.equal(result.ok, false);
+  assert.equal(typeof result.error, 'string');
+  assert.ok(result.error.length > 0);
+});
+
+test('clearLocalCache: SECURITY — a crafted/malicious table name is rejected BEFORE any SQL string is built, leaving real, unrelated tables completely untouched', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM units');
+
+  // Seed a row in a real, unrelated allowlisted table to prove the rejected
+  // call never executed ANY SQL against real tables — not just that the
+  // literal attacked table name survived unharmed.
+  db.prepare(`
+    INSERT INTO units (id, call_sign, status)
+    VALUES (1, 'U-1', 'on_duty')
+  `).run();
+  const before = db.prepare('SELECT * FROM units').all();
+  assert.equal(before.length, 1);
+
+  const maliciousNames = [
+    'sqlite_master',
+    "users; DROP TABLE units;--",
+    'not-a-real-table; DROP TABLE users;--',
+  ];
+
+  for (const name of maliciousNames) {
+    const result = clearLocalCache(name);
+    assert.deepEqual(result, { ok: false, error: 'unknown or non-clearable table' });
+  }
+
+  // If the allowlist check were bypassed or ordered incorrectly, this table
+  // (or the `units` table targeted by the injected DROP) would be gone or
+  // altered. It must still exist, untouched, with the same row.
+  const after = db.prepare('SELECT * FROM units').all();
+  assert.deepEqual(after, before, 'units table must be completely untouched by rejected calls');
+
+  // The `users` table (targeted by the DROP TABLE payload) must still exist
+  // as a table at all — a successful injection would drop it entirely.
+  const usersTableExists = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'`
+  ).get();
+  assert.ok(usersTableExists, 'users table must still exist — DROP TABLE payload must never have executed');
 });

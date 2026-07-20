@@ -196,6 +196,11 @@ contextBridge.exposeInMainWorld('electron', {
   // an offline-status/diagnostics panel
   getLocalCacheStats: () => ipcRenderer.invoke('sync:cache-stats'),
 
+  // Destructive (single table): clear one mirrored cache table + its
+  // sync_metadata row. `table` is validated against the server-side
+  // allowlist in clearLocalCache() before any SQL runs.
+  clearLocalCache: (table) => ipcRenderer.invoke('sync:clear-cache', table),
+
   // Destructive: wipe the mirrored/reference cache tables and re-pull
   // everything fresh from the server (never touches sync_queue/gps_breadcrumbs)
   forceFullResync: () => ipcRenderer.invoke('sync:force-full'),

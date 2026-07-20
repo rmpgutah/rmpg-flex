@@ -23,9 +23,9 @@ const fs = require('fs');
 // eagerly requiring it crashes the entire app before the splash even
 // shows. Load lazily so the app can start with offline support
 // gracefully disabled.
-let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats;
+let initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache;
 try {
-  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats } = require('./localDb'));
+  ({ initLocalDb, getLocalDb, closeLocalDb, getLocalDbPath, getConfig, setConfig, getQueueDepth, getSyncMeta, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, getLastSyncError, getLocalCacheStats, clearLocalCache } = require('./localDb'));
 } catch (err) {
   console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
   console.error('[APP] Offline support will be disabled this session.');
@@ -43,6 +43,7 @@ try {
   clearFailedSyncItems = () => ({ cleared: 0 });
   getLastSyncError = () => null;
   getLocalCacheStats = () => [];
+  clearLocalCache = () => ({ ok: false, error: 'local DB unavailable' });
 }
 
 const { ConnectivityMonitor } = require('./connectivityMonitor');
@@ -2868,6 +2869,14 @@ guardedHandle('sync:last-error', () => getLastSyncError());
 // (not yet online this session) — see getLocalCacheStats()'s doc comment
 // in localDb.js for why it doesn't depend on syncManager's PULL_INTERVALS.
 guardedHandle('sync:cache-stats', () => getLocalCacheStats());
+
+// Destructive (single table): clears one mirrored cache table + its
+// sync_metadata row, from the diagnostics UI. `table` comes directly from
+// renderer/IPC input, so the allowlist check against
+// MIRRORED_CACHE_TABLE_NAMES happens inside clearLocalCache() itself,
+// before any SQL string is built — see that function's doc comment in
+// localDb.js for the SQL-injection-via-identifier reasoning.
+guardedHandle('sync:clear-cache', (event, table) => clearLocalCache(table));
 
 // Destructive: wipes the mirrored/reference cache tables (never sync_queue
 // or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics

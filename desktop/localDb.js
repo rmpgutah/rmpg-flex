@@ -657,6 +657,39 @@ function getLocalCacheStats() {
   });
 }
 
+/**
+ * Clear a single mirrored cache table, by name, on demand from a
+ * renderer/IPC-originated diagnostics action (e.g. "clear cache for just
+ * this table" in an offline-status panel), as opposed to
+ * wipeMirroredCacheTables() above (code-driven, always the full trusted
+ * list — see forceFullResync() in syncManager.js).
+ *
+ * ⚠️ SECURITY: unlike every other `${table}`-interpolating function in this
+ * file, `table` here originates directly from renderer/IPC input (see
+ * main.js's `guardedHandle('sync:clear-cache', (event, table) =>
+ * clearLocalCache(table))`), not from a trusted, code-defined list. It MUST
+ * be validated against MIRRORED_CACHE_TABLE_NAMES BEFORE it ever reaches a
+ * SQL string — a crafted table name (e.g. 'sqlite_master', or
+ * "users; DROP TABLE users;--") must be rejected outright rather than
+ * interpolated. This is the same SQL-injection-via-identifier discipline
+ * syncManager.js's ALLOWED_SYNC_TABLES check already applies before its
+ * `UPDATE ${item.table_name}` call.
+ *
+ * better-sqlite3 has no parameterized-identifier support (bind params only
+ * work for values, never table/column names), so an allowlist check is the
+ * only defense here — there is no query-builder escaping to fall back on.
+ */
+function clearLocalCache(table) {
+  if (!MIRRORED_CACHE_TABLE_NAMES.includes(table)) {
+    return { ok: false, error: 'unknown or non-clearable table' };
+  }
+  db.transaction(() => {
+    db.exec(`DELETE FROM ${table}`);
+    db.prepare('DELETE FROM sync_metadata WHERE table_name = ?').run(table);
+  })();
+  return { ok: true };
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -680,5 +713,6 @@ module.exports = {
   clearFailedSyncItems,
   wipeMirroredCacheTables,
   getLocalCacheStats,
+  clearLocalCache,
   MIRRORED_CACHE_TABLE_NAMES,
 };
