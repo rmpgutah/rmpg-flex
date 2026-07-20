@@ -11,7 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { hardenGuestWebPreferences, shouldAllowGuestNavigation } = require('./security/webviewHardening');
+const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserRoleAllowed } = require('./security/webviewHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
@@ -1068,7 +1068,10 @@ guardedHandle('window:close-secondary', (event, id) => {
 // re-hardened individually via the 'will-attach-webview' handler below,
 // which is what actually keeps this safe.
 let companyBrowserWindow = null;
-guardedHandle('window:open-company-browser', () => {
+guardedHandle('window:open-company-browser', (event, role) => {
+  if (!isCompanyBrowserRoleAllowed(role)) {
+    return { ok: false, error: 'forbidden' };
+  }
   if (companyBrowserWindow && !companyBrowserWindow.isDestroyed()) {
     companyBrowserWindow.focus();
     return { ok: true };

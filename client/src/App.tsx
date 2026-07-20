@@ -13,6 +13,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
+import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
 import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
@@ -337,6 +338,25 @@ function DispatchRoleGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Role-based guard for /desktop-company-browser — client_viewer/contract_manager
+ *  redirect to the dashboard. Closes the direct-URL/bookmark gap the nav-catalog
+ *  exclusion (CLIENT_VIEWER_BLOCKED/CONTRACT_MANAGER_BLOCKED in navCatalog.ts)
+ *  doesn't cover on its own — that only hides the launcher icon. See
+ *  docs/superpowers/specs/2026-07-20-company-browser-hardening-design.md. */
+function CompanyBrowserRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  if (isCompanyBrowserBlockedRole(user?.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
@@ -507,7 +527,7 @@ function AppRoutes() {
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
-          <Route path="/desktop-company-browser" element={<ProtectedRoute><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
 
           {/* Authenticated app shell. The pathless parent route hosts ONE
               app-wide NavTripProvider so vehicle trip detection + live movement

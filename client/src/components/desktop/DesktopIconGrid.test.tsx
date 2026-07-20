@@ -25,6 +25,10 @@ vi.mock('../ToastProvider', () => ({
   useToast: () => ({ addToast: addToastMock }),
 }));
 
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+}));
+
 const ICONS: NavFunction[] = [
   { path: '/dispatch', label: 'Dispatch', icon: LayoutDashboard, description: 'd' },
   { path: '/map', label: 'Live Map', icon: MapIcon, description: 'm' },

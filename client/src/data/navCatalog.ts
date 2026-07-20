@@ -37,11 +37,11 @@ export interface NavCategory {
 export const CLIENT_VIEWER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/desktop-company-browser',
 ]);
 
 export const CONTRACT_MANAGER_BLOCKED = new Set([
-  '/admin', '/personnel',
+  '/admin', '/personnel', '/desktop-company-browser',
 ]);
 
 export const NAV_CATEGORIES: NavCategory[] = [

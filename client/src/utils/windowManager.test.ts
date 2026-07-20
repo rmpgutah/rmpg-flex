@@ -100,4 +100,18 @@ describe('activateNavFunction — electronOnly', () => {
     (window as any).electron = undefined;
     expect(() => activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn() })).not.toThrow();
   });
+
+  it('passes currentUserRole through to window.electron.openCompanyBrowser', () => {
+    const openCompanyBrowser = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electron = { isElectron: true, openCompanyBrowser };
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn(), currentUserRole: 'officer' });
+    expect(openCompanyBrowser).toHaveBeenCalledWith('officer');
+  });
+
+  it('passes undefined currentUserRole through when not provided', () => {
+    const openCompanyBrowser = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electron = { isElectron: true, openCompanyBrowser };
+    activateNavFunction(COMPANY_BROWSER_FN, { openWindow: vi.fn(), navigate: vi.fn() });
+    expect(openCompanyBrowser).toHaveBeenCalledWith(undefined);
+  });
 });

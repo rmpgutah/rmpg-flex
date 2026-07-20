@@ -50,12 +50,16 @@ export function activateNavFunction(
     navigate: (path: string) => void;
     /** Called instead of navigate() when fn.electronOnly is set and window.electron is unavailable/fails. */
     onElectronOnlyUnavailable?: (fn: NavFunction) => void;
+    /** Current user's role — passed through to window.electron.openCompanyBrowser() so
+     *  desktop/main.js's IPC handler can reject a blocked role even if it's invoked
+     *  directly (e.g. via DevTools console), not just through this UI path. */
+    currentUserRole?: string;
   },
 ): void {
   if (fn.electronOnly === 'company-browser') {
     const electron = (window as any).electron;
     if (electron?.isElectron && typeof electron.openCompanyBrowser === 'function') {
-      Promise.resolve(electron.openCompanyBrowser()).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
+      Promise.resolve(electron.openCompanyBrowser(handlers.currentUserRole)).catch(() => handlers.onElectronOnlyUnavailable?.(fn));
     } else {
       handlers.onElectronOnlyUnavailable?.(fn);
     }

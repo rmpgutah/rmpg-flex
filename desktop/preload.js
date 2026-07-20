@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('electron', {
   // callers must feature-detect (window.electron?.isElectron) before
   // calling this. See client/src/utils/windowManager.ts's
   // activateNavFunction for that gate.
-  openCompanyBrowser: () => ipcRenderer.invoke('window:open-company-browser'),
+  openCompanyBrowser: (role) => ipcRenderer.invoke('window:open-company-browser', role),
 
   // Sets the dock/taskbar badge count. No-ops on platforms without
   // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).

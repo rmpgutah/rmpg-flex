@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { hardenGuestWebPreferences, shouldAllowGuestNavigation } = require('../webviewHardening');
+const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserRoleAllowed } = require('../webviewHardening');
 
 test('hardenGuestWebPreferences forces safe defaults regardless of input', () => {
   const result = hardenGuestWebPreferences({
@@ -55,6 +55,18 @@ test('shouldAllowGuestNavigation denies other about: URLs (not a blanket scheme 
 // can't be unit-tested without booting Electron.
 test('shouldAllowGuestNavigation (later-navigation check): rejects file:// mid-session', () => {
   assert.equal(shouldAllowGuestNavigation('file:///etc/passwd'), false);
+});
+
+test('isCompanyBrowserRoleAllowed denies client_viewer and contract_manager', () => {
+  assert.equal(isCompanyBrowserRoleAllowed('client_viewer'), false);
+  assert.equal(isCompanyBrowserRoleAllowed('contract_manager'), false);
+});
+
+test('isCompanyBrowserRoleAllowed allows every other role, including undefined', () => {
+  assert.equal(isCompanyBrowserRoleAllowed('officer'), true);
+  assert.equal(isCompanyBrowserRoleAllowed('admin'), true);
+  assert.equal(isCompanyBrowserRoleAllowed(undefined), true);
+  assert.equal(isCompanyBrowserRoleAllowed(''), true);
 });
 
 test('shouldAllowGuestNavigation (later-navigation check): allows https:// mid-session', () => {

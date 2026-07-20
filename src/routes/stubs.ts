@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { encryptBrowserData, decryptBrowserData } from '../utils/companyBrowserCrypto';
 
 const stubs = new Hono<Env>();
 
@@ -21,12 +22,27 @@ const PREF_DEFAULTS = {
 
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
 
+const ENCRYPTED_BROWSER_COLUMNS = ['browser_bookmarks_json', 'browser_history_json'] as const;
+
+async function decryptBrowserColumns(env: { COMPANY_BROWSER_DATA_KEY?: string; JWT_SECRET: string }, row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const out = { ...row };
+  for (const col of ENCRYPTED_BROWSER_COLUMNS) {
+    const value = out[col];
+    if (typeof value === 'string') {
+      out[col] = await decryptBrowserData(env, value);
+    }
+  }
+  return out;
+}
+
 stubs.get('/preferences', async (c) => {
   const userId = c.get('userId') as number | undefined;
   if (userId == null) return c.json(PREF_DEFAULTS);
   const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
     .bind(userId).first();
-  return c.json(row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS);
+  if (!row) return c.json(PREF_DEFAULTS);
+  const decryptedRow = await decryptBrowserColumns(c.env, row as Record<string, unknown>);
+  return c.json({ ...PREF_DEFAULTS, ...decryptedRow });
 });
 
 stubs.put('/preferences', async (c) => {
@@ -38,14 +54,21 @@ stubs.put('/preferences', async (c) => {
   if (keys.length === 0) return c.json({ success: true, updated: 0 });
   await c.env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)')
     .bind(userId).run();
+  const values = await Promise.all(keys.map(async (k) => {
+    const value = body[k] as string | number | null;
+    if ((k === 'browser_bookmarks_json' || k === 'browser_history_json') && typeof value === 'string') {
+      return encryptBrowserData(c.env, value);
+    }
+    return value;
+  }));
   const setClause = keys.map((k) => `${k} = ?`).join(', ');
-  const values = keys.map((k) => body[k] as string | number | null);
   await c.env.DB.prepare(
     `UPDATE user_preferences SET ${setClause}, updated_at = datetime('now') WHERE user_id = ?`,
   ).bind(...values, userId).run();
   const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
     .bind(userId).first();
-  return c.json({ success: true, preferences: row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS });
+  const decryptedRow = row ? await decryptBrowserColumns(c.env, row as Record<string, unknown>) : null;
+  return c.json({ success: true, preferences: decryptedRow ? { ...PREF_DEFAULTS, ...decryptedRow } : PREF_DEFAULTS });
 });
 
 stubs.post('/preferences/reset', async (c) => {
