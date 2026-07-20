@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electron', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  toggleFullScreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
 
   // Open/close a secondary in-app window (e.g. a detached panel). `path`
   // must be an in-app route ('/dispatch-board') — it is resolved against

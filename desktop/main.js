@@ -950,6 +950,7 @@ guardedOn('window:maximize', () => {
   }
 });
 guardedOn('window:close', () => mainWindow?.close());
+guardedHandle('window:toggle-fullscreen', () => { mainWindow?.setFullScreen(!mainWindow.isFullScreen()); });
 
 // Opens a secondary BrowserWindow loading an in-app route (never a
 // renderer-supplied arbitrary URL — see buildSecondaryWindowUrl in
