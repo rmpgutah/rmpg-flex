@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -3615,10 +3615,15 @@ app.whenReady().then(async () => {
     // and the connectivity result is used only to seed the monitor.
     const connectivityPromise = checkServerConnectivity();
 
+    // Lifted out of the `if (DEV_MODE)` block below (rather than left as a
+    // block-scoped const inside it) so the Task 10 self-test further down
+    // can reuse this exact result — see the self-test's own comment for
+    // why it reuses rather than recomputes this.
+    let auditResult = null;
     if (DEV_MODE) {
       const mainJsSource = fs.readFileSync(__filename, 'utf8');
       const updaterJsSource = fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8');
-      const auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
+      auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
       if (!auditResult.ok) {
         console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
       }
@@ -3635,6 +3640,93 @@ app.whenReady().then(async () => {
       if (escalation.shouldEscalate) {
         logSecurityAuditEvent(escalation.auditEvent.channel, escalation.auditEvent.outcome, escalation.auditEvent.detail);
       }
+    }
+
+    // Group J Task 10 (spec #50, selfTestHardeningOnStartup): the final
+    // function of the entire 10-group hardening program — a read-only
+    // aggregate rollup of this program's own startup checks via the pure
+    // `runHardeningSelfTest` aggregator (childProcessGuard.js). Reuses
+    // `auditResult`/`secureDefaultsResult` already computed above
+    // (wrapped in zero-arg closures) instead of recomputing them — the
+    // audit check in particular re-reads main.js/updater.js off disk, so
+    // recomputing it here would double that I/O for no benefit.
+    //
+    // `auditIpcHandlerRegistry` is included ONLY when DEV_MODE is on,
+    // mirroring its existing gate above: it's a static source-text audit
+    // meant to catch a developer mistake (an `ipcMain.handle` registered
+    // without a guard wrapper) before it ships, not a runtime condition
+    // that varies between launches of a packaged build — running it
+    // unconditionally in production would add a real (if small) disk-read
+    // cost on every startup for a check whose signal is only actionable
+    // to a developer with source access. When DEV_MODE is off,
+    // `auditResult` is never computed (stays `null`), so this check is
+    // simply omitted from the aggregate rather than synthesizing a fake
+    // pass/fail for it.
+    //
+    // No safeStorage-migration-status check is included here: Group H's
+    // secretsStore.js only exports `migrateOfflineSecretsToSafeStorage`,
+    // which PERFORMS the migration (a write via `setConfig`) rather than
+    // reporting on one already done — it is not a read-only status check.
+    // Its internal `looksAlreadyMigrated(value, safeStorage)` helper,
+    // which could serve as one, is not exported. Building a genuine
+    // read-only "has this already run" check from here would mean either
+    // re-running the migration as a side effect (explicitly out of scope
+    // — this self-test is a diagnostic, not a repair action) or adding a
+    // new export/state-tracking to secretsStore.js that doesn't exist
+    // today (out of scope for this task). Skipped rather than forced;
+    // flagged for the reviewer in the task report.
+    const selfTestChecks = [
+      { name: 'assertSecureElectronDefaults', fn: () => secureDefaultsResult },
+      ...(DEV_MODE ? [{ name: 'auditIpcHandlerRegistry', fn: () => auditResult }] : []),
+      {
+        // Lightweight "this group's own module loaded correctly" sanity
+        // check — confirms childProcessGuard.js's own key exports are
+        // present and callable. Not a re-test of each function's
+        // behavior (that's what the unit tests are for) — just a guard
+        // against a bad require()/bundling regression silently handing
+        // main.js an `undefined` where a function was expected.
+        name: 'childProcessGuard-module-loaded',
+        fn: () => {
+          const exportsToCheck = {
+            buildSandboxedChildEnv,
+            scheduleChildProcessTimeout,
+            isAtConcurrencyLimit,
+            isAllowedBinaryName,
+            isAllowedApiHost,
+            parseIpLocateResponse,
+            withRequestTimeout,
+          };
+          const missing = Object.keys(exportsToCheck).filter((key) => typeof exportsToCheck[key] !== 'function');
+          return missing.length === 0 ? { ok: true } : { ok: false, violations: missing };
+        },
+      },
+    ];
+
+    try {
+      const selfTestResult = runHardeningSelfTest(selfTestChecks);
+      const passCount = selfTestResult.results.filter((r) => r.ok).length;
+      const summaryLine = `[SECURITY] Startup hardening self-test: ${passCount}/${selfTestResult.results.length} checks passed`;
+      if (selfTestResult.allPassed) {
+        console.log(summaryLine);
+      } else {
+        console.error(summaryLine, selfTestResult.results.filter((r) => !r.ok));
+        // Task 8's audit logger is a sensible fit here (rather than
+        // inventing a second log file for this task) — the whole point
+        // of that log is a durable, inspectable record of security-
+        // relevant events a packaged build's missing terminal would
+        // otherwise hide, and a failed startup hardening check is
+        // squarely that. Fire-and-forget: logSecurityAuditEvent never
+        // throws (see its own doc comment above), so this can't be the
+        // thing that breaks the "never blocks launch" guarantee either.
+        logSecurityAuditEvent('security:hardening-self-test', 'violation', { results: selfTestResult.results });
+      }
+    } catch (selfTestErr) {
+      // Defense in depth beyond runHardeningSelfTest's own internal
+      // per-check try/catch: this self-test must NEVER block app launch,
+      // regardless of what goes wrong here — no process.exit, no thrown
+      // error escaping the startup sequence (the spec's Error Handling
+      // section, non-negotiable). Swallow and log only.
+      console.error('[SECURITY] Startup hardening self-test failed to run:', selfTestErr && selfTestErr.message);
     }
 
     createMenu();

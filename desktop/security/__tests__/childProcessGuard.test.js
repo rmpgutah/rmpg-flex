@@ -18,6 +18,7 @@ const {
   formatSecurityAuditLine,
   appendSecurityAuditLog,
   evaluateInsecureElectronFlagsEscalation,
+  runHardeningSelfTest,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -612,4 +613,72 @@ test('evaluateInsecureElectronFlagsEscalation: does NOT escalate a clean dev-bui
   const result = evaluateInsecureElectronFlagsEscalation({ ok: true }, false);
   assert.equal(result.shouldEscalate, false);
   assert.equal(result.auditEvent, null);
+});
+
+test('runHardeningSelfTest: all-passing fake checks produce allPassed:true with every result ok:true', () => {
+  const checks = [
+    { name: 'check-a', fn: () => true },
+    { name: 'check-b', fn: () => ({ ok: true }) },
+    { name: 'check-c', fn: () => undefined }, // no exception, no explicit ok — treated as passing
+  ];
+  const result = runHardeningSelfTest(checks);
+  assert.equal(result.allPassed, true);
+  assert.equal(result.results.length, 3);
+  for (const r of result.results) {
+    assert.equal(r.ok, true);
+  }
+  assert.deepEqual(result.results.map((r) => r.name), ['check-a', 'check-b', 'check-c']);
+});
+
+test('runHardeningSelfTest: a throwing check among passing ones is captured as a failure, not a crash', () => {
+  const checks = [
+    { name: 'passes', fn: () => true },
+    { name: 'throws', fn: () => { throw new Error('boom: disk unavailable'); } },
+    { name: 'also-passes', fn: () => true },
+  ];
+
+  assert.doesNotThrow(() => runHardeningSelfTest(checks));
+
+  const result = runHardeningSelfTest(checks);
+  assert.equal(result.allPassed, false);
+  const throwsResult = result.results.find((r) => r.name === 'throws');
+  assert.equal(throwsResult.ok, false);
+  assert.equal(throwsResult.detail, 'boom: disk unavailable');
+  // the other checks were unaffected by the throwing one
+  assert.equal(result.results.find((r) => r.name === 'passes').ok, true);
+  assert.equal(result.results.find((r) => r.name === 'also-passes').ok, true);
+});
+
+test('runHardeningSelfTest: an empty checks array is vacuously all-passed', () => {
+  const result = runHardeningSelfTest([]);
+  assert.equal(result.allPassed, true);
+  assert.deepEqual(result.results, []);
+});
+
+test('runHardeningSelfTest: a check returning an {ok:false, violations:[...]}-shaped result (matching assertSecureElectronDefaults) is correctly treated as a failure', () => {
+  const checks = [
+    { name: 'secure-defaults', fn: () => ({ ok: false, violations: ['ignore-certificate-errors'] }) },
+  ];
+  const result = runHardeningSelfTest(checks);
+  assert.equal(result.allPassed, false);
+  assert.equal(result.results[0].ok, false);
+  assert.deepEqual(result.results[0].detail, ['ignore-certificate-errors']);
+});
+
+test('runHardeningSelfTest: never throws even when every check throws', () => {
+  const checks = [
+    { name: 'a', fn: () => { throw new Error('a failed'); } },
+    { name: 'b', fn: () => { throw new TypeError('b failed'); } },
+  ];
+  assert.doesNotThrow(() => runHardeningSelfTest(checks));
+  const result = runHardeningSelfTest(checks);
+  assert.equal(result.allPassed, false);
+  assert.equal(result.results.every((r) => r.ok === false), true);
+});
+
+test('runHardeningSelfTest: a non-array/undefined checks argument does not throw and behaves as empty', () => {
+  assert.doesNotThrow(() => runHardeningSelfTest(undefined));
+  const result = runHardeningSelfTest(undefined);
+  assert.equal(result.allPassed, true);
+  assert.deepEqual(result.results, []);
 });

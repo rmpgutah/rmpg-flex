@@ -582,6 +582,90 @@ function evaluateInsecureElectronFlagsEscalation(secureDefaultsResult, isPackage
   };
 }
 
+/**
+ * Group J Task 10 (spec #50, `selfTestHardeningOnStartup`): a pure
+ * aggregator that runs an arbitrary list of named, zero-argument
+ * diagnostic checks and rolls them up into a single pass/fail summary.
+ * This is the last function of the entire 10-group hardening program —
+ * its whole job is to let `main.js`'s startup sequence ask "did every
+ * hardening check we know about actually pass?" with ONE call, instead
+ * of hand-wiring a growing pile of individual `if (!result.ok) ...`
+ * blocks as more checks accumulate across groups.
+ *
+ * `checks` is an array of `{name, fn}` pairs. Each `fn` is called with no
+ * arguments and is expected to be one of Group F/G/H/I's existing
+ * pure-check functions (or this task's own lightweight ones) —
+ * `assertSecureElectronDefaults(app)`, `auditIpcHandlerRegistry(...)`,
+ * etc. — already bound/curried by the caller into a zero-arg closure, so
+ * this aggregator stays completely decoupled from any of their individual
+ * signatures.
+ *
+ * Every `fn()` call is wrapped in its own try/catch: a throwing check
+ * produces `{name, ok:false, detail:<error message>}` for THAT check only
+ * and does not abort the loop or propagate out of this function — a bug
+ * in one diagnostic (e.g. a check that assumes a file exists and doesn't
+ * guard against ENOENT) must never take down the whole self-test, let
+ * alone the app itself. This is the non-negotiable "never blocks app
+ * launch" requirement from the spec's Error Handling section, enforced
+ * at the aggregator level as the primary guarantee (the call site in
+ * main.js additionally wraps the whole `runHardeningSelfTest(...)` call
+ * in its own try/catch as defense in depth, per that same requirement).
+ *
+ * A check's return value is interpreted as follows (in order):
+ *   1. `undefined`/no explicit return, or any truthy non-object,
+ *      non-`false` value: treated as a PASS with no `detail`. This
+ *      covers a check written as a plain assertion function that simply
+ *      doesn't throw on success (no return value needed).
+ *   2. A boolean `false`: treated as a FAIL with no `detail`.
+ *   3. An object with a boolean `.ok` property (the `{ok, violations?}`/
+ *      `{ok, error?}` shape already established by
+ *      `assertSecureElectronDefaults`/`auditIpcHandlerRegistry`/
+ *      `parseIpLocateResponse` elsewhere in this codebase): `.ok` is used
+ *      directly — an object is NEVER treated as truthy-therefore-passing
+ *      the way a naive `if (result)` would, which is exactly the trap
+ *      that would silently swallow a real `{ok:false, violations:[...]}`
+ *      failure. On failure, `detail` prefers `.violations`, falling back
+ *      to `.error`, falling back to the whole object if neither is
+ *      present.
+ *
+ * Never throws itself, regardless of `checks`' shape — a non-array/
+ * missing `checks` argument is treated as an empty list (vacuously
+ * `allPassed: true`, matching an actually-empty array), and a malformed
+ * entry (missing `.fn`, `.fn` not a function) is recorded as a failed
+ * check rather than throwing while iterating.
+ *
+ * @param {Array<{name: string, fn: Function}>} checks
+ * @returns {{allPassed: boolean, results: Array<{name: string, ok: boolean, detail?: *}>}}
+ */
+function runHardeningSelfTest(checks) {
+  const safeChecks = Array.isArray(checks) ? checks : [];
+
+  const results = safeChecks.map((check) => {
+    const name = check && check.name;
+    try {
+      if (!check || typeof check.fn !== 'function') {
+        return { name, ok: false, detail: 'check has no callable fn' };
+      }
+      const outcome = check.fn();
+      if (outcome && typeof outcome === 'object' && typeof outcome.ok === 'boolean') {
+        if (outcome.ok) return { name, ok: true };
+        return { name, ok: false, detail: outcome.violations ?? outcome.error ?? outcome };
+      }
+      if (outcome === false) {
+        return { name, ok: false };
+      }
+      return { name, ok: true };
+    } catch (err) {
+      return { name, ok: false, detail: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  return {
+    allPassed: results.every((r) => r.ok),
+    results,
+  };
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -598,4 +682,5 @@ module.exports = {
   formatSecurityAuditLine,
   appendSecurityAuditLog,
   evaluateInsecureElectronFlagsEscalation,
+  runHardeningSelfTest,
 };
