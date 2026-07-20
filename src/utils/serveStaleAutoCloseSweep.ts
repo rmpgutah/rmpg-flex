@@ -34,8 +34,8 @@ export async function sweepStaleServeJobs(
       ) la ON la.serve_queue_id = q.id
       WHERE q.status NOT IN ('served', 'cancelled', 'failed')
         AND (
-          (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','localtime','-' || ? || ' days'))
-          OR (la.last_activity IS NULL AND q.created_at < datetime('now','localtime','-' || ? || ' days'))
+          (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','-' || ? || ' days'))
+          OR (la.last_activity IS NULL AND q.created_at < datetime('now','-' || ? || ' days'))
         )
       LIMIT 500
   `, STALE_DAYS, STALE_DAYS);
@@ -45,7 +45,7 @@ export async function sweepStaleServeJobs(
   const ids = staleJobs.map((j) => j.id);
   const placeholders = ids.map(() => '?').join(',');
   await execute(db,
-    `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id IN (${placeholders})`,
+    `UPDATE serve_queue SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now') WHERE id IN (${placeholders})`,
     ...ids);
 
   await execute(db,

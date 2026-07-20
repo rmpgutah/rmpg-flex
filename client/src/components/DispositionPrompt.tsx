@@ -6,9 +6,9 @@ import React from "react";
 // dispatchers must select a disposition on every call clear.
 // ============================================================
 
-import { useState } from 'react';
-import { AlertTriangle, X, Check, FileText } from 'lucide-react';
-import { DEFAULT_DISPOSITIONS } from '../constants/dispositionCodes';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, X, Check, FileText, Search } from 'lucide-react';
+import { DISPOSITION_GROUPS, type DispositionGroup } from '../constants/dispositionCodes';
 
 interface DispositionCode {
   code: string;
@@ -18,7 +18,11 @@ interface DispositionCode {
 
 interface DispositionPromptProps {
   callNumber: string;
-  dispositionCodes: DispositionCode[];
+  /** Grouped codes (preferred — renders as <optgroup> sections, e.g. the
+   *  10-category PS/## library on process-service calls, or the general
+   *  code groups on everything else). A flat DispositionCode[] is also
+   *  accepted for back-compat and renders as a single ungrouped section. */
+  dispositionCodes: DispositionCode[] | DispositionGroup[];
   onConfirm: (disposition: string, createIncident?: boolean) => void;
   onCancel: () => void;
 }
@@ -26,7 +30,16 @@ interface DispositionPromptProps {
 // Built-in fallback when the admin-configured codes haven't loaded (or the
 // prop is empty). Uses the single short-coded source of truth so the Clear-call
 // dropdown matches the inline edit dropdown exactly (same codes + descriptions).
-const FALLBACK_DISPOSITIONS: DispositionCode[] = DEFAULT_DISPOSITIONS;
+const FALLBACK_GROUPS: DispositionGroup[] = DISPOSITION_GROUPS;
+
+interface Group {
+  label: string;
+  codes: DispositionCode[];
+}
+
+function isGrouped(codes: DispositionCode[] | DispositionGroup[]): codes is DispositionGroup[] {
+  return codes.length > 0 && Array.isArray((codes[0] as DispositionGroup).codes);
+}
 
 function DispositionPrompt({
   callNumber,
@@ -36,7 +49,29 @@ function DispositionPrompt({
 }: DispositionPromptProps) {
   const [selected, setSelected] = useState('');
   const [createIncident, setCreateIncident] = useState(false);
-  const codes = dispositionCodes.length > 0 ? dispositionCodes : FALLBACK_DISPOSITIONS;
+  const [filter, setFilter] = useState('');
+
+  const groups: Group[] = useMemo(() => {
+    if (dispositionCodes.length === 0) return FALLBACK_GROUPS;
+    if (isGrouped(dispositionCodes)) return dispositionCodes;
+    // Flat array (legacy caller) — render as one ungrouped section.
+    return [{ label: 'Dispositions', codes: dispositionCodes as DispositionCode[] }];
+  }, [dispositionCodes]);
+
+  const filteredGroups = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((g) => ({
+        ...g,
+        codes: g.codes.filter(
+          (c) => c.code.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((g) => g.codes.length > 0);
+  }, [groups, filter]);
+
+  const totalCodes = groups.reduce((n, g) => n + g.codes.length, 0);
 
   // 39: role="alert" for screen reader announcement; 40: aria-live polite
   return (
@@ -69,6 +104,22 @@ function DispositionPrompt({
         </button>
       </div>
 
+      {/* Filter box — only worth showing once the list is long enough that
+          scanning it unaided is a chore (e.g. the 51-code PS/## library). */}
+      {totalCodes > 12 && (
+        <div className="relative mb-1.5">
+          <Search style={{ width: 10, height: 10 }} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-rmpg-500" />
+          <input id="ff-dispositionprompt-filter"
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter codes…"
+            className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] pl-5 pr-2 py-1 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
+            aria-label="Filter disposition codes"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         {/* 44: Focus ring on select input matching design system */}
         <select id="ff-dispositionprompt-0"
@@ -79,11 +130,20 @@ function DispositionPrompt({
           autoFocus
         >
           <option value="">— Select Disposition Code —</option>
-          {codes.map((d) => (
-            <option key={d.code} value={d.code}>
-              {d.code} — {d.description}
-            </option>
-          ))}
+          {filteredGroups.map((g) =>
+            g.codes.length > 0 ? (
+              <optgroup key={g.label} label={g.label}>
+                {g.codes.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.code} — {d.description}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null
+          )}
+          {filteredGroups.length === 0 && (
+            <option value="" disabled>No codes match "{filter}"</option>
+          )}
         </select>
 
         {/* 42: Hover/active states on confirm button; 43: Transition on background color */}

@@ -66,14 +66,14 @@ async function writeKey(env: Bindings, key: string, value: string): Promise<void
   if (existing) {
     await execute(
       db,
-      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
       value, key,
     );
   } else {
     await execute(
       db,
       `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-       VALUES (?, ?, 'email', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+       VALUES (?, ?, 'email', 1, datetime('now'), datetime('now'))`,
       key, value,
     );
   }
@@ -82,7 +82,7 @@ async function writeKey(env: Bindings, key: string, value: string): Promise<void
 async function clearKey(env: Bindings, key: string): Promise<void> {
   await execute(
     getDb(env),
-    `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+    `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now') WHERE config_key = ?`,
     key,
   );
 }
@@ -93,7 +93,7 @@ function upsertSQL(): string {
      to_addresses, cc_addresses, body_preview, body_html, has_attachments,
      is_read, is_flagged, importance, received_at, sent_at, folder_id,
      raw, cached_at, deleted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), NULL)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), NULL)
     ON CONFLICT(graph_id) DO UPDATE SET
       conversation_id = excluded.conversation_id,
       subject         = excluded.subject,
@@ -111,7 +111,7 @@ function upsertSQL(): string {
       sent_at         = excluded.sent_at,
       folder_id       = excluded.folder_id,
       raw             = excluded.raw,
-      cached_at       = datetime('now','localtime'),
+      cached_at       = datetime('now'),
       deleted_at      = NULL`;
 }
 
@@ -166,7 +166,7 @@ async function softDeleteMessage(env: Bindings, id: string): Promise<void> {
   const db = getDb(env);
   await execute(
     db,
-    `UPDATE email_messages SET deleted_at = datetime('now','localtime') WHERE graph_id = ?`,
+    `UPDATE email_messages SET deleted_at = datetime('now') WHERE graph_id = ?`,
     id,
   );
   try { await execute(db, `DELETE FROM email_messages_fts WHERE graph_id = ?`, id); }

@@ -65,7 +65,7 @@ export async function processScheduledEmails(env: Bindings): Promise<ScheduledRe
       // Bad data — fail permanently rather than loop.
       await execute(
         db,
-        `UPDATE scheduled_emails SET status='failed', last_error='No valid recipients', attempts = attempts + 1, updated_at=datetime('now','localtime') WHERE id = ?`,
+        `UPDATE scheduled_emails SET status='failed', last_error='No valid recipients', attempts = attempts + 1, updated_at=datetime('now') WHERE id = ?`,
         row.id,
       );
       result.permanently_failed++;
@@ -91,7 +91,7 @@ export async function processScheduledEmails(env: Bindings): Promise<ScheduledRe
       if (res.ok) {
         await execute(
           db,
-          `UPDATE scheduled_emails SET status='sent', sent_at=datetime('now','localtime'), attempts = attempts + 1, last_error=NULL, updated_at=datetime('now','localtime') WHERE id = ?`,
+          `UPDATE scheduled_emails SET status='sent', sent_at=datetime('now'), attempts = attempts + 1, last_error=NULL, updated_at=datetime('now') WHERE id = ?`,
           row.id,
         );
         result.sent++;
@@ -101,7 +101,7 @@ export async function processScheduledEmails(env: Bindings): Promise<ScheduledRe
         const exhausted = newAttempts >= row.max_attempts;
         await execute(
           db,
-          `UPDATE scheduled_emails SET status = ?, attempts = ?, last_error = ?, updated_at=datetime('now','localtime') WHERE id = ?`,
+          `UPDATE scheduled_emails SET status = ?, attempts = ?, last_error = ?, updated_at=datetime('now') WHERE id = ?`,
           exhausted ? 'failed' : 'queued',
           newAttempts,
           `HTTP ${res.status}: ${detail}`,
@@ -115,7 +115,7 @@ export async function processScheduledEmails(env: Bindings): Promise<ScheduledRe
         // will reconfigure or cancel.
         await execute(
           db,
-          `UPDATE scheduled_emails SET last_error='Email integration not configured', updated_at=datetime('now','localtime') WHERE id = ?`,
+          `UPDATE scheduled_emails SET last_error='Email integration not configured', updated_at=datetime('now') WHERE id = ?`,
           row.id,
         );
         // Stop the loop — no point retrying others until creds return.
@@ -127,7 +127,7 @@ export async function processScheduledEmails(env: Bindings): Promise<ScheduledRe
       const exhausted = newAttempts >= row.max_attempts;
       await execute(
         db,
-        `UPDATE scheduled_emails SET status = ?, attempts = ?, last_error = ?, updated_at=datetime('now','localtime') WHERE id = ?`,
+        `UPDATE scheduled_emails SET status = ?, attempts = ?, last_error = ?, updated_at=datetime('now') WHERE id = ?`,
         exhausted ? 'failed' : 'queued',
         newAttempts,
         detail.slice(0, 300),
@@ -250,7 +250,7 @@ async function applyActions(env: Bindings, msg: MessageRow, actions: Actions, ru
        VALUES (?, ?, 'rule')
        ON CONFLICT(graph_id) DO UPDATE SET
          category = excluded.category, model = 'rule',
-         categorized_at = datetime('now','localtime')`,
+         categorized_at = datetime('now')`,
       msg.graph_id, actions.categorize.slice(0, 64),
     );
   }
@@ -346,14 +346,14 @@ export async function applyRulesToRecent(env: Bindings): Promise<RulesResult> {
   if (existing) {
     await execute(
       db,
-      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = 'email_rules_watermark'`,
+      `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = 'email_rules_watermark'`,
       newWatermark,
     );
   } else {
     await execute(
       db,
       `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-       VALUES ('email_rules_watermark', ?, 'email', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+       VALUES ('email_rules_watermark', ?, 'email', 1, datetime('now'), datetime('now'))`,
       newWatermark,
     );
   }

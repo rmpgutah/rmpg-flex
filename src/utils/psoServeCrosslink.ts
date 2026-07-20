@@ -99,7 +99,7 @@ export async function crossLinkPsoCloseToServe(
          call_id, officer_id, created_by, recipient_name, recipient_address,
          recipient_lat, recipient_lng, document_type, case_number, client_name,
          priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now','localtime'), datetime('now','localtime'))`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       callId, merged.officer_id ?? options.actorUserId ?? null, options.actorUserId ?? null,
       recipientName, recipientAddress,
       merged.latitude ?? null, merged.longitude ?? null,
@@ -174,7 +174,7 @@ export async function crossLinkPsoCloseToServe(
 
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
     nextNum, newStatus, queueRow.id,
   );
 

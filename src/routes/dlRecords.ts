@@ -24,7 +24,7 @@
 //   POST   /ocr-scan    — DL image OCR (external/AI round-trip)
 //
 // Timestamps are UTC (`datetime('now')`) per the UTC-storage standard —
-// the legacy code used datetime('now','localtime'), which double-shifted
+// the legacy code used datetime('now'), which double-shifted
 // on display.
 // ============================================================
 

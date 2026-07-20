@@ -118,7 +118,7 @@ uof.post('/', async (c) => {
          body_camera_active, witness_officers, narrative, status,
          created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted',
-         datetime('now','localtime'), datetime('now','localtime'))`,
+         datetime('now'), datetime('now'))`,
       b.incident_id ?? null, userId, b.subject_person_id ?? null,
       b.force_type, b.force_level ?? null,
       b.justification ?? null, b.subject_injuries ?? null, b.officer_injuries ?? null,
@@ -231,8 +231,8 @@ uof.put('/:id/review', async (c) => {
     if (!existing) return c.json({ error: 'Report not found', code: 'NOT_FOUND' }, 404);
     const userId = (c.get('user') as { id: number } | undefined)?.id ?? null;
     await execute(db,
-      `UPDATE use_of_force SET status = ?, reviewed_by = ?, reviewed_at = datetime('now','localtime'),
-              review_notes = COALESCE(?, review_notes), updated_at = datetime('now','localtime')
+      `UPDATE use_of_force SET status = ?, reviewed_by = ?, reviewed_at = datetime('now'),
+              review_notes = COALESCE(?, review_notes), updated_at = datetime('now')
        WHERE id = ?`, status, userId, b.notes ?? null, id);
     try {
       await recordAudit(c, { action: 'REVIEW', entityType: 'use_of_force', entityId: id, details: `Use of force report ${b.decision}`, actorId: userId });

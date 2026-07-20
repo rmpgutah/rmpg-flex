@@ -68,7 +68,7 @@ async function loadIpedConfig(db: D1Database): Promise<IpedConfig> {
 async function saveIpedConfig(db: D1Database, cfg: IpedConfig): Promise<void> {
   const value = JSON.stringify(cfg);
   const r = await execute(
-    db, `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+    db, `UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?`,
     value, IPED_CONFIG_KEY,
   );
   if (!r.meta.changes) {

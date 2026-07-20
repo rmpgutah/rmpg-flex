@@ -255,7 +255,7 @@ admin.put('/config/:id', async (c) => {
     if (typeof category === 'string' && category.trim()) { sets.push('category = ?'); args.push(category.trim()); }
     if (Number.isFinite(sort_order)) { sets.push('sort_order = ?'); args.push(Number(sort_order)); }
     if (is_active === 0 || is_active === 1) { sets.push('is_active = ?'); args.push(is_active); }
-    sets.push("updated_at = datetime('now','localtime')");
+    sets.push("updated_at = datetime('now')");
     args.push(id);
     const result = await execute(db,
       `UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`, ...args);
@@ -621,7 +621,7 @@ function buildPartialUpdate(
     }
   }
   if (sets.length === 0) return null;
-  sets.push(`updated_at = datetime('now','localtime')`);
+  sets.push(`updated_at = datetime('now')`);
   return { setSql: sets.join(', '), values };
 }
 
@@ -900,7 +900,7 @@ admin.put('/maintenance-mode', async (c) => {
     // system_config has no UNIQUE(config_key) on live, so update-then-insert.
     const r = await execute(
       db,
-      `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?`,
       value, MAINT_KEY,
     );
     if (!r.meta.changes) {
@@ -1006,14 +1006,14 @@ admin.put('/third-party-keys', async (c) => {
     if (existing) {
       await execute(
         db,
-        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
         value, key,
       );
     } else {
       await execute(
         db,
         `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-         VALUES (?, ?, 'integrations', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+         VALUES (?, ?, 'integrations', 1, datetime('now'), datetime('now'))`,
         key, value,
       );
     }
@@ -1035,7 +1035,7 @@ admin.delete('/third-party-keys', async (c) => {
     const db = getDb(c.env);
     await execute(
       db,
-      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now') WHERE config_key = ?`,
       key,
     );
     return c.json({ success: true, message: `${key} cleared` });

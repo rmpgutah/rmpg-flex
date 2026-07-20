@@ -297,7 +297,7 @@ forensics.post('/', async (c) => {
          requesting_agency, requesting_officer, lead_examiner_id,
          linked_incident_id, linked_case_id, linked_incident_number, linked_case_number,
          received_date, due_date, notes, created_by
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')), ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?, ?)`,
       labNumber, caseType, status, priority, b.title.trim(), b.description ?? null,
       b.requesting_agency ?? 'RMPG', b.requesting_officer ?? null, b.lead_examiner_id ?? null,
       b.linked_incident_id ?? null, b.linked_case_id ?? null,
@@ -363,7 +363,7 @@ forensics.put('/:id', async (c) => {
     }
 
     if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`);
+    sets.push(`updated_at = datetime('now')`);
     vals.push(id);
 
     await execute(db, `UPDATE forensic_cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
@@ -528,7 +528,7 @@ forensics.put('/:caseId/exhibits/:exhibitId', async (c) => {
       vals.push(v ?? null);
     }
     if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`);
+    sets.push(`updated_at = datetime('now')`);
     vals.push(exhibitId);
 
     await execute(db, `UPDATE forensic_exhibits SET ${sets.join(', ')} WHERE id = ?`, ...vals);
@@ -603,7 +603,7 @@ forensics.post('/:caseId/exhibits/:exhibitId/custody', async (c) => {
 
     await execute(
       db,
-      `UPDATE forensic_exhibits SET chain_of_custody = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE forensic_exhibits SET chain_of_custody = ?, updated_at = datetime('now') WHERE id = ?`,
       JSON.stringify(chain), exhibitId,
     );
 
@@ -1004,11 +1004,11 @@ forensics.put('/:caseId/analyses/:analysisId', async (c) => {
       (b.status === 'completed' || b.status === 'inconclusive') &&
       existing.status !== 'completed' && existing.status !== 'inconclusive'
     ) {
-      sets.push(`completed_at = COALESCE(completed_at, datetime('now','localtime'))`);
+      sets.push(`completed_at = COALESCE(completed_at, datetime('now'))`);
     }
 
     if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`);
+    sets.push(`updated_at = datetime('now')`);
     vals.push(analysisId);
 
     await execute(db, `UPDATE forensic_analyses SET ${sets.join(', ')} WHERE id = ?`, ...vals);
@@ -1304,7 +1304,7 @@ forensics.post('/:caseId/apply-template', async (c) => {
     if (!template) return c.json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }, 404);
 
     await execute(
-      db, `UPDATE forensic_cases SET report_sections = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      db, `UPDATE forensic_cases SET report_sections = ?, updated_at = datetime('now') WHERE id = ?`,
       template.sections, caseId,
     );
 

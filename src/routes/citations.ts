@@ -510,7 +510,7 @@ async function ensureCitationFilingTables(db: ReturnType<typeof getDb>): Promise
       filed_at TEXT,
       filed_by INTEGER,
       generated_at TEXT,
-      updated_at TEXT DEFAULT (datetime('now','localtime'))
+      updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
 }
@@ -577,10 +577,10 @@ citations.post('/:id/copies', async (c) => {
     await execute(
       db,
       `INSERT OR IGNORE INTO citation_filing (citation_id, status, generated_at)
-       VALUES (?, 'pending', datetime('now','localtime'))`,
+       VALUES (?, 'pending', datetime('now'))`,
       id,
     );
-    const sets: string[] = ['generated_at = COALESCE(generated_at, datetime("now","localtime"))', 'updated_at = datetime("now","localtime")'];
+    const sets: string[] = ['generated_at = COALESCE(generated_at, datetime("now"))', 'updated_at = datetime("now")'];
     const vals: unknown[] = [];
     if (uploaded.court)     { sets.push('court_copy_url = ?');     vals.push(uploaded.court); }
     if (uploaded.agency)    { sets.push('agency_copy_url = ?');    vals.push(uploaded.agency); }
@@ -1011,7 +1011,7 @@ citations.post('/batch', async (c) => {
     for (const cit of body.citations) {
       if (!cit.type || !cit.person_name || !cit.violation_description) continue;
       const cols = ['type', 'person_name', 'violation_description', 'status', 'issuing_officer_id', 'created_at', 'updated_at'];
-      const vals = ['?', '?', '?', "'issued'", '?', "datetime('now','localtime')", "datetime('now','localtime')"];
+      const vals = ['?', '?', '?', "'issued'", '?', "datetime('now')", "datetime('now')"];
       const params: unknown[] = [cit.type, cit.person_name, cit.violation_description, userId ?? null];
       if (cit.person_dob) { cols.push('person_dob'); vals.push('?'); params.push(cit.person_dob); }
       if (cit.statute_id) { cols.push('statute_id'); vals.push('?'); params.push(cit.statute_id); }

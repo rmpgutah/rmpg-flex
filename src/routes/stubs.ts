@@ -157,7 +157,7 @@ stubs.post('/messages', async (c) => {
     }
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, parent_id, thread_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(
       userId,
       toUserId,
@@ -191,7 +191,7 @@ stubs.put('/messages/:id/read', async (c) => {
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
     await db.prepare(
-      `UPDATE messages SET read_at = datetime('now','localtime')
+      `UPDATE messages SET read_at = datetime('now')
        WHERE id = ? AND read_at IS NULL AND (to_user_id = ? OR channel IN ('broadcast','dispatch','zone'))`
     ).bind(id, userId).run();
     return c.json({ success: true });
@@ -210,7 +210,7 @@ stubs.put('/messages/:id/acknowledge', async (c) => {
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
     await db.prepare(
-      `UPDATE messages SET read_at = COALESCE(read_at, datetime('now','localtime'))
+      `UPDATE messages SET read_at = COALESCE(read_at, datetime('now'))
        WHERE id = ? AND channel IN ('broadcast','dispatch','zone')`
     ).bind(id).run();
     return c.json({ success: true });
@@ -275,7 +275,7 @@ stubs.post('/drafts', async (c) => {
     if (!content) return c.json({ error: 'content is required' }, 400);
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, is_draft, draft_updated_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'), datetime('now','localtime'))`
+       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
     ).bind(
       userId,
       body.to_user_id ? Number(body.to_user_id) : null,
@@ -305,7 +305,7 @@ stubs.post('/emergency-broadcast', async (c) => {
     if (!text) return c.json({ error: 'content is required' }, 400);
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, created_at)
-       VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now','localtime'))`
+       VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now'))`
     ).bind(userId, text, body.subject || 'EMERGENCY BROADCAST').run();
     return c.json({ success: true, broadcast_id: result.meta.last_row_id });
   } catch (err) {

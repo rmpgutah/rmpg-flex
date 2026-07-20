@@ -48,7 +48,7 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     recommendations TEXT,
     review_notes TEXT,
     reviewed_by INTEGER,
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
     submitted_at TEXT,
     approved_at TEXT
   )`);

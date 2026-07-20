@@ -364,7 +364,7 @@ duty.post('/start', async (c) => {
     if (!entry) {
       const res = await execute(db,
         `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, starting_mileage, qr_token, created_at)
-         VALUES (?, ?, 'active', ?, ?, ?, ?, datetime('now','localtime'))`,
+         VALUES (?, ?, 'active', ?, ?, ?, ?, datetime('now'))`,
         officerId, nowStamp(), unit.id, vehicle.id, startingMileage, qrToken);
       entry = await queryFirst(db, `SELECT * FROM time_entries WHERE id = ?`, Number(res.meta.last_row_id));
     } else {

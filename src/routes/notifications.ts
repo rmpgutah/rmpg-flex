@@ -70,7 +70,7 @@ alerts.put('/templates/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE notification_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_templates WHERE id = ?', id);
     return c.json({ data: updated });
@@ -192,9 +192,9 @@ alerts.put('/batches/:id/send', async (c) => {
     const batchId = parseInt(c.req.param('id'), 10);
     // Mark as sent — actual delivery is stubbed (would go through email/SMS API in prod)
     await execute(db,
-      `UPDATE notification_batches SET status = 'sent', sent_at = datetime('now','localtime'), sent_count = recipient_count WHERE id = ?`, batchId);
+      `UPDATE notification_batches SET status = 'sent', sent_at = datetime('now'), sent_count = recipient_count WHERE id = ?`, batchId);
     await execute(db,
-      `UPDATE notification_recipients SET status = 'sent', sent_at = datetime('now','localtime') WHERE batch_id = ?`, batchId);
+      `UPDATE notification_recipients SET status = 'sent', sent_at = datetime('now') WHERE batch_id = ?`, batchId);
     const batch = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_batches WHERE id = ?', batchId);
     return c.json({ data: batch });
   } catch (err) {

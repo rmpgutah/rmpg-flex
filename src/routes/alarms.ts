@@ -42,7 +42,7 @@ alarms.put('/accounts/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
     await execute(db,
-      'UPDATE alarm_accounts SET account_number=?, account_name=?, address=?, contact_name=?, contact_phone=?, permit_number=?, permit_status=?, permit_expiry=?, alarm_type=?, false_alarm_count=?, status=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+      'UPDATE alarm_accounts SET account_number=?, account_name=?, address=?, contact_name=?, contact_phone=?, permit_number=?, permit_status=?, permit_expiry=?, alarm_type=?, false_alarm_count=?, status=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
       body.account_number, body.account_name, body.address, body.contact_name || null, body.contact_phone || null, body.permit_number || null, body.permit_status || 'active', body.permit_expiry || null, body.alarm_type || null, body.false_alarm_count || 0, body.status || 'active', body.notes || null, id
     );
     return c.json({ success: true });

@@ -606,7 +606,7 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'completed' THEN distance_miles ELSE 0 END) as miles_today,
           AVG(CASE WHEN status = 'completed' THEN max_speed_mph END) as avg_max_speed_today
         FROM nav_trip_log
-        WHERE date(start_time) = date('now', 'localtime')`),
+        WHERE date(start_time) = date('now')`),
 
       // Fleet alerts: vehicles needing attention
       query<Record<string, unknown>>(db, `

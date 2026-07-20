@@ -151,7 +151,7 @@ jail.put('/inmates/:id', async (c) => {
       sets.push(`${k} = ?`); vals.push(v ?? null);
     }
     if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE inmates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM inmates WHERE id = ?', id);
     return c.json({ data: updated });
@@ -334,7 +334,7 @@ jail.post('/inmates/:id/medical', async (c) => {
     if (typeof b.screening_type !== 'string') return c.json({ error: 'screening_type required' }, 400);
     const result = await execute(db,
       `INSERT INTO inmate_medical (inmate_id, screening_type, findings, prescribed_med, allergies, suicide_risk, cleared_for_booking, screened_by, screened_date, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')), ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?)`,
       id, b.screening_type, b.findings ?? null, b.prescribed_med ?? null, b.allergies ?? null,
       b.suicide_risk ?? 0, b.cleared_for_booking ?? 1, b.screened_by ?? null, b.screened_date ?? null, b.notes ?? null,
     );
@@ -372,7 +372,7 @@ jail.post('/inmates/:id/disciplinary', async (c) => {
     if (typeof b.violation !== 'string' || !b.violation.trim()) return c.json({ error: 'violation required' }, 400);
     const result = await execute(db,
       `INSERT INTO inmate_disciplinary (inmate_id, violation, violation_date, reported_by, sanction, hearing_date, hearing_outcome, notes)
-       VALUES (?, ?, COALESCE(?, datetime('now','localtime')), ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?)`,
       id, b.violation, b.violation_date ?? null, userId, b.sanction ?? null, b.hearing_date ?? null, b.hearing_outcome ?? null, b.notes ?? null,
     );
     const newId = Number(result.meta.last_row_id);
@@ -408,7 +408,7 @@ jail.post('/inmates/:id/transports', async (c) => {
     if (typeof b.destination !== 'string' || !b.destination.trim()) return c.json({ error: 'destination required' }, 400);
     const result = await execute(db,
       `INSERT INTO inmate_transports (inmate_id, destination, reason, depart_date, return_date, transporting_officer_id, vehicle_id, status, notes)
-       VALUES (?, ?, ?, COALESCE(?, datetime('now','localtime')), ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?)`,
       id, b.destination, b.reason ?? null, b.depart_date ?? null, b.return_date ?? null, b.transporting_officer_id ?? null, b.vehicle_id ?? null, b.status ?? 'scheduled', b.notes ?? null,
     );
     const newId = Number(result.meta.last_row_id);

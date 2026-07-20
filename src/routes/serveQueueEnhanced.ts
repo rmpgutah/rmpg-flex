@@ -170,7 +170,7 @@ sqe.post('/batch-reassign', async (c) => {
     const newStatus = queue.status === 'pending' ? 'assigned' : queue.status;
     await execute(
       db,
-      "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
       newServerId, newStatus, queue.id,
     );
 
@@ -356,8 +356,8 @@ sqe.post('/auto-close-stale', async (c) => {
        ) la ON la.serve_queue_id = q.id
        WHERE q.status NOT IN ('served', 'cancelled', 'failed')
          AND (
-           (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','localtime','-' || ? || ' days'))
-           OR (la.last_activity IS NULL AND q.created_at < datetime('now','localtime','-' || ? || ' days'))
+           (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','-' || ? || ' days'))
+           OR (la.last_activity IS NULL AND q.created_at < datetime('now','-' || ? || ' days'))
          )
        LIMIT 500`,
     staleDays, staleDays,
@@ -369,7 +369,7 @@ sqe.post('/auto-close-stale', async (c) => {
     await execute(
       db,
       `UPDATE serve_queue
-       SET status = 'failed', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime')
+       SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now')
        WHERE id IN (${placeholders})`,
       ...staleJobs.map((j) => j.id),
     );
@@ -569,7 +569,7 @@ sqe.post('/complete-with-proof', async (c) => {
   await execute(
     db,
     `UPDATE serve_queue
-     SET status = ?, updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime')
+     SET status = ?, updated_at = datetime('now'), closed_at = datetime('now')
      WHERE id = ?`,
     newStatus, attempt.serve_queue_id,
   );
@@ -790,7 +790,7 @@ sqe.get('/workload-summary', async (c) => {
        u.full_name AS officer_name,
        SUM(CASE WHEN q.status IN ('assigned', 'in_progress', 'attempted') THEN 1 ELSE 0 END) AS active_assigned,
        SUM(CASE WHEN q.deadline IS NOT NULL
-                  AND q.deadline < datetime('now','localtime')
+                  AND q.deadline < datetime('now')
                   AND q.status NOT IN ('served', 'cancelled', 'failed')
              THEN 1 ELSE 0 END) AS overdue,
        COALESCE(today_completed.cnt, 0) AS completed_today,
@@ -976,7 +976,7 @@ sqe.post('/route-progress', async (c) => {
       return c.json({ error: 'route_id and visited_queue_ids required' }, 400);
     }
     await execute(db,
-      `UPDATE serve_routes SET visited_queue_ids = ?, current_lat = ?, current_lng = ?, updated_at = datetime('now','localtime')
+      `UPDATE serve_routes SET visited_queue_ids = ?, current_lat = ?, current_lng = ?, updated_at = datetime('now')
        WHERE id = ? AND officer_id = ?`,
       JSON.stringify(body.visited_queue_ids), body.current_lat ?? null, body.current_lng ?? null,
       body.route_id, userId);

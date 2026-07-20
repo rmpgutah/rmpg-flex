@@ -172,7 +172,7 @@ personnel.put('/credentials/:id', async (c) => {
     const setClause = cols.map((f) => `${f} = ?`).join(', ');
     await execute(
       db,
-      `UPDATE officer_credentials SET ${setClause}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE officer_credentials SET ${setClause}, updated_at = datetime('now') WHERE id = ?`,
       ...cols.map((f) => body[f]), id,
     );
     const row = await queryFirst<Record<string, unknown>>(db, `${CREDENTIAL_SELECT} WHERE oc.id = ?`, id);
@@ -306,7 +306,7 @@ personnel.put('/equipment/:id', async (c) => {
     if (cols.length === 0) return c.json({ error: 'No updatable fields' }, 400);
     await execute(
       db,
-      `UPDATE officer_equipment SET ${cols.map((f) => `${f} = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE officer_equipment SET ${cols.map((f) => `${f} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`,
       ...cols.map((f) => body[f]), id);
     const row = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
     return c.json(row ?? { id });
@@ -340,9 +340,9 @@ personnel.post('/equipment/:id/checkout', async (c) => {
     await execute(
       db,
       `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, action, equipment_name, checked_by)
-       VALUES (?, ?, datetime('now','localtime'), 'checkout', ?, ?)`,
+       VALUES (?, ?, datetime('now'), 'checkout', ?, ?)`,
       id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
-    await execute(db, "UPDATE officer_equipment SET status = 'issued', updated_at = datetime('now','localtime') WHERE id = ?", id);
+    await execute(db, "UPDATE officer_equipment SET status = 'issued', updated_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
   } catch (err) {
     console.error('POST /personnel/equipment/:id/checkout failed:', err);
@@ -362,9 +362,9 @@ personnel.post('/equipment/:id/checkin', async (c) => {
     await execute(
       db,
       `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, return_date, action, equipment_name, checked_by)
-       VALUES (?, ?, datetime('now','localtime'), datetime('now','localtime'), 'checkin', ?, ?)`,
+       VALUES (?, ?, datetime('now'), datetime('now'), 'checkin', ?, ?)`,
       id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
-    await execute(db, "UPDATE officer_equipment SET status = 'returned', returned_date = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?", id);
+    await execute(db, "UPDATE officer_equipment SET status = 'returned', returned_date = datetime('now'), updated_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
   } catch (err) {
     console.error('POST /personnel/equipment/:id/checkin failed:', err);
@@ -582,14 +582,14 @@ personnel.post('/schedules', async (c) => {
       };
       await execute(db,
         `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
         id, body.notes || 'Shift', body.shift_date, body.shift_type || 'custom',
         JSON.stringify([assignment]),
         'active', user?.id ?? null);
     } else if (body.name && body.date) {
       await execute(db,
         `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
         id, body.name, body.date, body.shift_type || 'day',
         typeof body.assignments === 'string' ? body.assignments : JSON.stringify(body.assignments || []),
         body.status || 'draft', user?.id ?? null);
@@ -613,7 +613,7 @@ personnel.put('/schedules/:id', async (c) => {
     if (!existing) return c.json({ error: 'Schedule not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
     const writable = new Set(['name', 'date', 'shift_type', 'assignments', 'status']);
-    const cols: string[] = ["updated_at = datetime('now','localtime')"]; const params: unknown[] = [];
+    const cols: string[] = ["updated_at = datetime('now')"]; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) {
       if (writable.has(key)) {
         cols.push(`${key} = ?`);
@@ -662,7 +662,7 @@ personnel.get('/time', async (c) => {
     const start = startParam && /^\d{4}-\d{2}-\d{2}$/.test(startParam) ? startParam : defaultStart;
     const end = endParam && /^\d{4}-\d{2}-\d{2}$/.test(endParam) ? endParam : today;
 
-    // clock_in is stored as a localtime ISO string; range-compare it
+    // clock_in is stored as a UTC ISO string; range-compare it
     // against `YYYY-MM-DD` boundaries (lex-sortable for ISO).
     const bindings: unknown[] = [start, end + 'T23:59:59'];
     let sql = `
@@ -769,7 +769,7 @@ personnel.post('/time/clock-in', async (c) => {
 
     const stamp = nowDualStamp();
     const result = await execute(db,
-      `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now','localtime'))`,
+      `INSERT INTO time_entries (officer_id, clock_in, clock_in_local, status, created_at) VALUES (?, ?, ?, 'active', datetime('now'))`,
       officerId, stamp.utc, stamp.local);
     const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(entry, 201);
@@ -898,7 +898,7 @@ personnel.post('/time', async (c) => {
     const res = await execute(
       db,
       `INSERT INTO time_entries (officer_id, clock_in, clock_out, break_minutes, total_hours, status, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       officerId, clockIn, clockOut, breakMinutes, totalHours, status, notes,
     );
 
@@ -1015,7 +1015,7 @@ personnel.put('/time/:id', async (c) => {
       `UPDATE time_entries
           SET clock_in = ?, clock_out = ?, break_minutes = ?, total_hours = ?, notes = ?,
               starting_mileage = ?, ending_mileage = ?, total_miles = ?,
-              status = ?, edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
+              status = ?, edit_reason = ?, edited_by = ?, edited_at = datetime('now')
         WHERE id = ?`,
       newClockIn, newClockOut, newBreak, totalHours, newNotes,
       newStartMi, newEndMi, newTotalMiles, newStatus, reason, actor?.id ?? null, id,
@@ -1045,7 +1045,7 @@ personnel.put('/time/:id', async (c) => {
       await execute(
         db,
         `INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
         id, actor?.id ?? 0, editorName, e.edit_type, e.old, e.new, reason,
       );
     }
@@ -1172,7 +1172,7 @@ personnel.post('/deployments', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.officer_id || !body.property_id) return c.json({ error: 'officer_id and property_id required' }, 400);
     const cols: string[] = ['created_at', 'updated_at']; const vals: unknown[] = [];
-    const ph: string[] = ["datetime('now','localtime')", "datetime('now','localtime')"];
+    const ph: string[] = ["datetime('now')", "datetime('now')"];
     for (const [key, val] of Object.entries(body)) {
       if (DEPLOYMENT_WRITABLE.has(key)) { cols.push(key); vals.push(val ?? null); ph.push('?'); }
     }
@@ -1192,7 +1192,7 @@ personnel.put('/deployments/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM deployments WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Deployment not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols: string[] = ["updated_at = datetime('now','localtime')"]; const params: unknown[] = [];
+    const cols: string[] = ["updated_at = datetime('now')"]; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) {
       if (DEPLOYMENT_WRITABLE.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
     }

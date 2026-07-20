@@ -444,13 +444,26 @@ export default function DispatchPage() {
   }, [userPrefs, localSort]);
 
   // ── Feature 1: Call priority sound alerts ──
+  // The "Mute" toolbar button is meant to silence ALL dispatch audio — tone
+  // chimes (gated below via soundAlertsMutedRef) AND spoken voice alerts
+  // (gated separately, in voiceAlerts.ts, by the 'rmpg-sound' localStorage
+  // key). Those used to be two independent keys that never synced, so
+  // muting here silenced only the chimes while announceNewCall/etc. kept
+  // talking. Keep both keys in lockstep from this one control.
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
   const soundAlertsMutedRef = useRef(soundAlertsMuted);
   useEffect(() => { soundAlertsMutedRef.current = soundAlertsMuted; }, [soundAlertsMuted]);
+  useEffect(() => {
+    // Reconcile the two keys once on mount in case they'd drifted from
+    // before this fix (e.g. a prior session muted only one of them).
+    localStorage.setItem('rmpg-sound', String(!soundAlertsMuted));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const toggleSoundAlerts = useCallback(() => {
     setSoundAlertsMuted(prev => {
       const next = !prev;
       localStorage.setItem('rmpg_sound_alerts_muted', String(next));
+      localStorage.setItem('rmpg-sound', String(!next));
       return next;
     });
   }, []);
@@ -1532,9 +1545,12 @@ export default function DispatchPage() {
   // When the admin-config disposition list is empty (production default),
   // derive the correct fallback codes from the incident type so PSO calls
   // see PS codes in the clear prompt and general calls see general codes.
+  // Kept GROUPED (not flatMap'd) so DispositionPrompt can render <optgroup>
+  // sections instead of one giant flat list — with 51 PS/## codes across
+  // 10 categories, a flat list was unusable.
   const effectiveDispositionCodes = useMemo(() => {
     if (dispositionCodes.length > 0) return dispositionCodes;
-    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+    return dispositionGroupsForIncident(selectedCall?.incident_type);
   }, [dispositionCodes, selectedCall?.incident_type]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)

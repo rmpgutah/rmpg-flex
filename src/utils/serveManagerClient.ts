@@ -79,7 +79,7 @@ export async function setApiKey(db: D1Database, jwtSecret: string, plaintext: st
     "DELETE FROM system_config WHERE config_key = 'servemanager_api_key' AND category = 'integrations'");
   await execute(db,
     `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
-     VALUES ('servemanager_api_key', ?, 'integrations', 0, 1, datetime('now','localtime'), datetime('now','localtime'))`,
+     VALUES ('servemanager_api_key', ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`,
     encrypted,
   );
 }
