@@ -24,6 +24,7 @@ function Harness() {
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 2)}>set-opacity-too-high</button>
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0)}>set-opacity-too-low</button>
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.6)}>set-opacity-valid</button>
+      <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.1 + 0.2)}>set-opacity-drift</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
@@ -133,5 +134,7 @@ describe('DesktopWindowManager', () => {
     expect(screen.getByTestId('first-opacity').textContent).toBe('0.3');
     act(() => screen.getByText('set-opacity-valid').click());
     expect(screen.getByTestId('first-opacity').textContent).toBe('0.6');
+    act(() => screen.getByText('set-opacity-drift').click());
+    expect(screen.getByTestId('first-opacity').textContent).toBe('0.3');
   });
 });

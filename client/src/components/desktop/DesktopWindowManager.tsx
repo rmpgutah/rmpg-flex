@@ -39,7 +39,7 @@ const MIN_WINDOW_OPACITY = 0.3;
 const MAX_WINDOW_OPACITY = 1;
 
 function clampOpacity(value: number): number {
-  return Math.min(MAX_WINDOW_OPACITY, Math.max(MIN_WINDOW_OPACITY, value));
+  return Math.max(MIN_WINDOW_OPACITY, Math.min(MAX_WINDOW_OPACITY, Math.round(value * 10) / 10));
 }
 
 const DesktopWindowManagerContext = createContext<DesktopWindowManagerContextValue | null>(null);
