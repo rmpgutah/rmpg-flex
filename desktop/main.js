@@ -2575,7 +2575,13 @@ guardedHandle('recon:term-kill', async (_event, { sessionId }) => {
   if (!child) return { ok: true };
   try {
     child.kill('SIGTERM');
-    setTimeout(() => { if (!child.killed) { try { child.kill('SIGKILL'); } catch { /* ignore */ } } }, 1500);
+    setTimeout(() => {
+      // child.killed is set synchronously once kill() sends the signal, not once the
+      // process has actually exited — check exitCode/signalCode instead (see the
+      // matching fix in scheduleChildProcessTimeout, desktop/security/childProcessGuard.js).
+      const stillRunning = child.exitCode == null && child.signalCode == null;
+      if (stillRunning) { try { child.kill('SIGKILL'); } catch { /* ignore */ } }
+    }, 1500);
   } catch { /* ignore */ }
   reconSessions.delete(sessionId);
   return { ok: true };

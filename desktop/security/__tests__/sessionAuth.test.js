@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
 const { EventEmitter } = require('node:events');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash, hasUserOrOrgMismatch } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker, verifyDownloadedUpdateHash, hasUserOrOrgMismatch } = require('../sessionAuth');
 const { hardenWebPreferencesDefaults } = require('../sessionHardening');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
