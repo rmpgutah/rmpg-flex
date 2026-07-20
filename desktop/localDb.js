@@ -372,6 +372,27 @@ function replaceTable(tableName, rows) {
   tx();
 }
 
+// ─── Helper: Full-replace the users table (encrypted password_hash) ─
+// Same transactional shape as replaceTable() above, but for the 'users'
+// table specifically: each row goes through upsertUserWithEncryptedHash()
+// instead of the generic upsertRow(), so the cached password_hash is
+// encrypted via safeStorage before it ever touches disk. syncManager.js's
+// pullTable() calls this instead of replaceTable('users', rows) — see its
+// applyPulledRows() helper for the dispatch (Group C Task 10; closes a gap
+// left by Group H, which built upsertUserWithEncryptedHash() but never
+// wired it into the sync pull path).
+
+function replaceUsersTable(rows) {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM users`).run();
+    for (const row of rows) {
+      upsertUserWithEncryptedHash(row);
+    }
+    updateSyncMeta('users', rows.length);
+  });
+  tx();
+}
+
 // ─── Helper: Delta-upsert operational data ───────────────────
 // Only updates rows that are NOT dirty locally (local writes take precedence)
 
@@ -697,6 +718,7 @@ module.exports = {
   closeLocalDb,
   upsertRow,
   replaceTable,
+  replaceUsersTable,
   deltaSync,
   upsertUserWithEncryptedHash,
   getSyncMeta,

@@ -5,7 +5,7 @@
 // ============================================================
 
 const { net } = require('electron');
-const { getLocalDb, replaceTable, deltaSync, getSyncMeta, getConfig, setConfig,
+const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 
 let serverUrl = '';
@@ -235,6 +235,40 @@ async function pushAll() {
 
 // ─── Internal Helpers ────────────────────────────────────────
 
+/**
+ * Applies a batch of pulled rows to the local mirror for `table`, choosing
+ * the correct write strategy. Extracted from pullTable() below so the
+ * dispatch logic (which table takes which local-write path) is testable in
+ * isolation, without a live network call — pullTable() itself is otherwise
+ * all network/timer plumbing.
+ *
+ * 'users' gets its own full-replace path (replaceUsersTable) instead of the
+ * generic replaceTable(), so the cached password_hash is encrypted via
+ * safeStorage before it touches disk (see localDb.js's
+ * upsertUserWithEncryptedHash — built by Group H, wired in here by Group C
+ * Task 10).
+ *
+ * Note: 'users' is a REFERENCE_TABLE, and pullTable() always sends
+ * `since: null` for reference tables. The server's /api/offline/sync/pull
+ * handler (src/routes/offline.ts) returns `fullReplace: since === null` —
+ * so a reference-table pull is *structurally* guaranteed to always report
+ * fullReplace === true. That means 'users' can only ever reach the
+ * `fullReplace` branch here, never the `deltaSync` branch below — deltaSync
+ * intentionally has no 'users'-specific handling, since that path can't be
+ * reached for it.
+ */
+function applyPulledRows(table, rows, fullReplace) {
+  if (fullReplace) {
+    if (table === 'users') {
+      replaceUsersTable(rows);
+    } else {
+      replaceTable(table, rows);
+    }
+  } else {
+    deltaSync(table, rows);
+  }
+}
+
 async function pullTable(table) {
   if (isPaused) return;
   const meta = getSyncMeta(table);
@@ -256,11 +290,7 @@ async function pullTable(table) {
 
     if (response.rows.length === 0) return;
 
-    if (response.fullReplace) {
-      replaceTable(table, response.rows);
-    } else {
-      deltaSync(table, response.rows);
-    }
+    applyPulledRows(table, response.rows, response.fullReplace);
 
     console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err) {
@@ -464,6 +494,7 @@ module.exports = {
   forceFullResync,
   pauseSync,
   resumeSync,
+  applyPulledRows,
   get isSyncing() { return isSyncing; },
   get lastPushAt() { return lastPushAt; },
   get isPaused() { return isPaused; },

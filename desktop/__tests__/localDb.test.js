@@ -22,6 +22,13 @@ const path = require('path');
 // files even though it mutates the shared `require.cache`.
 const tmpUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmpg-localdb-test-'));
 
+// A working fake safeStorage — needed because replaceUsersTable() (Task 10,
+// below) exercises upsertUserWithEncryptedHash(), which calls
+// encryptPasswordHashForCache(hash, safeStorage). Same fake shape as
+// desktop/security/__tests__/secretsStore.test.js's fakeSafeStorage(): not
+// real encryption, just enough of a reversible transform to prove the value
+// genuinely round-trips through encrypt/decrypt rather than passing through
+// as plaintext.
 const electronPath = require.resolve('electron');
 require.cache[electronPath] = {
   id: electronPath,
@@ -30,17 +37,18 @@ require.cache[electronPath] = {
   exports: {
     app: { getPath: () => tmpUserDataDir },
     safeStorage: {
-      // Not exercised by initLocalDb() or getSyncQueueDetail() — only
-      // upsertUserWithEncryptedHash() touches safeStorage, which this
-      // test file never calls.
-      isEncryptionAvailable: () => false,
-      encryptString: () => { throw new Error('safeStorage.encryptString should not be called by this test'); },
-      decryptString: () => { throw new Error('safeStorage.decryptString should not be called by this test'); },
+      isEncryptionAvailable: () => true,
+      encryptString: (plaintext) => Buffer.from(`ENC:${plaintext.split('').reverse().join('')}`, 'utf8'),
+      decryptString: (buf) => {
+        const raw = buf.toString('utf8');
+        if (!raw.startsWith('ENC:')) throw new Error('bad ciphertext');
+        return raw.slice(4).split('').reverse().join('');
+      },
     },
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables, getLocalCacheStats, clearLocalCache, MIRRORED_CACHE_TABLE_NAMES } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables, getLocalCacheStats, clearLocalCache, MIRRORED_CACHE_TABLE_NAMES, replaceUsersTable, getSyncMeta } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -446,4 +454,135 @@ test('clearLocalCache: SECURITY — a crafted/malicious table name is rejected B
     `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'`
   ).get();
   assert.ok(usersTableExists, 'users table must still exist — DROP TABLE payload must never have executed');
+});
+
+// ─── replaceUsersTable (Task 10 — Group H deferral) ───────────
+// Closes a real gap: pullTable() in syncManager.js used to full-replace the
+// 'users' reference table via the generic replaceTable('users', rows), which
+// calls plain upsertRow() per row — storing password_hash exactly as the
+// server sent it, in plaintext. upsertUserWithEncryptedHash() (Group H)
+// already wraps password_hash through safeStorage before writing, but
+// nothing called it. replaceUsersTable() is the full-replace counterpart to
+// replaceTable() that does, so the users mirror never has a plaintext cached
+// hash after a pull.
+
+test('replaceUsersTable: full-replaces the users table and encrypts password_hash via safeStorage', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM users');
+
+  // Seed an existing row that should be gone after the full replace.
+  db.prepare(`
+    INSERT INTO users (id, username, password_hash, full_name, role)
+    VALUES (99, 'stale-user', 'stale-hash', 'Stale User', 'officer')
+  `).run();
+
+  replaceUsersTable([
+    {
+      id: 1,
+      username: 'x',
+      password_hash: 'plaintext-hash-value',
+      full_name: 'Test Officer',
+      role: 'officer',
+      status: 'active',
+    },
+  ]);
+
+  const rows = db.prepare('SELECT * FROM users').all();
+  assert.equal(rows.length, 1, 'the stale seeded row must be gone — this is a full replace, not a merge');
+  assert.equal(rows[0].id, 1);
+  assert.equal(rows[0].username, 'x');
+
+  // The whole point: the stored password_hash must NOT be the plaintext
+  // value handed in — it must have genuinely gone through
+  // encryptPasswordHashForCache()/safeStorage, not passed through untouched.
+  assert.notEqual(rows[0].password_hash, 'plaintext-hash-value');
+  // And it must be the fake safeStorage's real ciphertext shape: base64 of
+  // "ENC:<reversed plaintext>" (proving a genuine encrypt call happened —
+  // not just "any different string" — see encryptSecretForStorage(), which
+  // base64-encodes safeStorage.encryptString()'s output for SQLite TEXT
+  // storage).
+  const decoded = Buffer.from(rows[0].password_hash, 'base64').toString('utf8');
+  assert.match(decoded, /^ENC:/);
+  assert.equal(decoded.slice(4), 'plaintext-hash-value'.split('').reverse().join(''));
+
+  // updateSyncMeta('users', rows.length) must also have run, same as
+  // replaceTable() does for every other reference table.
+  const meta = getSyncMeta('users');
+  assert.equal(meta.row_count, 1);
+  assert.ok(meta.last_pull_at);
+});
+
+test('replaceUsersTable: an empty rows array clears the table and records a zero row_count', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM users');
+  db.prepare(`
+    INSERT INTO users (id, username, password_hash, full_name, role)
+    VALUES (1, 'x', 'hash', 'X', 'officer')
+  `).run();
+
+  replaceUsersTable([]);
+
+  assert.deepEqual(db.prepare('SELECT * FROM users').all(), []);
+  assert.equal(getSyncMeta('users').row_count, 0);
+});
+
+// ─── syncManager.js's applyPulledRows dispatch (Task 10) ──────
+// pullTable()'s fullReplace branch was extracted into applyPulledRows()
+// (table, rows, fullReplace) specifically so this dispatch is testable
+// without a live network call. It's tested here rather than in
+// syncManager.test.js because exercising it for real requires a live
+// localDb (replaceUsersTable/replaceTable both touch the real `db` handle)
+// — this file already carries the electron/safeStorage fixture that makes
+// that possible via initLocalDb(). syncManager.test.js's existing pushAll
+// test deliberately relies on localDb's `db` handle staying null (see its
+// comment) to distinguish "guard fired" from "guard missing", so adding a
+// DB-backed fixture there would undermine that test instead.
+//
+// require('../syncManager') is safe to do from here: it pulls in
+// require('./localDb') internally, which node's require cache already
+// resolves to the same, already-mocked-and-initialized localDb module
+// instance from this file — and syncManager.js's own top-level
+// `require('electron')` only destructures `net`, which this test never
+// calls.
+const { applyPulledRows } = require('../syncManager');
+
+test('applyPulledRows: table "users" with fullReplace dispatches to replaceUsersTable (password_hash encrypted)', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM users');
+
+  applyPulledRows('users', [
+    { id: 1, username: 'officer1', password_hash: 'plaintext-hash-value', full_name: 'Officer One', role: 'officer' },
+  ], true);
+
+  const row = db.prepare('SELECT * FROM users WHERE id = 1').get();
+  assert.ok(row);
+  assert.notEqual(row.password_hash, 'plaintext-hash-value', 'users must go through the encrypting path, not plain upsertRow');
+});
+
+test('applyPulledRows: a non-users table with fullReplace dispatches to the generic replaceTable (no encryption applied)', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM clients');
+
+  applyPulledRows('clients', [
+    { id: 1, name: 'Acme Corp', status: 'active' },
+  ], true);
+
+  const row = db.prepare('SELECT * FROM clients WHERE id = 1').get();
+  assert.equal(row.name, 'Acme Corp', 'non-users reference tables must still go through the generic, unencrypted path');
+});
+
+test('applyPulledRows: fullReplace=false (delta) still routes through deltaSync for a non-reference table, unaffected by the users special-case', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM units');
+  db.prepare(`
+    INSERT INTO units (id, call_sign, status, is_dirty)
+    VALUES (1, 'U-1', 'off_duty', 0)
+  `).run();
+
+  applyPulledRows('units', [
+    { id: 1, call_sign: 'U-1', status: 'on_duty' },
+  ], false);
+
+  const row = db.prepare('SELECT * FROM units WHERE id = 1').get();
+  assert.equal(row.status, 'on_duty', 'deltaSync path must still apply the update for a non-dirty row');
 });
