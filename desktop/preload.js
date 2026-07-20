@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld('electron', {
   // 'notify:tray-status' handler).
   setTrayStatus: (state) => ipcRenderer.invoke('notify:tray-status', state),
 
+  // Clipboard read/write. Plain wrappers with no secret-value enforcement —
+  // see main.js's 'clipboard:get'/'clipboard:set' handlers.
+  getClipboardText: () => ipcRenderer.invoke('clipboard:get'),
+  setClipboardText: (text) => ipcRenderer.invoke('clipboard:set', text),
+
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 

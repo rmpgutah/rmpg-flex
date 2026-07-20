@@ -6,7 +6,7 @@
 // automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker, safeStorage, powerMonitor, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
@@ -1009,6 +1009,12 @@ guardedHandle('notify:tray-status', (event, state) => {
   if (!isValidTrayStatus(state)) return;
   if (tray) tray.setToolTip(formatTrayTooltip(state));
 });
+
+// Plain clipboard read/write wrappers. Per the Group E task-7 scope decision,
+// this is deliberately unenforced — the future sessionAuth.disableClipboardAutoSyncOfSecrets
+// guard against syncing secret values is Group I's (Auth/Session Hardening) responsibility.
+guardedHandle('clipboard:get', () => clipboard.readText());
+guardedHandle('clipboard:set', (event, text) => { clipboard.writeText(String(text)); });
 
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
