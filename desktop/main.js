@@ -2884,8 +2884,21 @@ guardedHandle('sync:clear-cache', (event, table) => clearLocalCache(table));
 // Destructive: wipes the mirrored/reference cache tables (never sync_queue
 // or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics
 // UI "force full resync" action.
+//
+// Requires live connectivity, checked here (not inside syncManager, which
+// has no connectivityMonitor dependency). syncManager.forceFullResync()
+// already refuses while paused, but pullAll()'s per-table pullTable() calls
+// only console.warn on fetch failure — they never throw — so pullAll()
+// resolves cleanly even when every pull silently failed. Offline, that
+// would let forceFullResync() wipe the cache (including `users`, which
+// backs offline PIN auth) and report {ok:true} with nothing repopulated.
+// Checking connectivity before ever calling into syncManager keeps the
+// wipe from running at all in that case.
 guardedHandle('sync:force-full', async () => {
   if (!syncManager) return { ok: false, error: 'sync not initialized' };
+  if (!connectivityMonitor?.isOnline) {
+    return { ok: false, error: 'cannot force a full resync while offline' };
+  }
   return syncManager.forceFullResync();
 });
 
