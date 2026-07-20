@@ -166,8 +166,25 @@ function boundsIntersectSomeDisplay(bounds, displays) {
  * here alongside the other window-related helpers (rather than inline in
  * main.js) for the same reason the rest of this file exists: keep anything
  * that can be unit-tested without Electron out of main.js's IPC-wiring bulk.
+ *
+ * Skips the save entirely when the window is currently maximized or
+ * fullscreen. win.getBounds() returns the MAXIMIZED (or fullscreen) rectangle
+ * in those states, not the window's "normal" restored size/position — saving
+ * that value would clobber the last-known normal bounds with a
+ * screen-filling rectangle. On the next launch, restoreWindowBounds() would
+ * hand that rectangle to createMainWindow(), which spreads it into a NORMAL
+ * (non-maximized) BrowserWindow constructor call, producing a "fake
+ * maximized" floating window with no real maximize chrome — a real,
+ * recurring UX regression given the debounced 'resize' listener fires on the
+ * maximize transition itself, and the 'close' handler saves whatever state
+ * is current when the app is hidden to the tray. Simply not saving while
+ * maximized/fullscreen leaves the previously-saved normal bounds intact and
+ * correct; deliberately simpler than round-tripping a separate
+ * "was maximized" flag that would also need to be replayed via
+ * win.maximize() on restore.
  */
 function saveWindowBounds(win, setConfigFn) {
+  if (win.isMaximized() || win.isFullScreen()) return;
   setConfigFn('main_window_bounds', JSON.stringify(win.getBounds()));
 }
 

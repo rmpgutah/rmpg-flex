@@ -218,7 +218,11 @@ test('boundsIntersectSomeDisplay: undefined displays returns false, not a throw'
 
 test('saveWindowBounds: calls setConfigFn with the JSON-stringified bounds from win.getBounds()', () => {
   const fixedBounds = { x: 50, y: 60, width: 1200, height: 800 };
-  const fakeWin = { getBounds: () => fixedBounds };
+  const fakeWin = {
+    getBounds: () => fixedBounds,
+    isMaximized: () => false,
+    isFullScreen: () => false,
+  };
   const calls = [];
   const setConfigFn = (key, value) => calls.push([key, value]);
 
@@ -227,6 +231,34 @@ test('saveWindowBounds: calls setConfigFn with the JSON-stringified bounds from 
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'main_window_bounds');
   assert.equal(calls[0][1], JSON.stringify(fixedBounds));
+});
+
+test('saveWindowBounds: skips the save (does not call setConfigFn) when the window is maximized', () => {
+  const fakeWin = {
+    getBounds: () => ({ x: 0, y: 0, width: 1920, height: 1080 }),
+    isMaximized: () => true,
+    isFullScreen: () => false,
+  };
+  const calls = [];
+  const setConfigFn = (key, value) => calls.push([key, value]);
+
+  saveWindowBounds(fakeWin, setConfigFn);
+
+  assert.equal(calls.length, 0);
+});
+
+test('saveWindowBounds: skips the save (does not call setConfigFn) when the window is fullscreen', () => {
+  const fakeWin = {
+    getBounds: () => ({ x: 0, y: 0, width: 1920, height: 1080 }),
+    isMaximized: () => false,
+    isFullScreen: () => true,
+  };
+  const calls = [];
+  const setConfigFn = (key, value) => calls.push([key, value]);
+
+  saveWindowBounds(fakeWin, setConfigFn);
+
+  assert.equal(calls.length, 0);
 });
 
 // ─── restoreWindowBounds ────────────────────────────────────
