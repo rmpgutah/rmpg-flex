@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2298,6 +2298,9 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
   if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
   const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
   if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
+  if (isAtConcurrencyLimit(toolSessions.size, MAX_CONCURRENT_TOOLS)) {
+    return { ok: false, error: 'too many concurrent recon tools running' };
+  }
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');

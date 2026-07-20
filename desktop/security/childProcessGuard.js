@@ -142,8 +142,51 @@ function scheduleChildProcessTimeout(child, timeoutMs, killFn) {
   }, timeoutMs);
 }
 
+/**
+ * Maximum number of recon tool child processes allowed to run
+ * concurrently (tracked via `toolSessions.size` in main.js — one entry
+ * per live child spawned by `recon:tool-spawn`). Without a cap, a user
+ * (or a compromised/misbehaving renderer) can fire off spawn requests
+ * back-to-back — each one already rate-limited individually, but rate
+ * limiting alone doesn't bound how many long-running scans pile up at
+ * once, e.g. several 10-minute nmap/sqlmap-class scans stacking up and
+ * competing for CPU/network/file-descriptor budget on the operator's
+ * machine, or simply making it impossible to tell which of N streaming
+ * output panes belongs to which scan.
+ *
+ * Set to 4: high enough that a working investigator can run a couple
+ * of tools side-by-side (e.g. a WHOIS lookup alongside a longer nmap
+ * scan) without hitting the limit during normal use, but low enough to
+ * keep a runaway or accidental burst of spawns from consuming unbounded
+ * system resources. Sits in the middle of the brief's suggested 3-5
+ * range rather than either edge, mirroring the same reasoning used for
+ * `DEFAULT_CHILD_PROCESS_TIMEOUT_MS` above.
+ */
+const MAX_CONCURRENT_TOOLS = 4;
+
+/**
+ * Pure predicate: is `activeCount` already at (or past) `maxConcurrent`?
+ * Used by `recon:tool-spawn` to reject a new spawn request before it
+ * touches `child_process.spawn` at all, rather than spawning and then
+ * trying to walk it back.
+ *
+ * `activeCount >= maxConcurrent` — deliberately `>=` rather than `>` so
+ * that a `maxConcurrent` of 0 (an edge case, e.g. tooling temporarily
+ * disabled) rejects every request regardless of `activeCount`, including
+ * zero.
+ *
+ * @param {number} activeCount - current number of live child processes (e.g. `toolSessions.size`)
+ * @param {number} maxConcurrent - the configured concurrency cap
+ * @returns {boolean} true if a new spawn should be rejected
+ */
+function isAtConcurrencyLimit(activeCount, maxConcurrent) {
+  return activeCount >= maxConcurrent;
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
   scheduleChildProcessTimeout,
+  MAX_CONCURRENT_TOOLS,
+  isAtConcurrencyLimit,
 };

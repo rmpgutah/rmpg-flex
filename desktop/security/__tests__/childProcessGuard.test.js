@@ -2,7 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS } = require('../childProcessGuard');
+const {
+  buildSandboxedChildEnv,
+  scheduleChildProcessTimeout,
+  DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
+  isAtConcurrencyLimit,
+  MAX_CONCURRENT_TOOLS,
+} = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
   const baseEnv = {
@@ -171,4 +177,34 @@ test('scheduleChildProcessTimeout: returns the timer handle from killFn', () => 
 test('DEFAULT_CHILD_PROCESS_TIMEOUT_MS: is within the documented 5-15 minute range', () => {
   assert.ok(DEFAULT_CHILD_PROCESS_TIMEOUT_MS >= 5 * 60 * 1000);
   assert.ok(DEFAULT_CHILD_PROCESS_TIMEOUT_MS <= 15 * 60 * 1000);
+});
+
+// --- isAtConcurrencyLimit ---
+
+test('isAtConcurrencyLimit: below the limit returns false', () => {
+  assert.equal(isAtConcurrencyLimit(2, 5), false);
+});
+
+test('isAtConcurrencyLimit: exactly at the limit returns true', () => {
+  assert.equal(isAtConcurrencyLimit(5, 5), true);
+});
+
+test('isAtConcurrencyLimit: above the limit returns true', () => {
+  assert.equal(isAtConcurrencyLimit(6, 5), true);
+});
+
+test('isAtConcurrencyLimit: zero max is true for any non-negative count, including zero', () => {
+  assert.equal(isAtConcurrencyLimit(0, 0), true);
+  assert.equal(isAtConcurrencyLimit(1, 0), true);
+  assert.equal(isAtConcurrencyLimit(100, 0), true);
+});
+
+test('isAtConcurrencyLimit: zero active count with a positive max is false', () => {
+  assert.equal(isAtConcurrencyLimit(0, 5), false);
+});
+
+test('MAX_CONCURRENT_TOOLS: is a positive integer in the documented 3-5 range', () => {
+  assert.ok(Number.isInteger(MAX_CONCURRENT_TOOLS));
+  assert.ok(MAX_CONCURRENT_TOOLS >= 3);
+  assert.ok(MAX_CONCURRENT_TOOLS <= 5);
 });
