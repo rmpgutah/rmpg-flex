@@ -46,6 +46,14 @@ let nextZIndex = 100;
 
 export function DesktopWindowManagerProvider({ children }: { children: React.ReactNode }) {
   const [windows, setWindows] = useState<DesktopWindowState[]>(loadSession);
+  // Synchronous source of truth for openWindow's cap check and boolean return value.
+  // React's setWindows(prev => ...) updater is NOT guaranteed to run synchronously when
+  // multiple mutator calls happen inside the same event-handler batch (React 18 only
+  // eagerly evaluates the first update in a queue per render cycle) — so a value
+  // captured via closure from inside that updater cannot be trusted as a same-tick
+  // return value. windowsRef is read and written by plain assignment instead, so every
+  // mutator sees the true up-to-the-instant state regardless of React's batching.
+  const windowsRef = useRef<DesktopWindowState[]>(windows);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -56,53 +64,54 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [windows]);
 
-  const openWindow = useCallback((path: string, title: string, size?: { width: number; height: number }) => {
-    let opened = true;
-    setWindows(prev => {
-      const existing = prev.find(w => w.path === path);
-      if (existing) {
-        nextZIndex += 1;
-        return prev.map(w => w.id === existing.id ? { ...w, minimized: false, zIndex: nextZIndex } : w);
-      }
-      if (prev.length >= MAX_OPEN_WINDOWS) {
-        opened = false;
-        return prev;
-      }
-      nextZIndex += 1;
-      const offset = prev.length * 24;
-      const win: DesktopWindowState = {
-        id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        path, title,
-        x: 80 + offset, y: 60 + offset,
-        width: size?.width ?? 900, height: size?.height ?? 640,
-        zIndex: nextZIndex, minimized: false, maximized: false,
-      };
-      return [...prev, win];
-    });
-    return opened;
+  const commit = useCallback((next: DesktopWindowState[]) => {
+    windowsRef.current = next;
+    setWindows(next);
   }, []);
 
+  const openWindow = useCallback((path: string, title: string, size?: { width: number; height: number }) => {
+    const prev = windowsRef.current;
+    const existing = prev.find(w => w.path === path);
+    if (existing) {
+      nextZIndex += 1;
+      commit(prev.map(w => w.id === existing.id ? { ...w, minimized: false, zIndex: nextZIndex } : w));
+      return true;
+    }
+    if (prev.length >= MAX_OPEN_WINDOWS) return false;
+    nextZIndex += 1;
+    const offset = prev.length * 24;
+    const win: DesktopWindowState = {
+      id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      path, title,
+      x: 80 + offset, y: 60 + offset,
+      width: size?.width ?? 900, height: size?.height ?? 640,
+      zIndex: nextZIndex, minimized: false, maximized: false,
+    };
+    commit([...prev, win]);
+    return true;
+  }, [commit]);
+
   const closeWindow = useCallback((id: string) => {
-    setWindows(prev => prev.filter(w => w.id !== id));
-  }, []);
+    commit(windowsRef.current.filter(w => w.id !== id));
+  }, [commit]);
 
   const focusWindow = useCallback((id: string) => {
     nextZIndex += 1;
     const z = nextZIndex;
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, zIndex: z, minimized: false } : w));
-  }, []);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, zIndex: z, minimized: false } : w));
+  }, [commit]);
 
   const minimizeWindow = useCallback((id: string) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, minimized: !w.minimized } : w));
-  }, []);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, minimized: !w.minimized } : w));
+  }, [commit]);
 
   const toggleMaximize = useCallback((id: string) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, maximized: !w.maximized } : w));
-  }, []);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, maximized: !w.maximized } : w));
+  }, [commit]);
 
   const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, ...patch } : w));
-  }, []);
+    commit(windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w));
+  }, [commit]);
 
   return (
     <DesktopWindowManagerContext.Provider
