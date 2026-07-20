@@ -65,8 +65,28 @@ function shouldAllowGuestNavigation(targetUrl) {
   return parsed.protocol === 'http:' || parsed.protocol === 'https:';
 }
 
+/**
+ * Gate for the 'window:open-company-browser' IPC handler: rejects
+ * client_viewer/contract_manager roles even if the IPC channel is invoked
+ * directly (e.g. via DevTools console), not just through the UI's own
+ * nav-catalog filtering (which only hides the launcher icon and can be
+ * bypassed by a renderer script calling window.electron.openCompanyBrowser()
+ * directly). role is renderer-supplied and NOT cryptographically verified —
+ * this is the same trust tier this app's client-side role guards (e.g.
+ * client/src/App.tsx's AdminRoute/DispatchRoleGuard/CompanyBrowserRoleGuard)
+ * already use, not a new, weaker one. A determined, already-authenticated
+ * insider with DevTools access could still forge a different role string in
+ * the IPC call; closing that fully would require a server-verified session
+ * in the Electron main process, which this app doesn't have today and is
+ * out of scope here.
+ */
+function isCompanyBrowserRoleAllowed(role) {
+  return role !== 'client_viewer' && role !== 'contract_manager';
+}
+
 module.exports = {
   hardenGuestWebPreferences,
   shouldAllowGuestNavigation,
   NEW_TAB_SENTINEL_URL,
+  isCompanyBrowserRoleAllowed,
 };

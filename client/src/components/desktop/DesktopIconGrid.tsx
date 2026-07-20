@@ -8,6 +8,7 @@ import ContextMenu from '../ContextMenu';
 import { getIconLabelOverride, setIconLabelOverride, clearIconLabelOverride } from '../../utils/desktopIconPreferences';
 import { useToast } from '../ToastProvider';
 import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
+import { useAuth } from '../../context/AuthContext';
 
 export interface DesktopIconGridProps {
   icons: NavFunction[];
@@ -30,6 +31,7 @@ export default function DesktopIconGrid({
   const navigate = useNavigate();
   const { openWindow } = useDesktopWindows();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const dragRef = useRef<{ path: string; startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -40,8 +42,9 @@ export default function DesktopIconGrid({
       openWindow,
       navigate,
       onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+      currentUserRole: user?.role,
     });
-  }, [navigate, openWindow, addToast]);
+  }, [navigate, openWindow, addToast, user?.role]);
 
   const handleIconClick = useCallback((fn: NavFunction, e: React.MouseEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) {

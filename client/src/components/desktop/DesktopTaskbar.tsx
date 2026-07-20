@@ -105,11 +105,12 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
         if (!openWindow(path, title, size)) capHit = true;
       },
       onElectronOnlyUnavailable: () => addToast('Company Browser is available in the RMPG Flex desktop app', 'error'),
+      currentUserRole: user?.role,
     });
     if (capHit) addToast('Close a window to open another', 'error');
     setLauncherOpen(false);
     setQuery('');
-  }, [navigate, openWindow, addToast]);
+  }, [navigate, openWindow, addToast, user?.role]);
 
   const quickActions = useMemo(() => ([
     { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
@@ -224,7 +225,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
           <button
             key={fn.path}
             type="button"
-            onClick={() => activateNavFunction(fn, { navigate, openWindow })}
+            onClick={() => activateNavFunction(fn, { navigate, openWindow, currentUserRole: user?.role })}
             className="px-3 py-1 text-[11px] truncate"
             style={{ maxWidth: 160, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
           >
