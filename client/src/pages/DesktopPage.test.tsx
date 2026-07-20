@@ -160,3 +160,19 @@ describe('DesktopPage', () => {
     }
   });
 });
+
+describe('DesktopPage — empty-desktop right-click shortcuts', () => {
+  it('offers Sort/View/Icon-size items and each calls the matching handler', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText('Open app launcher')).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    expect(screen.getByText('Sort: Alphabetical')).toBeInTheDocument();
+    expect(screen.getByText('View: List')).toBeInTheDocument();
+    expect(screen.getByText('Icon size: Large')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Sort: Alphabetical'));
+    // Re-open to check View next (ContextMenu closes itself after a click).
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('View: List'));
+  });
+});

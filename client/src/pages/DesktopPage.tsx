@@ -206,11 +206,20 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
+            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
+            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
+            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'View: Grid', onClick: () => handleViewModeChange('grid') },
+            { label: 'View: List', onClick: () => handleViewModeChange('list') },
+            { label: 'Icon size: Small', onClick: () => handleIconSizeChange('small') },
+            { label: 'Icon size: Medium', onClick: () => handleIconSizeChange('medium') },
+            { label: 'Icon size: Large', onClick: () => handleIconSizeChange('large') },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'New sticky note', onClick: () => addNote(60, 60) },
           ]}
         >
-          <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
+          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: 'calc(100vh - 48px)', overflow: 'hidden' }}>
             <DesktopWallpaper wallpaperId={wallpaperId}>
               {pinnedIcons.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
