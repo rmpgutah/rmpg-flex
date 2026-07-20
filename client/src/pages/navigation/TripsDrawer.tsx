@@ -123,7 +123,10 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         {!active && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(trip); }}
-            className="shrink-0 text-rmpg-700 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            // opacity-0-until-hover was unreachable on touch (:hover never
+            // fires on the in-vehicle tablets this runs on) — stay faintly
+            // visible always, brighten on hover/focus for mouse/keyboard.
+            className="shrink-0 text-rmpg-700 opacity-60 hover:text-red-500 group-hover:opacity-100 focus:opacity-100 transition-opacity"
             aria-label="Delete false trip record"
             title="Delete false trip record"
           >
@@ -258,11 +261,16 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             </div>
           </div>
         )}
-        {/* BACK to trip list */}
+        {/* BACK to trip list — `right` tracks the panel's own responsive width
+            (`width: 360, maxWidth: calc(100vw - 16px)` above) instead of a
+            fixed 376px offset. That fixed offset assumed the panel was always
+            its full 360px width; below ~392px viewports (common phone sizes)
+            the panel shrinks via maxWidth but this button didn't, pushing it
+            off the left edge of the screen and making it unreachable. */}
         <button
           onClick={() => setSelectedTripId(null)}
           className="absolute z-40 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
-          style={{ borderRadius: 2, top: 50, right: 376 }}
+          style={{ borderRadius: 2, top: 50, right: 'calc(8px + min(360px, 100vw - 16px))' }}
           aria-label="Back to trips list"
           title="Back to trips list"
         >
