@@ -82,7 +82,6 @@ import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
 import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
 import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
 import { useMapRouting } from '../../hooks/useMapRouting';
-import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
 import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
 import { useMapPlacesSearch, PLACE_CATEGORIES } from '../../hooks/useMapPlacesSearch';
 import { useMapDirectionsPanel } from '../../hooks/useMapDirectionsPanel';
@@ -492,7 +491,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
-  const multiRouting = useMultiUnitRouting({ map: mapRef.current });
   const placesSearch = useMapPlacesSearch(mapRef.current, mapLoaded);
   const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
