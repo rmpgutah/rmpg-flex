@@ -35,7 +35,12 @@ function getMapUnitGpsStaleness(unit: Unit): 'ok' | 'stale' | 'lost' {
   return 'ok';
 }
 
-/** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. */
+// Simple top-down vehicle glyph — deliberately basic (one <path>, no detail)
+// so it stays legible at map scale; it's a silhouette, not an illustration.
+const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="#0d1520"/></svg>';
+
+/** Build a bold solid-badge unit marker: status-colored disc + vehicle glyph + call-sign label. */
 export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   const color = UNIT_STATUS_COLORS[unit.status] || '#888888';
   const staleness = getMapUnitGpsStaleness(unit);
@@ -49,28 +54,18 @@ export function buildUnitMarkerEl(unit: Unit): HTMLDivElement {
   el.title = `${unit.call_sign} — ${UNIT_STATUS_LABELS[unit.status] || unit.status}`
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
 
-  const photoFrame = document.createElement('div');
-  photoFrame.setAttribute('data-role', 'photo-frame');
+  const badge = document.createElement('div');
+  badge.setAttribute('data-role', 'badge');
   const ringColor = staleness === 'ok' ? color : '#6b7280';
-  photoFrame.style.cssText = `
-    width:40px;height:40px;border-radius:4px;overflow:hidden;
-    border:3px ${staleness === 'ok' ? 'solid' : 'dashed'} ${ringColor};
-    box-shadow:0 0 6px ${ringColor}80;
-    background:#0d1520;
+  badge.style.cssText = `
+    width:30px;height:30px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:${color};
+    border:2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor};
+    box-shadow:0 0 8px ${ringColor}b3;
   `;
-  const img = document.createElement('img');
-  img.src = '/icons/unit-vehicle.png';
-  img.alt = '';
-  img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-  // Fallback: if the photo fails to load (bad connectivity, missing asset),
-  // never leave a broken-image icon on the map — swap to a plain
-  // status-colored square instead.
-  img.onerror = () => {
-    photoFrame.style.background = color;
-    img.remove();
-  };
-  photoFrame.appendChild(img);
-  el.appendChild(photoFrame);
+  badge.innerHTML = UNIT_GLYPH_SVG;
+  el.appendChild(badge);
 
   const label = document.createElement('div');
   label.setAttribute('data-role', 'label');
@@ -99,13 +94,11 @@ export function applyUnitMarkerState(el: HTMLElement, unit: Unit): void {
     + (staleness === 'lost' ? ' (GPS lost)' : staleness === 'stale' ? ' (GPS stale)' : '');
 
   const ringColor = staleness === 'ok' ? color : '#6b7280';
-  const photoFrame = el.querySelector<HTMLElement>('[data-role="photo-frame"]');
-  if (photoFrame) {
-    photoFrame.style.border = `3px ${staleness === 'ok' ? 'solid' : 'dashed'} ${ringColor}`;
-    photoFrame.style.boxShadow = `0 0 6px ${ringColor}80`;
-    // Only touch background if the photo already fell back to a solid swatch
-    // (img.onerror already removed the <img>) — otherwise leave the photo alone.
-    if (!photoFrame.querySelector('img')) photoFrame.style.background = color;
+  const badge = el.querySelector<HTMLElement>('[data-role="badge"]');
+  if (badge) {
+    badge.style.background = color;
+    badge.style.border = `2px ${staleness === 'ok' ? 'solid' : 'dashed'} ${staleness === 'ok' ? '#0d1520' : ringColor}`;
+    badge.style.boxShadow = `0 0 8px ${ringColor}b3`;
   }
 
   const label = el.querySelector<HTMLElement>('[data-role="label"]');
@@ -181,5 +174,32 @@ export function buildCallPopupHtml(call: ActiveCall, queued: boolean = false): s
       ${call.beat_name ? `<div style="color:${TACTICAL_TEXT_DIM};font-size:10px;">Beat: ${escapeHtml(call.beat_name)}</div>` : ''}
       ${flags ? `<div style="margin-top:4px;">${flags}</div>` : ''}
       ${addToRouteBtn}
+    </div>`;
+}
+
+/**
+ * Generic label/value detail popup, shared by every map layer whose click
+ * handler just needs to surface a handful of fields (incidents, repeat
+ * addresses, coverage gaps, response time, safety zones, call history,
+ * pursuit tracks, GPS breadcrumbs) rather than a bespoke layout like units
+ * or calls above. `rows` skips any entry whose value is null/undefined/''.
+ */
+export function buildDetailPopupHtml(
+  title: string,
+  rows: Array<[label: string, value: string | number | null | undefined]>,
+  accentColor: string = TACTICAL_BRAND_GOLD,
+): string {
+  const rowsHtml = rows
+    .filter(([, value]) => value != null && value !== '')
+    .map(([label, value]) => `
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;">
+        <span style="color:${TACTICAL_TEXT_MUTED};">${escapeHtml(label)}</span>
+        <span style="color:${TACTICAL_TEXT_PRIMARY};font-weight:600;text-align:right;">${escapeHtml(String(value))}</span>
+      </div>`)
+    .join('');
+  return `
+    <div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:180px;max-width:260px;">
+      <div style="font-weight:700;color:${accentColor};margin-bottom:4px;font-size:12px;">${escapeHtml(title)}</div>
+      ${rowsHtml}
     </div>`;
 }

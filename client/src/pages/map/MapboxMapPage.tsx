@@ -278,7 +278,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       deepLinkMarkerRef.current?.remove();
       deepLinkPopupRef.current?.remove();
       map.flyTo({ center: [lng, lat], zoom: 16, duration: 800 });
-      deepLinkPopupRef.current = new mapboxgl.Popup({ offset: 12 })
+      deepLinkPopupRef.current = new mapboxgl.Popup({ offset: 12, className: 'mapbox-popup-dark' })
         .setLngLat([lng, lat])
         .setHTML(
           `<div style="background:${TACTICAL_SURFACE_RAISED};color:${TACTICAL_TEXT_PRIMARY};padding:8px 12px;border:1px solid ${TACTICAL_BORDER};border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;min-width:160px;">${escapeHtml(label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)}</div>`
@@ -506,7 +506,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         info.sectorName && `Area: ${info.sectorName}`,
       ].filter(Boolean);
       const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}<br/><button data-action="streetview" style="margin-top:4px;font:11px monospace;color:#3b82f6;background:transparent;border:1px solid #3b82f6;padding:2px 6px;cursor:pointer;">Street View</button></div>`;
-      identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false })
+      identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark' })
         .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(map);

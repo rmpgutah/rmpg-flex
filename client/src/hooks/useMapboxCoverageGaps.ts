@@ -2,10 +2,15 @@
 // Fetches unit positions and computes distance to nearest unit per grid cell.
 // Highlights areas > 5 min / > 10 min response time. Critical for patrol planning.
 import { useCallback, useState, useRef, useEffect } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+
+const COVERAGE_LEVEL_LABELS: Record<string, string> = {
+  good: 'Good (< 1 km)', fair: 'Fair (1-3 km)', poor: 'Poor (3-6 km)', none: 'Gap (> 6 km)',
+};
 
 interface GpsPoint {
   latitude: number;
@@ -54,11 +59,13 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ good: 0, fair: 0, poor: 0, gap: 0, total: 0 });
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     return () => {
       if (!map) return;
       try {
+        popupRef.current?.remove();
         safeRemoveLayer(map, FILL_LAYER_ID);
         safeRemoveSource(map, SOURCE_ID);
       } catch { /* ignore */ }
@@ -68,6 +75,8 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     safeRemoveLayer(map, FILL_LAYER_ID);
     safeRemoveSource(map, SOURCE_ID);
   }, [map]);
@@ -166,6 +175,23 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
           'fill-outline-color': '#333333',
         },
       });
+
+      map.on('click', FILL_LAYER_ID, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const p = f.properties || {};
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({ offset: 4, closeButton: true, className: 'mapbox-popup-dark' })
+          .setLngLat(e.lngLat)
+          .setHTML(buildDetailPopupHtml('Coverage Gap Cell', [
+            ['Level', COVERAGE_LEVEL_LABELS[p.level] || p.level],
+            ['Nearest Unit Dist', p.dist_km != null ? `${p.dist_km} km` : null],
+            ['Nearest Unit', p.nearest],
+          ]))
+          .addTo(map);
+      });
+      map.on('mouseenter', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', FILL_LAYER_ID, () => { map.getCanvas().style.cursor = ''; });
       });
     } catch (err) {
       console.warn('[useMapboxCoverageGaps] compute failed:', err);
