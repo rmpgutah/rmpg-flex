@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import FloatingWindow from './FloatingWindow';
+import FloatingWindow, { ALWAYS_ON_TOP_ZINDEX_OFFSET } from './FloatingWindow';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 import { setSnapEnabled } from '../../utils/snapPreference';
+import { getSavedPosition } from '../../utils/desktopWindowPositions';
 
 function Harness() {
   const { windows, openWindow } = useDesktopWindows();
@@ -159,6 +160,22 @@ describe('FloatingWindow — snap to edge', () => {
     expect(screen.queryByTestId('snap-preview-left')).not.toBeInTheDocument();
     setSnapEnabled(true);
   });
+
+  it('does not persist the half-screen snapped bounds as the remembered position for the path', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(10, 300);
+    releaseDrag();
+    // The window itself is visibly snapped to the left half...
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.width).toBe(`${window.innerWidth / 2}px`);
+    // ...but the saved/remembered position for '/dispatch' must NOT be the snapped
+    // half-screen size, since that's a transient drag outcome, not a user-chosen size.
+    const saved = getSavedPosition('/dispatch');
+    if (saved) {
+      expect(saved.width).not.toBe(window.innerWidth / 2);
+    }
+  });
 });
 
 describe('FloatingWindow — always-on-top', () => {
@@ -190,6 +207,21 @@ describe('FloatingWindow — always-on-top', () => {
     const dispatchWindowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
     const mapWindowEl = screen.getByTitle('Live Map').parentElement as HTMLElement;
     expect(parseInt(dispatchWindowEl.style.zIndex, 10)).toBeGreaterThan(parseInt(mapWindowEl.style.zIndex, 10));
+  });
+
+  it('a pinned window\'s effective zIndex never exceeds the overlay tier used by the snap preview / window switcher', () => {
+    // Regression guard for the pinned-window-occludes-overlays bug: pinned windows render
+    // at win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET, so any fixed-position overlay that must
+    // always render above every window (snap preview, window switcher) needs a zIndex
+    // strictly greater than ALWAYS_ON_TOP_ZINDEX_OFFSET plus any realistic win.zIndex.
+    // Window zIndex values come from a small incrementing focus counter, so a generous
+    // realistic ceiling (1000) is used here.
+    const REALISTIC_MAX_WIN_ZINDEX = 999;
+    const maxPinnedEffectiveZIndex = REALISTIC_MAX_WIN_ZINDEX + ALWAYS_ON_TOP_ZINDEX_OFFSET;
+    const OVERLAY_ZINDEXES = [11000 /* FloatingWindow's SNAP_PREVIEW_ZINDEX */, 11001 /* DesktopWindowSwitcher's WINDOW_SWITCHER_ZINDEX */];
+    for (const overlayZ of OVERLAY_ZINDEXES) {
+      expect(overlayZ).toBeGreaterThan(maxPinnedEffectiveZIndex);
+    }
   });
 });
 

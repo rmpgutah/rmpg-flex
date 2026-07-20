@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { getWindowIconByPath } from '../../utils/windowManager';
+import { ALWAYS_ON_TOP_ZINDEX_OFFSET } from './FloatingWindow';
+
+// Must render above every window, including pinned ones (win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET)
+// and above the snap preview overlay — both live in the same "above 10000" tier, so this
+// picks a value unambiguously higher than either.
+const WINDOW_SWITCHER_ZINDEX = ALWAYS_ON_TOP_ZINDEX_OFFSET + 1001;
 
 export default function DesktopWindowSwitcher() {
   const { windows, focusWindow } = useDesktopWindows();
@@ -48,7 +54,7 @@ export default function DesktopWindowSwitcher() {
       style={{
         position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
         display: 'flex', gap: 8, padding: 12, background: 'var(--surface-raised)',
-        border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 5000,
+        border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: WINDOW_SWITCHER_ZINDEX,
       }}
     >
       {mruWindows.map((w, i) => {

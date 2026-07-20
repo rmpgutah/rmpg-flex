@@ -10,6 +10,14 @@ const TITLE_SYNC_POLL_MS = 500;
 const SNAP_EDGE_THRESHOLD = 24;
 const TASKBAR_HEIGHT = 48;
 const MIN_SNAP_HALF_WIDTH = 360;
+// Any pinned (always-on-top) window renders at win.zIndex + ALWAYS_ON_TOP_ZINDEX_OFFSET
+// (see effectiveZIndex below). Window zIndex values are small incrementing integers from
+// a focus counter (never anywhere near 1000), so overlays that must always render above
+// every window — pinned or not — need a zIndex comfortably clear of the pinned band's
+// ceiling. Exported so other overlay components (e.g. DesktopWindowSwitcher) can share
+// the same invariant instead of hardcoding a number that could silently drift out of sync.
+export const ALWAYS_ON_TOP_ZINDEX_OFFSET = 10000;
+const SNAP_PREVIEW_ZINDEX = ALWAYS_ON_TOP_ZINDEX_OFFSET + 1000;
 
 interface FloatingWindowProps {
   win: DesktopWindowState;
@@ -102,7 +110,10 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           preSnapBounds.current = null;
           if (restore) {
             nextX = restore.x;
-            moveResize(win.id, { x: nextX, y: nextY, width: restore.width, height: restore.height });
+            // Intermediate drag state, not yet final — the position isn't "real" until
+            // pointerup on the normal drag path below persists it. Don't let this
+            // mid-drag un-snap restore clobber the remembered position.
+            moveResize(win.id, { x: nextX, y: nextY, width: restore.width, height: restore.height }, { persist: false });
             liveDragPos.current = { x: nextX, y: nextY };
             return;
           }
@@ -119,12 +130,15 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         if (halfWidth >= MIN_SNAP_HALF_WIDTH) {
           preSnapBounds.current = { x: liveDragPos.current.x, y: liveDragPos.current.y, width: win.width, height: win.height };
           snappedSide.current = snapEdgeRef.current;
+          // The snapped half-screen bounds are a transient drag-interaction outcome, not
+          // the user's chosen size — don't let it overwrite the remembered position for
+          // this path (see preSnapBounds, which is what un-snapping restores).
           moveResize(win.id, {
             x: snapEdgeRef.current === 'left' ? 0 : halfWidth,
             y: 0,
             width: halfWidth,
             height: desktopHeight,
-          });
+          }, { persist: false });
         }
         setSnapPreview(null);
         snapEdgeRef.current = null;
@@ -164,7 +178,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // focus-order zIndex value keeps focus order working correctly *within*
   // each of the two bands (pinned vs. unpinned) while pinned always wins
   // across them.
-  const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? 10000 : 0);
+  const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? ALWAYS_ON_TOP_ZINDEX_OFFSET : 0);
   const style: React.CSSProperties = win.maximized
     ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: 48, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
@@ -182,7 +196,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           position: 'fixed', top: 0, left: snapPreview === 'left' ? 0 : '50%',
           width: '50%', height: `calc(100vh - ${TASKBAR_HEIGHT}px)`,
           background: 'rgba(var(--rmpg-500-rgb),0.15)', border: '2px solid var(--brand-400)',
-          zIndex: 4999, pointerEvents: 'none',
+          zIndex: SNAP_PREVIEW_ZINDEX, pointerEvents: 'none',
         }}
       />
     )}

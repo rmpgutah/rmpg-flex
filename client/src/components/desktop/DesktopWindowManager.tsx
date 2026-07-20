@@ -24,7 +24,7 @@ interface DesktopWindowManagerContextValue {
   focusWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
   toggleMaximize: (id: string) => void;
-  moveResize: (id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => void;
+  moveResize: (id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>, options?: { persist?: boolean }) => void;
   /** Updates a window's display title only — never its path/iframe src. See FloatingWindow.tsx's title-sync effect for why those must stay decoupled. */
   updateWindowTitle: (id: string, title: string) => void;
   /** Minimizes every currently non-minimized window and returns the ids it touched, so a caller can later restore exactly those and leave anything the user had already minimized alone. */
@@ -127,11 +127,12 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, maximized: !w.maximized } : w));
   }, [commit]);
 
-  const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>) => {
+  const moveResize = useCallback((id: string, patch: Partial<Pick<DesktopWindowState, 'x' | 'y' | 'width' | 'height'>>, options?: { persist?: boolean }) => {
     const next = windowsRef.current.map(w => w.id === id ? { ...w, ...patch } : w);
     commit(next);
     const updated = next.find(w => w.id === id);
-    if (updated) {
+    const persist = options?.persist ?? true;
+    if (updated && persist) {
       saveWindowPosition(updated.path, { x: updated.x, y: updated.y, width: updated.width, height: updated.height });
     }
   }, [commit]);

@@ -26,6 +26,7 @@ function Harness() {
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.6)}>set-opacity-valid</button>
       <button onClick={() => windows[0] && setWindowOpacity(windows[0].id, 0.1 + 0.2)}>set-opacity-drift</button>
       <button onClick={() => windows[0] && moveResize(windows[0].id, { x: 999, y: 888, width: 777, height: 666 })}>moveresize-first</button>
+      <button onClick={() => windows[0] && moveResize(windows[0].id, { x: 1, y: 2, width: 3, height: 4 }, { persist: false })}>moveresize-first-no-persist</button>
       <span data-testid="cap-results">{capResults.current.join(',')}</span>
       <span data-testid="first-path">{windows[0]?.path ?? ''}</span>
       <span data-testid="first-pinned">{windows[0]?.alwaysOnTop ? 'pinned' : 'unpinned'}</span>
@@ -157,6 +158,20 @@ describe('DesktopWindowManager', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     act(() => screen.getByText('open-dispatch').click());
     act(() => screen.getByText('moveresize-first').click());
+    const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
+    expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
+  });
+
+  it('moveResize with { persist: false } updates window state but leaves the remembered position untouched', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    act(() => screen.getByText('open-dispatch').click());
+    act(() => screen.getByText('moveresize-first').click()); // establishes a persisted 999,888,777x666
+    act(() => screen.getByText('moveresize-first-no-persist').click()); // transient snap-like bounds
+    // Live window state reflects the latest (non-persisted) update.
+    expect(screen.getByTestId('first-bounds').textContent).toBe('1,2,3x4');
+    // But the remembered position for the path is still the last persisted call, not the
+    // transient one — this is the invariant that stops snap-to-edge bounds from becoming
+    // the "remembered" position for a path.
     const raw = sessionStorage.getItem('rmpg_desktop_window_positions');
     expect(JSON.parse(raw!)['/dispatch']).toEqual({ x: 999, y: 888, width: 777, height: 666 });
   });
