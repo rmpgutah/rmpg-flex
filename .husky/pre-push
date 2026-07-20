@@ -72,7 +72,7 @@ restore_desktop_abi() {
     echo "⚠ pre-push: failed to restore better-sqlite3 to Electron ABI — run 'cd desktop && npm run rebuild' manually before 'npm start'"
 }
 
-if ! (cd "$ROOT/desktop" && node -e "require('better-sqlite3')") >/dev/null 2>&1; then
+if ! (cd "$ROOT/desktop" && node -e "new (require('better-sqlite3'))(':memory:')") >/dev/null 2>&1; then
   echo "  (better-sqlite3 is built for Electron's ABI — rebuilding for Node to run desktop tests)"
   (cd "$ROOT/desktop" && npm rebuild better-sqlite3 --silent) || {
     echo "✗ pre-push: failed to rebuild better-sqlite3 for Node ABI"
