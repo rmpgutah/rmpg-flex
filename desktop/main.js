@@ -65,11 +65,20 @@ const { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen } = require(
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
 
-// Remote server URL — the single source of truth for all data.
-// In dev mode, points at the local development server.
-// In production, points at the RMPG Flex VPS.
+// Remote server URL — the single source of truth for the app shell this
+// window loads.
+// In dev mode, points at the local Vite client dev server (`cd client &&
+// npm run dev`, port 5173 per CLAUDE.md) — NOT localhost:3001, which was
+// the retired VPS-era Express server's port. That server (and the rest of
+// legacy/server-vps/) was deleted outright in the 2026-07-16 repo cleanup,
+// so --dev pointing at :3001 meant `npm start` in this directory loaded a
+// dead endpoint (ERR_CONNECTION_REFUSED on every asset) for anyone who ran
+// it after that cleanup. The client's own API calls (apiFetch) already
+// separately target localhost:8787 (`npm run dev` in the repo root,
+// `wrangler dev`) in dev mode — this URL only controls the page shell.
+// In production, points at the live Cloudflare Pages app.
 const REMOTE_SERVER_URL = DEV_MODE
-  ? 'http://localhost:3001'
+  ? 'http://localhost:5173'
   : (process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us');
 const UPDATE_SERVER_URL = DEV_MODE
   ? 'http://localhost:3001'
