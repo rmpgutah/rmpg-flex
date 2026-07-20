@@ -483,6 +483,61 @@ function withRequestTimeout(requestPromise, timeoutMs, timeoutFn) {
   });
 }
 
+/**
+ * Formats a single security-relevant IPC audit event as a single-line,
+ * JSON-stringified log entry — a fresh, minimal, desktop-only analog to
+ * the Worker's structured `src/utils/logger.ts` (which runs in an
+ * entirely different runtime, Cloudflare Workers vs Electron's Node main
+ * process, and shares no code with this module by design).
+ *
+ * Pure — does not read the clock or touch the filesystem itself; the
+ * caller supplies `timestamp` (or leaves it out, in which case this
+ * function fills in `new Date().toISOString()` so every emitted line is
+ * still timestamped without every call site having to remember to do it).
+ *
+ * `detail` MUST be pre-scrubbed by the caller to a minimal, non-sensitive
+ * shape (e.g. a tool id, a target user id, a filename) — this function
+ * does no redaction of its own; it is a formatter, not a sanitizer. See
+ * the call sites wired in main.js for what's actually logged at each of
+ * the 4 security-relevant channels this was built for.
+ *
+ * @param {{channel?: string, timestamp?: string, userId?: string, outcome?: string, detail?: object}} event
+ * @returns {string} a single line (no embedded newline) of valid JSON
+ */
+function formatSecurityAuditLine(event) {
+  const safeEvent = event || {};
+  return JSON.stringify({
+    channel: safeEvent.channel ?? null,
+    timestamp: safeEvent.timestamp || new Date().toISOString(),
+    userId: safeEvent.userId ?? null,
+    outcome: safeEvent.outcome ?? null,
+    detail: safeEvent.detail ?? null,
+  });
+}
+
+/**
+ * Appends one already-formatted `line` (see `formatSecurityAuditLine`) to
+ * `logFilePath`, DI-testable via `fsModule` (tests pass a fake
+ * `{appendFileSync}`; the real call site passes Node's `fs`).
+ *
+ * Deliberately does NOT reuse `systemInfo.js`'s `appendToLogFile` — that
+ * helper prepends its own `[<ISO timestamp>] ` prefix ahead of the
+ * message, which would break the "single line of valid JSON" contract
+ * `formatSecurityAuditLine` establishes (the audit log is meant to be
+ * parsed line-by-line as JSON, e.g. by a future log-shipping/ingestion
+ * step — a `[timestamp] {...}` line isn't valid JSON on its own). This
+ * function instead calls `fsModule.appendFileSync` directly with exactly
+ * the line plus a trailing newline, mirroring `appendToLogFile`'s own
+ * append-only (never-overwrite) semantics without its formatting.
+ *
+ * @param {string} line - a pre-formatted line, e.g. from `formatSecurityAuditLine`
+ * @param {{appendFileSync: Function}} fsModule - fs-shaped dependency (DI)
+ * @param {string} logFilePath - absolute path to the security audit log file
+ */
+function appendSecurityAuditLog(line, fsModule, logFilePath) {
+  fsModule.appendFileSync(logFilePath, `${line}\n`);
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -496,4 +551,6 @@ module.exports = {
   DEFAULT_IPC_REQUEST_TIMEOUT_MS,
   OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
   withRequestTimeout,
+  formatSecurityAuditLine,
+  appendSecurityAuditLog,
 };

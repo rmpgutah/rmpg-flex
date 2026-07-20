@@ -15,6 +15,8 @@ const {
   withRequestTimeout,
   DEFAULT_IPC_REQUEST_TIMEOUT_MS,
   OFFLINE_TRIGGER_SYNC_TIMEOUT_MS,
+  formatSecurityAuditLine,
+  appendSecurityAuditLog,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -509,4 +511,74 @@ test('DEFAULT_IPC_REQUEST_TIMEOUT_MS: is within the documented 15-30s range', ()
 
 test('OFFLINE_TRIGGER_SYNC_TIMEOUT_MS: is longer than DEFAULT_IPC_REQUEST_TIMEOUT_MS (bounds a multi-table pull, not a single request)', () => {
   assert.ok(OFFLINE_TRIGGER_SYNC_TIMEOUT_MS > DEFAULT_IPC_REQUEST_TIMEOUT_MS);
+});
+
+test('formatSecurityAuditLine: produces a single-line, valid-JSON string with the expected fields', () => {
+  const line = formatSecurityAuditLine({
+    channel: 'offline:generate-pin',
+    timestamp: '2026-07-20T12:00:00.000Z',
+    userId: 'user-42',
+    outcome: 'success',
+    detail: { targetUserId: 'user-7' },
+  });
+
+  assert.equal(typeof line, 'string');
+  assert.equal(line.includes('\n'), false);
+
+  const parsed = JSON.parse(line);
+  assert.equal(parsed.channel, 'offline:generate-pin');
+  assert.equal(parsed.timestamp, '2026-07-20T12:00:00.000Z');
+  assert.equal(parsed.userId, 'user-42');
+  assert.equal(parsed.outcome, 'success');
+  assert.deepEqual(parsed.detail, { targetUserId: 'user-7' });
+});
+
+test('formatSecurityAuditLine: fills in a timestamp when none is provided', () => {
+  const line = formatSecurityAuditLine({
+    channel: 'recon:tool-spawn',
+    userId: 'user-1',
+    outcome: 'denied',
+    detail: { toolId: 'nmap-quick' },
+  });
+  const parsed = JSON.parse(line);
+  assert.equal(typeof parsed.timestamp, 'string');
+  assert.ok(!Number.isNaN(Date.parse(parsed.timestamp)));
+});
+
+test('formatSecurityAuditLine: never throws on missing/unusual fields (fails closed, not open)', () => {
+  assert.doesNotThrow(() => formatSecurityAuditLine({}));
+  const line = formatSecurityAuditLine({});
+  assert.doesNotThrow(() => JSON.parse(line));
+});
+
+test('appendSecurityAuditLog: appends a line to the log file via the DI fs module', () => {
+  const written = [];
+  const fakeFs = {
+    appendFileSync: (filePath, data) => {
+      written.push({ filePath, data });
+    },
+  };
+
+  appendSecurityAuditLog('{"channel":"offline:generate-pin"}', fakeFs, '/fake/path/security-audit.log');
+
+  assert.equal(written.length, 1);
+  assert.equal(written[0].filePath, '/fake/path/security-audit.log');
+  assert.match(written[0].data, /"channel":"offline:generate-pin"/);
+});
+
+test('appendSecurityAuditLog: sequential appends do not overwrite prior lines', () => {
+  let contents = '';
+  const fakeFs = {
+    appendFileSync: (_filePath, data) => {
+      contents += data;
+    },
+  };
+
+  appendSecurityAuditLog('{"n":1}', fakeFs, '/fake/path/security-audit.log');
+  appendSecurityAuditLog('{"n":2}', fakeFs, '/fake/path/security-audit.log');
+  appendSecurityAuditLog('{"n":3}', fakeFs, '/fake/path/security-audit.log');
+
+  const lines = contents.trim().split('\n');
+  assert.equal(lines.length, 3);
+  assert.deepEqual(lines.map((l) => JSON.parse(l).n), [1, 2, 3]);
 });

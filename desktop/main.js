@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -98,6 +98,35 @@ try {
 }
 
 const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
+
+// Task 8 (childProcessGuard.js): a dedicated audit trail for the small
+// set of security-relevant IPC channels (PIN generation, recon tool
+// spawn, DB backup import/export, global shortcut registration) — kept
+// separate from the general-purpose LOG_FILE_PATH so it stays pure
+// single-line JSON (see formatSecurityAuditLine's doc comment for why
+// that rules out reusing systemInfo.js's appendToLogFile, which prefixes
+// its own timestamp ahead of the message).
+const SECURITY_AUDIT_LOG_PATH = path.join(app.getPath('userData'), 'rmpg-flex-security-audit.log');
+
+/**
+ * Formats and appends one security-relevant IPC audit event to
+ * SECURITY_AUDIT_LOG_PATH. Never throws — a logging failure (e.g. a full
+ * disk) must not break the IPC handler that called it; any fs error is
+ * caught and reported via console.error only.
+ */
+function logSecurityAuditEvent(channel, outcome, detail) {
+  try {
+    const line = formatSecurityAuditLine({
+      channel,
+      userId: getConfig('current_user_id') || null,
+      outcome,
+      detail,
+    });
+    appendSecurityAuditLog(line, require('fs'), SECURITY_AUDIT_LOG_PATH);
+  } catch (err) {
+    console.error('[SECURITY-AUDIT] Failed to write audit log entry:', err && err.message);
+  }
+}
 
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
 
@@ -1237,20 +1266,29 @@ guardedHandle('fs:print-silent', async (event, printerName) => {
 });
 guardedHandle('fs:export-db-backup', async () => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('fs:export-db-backup', 'denied', {});
+    return { ok: false, error: roleCheck.error };
+  }
   const dialogResult = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `rmpg-flex-backup-${Date.now()}.rmpgbak`,
     filters: [{ name: 'RMPG Flex Backup', extensions: ['rmpgbak'] }],
   });
   if (dialogResult.canceled) return { ok: false, error: 'cancelled' };
+  // Log only the destination filename (basename), never the full path or
+  // any backup content — that's the minimal, non-sensitive detail this
+  // audit trail is scoped to.
+  const exportFilename = path.basename(dialogResult.filePath);
   const tempPath = path.join(app.getPath('temp'), `rmpg-db-backup-${Date.now()}.db`);
   try {
     await getLocalDb().backup(tempPath);
     const rawBytes = await fs.promises.readFile(tempPath);
     const encoded = encodeBackupForExport(rawBytes, safeStorage);
     await fs.promises.writeFile(dialogResult.filePath, encoded, 'utf8');
+    logSecurityAuditEvent('fs:export-db-backup', 'success', { filename: exportFilename });
     return { ok: true, path: dialogResult.filePath };
   } catch (err) {
+    logSecurityAuditEvent('fs:export-db-backup', 'error', { filename: exportFilename });
     return { ok: false, error: err.message };
   } finally {
     fs.promises.unlink(tempPath).catch(() => {});
@@ -1258,29 +1296,44 @@ guardedHandle('fs:export-db-backup', async () => {
 });
 guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', {});
+    return { ok: false, error: roleCheck.error };
+  }
   const pathValidation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
-  if (!pathValidation.ok) return { ok: false, error: pathValidation.error };
+  if (!pathValidation.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', {});
+    return { ok: false, error: pathValidation.error };
+  }
+  // Log only the source filename (basename), never the full path or any
+  // decrypted backup content.
+  const importFilename = path.basename(pathValidation.resolved);
   let rawBytes;
   try {
     const encodedText = await fs.promises.readFile(pathValidation.resolved, 'utf8');
     rawBytes = decodeBackupForImport(encodedText, safeStorage);
   } catch (err) {
+    logSecurityAuditEvent('fs:import-db-backup', 'error', { filename: importFilename });
     return { ok: false, error: `could not decrypt backup: ${err.message}` };
   }
   const contentValidation = validateBackupFileBeforeImport(rawBytes);
-  if (!contentValidation.ok) return { ok: false, error: contentValidation.error };
+  if (!contentValidation.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', { filename: importFilename });
+    return { ok: false, error: contentValidation.error };
+  }
   // validateBackupFileBeforeImport only checks the 16-byte SQLite magic
   // header — a corrupted/truncated-but-genuinely-SQLite file passes that
   // and only fails once initLocalDb()'s integrity pragmas touch it. Route
   // the actual swap through swapInLocalDbWithRollback so a failure there
   // restores the pre-import DB instead of leaving local/offline mode dead.
-  return swapInLocalDbWithRollback(rawBytes, {
+  const result = await swapInLocalDbWithRollback(rawBytes, {
     dbPath: getLocalDbPath(app, path),
     fsModule: fs,
     closeLocalDb,
     initLocalDb,
   });
+  logSecurityAuditEvent('fs:import-db-backup', result && result.ok ? 'success' : 'error', { filename: importFilename });
+  return result;
 });
 
 // ─── Device & Hardware ───────────────────────────────────────
@@ -1315,10 +1368,14 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
 guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
 guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
   const validation = validateGlobalShortcutAccelerator(accelerator);
-  if (!validation.ok) return { ok: false, error: validation.error };
+  if (!validation.ok) {
+    logSecurityAuditEvent('device:register-shortcut', 'denied', { actionId });
+    return { ok: false, error: validation.error };
+  }
   const registered = globalShortcut.register(accelerator, () => {
     mainWindow?.webContents.send('device:shortcut-triggered', actionId);
   });
+  logSecurityAuditEvent('device:register-shortcut', registered ? 'success' : 'error', { accelerator, actionId });
   return registered ? { ok: true } : { ok: false, error: 'registration failed (already taken by another app?)' };
 });
 guardedHandle('device:unregister-shortcut', (event, accelerator) => {
@@ -2334,24 +2391,36 @@ const toolSessions = new Map();
 
 guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
   const rateCheck = checkRateLimit('recon:tool-spawn');
-  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
+  if (!rateCheck.ok) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: rateCheck.error };
+  }
   const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
-  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
+  if (!argsCheck.ok) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: argsCheck.error };
+  }
   if (isAtConcurrencyLimit(toolSessions.size, MAX_CONCURRENT_TOOLS)) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
     return { ok: false, error: 'too many concurrent recon tools running' };
   }
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
   const tool = RECON_TOOLS[toolId];
-  if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
+  if (!tool) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: `Unknown tool: ${toolId}` };
+  }
   if (!tool.platform.includes(process.platform)) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
     return { ok: false, error: `${tool.title} is not supported on ${process.platform}.` };
   }
   let argv;
   try {
     argv = tool.buildArgs(args);
   } catch (err) {
+    logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
     return { ok: false, error: err.message || 'Invalid arguments' };
   }
   // Confirm binary exists — give users a clear "install X" message
@@ -2359,6 +2428,7 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     const pathDirs = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
     const found = pathDirs.some((d) => fs.existsSync(`${d}/${tool.command}`));
     if (!found) {
+      logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
       return { ok: false, error: `${tool.command} is not installed. Run: brew install ${tool.requiresInstall}` };
     }
   }
@@ -2369,6 +2439,7 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     });
     const sessionId = crypto.randomUUID();
     toolSessions.set(sessionId, child);
+    logSecurityAuditEvent('recon:tool-spawn', 'success', { toolId, sessionId });
     const timeoutHandle = scheduleChildProcessTimeout(child, resolveChildProcessTimeoutMs(tool, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), setTimeout);
     const send = (kind, data) => {
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
@@ -2383,6 +2454,7 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     child.on('error', (err) => send('stderr', `[spawn error] ${err.message}\n`));
     return { ok: true, sessionId, title: tool.title };
   } catch (err) {
+    logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
     return { ok: false, error: err && err.message ? err.message : 'Spawn failed' };
   }
 });
@@ -3152,14 +3224,29 @@ guardedHandle('offline:enter-pin', (_event, { pin }) => {
 // Admin generates a PIN for an employee
 guardedHandle('offline:generate-pin', (_event, { userId }) => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('offline:generate-pin', 'denied', { targetUserId: userId });
+    return { error: roleCheck.error };
+  }
   const userIdCheck = validateUserIdInput(userId);
-  if (!userIdCheck.ok) return { error: userIdCheck.error };
+  if (!userIdCheck.ok) {
+    logSecurityAuditEvent('offline:generate-pin', 'denied', { targetUserId: userId });
+    return { error: userIdCheck.error };
+  }
   try {
-    if (!pinManager) return { error: 'PIN system not initialized' };
-    return pinManager.generatePinForUser(userId);
+    if (!pinManager) {
+      logSecurityAuditEvent('offline:generate-pin', 'error', { targetUserId: userId });
+      return { error: 'PIN system not initialized' };
+    }
+    // Note: intentionally logging only targetUserId — never the PIN
+    // value/plaintext contained in pinManager.generatePinForUser()'s
+    // return value.
+    const result = pinManager.generatePinForUser(userId);
+    logSecurityAuditEvent('offline:generate-pin', 'success', { targetUserId: userId });
+    return result;
   } catch (err) {
     console.error('[OFFLINE:GENERATE-PIN] Error:', err.message);
+    logSecurityAuditEvent('offline:generate-pin', 'error', { targetUserId: userId });
     return { error: err.message };
   }
 });
