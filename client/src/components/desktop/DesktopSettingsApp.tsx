@@ -35,7 +35,7 @@ const CATEGORIES = [
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
 ] as const;
 
-type CategoryId = typeof CATEGORIES[number]['id'];
+export type CategoryId = typeof CATEGORIES[number]['id'];
 
 export interface DesktopSettingsAppProps {
   widgets: DesktopWidgetState[];
