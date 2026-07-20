@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import FloatingWindow from './FloatingWindow';
 import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
 
@@ -67,5 +67,49 @@ describe('FloatingWindow', () => {
     fireEvent.click(screen.getByText('open'));
     const iframe = screen.getByTitle('Dispatch') as HTMLIFrameElement;
     expect(iframe.getAttribute('allow')).toBe('microphone; camera; fullscreen');
+  });
+});
+
+describe('FloatingWindow — title sync', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // Stubs contentWindow directly rather than relying on jsdom's iframe navigation
+  // (which doesn't actually update contentWindow.location on a src change) — this
+  // simulates what a real same-origin iframe reports after the app's own in-page nav
+  // bar navigates it via client-side routing, with no signal reaching the parent.
+  function stubIframePathname(pathname: string) {
+    const iframe = screen.getByTitle('Dispatch') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', {
+      configurable: true,
+      value: { location: { pathname } },
+    });
+    return iframe;
+  }
+
+  it('updates the title bar when the iframe navigates internally to another catalog route', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    stubIframePathname('/warrants');
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(screen.getByText('Warrants')).toBeInTheDocument();
+    expect(screen.queryByText('Dispatch')).not.toBeInTheDocument();
+  });
+
+  it('leaves the title alone when the iframe navigates to a route with no catalog entry', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    stubIframePathname('/detached/incident/123');
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(screen.getByText('Dispatch')).toBeInTheDocument();
+  });
+
+  it('never changes the iframe src in response to polling (would force a real reload)', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    const iframe = stubIframePathname('/warrants');
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(iframe.src).toContain('/dispatch');
+    expect(iframe.src).not.toContain('/warrants');
   });
 });
