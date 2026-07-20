@@ -82,25 +82,53 @@ function buildSandboxedChildEnv(baseEnv, pathParts) {
 const DEFAULT_CHILD_PROCESS_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Milliseconds to wait after an unhonored SIGTERM before escalating to
+ * SIGKILL — matches the existing escalation delay used by the
+ * `recon:term-kill` IPC handler in main.js, so both timeout paths behave
+ * consistently.
+ */
+const SIGKILL_ESCALATION_DELAY_MS = 1500;
+
+/**
  * Schedules a hard kill of `child` after `timeoutMs` if it is still
  * running at that point. `killFn` is a `setTimeout`-shaped dependency
  * (`killFn(callback, delayMs) -> handle`) — the real call site passes
  * the global `setTimeout`; tests pass a fake that records the callback
  * instead of waiting on real wall-clock time.
  *
- * Returns the handle `killFn` produced, so the caller can `clearTimeout`
- * it (with the matching real `clearTimeout`) from the child's own
- * `exit` handler — a child that exits naturally before the timeout
- * elapses must not leave a dangling timer.
+ * On timeout, sends SIGTERM first (a graceful request), then schedules a
+ * SIGKILL escalation `SIGKILL_ESCALATION_DELAY_MS` later if the child
+ * hasn't actually exited by then — a process that's genuinely hung (stuck
+ * on a prompt, wedged in a syscall, or one that traps SIGTERM) is exactly
+ * the failure mode this timeout exists to guard against, and SIGTERM
+ * alone doesn't guarantee it actually terminates.
  *
- * @param {{kill: Function}} child - live child-process-shaped handle
- * @param {number} timeoutMs - milliseconds to wait before killing
+ * Returns the handle `killFn` produced for the INITIAL timeout, so the
+ * caller can `clearTimeout` it (with the matching real `clearTimeout`)
+ * from the child's own `exit` handler — a child that exits naturally
+ * before the timeout elapses must not leave a dangling timer. (The
+ * escalation timer, if scheduled, is not returned — it's a fire-and-forget
+ * check-and-kill against `child.killed`, harmless if it runs after the
+ * child has already exited some other way, matching the existing
+ * `recon:term-kill` pattern's own escalation semantics.)
+ *
+ * @param {{kill: Function, killed?: boolean}} child - live child-process-shaped handle
+ * @param {number} timeoutMs - milliseconds to wait before the initial SIGTERM
  * @param {Function} killFn - setTimeout-shaped scheduler (DI)
- * @returns {*} the timer handle returned by killFn
+ * @returns {*} the timer handle returned by killFn for the initial timeout
  */
 function scheduleChildProcessTimeout(child, timeoutMs, killFn) {
   return killFn(() => {
-    child.kill();
+    child.kill('SIGTERM');
+    killFn(() => {
+      if (!child.killed) {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* ignore — child may have exited between the check and the kill */
+        }
+      }
+    }, SIGKILL_ESCALATION_DELAY_MS);
   }, timeoutMs);
 }
 

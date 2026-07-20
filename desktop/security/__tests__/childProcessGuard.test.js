@@ -82,9 +82,9 @@ function makeFakeTimer() {
   return killFn;
 }
 
-test('scheduleChildProcessTimeout: kills the child once the fake timeout fires', () => {
+test('scheduleChildProcessTimeout: sends SIGTERM once the fake timeout fires', () => {
   const killSpy = [];
-  const fakeChild = { kill: (...args) => killSpy.push(args) };
+  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
   const fakeTimer = makeFakeTimer();
 
   const handle = scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
@@ -97,7 +97,40 @@ test('scheduleChildProcessTimeout: kills the child once the fake timeout fires',
   fakeTimer.calls[0].callback();
 
   assert.equal(killSpy.length, 1);
+  assert.deepEqual(killSpy[0], ['SIGTERM']);
   assert.ok(handle);
+});
+
+test('scheduleChildProcessTimeout: escalates to SIGKILL if the child has not exited by the escalation delay', () => {
+  const killSpy = [];
+  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
+  const fakeTimer = makeFakeTimer();
+
+  scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
+
+  // Fire the initial timeout — sends SIGTERM and schedules the escalation.
+  fakeTimer.calls[0].callback();
+  assert.deepEqual(killSpy, [['SIGTERM']]);
+  assert.equal(fakeTimer.calls.length, 2);
+  assert.equal(fakeTimer.calls[1].delayMs, 1500);
+
+  // Child ignored SIGTERM (still not killed) — fire the escalation.
+  fakeTimer.calls[1].callback();
+  assert.deepEqual(killSpy, [['SIGTERM'], ['SIGKILL']]);
+});
+
+test('scheduleChildProcessTimeout: does NOT escalate to SIGKILL if the child already exited after SIGTERM', () => {
+  const killSpy = [];
+  const fakeChild = { killed: false, kill: (...args) => killSpy.push(args) };
+  const fakeTimer = makeFakeTimer();
+
+  scheduleChildProcessTimeout(fakeChild, 60000, fakeTimer);
+
+  fakeTimer.calls[0].callback();
+  fakeChild.killed = true; // child honored SIGTERM and exited before escalation fires
+
+  fakeTimer.calls[1].callback();
+  assert.deepEqual(killSpy, [['SIGTERM']]);
 });
 
 test('scheduleChildProcessTimeout: clearing the returned handle before it fires prevents the kill', () => {
