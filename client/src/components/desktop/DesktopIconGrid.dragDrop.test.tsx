@@ -13,6 +13,15 @@ vi.mock('../ToastProvider', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 
+// DesktopIconGrid also calls useAuth() unconditionally (to thread the current
+// user's role into activateNavFunction's currentUserRole, for Company
+// Browser's role gating) — mock it the same way DesktopIconGrid.test.tsx and
+// DesktopTaskbar.test.tsx do, since this file renders outside a real
+// AuthProvider.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+}));
+
 const RECORDS_ICON: NavFunction[] = [
   { path: '/records', label: 'Records', icon: Database, description: 'r' },
 ];
