@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS } from '../../data/desktopAccents';
+import { SETTINGS_SEARCH_INDEX } from '../../data/settingsSearchIndex';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { isSnapEnabled, setSnapEnabled } from '../../utils/snapPreference';
 import { isMultiMonitorSupported, isMultiMonitorEnabled, requestMultiMonitorAccess } from '../../utils/multiMonitor';
@@ -69,6 +70,7 @@ export default function DesktopSettingsApp({
   wallpaperId, onWallpaperChange, accentId, onAccentChange, onResetToDefault, onClose,
 }: DesktopSettingsAppProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryId>('personalization');
+  const [searchQuery, setSearchQuery] = useState('');
   const [snapEnabled, setSnapEnabledState] = useState(() => isSnapEnabled());
   const [multiMonitorEnabled, setMultiMonitorEnabledState] = useState(() => isMultiMonitorEnabled());
   const multiMonitorSupported = isMultiMonitorSupported();
@@ -106,6 +108,15 @@ export default function DesktopSettingsApp({
 
   const enabledIds = new Set(widgets.filter(w => w.on).map(w => w.id));
 
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    const matchedIds = new Set(
+      SETTINGS_SEARCH_INDEX.filter(entry => entry.keywords.some(k => k.toLowerCase().includes(q))).map(e => e.categoryId),
+    );
+    return CATEGORIES.filter(cat => matchedIds.has(cat.id));
+  }, [searchQuery]);
+
   return (
     <div
       style={{
@@ -127,11 +138,17 @@ export default function DesktopSettingsApp({
 
       <div className="flex flex-1 overflow-hidden">
         <div style={{ width: 160, borderRight: '1px solid var(--border-subtle)', flexShrink: 0, overflowY: 'auto' }}>
-          {CATEGORIES.map(cat => (
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search settings…"
+            className="w-full px-2 py-1.5 text-[11px] bg-surface-sunken border-b border-rmpg-700 text-rmpg-100 focus:outline-none"
+          />
+          {(searchMatches ?? CATEGORIES).map(cat => (
             <button
               key={cat.id}
               type="button"
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => { setActiveCategory(cat.id); setSearchQuery(''); }}
               className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px]"
               style={{ background: activeCategory === cat.id ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
             >

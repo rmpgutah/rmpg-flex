@@ -158,3 +158,29 @@ describe('DesktopSettingsApp — Taskbar category', () => {
     expect(getTaskbarSize()).toBe('large');
   });
 });
+
+describe('DesktopSettingsApp — search', () => {
+  it('typing a search term shows only matching category results instead of the full sidebar', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'auto-hide' } });
+    expect(screen.getByText('Taskbar')).toBeInTheDocument();
+    expect(screen.queryByText('Personalization')).not.toBeInTheDocument();
+  });
+
+  it('clicking a search result switches to that category and clears the search', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'auto-hide' } });
+    fireEvent.click(screen.getByText('Taskbar'));
+    expect(screen.getByText('Auto-Hide')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/search settings/i)).toHaveValue('');
+  });
+
+  it('clearing the search query restores the full category sidebar', () => {
+    renderApp();
+    const input = screen.getByPlaceholderText(/search settings/i);
+    fireEvent.change(input, { target: { value: 'auto-hide' } });
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByText('Personalization')).toBeInTheDocument();
+    expect(screen.getByText('Taskbar')).toBeInTheDocument();
+  });
+});
