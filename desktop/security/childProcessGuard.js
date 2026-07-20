@@ -253,6 +253,65 @@ function isAllowedBinaryName(binary, allowedCommands) {
   return false;
 }
 
+/**
+ * Pure predicate: does `url`'s hostname exactly match one of
+ * `allowedHosts`?
+ *
+ * Regression-guard framing (matches Group I Task 8's
+ * `assertWebPreferencesNotWeaker` self-check pattern): every call site
+ * this is wired into today (`geo:ip-locate`'s hardcoded Google
+ * geolocation URL, `syncManager.js`'s requests built from
+ * `REMOTE_SERVER_URL`) already builds its request URL from a `const`/
+ * module-scoped literal, never from renderer-supplied input — so this
+ * function is NOT closing an active vulnerability. Its value is as a
+ * defense-in-depth tripwire: if a future change accidentally threads
+ * renderer-influenced data into one of these URLs (or a copy/paste
+ * mistake points a request at the wrong host), this check fails the
+ * request instead of silently sending it somewhere unintended.
+ *
+ * Parses `url` via the `URL` constructor and fails closed — any
+ * unparseable input (malformed URL, missing protocol, non-string,
+ * `null`/`undefined`) returns `false` rather than throwing, so a caller
+ * can safely gate a request on this function's result without its own
+ * try/catch.
+ *
+ * Hostname comparison is EXACT match only — deliberately not
+ * `endsWith`/`includes`/any substring check, which a crafted subdomain
+ * like `www.googleapis.com.attacker.com` (a real, resolvable hostname
+ * where `www.googleapis.com` is merely a leading label, not the actual
+ * domain) or `evil.googleapis.com` (a subdomain of the real domain, but
+ * not the specific pinned host) could bypass. Similarly, stuffing the
+ * allowed hostname into a query string or path of an unrelated host
+ * (`https://evil.com/?host=www.googleapis.com`) is correctly rejected
+ * since only `.hostname` is ever inspected, never the full URL string.
+ *
+ * This function intentionally does NOT check `.protocol` — host-pinning
+ * and protocol-enforcement are separate concerns, and the existing
+ * `isSecureUpdateFeedUrl` check in `sessionHardening.js` (Group F) is
+ * this codebase's established precedent for protocol validation. Don't
+ * duplicate that here; a caller that also needs a protocol guarantee
+ * should compose both checks.
+ *
+ * @param {*} url - the outbound request URL to validate
+ * @param {Iterable<string>} allowedHosts - known-good hostnames (e.g. a Set or array)
+ * @returns {boolean} true only if `url` parses and its hostname exactly matches an allowed host
+ */
+function isAllowedApiHost(url, allowedHosts) {
+  if (!allowedHosts) return false;
+
+  let hostname;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+
+  for (const candidate of allowedHosts) {
+    if (candidate === hostname) return true;
+  }
+  return false;
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
@@ -261,4 +320,5 @@ module.exports = {
   MAX_CONCURRENT_TOOLS,
   isAtConcurrencyLimit,
   isAllowedBinaryName,
+  isAllowedApiHost,
 };

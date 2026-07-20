@@ -13,6 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -79,6 +80,21 @@ try {
   TRUSTED_HOST = new URL(REMOTE_SERVER_URL).host;
 } catch {
   TRUSTED_HOST = 'rmpgutah.us';
+}
+
+// Hostname-only (no port) form of REMOTE_SERVER_URL, computed once at module
+// load, used by isAllowedApiHost() to pin main-process net.request calls that
+// target the remote server (e.g. the startup connectivity health check below).
+// Regression-guard framing, same as GEO_IP_LOCATE_ALLOWED_HOSTS further down:
+// REMOTE_SERVER_URL is a const/env-derived value, never renderer-influenced,
+// so this doesn't close an active vulnerability — it's a tripwire against a
+// future accidental change to the request URL. Fails closed to `null` (which
+// isAllowedApiHost never matches) if REMOTE_SERVER_URL is somehow unparseable.
+let REMOTE_SERVER_HOSTNAME;
+try {
+  REMOTE_SERVER_HOSTNAME = new URL(REMOTE_SERVER_URL).hostname;
+} catch {
+  REMOTE_SERVER_HOSTNAME = null;
 }
 
 const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
@@ -602,7 +618,15 @@ function checkServerConnectivity() {
       attempts++;
       console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
 
-      const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
+      const healthCheckUrl = `${REMOTE_SERVER_URL}/api/health`;
+      if (!isAllowedApiHost(healthCheckUrl, [REMOTE_SERVER_HOSTNAME])) {
+        console.error('[APP] Connectivity check blocked: URL host not allowlisted');
+        resolved = true;
+        resolve(false);
+        return;
+      }
+
+      const request = net.request(healthCheckUrl);
 
       // Per-request timeout — prevent hung TCP handshakes from stalling startup
       const reqTimeout = setTimeout(() => {
@@ -2953,10 +2977,21 @@ guardedHandle('power:allow-sleep', () => {
 // Desktop machines often lack GPS hardware. When Chromium's
 // navigator.geolocation fails, the renderer can call this to get
 // an approximate position via Google's Geolocation API (IP-based).
+// Regression guard (see isAllowedApiHost's doc comment in childProcessGuard.js)
+// for geo:ip-locate's outbound request — the URL below is a hardcoded
+// literal today, not renderer-influenced, so this doesn't close an active
+// vulnerability; it's a tripwire against a future accidental change that
+// points this request somewhere other than Google's geolocation API.
+const GEO_IP_LOCATE_ALLOWED_HOSTS = ['www.googleapis.com'];
+
 guardedHandle('geo:ip-locate', async () => {
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
     const url = `https://www.googleapis.com/geolocation/v1/geolocate?key=${apiKey}`;
+    if (!isAllowedApiHost(url, GEO_IP_LOCATE_ALLOWED_HOSTS)) {
+      console.error('[GEO] IP geolocation blocked: URL host not allowlisted');
+      return null;
+    }
     return await new Promise((resolve, reject) => {
       const request = net.request({ method: 'POST', url });
       request.setHeader('Content-Type', 'application/json');

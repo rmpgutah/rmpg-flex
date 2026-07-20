@@ -10,6 +10,7 @@ const {
   isAtConcurrencyLimit,
   MAX_CONCURRENT_TOOLS,
   isAllowedBinaryName,
+  isAllowedApiHost,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -275,4 +276,40 @@ test('isAllowedBinaryName: missing/empty allowedCommands returns false without t
 test('isAllowedBinaryName: is case-sensitive (matches RECON_TOOLS command casing, e.g. theHarvester)', () => {
   assert.equal(isAllowedBinaryName('theharvester', ['theHarvester']), false);
   assert.equal(isAllowedBinaryName('theHarvester', ['theHarvester']), true);
+});
+
+// --- isAllowedApiHost ---
+
+test('isAllowedApiHost: exact hostname match against a single allowed host returns true', () => {
+  assert.equal(isAllowedApiHost('https://www.googleapis.com/geolocation/v1/geolocate?key=abc', ['www.googleapis.com']), true);
+});
+
+test('isAllowedApiHost: exact hostname match against a Set of allowed hosts returns true', () => {
+  assert.equal(isAllowedApiHost('https://rmpgutah.us/api/health', new Set(['rmpgutah.us', 'www.googleapis.com'])), true);
+});
+
+test('isAllowedApiHost: a crafted subdomain of an allowed host is rejected (no endsWith/includes bypass)', () => {
+  assert.equal(isAllowedApiHost('https://www.googleapis.com.attacker.com/geolocation/v1/geolocate', ['www.googleapis.com']), false);
+  assert.equal(isAllowedApiHost('https://evil.googleapis.com/geolocation/v1/geolocate', ['www.googleapis.com']), false);
+});
+
+test('isAllowedApiHost: the allowed hostname stuffed into a query string of a different host is rejected', () => {
+  assert.equal(isAllowedApiHost('https://evil.com/?host=www.googleapis.com', ['www.googleapis.com']), false);
+});
+
+test('isAllowedApiHost: a host not in the allowlist at all is rejected', () => {
+  assert.equal(isAllowedApiHost('https://api.example.com/foo', ['www.googleapis.com']), false);
+});
+
+test('isAllowedApiHost: an unparseable URL fails closed (false, no throw)', () => {
+  assert.equal(isAllowedApiHost('not a url', ['www.googleapis.com']), false);
+  assert.equal(isAllowedApiHost('', ['www.googleapis.com']), false);
+  assert.equal(isAllowedApiHost(undefined, ['www.googleapis.com']), false);
+  assert.equal(isAllowedApiHost(null, ['www.googleapis.com']), false);
+});
+
+test('isAllowedApiHost: a missing or empty allowedHosts list is rejected without throwing', () => {
+  assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', undefined), false);
+  assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', null), false);
+  assert.equal(isAllowedApiHost('https://www.googleapis.com/foo', []), false);
 });

@@ -8,8 +8,19 @@ const { net } = require('electron');
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
+const { isAllowedApiHost } = require('./security/childProcessGuard');
 
 let serverUrl = '';
+// Hostname-only (no port) form of serverUrl, computed once when
+// startPullSchedule() sets serverUrl (mirrors REMOTE_SERVER_HOSTNAME in
+// main.js). Used by isAllowedApiHost() to pin this module's net.request
+// call sites (serverFetch/refreshAndRetry) to the server the app was
+// actually configured to talk to. Regression-guard framing: serverUrl is
+// always main.js's REMOTE_SERVER_URL (a const/env-derived literal, never
+// renderer-influenced) — this doesn't close an active vulnerability, it's
+// a tripwire against a future accidental change routing a request
+// elsewhere. Fails closed to `null` (never matched) until set.
+let allowedSyncHost = null;
 let mainWindow = null;
 let pullTimers = {};
 let isSyncing = false;
@@ -42,6 +53,11 @@ const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 
 function startPullSchedule(url, window) {
   serverUrl = url;
+  try {
+    allowedSyncHost = new URL(url).hostname;
+  } catch {
+    allowedSyncHost = null;
+  }
   mainWindow = window;
 
   console.log('[SYNC] Starting pull schedule');
@@ -395,6 +411,11 @@ function serverFetch(endpoint, options = {}) {
       const token = getConfig('auth_token');
       const url = `${serverUrl}${endpoint}`;
 
+      if (!isAllowedApiHost(url, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
+
       const request = net.request({
         url,
         method: options.method || 'GET',
@@ -478,8 +499,14 @@ async function refreshAndRetry(endpoint, options) {
   if (!refreshToken) throw new Error('No refresh token available');
 
   const refreshResponse = await new Promise((resolve, reject) => {
+    const refreshUrl = `${serverUrl}/api/auth/refresh`;
+    if (!isAllowedApiHost(refreshUrl, [allowedSyncHost])) {
+      reject(new Error('Blocked outbound sync request: host not allowlisted'));
+      return;
+    }
+
     const request = net.request({
-      url: `${serverUrl}/api/auth/refresh`,
+      url: refreshUrl,
       method: 'POST',
     });
     request.setHeader('Content-Type', 'application/json');
