@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2953,6 +2953,44 @@ guardedHandle('geo:ip-locate', async () => {
     console.error('[GEO] IP geolocation fallback failed:', err.message);
     return null;
   }
+});
+
+// ─── Auth Session Bridge ─────────────────────────────────────
+// The renderer (AuthContext.tsx / tokenRefresh.ts) calls this immediately
+// after every successful login, 2FA completion, and access-token refresh.
+// This is the ONLY path that seeds auth_token / refresh_token /
+// current_user_id / current_user_role in local_config — before this
+// existed, those keys were write-never: pinManager.js, offlineRouter.js,
+// and syncManager.js's refreshAndRetry (its Task 10 identity-mismatch
+// guard) all READ current_user_id, but nothing ever wrote it at login, so
+// offline mode / PIN sessions / the mismatch guard could never actually
+// engage on a fresh session — refreshAndRetry itself couldn't even run
+// without a refresh_token, which was equally never seeded.
+//
+// current_user_id/current_user_role are derived from the token's own
+// claims (extractSessionIdentity), not taken from a separately-passed
+// value — same "trust the signed claims, not a sibling argument" approach
+// this file already uses for the Task 10 mismatch check.
+guardedHandle('auth:store-session', (_event, { token, refreshToken } = {}) => {
+  if (typeof token !== 'string' || !token) {
+    return { ok: false, error: 'token required' };
+  }
+
+  const identity = extractSessionIdentity(token);
+  if (!identity) {
+    return { ok: false, error: 'could not decode session token' };
+  }
+
+  setConfig('auth_token', token);
+  if (typeof refreshToken === 'string' && refreshToken) {
+    setConfig('refresh_token', refreshToken);
+  }
+  setConfig('current_user_id', identity.userId);
+  if (identity.role) {
+    setConfig('current_user_role', identity.role);
+  }
+
+  return { ok: true };
 });
 
 // ─── Offline Mode IPC Handlers ──────────────────────────────

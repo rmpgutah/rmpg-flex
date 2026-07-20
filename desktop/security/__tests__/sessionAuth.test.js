@@ -90,6 +90,51 @@ test('isJwtExpiredLocally: boundary — exp one second after nowMs/1000 is not e
   assert.equal(isJwtExpiredLocally(token, nowMs), false);
 });
 
+// ─── extractSessionIdentity ─────────────────────────────────────
+//
+// Used by main.js's `auth:store-session` IPC handler (the renderer's login
+// bridge — see AuthContext.tsx / tokenRefresh.ts) to derive the
+// current_user_id / current_user_role local_config values from a freshly
+// received JWT, the same decode-locally-never-verify-signature approach
+// this file already uses for isJwtExpiredLocally and the Task 10
+// identity-mismatch guard in syncManager.js.
+
+test('extractSessionIdentity: well-formed token with user_id and role -> both extracted', () => {
+  const token = makeJwt({ user_id: 42, role: 'officer' });
+  assert.deepEqual(extractSessionIdentity(token), { userId: '42', role: 'officer' });
+});
+
+test('extractSessionIdentity: token using the userId spelling (not user_id) -> still extracted', () => {
+  const token = makeJwt({ userId: 7, role: 'admin' });
+  assert.deepEqual(extractSessionIdentity(token), { userId: '7', role: 'admin' });
+});
+
+test('extractSessionIdentity: user_id takes precedence when both spellings are present', () => {
+  const token = makeJwt({ user_id: 1, userId: 999, role: 'officer' });
+  assert.equal(extractSessionIdentity(token).userId, '1');
+});
+
+test('extractSessionIdentity: no role claim -> userId extracted, role null', () => {
+  const token = makeJwt({ user_id: 5 });
+  assert.deepEqual(extractSessionIdentity(token), { userId: '5', role: null });
+});
+
+test('extractSessionIdentity: non-string role claim -> role null (fail closed, do not coerce)', () => {
+  const token = makeJwt({ user_id: 5, role: 12345 });
+  assert.deepEqual(extractSessionIdentity(token), { userId: '5', role: null });
+});
+
+test('extractSessionIdentity: no user id claim at all -> null (nothing usable to cache)', () => {
+  const token = makeJwt({ role: 'officer' });
+  assert.equal(extractSessionIdentity(token), null);
+});
+
+test('extractSessionIdentity: undecodable token -> null', () => {
+  assert.equal(extractSessionIdentity('not-a-jwt'), null);
+  assert.equal(extractSessionIdentity(''), null);
+  assert.equal(extractSessionIdentity(null), null);
+});
+
 // ─── getOrCreateDeviceId ───────────────────────────────────────
 
 test('getOrCreateDeviceId: no stored id — generates one, persists it via setConfigFn, and returns it', () => {

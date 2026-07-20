@@ -208,6 +208,20 @@ function safeSetItem(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* quota exceeded or private browsing */ }
 }
 
+// Pushes a freshly issued session (login, 2FA completion, password-change
+// completion) into the Electron main process's local_config cache, via the
+// `storeAuthSession` bridge preload.js exposes. Browser tab sessions have no
+// `electron` (see the module-level `electron` const above) so this is a
+// silent no-op there — it only matters for the desktop shell's offline mode
+// and PIN sessions, which derive current_user_id/current_user_role from
+// this token (see main.js's 'auth:store-session' handler). Fire-and-forget:
+// a failure here must never block or fail the login flow itself.
+function syncElectronSession(newToken: string, refreshToken?: string | null): void {
+  try {
+    electron?.storeAuthSession?.(newToken, refreshToken ?? null)?.catch?.(() => { /* offline cache sync is best-effort */ });
+  } catch { /* not in Electron, or bridge unavailable */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Optimistic boot: render from the cached user when the stored token is still
   // locally valid, so a returning field device is interactive immediately rather
@@ -524,6 +538,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
 
         setUser(data.user);
         setToken(data.token);
@@ -602,6 +617,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
 
         setUser(data.user);
         setToken(data.token);
@@ -685,6 +701,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.sessionId) {
           safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
+        syncElectronSession(data.token, data.refreshToken);
 
         // Store last login info for display on login page
         if (data.lastLoginAt) {
@@ -791,6 +808,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
         setUser(data.user);
         setToken(data.token);
         setPending2FA(false);
@@ -892,6 +910,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
         // Update React state so the app recognizes the authenticated session
         setToken(data.token);
         if (data.user) setUser(data.user);
@@ -934,6 +953,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       safeSetItem(TOKEN_KEY, data.token);
       if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
       if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+      syncElectronSession(data.token, data.refreshToken);
       setUser(data.user);
       setToken(data.token);
       setIsLoading(false);

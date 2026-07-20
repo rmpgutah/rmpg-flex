@@ -59,6 +59,36 @@ function isJwtExpiredLocally(token, nowMs) {
 }
 
 /**
+ * Derives the local_config identity fields (current_user_id,
+ * current_user_role) from a JWT, without verifying its signature — same
+ * decode-locally approach as isJwtExpiredLocally and the Task 10
+ * identity-mismatch guard in syncManager.js. Used by main.js's
+ * `auth:store-session` IPC handler, the renderer's login bridge, to seed
+ * these keys the moment a session is established (login, 2FA completion,
+ * or token refresh) instead of leaving them write-never.
+ *
+ * `user_id` is preferred over `userId` when both are present, matching the
+ * server's own token shape (src/routes/auth.ts signs both spellings, with
+ * `user_id` as the canonical one — see auth middleware's claim handling).
+ *
+ * @param {string} token
+ * @returns {{ userId: string, role: string|null }|null} null when the
+ *   token is undecodable or carries no usable user id claim.
+ */
+function extractSessionIdentity(token) {
+  const payload = decodeJwtPayloadLocally(token);
+  if (!payload) return null;
+
+  const rawUserId = payload.user_id ?? payload.userId;
+  if (rawUserId === undefined || rawUserId === null) return null;
+
+  return {
+    userId: String(rawUserId),
+    role: typeof payload.role === 'string' ? payload.role : null,
+  };
+}
+
+/**
  * Reads (or lazily creates) a stable per-installation device identifier,
  * used to bind offline PIN sessions to the device they were created on.
  * DI-testable: takes `getConfig`/`setConfig`-shaped functions and a
@@ -459,6 +489,7 @@ function hasUserOrOrgMismatch(cachedUserId, freshUserId) {
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
+  extractSessionIdentity,
   getOrCreateDeviceId,
   isPinSessionBoundToDevice,
   pruneOldPinAttempts,
