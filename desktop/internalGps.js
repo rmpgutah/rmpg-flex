@@ -322,4 +322,49 @@ async function findGpsPort() {
   }
 }
 
-module.exports = { InternalGps, findGpsPort };
+// General-purpose serial port listing (Group D, device:serial-ports) —
+// reuses this file's lazily-loaded SerialPort so there's one source of
+// truth for the `require('serialport')` call, not a second one elsewhere.
+async function listSerialPorts() {
+  if (!SerialPort) return [];
+  try {
+    return await SerialPort.list();
+  } catch (err) {
+    console.warn('[INTERNAL-GPS] listSerialPorts failed:', err.message);
+    return [];
+  }
+}
+
+// Attempts a throwaway open+close against portPath to distinguish "no GPS
+// hardware enumerated" from "hardware enumerated, but its port is currently
+// unopenable" (device:gps-present, Group D). OS-level exclusive-lock
+// semantics mean this correctly reports busy without disturbing an
+// already-open InternalGps connection on the same path — it never touches
+// `this.port` on any InternalGps instance, only a fresh, separate handle.
+// Resolves `null` on a successful open (immediately closed), or the Error
+// on failure. SerialPortCtor is injectable for tests; defaults to the
+// lazily-loaded module-level SerialPort.
+function probeGpsPortOpen(portPath, SerialPortCtor = SerialPort) {
+  return new Promise((resolve) => {
+    if (!SerialPortCtor) {
+      resolve(new Error('serialport module unavailable on this platform'));
+      return;
+    }
+    let probePort;
+    try {
+      probePort = new SerialPortCtor({ path: portPath, baudRate: 9600, autoOpen: false });
+    } catch (err) {
+      resolve(err);
+      return;
+    }
+    probePort.open((openErr) => {
+      if (openErr) {
+        resolve(openErr);
+        return;
+      }
+      probePort.close(() => resolve(null));
+    });
+  });
+}
+
+module.exports = { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen };

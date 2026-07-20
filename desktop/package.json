@@ -37,6 +37,9 @@
       "offlineRouter.js",
       "syncManager.js",
       "internalGps.js",
+      "systemInfo.js",
+      "fileOps.js",
+      "deviceInfo.js",
       "originalCatalog.json",
       "security"
     ],
