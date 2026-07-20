@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -85,4 +85,55 @@ test('isJwtExpiredLocally: boundary — exp one second after nowMs/1000 is not e
   const nowMs = 1_700_000_000_000;
   const token = makeJwt({ exp: nowMs / 1000 + 1 });
   assert.equal(isJwtExpiredLocally(token, nowMs), false);
+});
+
+// ─── getOrCreateDeviceId ───────────────────────────────────────
+
+test('getOrCreateDeviceId: no stored id — generates one, persists it via setConfigFn, and returns it', () => {
+  const store = {};
+  const getConfigFn = (key) => (key in store ? store[key] : null);
+  const setConfigFn = (key, value) => { store[key] = value; };
+  let setConfigCalls = 0;
+  const trackedSetConfigFn = (key, value) => { setConfigCalls += 1; setConfigFn(key, value); };
+  const randomUUIDFn = () => 'generated-device-id';
+
+  const result = getOrCreateDeviceId(getConfigFn, trackedSetConfigFn, randomUUIDFn);
+
+  assert.equal(result, 'generated-device-id');
+  assert.equal(setConfigCalls, 1);
+  assert.equal(store.device_id, 'generated-device-id');
+});
+
+test('getOrCreateDeviceId: existing stored id — returns it unchanged WITHOUT calling setConfigFn (regression guard)', () => {
+  const getConfigFn = (key) => (key === 'device_id' ? 'already-stored-id' : null);
+  let setConfigCalls = 0;
+  const setConfigFn = () => { setConfigCalls += 1; };
+  const randomUUIDFn = () => { throw new Error('randomUUIDFn should not be called when an id already exists'); };
+
+  const result = getOrCreateDeviceId(getConfigFn, setConfigFn, randomUUIDFn);
+
+  assert.equal(result, 'already-stored-id');
+  assert.equal(setConfigCalls, 0);
+});
+
+// ─── isPinSessionBoundToDevice ─────────────────────────────────
+
+test('isPinSessionBoundToDevice: matching device_id returns true', () => {
+  const session = { device_id: 'device-a' };
+  assert.equal(isPinSessionBoundToDevice(session, 'device-a'), true);
+});
+
+test('isPinSessionBoundToDevice: mismatched device_id returns false', () => {
+  const session = { device_id: 'device-a' };
+  assert.equal(isPinSessionBoundToDevice(session, 'device-b'), false);
+});
+
+test('isPinSessionBoundToDevice: transitional backward-compat — null device_id (pre-migration row) is treated as valid', () => {
+  const session = { device_id: null };
+  assert.equal(isPinSessionBoundToDevice(session, 'device-a'), true);
+});
+
+test('isPinSessionBoundToDevice: transitional backward-compat — undefined device_id (pre-migration row) is treated as valid', () => {
+  const session = { device_id: undefined };
+  assert.equal(isPinSessionBoundToDevice(session, 'device-a'), true);
 });

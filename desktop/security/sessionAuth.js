@@ -56,7 +56,56 @@ function isJwtExpiredLocally(token, nowMs) {
   return payload.exp * 1000 <= nowMs;
 }
 
+/**
+ * Reads (or lazily creates) a stable per-installation device identifier,
+ * used to bind offline PIN sessions to the device they were created on.
+ * DI-testable: takes `getConfig`/`setConfig`-shaped functions and a
+ * `crypto.randomUUID`-shaped function as parameters rather than reaching
+ * into localDb.js / node:crypto directly.
+ *
+ * If a device id is already stored, it's returned UNCHANGED and
+ * `setConfigFn` is never called — this is a read path, not a
+ * read-or-refresh path; callers rely on the id staying stable across
+ * calls within the same install.
+ *
+ * @param {(key: string) => string|null} getConfigFn
+ * @param {(key: string, value: string) => void} setConfigFn
+ * @param {() => string} randomUUIDFn
+ * @returns {string} the device id (existing or newly generated)
+ */
+function getOrCreateDeviceId(getConfigFn, setConfigFn, randomUUIDFn) {
+  const existing = getConfigFn('device_id');
+  if (existing) return existing;
+
+  const newId = randomUUIDFn();
+  setConfigFn('device_id', newId);
+  return newId;
+}
+
+/**
+ * Pure check: is a `pin_sessions` row bound to the current device?
+ *
+ * `session.device_id` being `null`/`undefined` means the row predates the
+ * device-binding migration (this column was added after pin_sessions
+ * already had live rows). That case is treated as valid — a one-time
+ * transitional allowance so existing active offline sessions aren't
+ * locked out the instant this ships. Every session created AFTER this
+ * change always has a `device_id` set (see pinManager.js's INSERT), so
+ * this allowance naturally stops mattering as old sessions expire/rotate
+ * out; it is not meant to be a permanent bypass.
+ *
+ * @param {{ device_id?: string|null }} session
+ * @param {string} currentDeviceId
+ * @returns {boolean}
+ */
+function isPinSessionBoundToDevice(session, currentDeviceId) {
+  if (session.device_id === null || session.device_id === undefined) return true;
+  return session.device_id === currentDeviceId;
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
+  getOrCreateDeviceId,
+  isPinSessionBoundToDevice,
 };

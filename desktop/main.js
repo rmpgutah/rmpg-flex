@@ -12,7 +12,7 @@ const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally } = require('./security/sessionAuth');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -2800,13 +2800,19 @@ guardedHandle('offline:state', () => {
     } else if (cachedUserId) {
       // Check for active PIN session
       const session = db.prepare(
-        `SELECT expires_at FROM pin_sessions
+        `SELECT expires_at, device_id FROM pin_sessions
          WHERE user_id = ? AND is_active = 1 AND expires_at > ?
          ORDER BY expires_at DESC LIMIT 1`
       ).get(cachedUserId, new Date().toISOString());
       if (session) {
-        isLocalAuthorized = true;
-        expiresAt = session.expires_at;
+        const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+        if (isPinSessionBoundToDevice(session, currentDeviceId)) {
+          isLocalAuthorized = true;
+          expiresAt = session.expires_at;
+        }
+        // else: session exists but was created on a different device —
+        // treat as if no active session exists (same as the `if (session)`
+        // falling through below with isLocalAuthorized left false).
       }
     }
 
