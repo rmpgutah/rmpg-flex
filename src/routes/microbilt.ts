@@ -62,6 +62,41 @@ async function decryptLegacy(stored: string, jwtSecret: string): Promise<string 
   } catch { return null; }
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Encrypt a credential for storage in the SAME "ivHex:authTagHex:ciphertextHex"
+ *  format decryptLegacy() reads — AES-256-GCM, key = SHA-256(JWT_SECRET). Node's
+ *  GCM cipher.getAuthTag() returns the tag separately; WebCrypto appends it to
+ *  the ciphertext, so this splits the last 16 bytes back off to match. */
+async function encryptLegacy(plaintext: string, jwtSecret: string): Promise<string> {
+  const keyBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(jwtSecret));
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ctWithTag = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as unknown as BufferSource, tagLength: 128 },
+    key, new TextEncoder().encode(plaintext) as unknown as BufferSource,
+  ));
+  const tag = ctWithTag.slice(ctWithTag.length - 16);
+  const ct = ctWithTag.slice(0, ctWithTag.length - 16);
+  return `${bytesToHex(iv)}:${bytesToHex(tag)}:${bytesToHex(ct)}`;
+}
+
+async function setConfigValue(db: ReturnType<typeof getDb>, key: string, value: string): Promise<void> {
+  await execute(db, "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'", key);
+  await execute(
+    db,
+    "INSERT INTO system_config (config_key, config_value, category, is_active) VALUES (?, ?, 'integrations', 1)",
+    key, value,
+  );
+}
+
+async function deleteConfigValue(db: ReturnType<typeof getDb>, key: string): Promise<void> {
+  try { await execute(db, "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'", key); }
+  catch { /* best-effort */ }
+}
+
 async function getConfigValue(db: ReturnType<typeof getDb>, key: string): Promise<string | null> {
   try {
     const row = await queryFirst<{ config_value: string }>(
@@ -409,6 +444,115 @@ microbilt.get('/status', async (c) => {
     });
   } catch {
     return c.json({ configured: false, has_subscriber_id: false, environment: 'sandbox', enabled_products: [], token_cached: false });
+  }
+});
+
+// ── PUT /credentials — save client_id/client_secret/subscriber_id/environment ──
+// Also doubles as the environment-only update AdminMicrobiltTab.tsx's
+// handleEnvironmentChange sends (client_id/client_secret omitted).
+microbilt.put('/credentials', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      client_id?: string; client_secret?: string; subscriber_id?: string; environment?: string;
+    }>().catch(() => ({} as Record<string, never>));
+    if (body.client_id && body.client_secret) {
+      const [encId, encSecret] = await Promise.all([
+        encryptLegacy(body.client_id, c.env.JWT_SECRET),
+        encryptLegacy(body.client_secret, c.env.JWT_SECRET),
+      ]);
+      await setConfigValue(db, 'microbilt_client_id', encId);
+      await setConfigValue(db, 'microbilt_client_secret', encSecret);
+    }
+    if (body.subscriber_id) {
+      await setConfigValue(db, 'microbilt_subscriber_id', await encryptLegacy(body.subscriber_id, c.env.JWT_SECRET));
+    }
+    if (body.environment === 'sandbox' || body.environment === 'production') {
+      await setConfigValue(db, 'microbilt_environment', body.environment);
+    }
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Microbilt] save credentials failed:', err);
+    return c.json({ error: 'Failed to save credentials' }, 500);
+  }
+});
+
+// ── DELETE /credentials — clear everything, including cached token flag ──
+microbilt.delete('/credentials', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const db = getDb(c.env);
+  for (const key of ['microbilt_client_id', 'microbilt_client_secret', 'microbilt_subscriber_id']) {
+    await deleteConfigValue(db, key);
+  }
+  return c.json({ success: true });
+});
+
+// ── POST /test-connection — fetch a real OAuth token to confirm credentials work ──
+microbilt.post('/test-connection', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const auth = await getMicrobiltToken(db, c.env.JWT_SECRET);
+    if (!auth) {
+      return c.json({ success: false, error: 'No credentials saved, or credentials are invalid' });
+    }
+    return c.json({ success: true, message: 'Connected to MicroBilt', token_preview: `${auth.token.slice(0, 8)}...` });
+  } catch (err) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
+  }
+});
+
+// ── PUT /products — save the enabled product list ────────────
+microbilt.put('/products', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ products?: string[] }>().catch(() => ({} as Record<string, never>));
+    const products = Array.isArray(body.products) ? body.products.filter((p) => typeof p === 'string') : [];
+    await setConfigValue(db, 'microbilt_enabled_products', JSON.stringify(products));
+    return c.json({ success: true, enabled_products: products });
+  } catch (err) {
+    console.error('[Microbilt] save products failed:', err);
+    return c.json({ error: 'Failed to save products' }, 500);
+  }
+});
+
+// ── GET /background/usage — usage stats for the QB background-check product ──
+// Real query against microbilt_searches — no separate QB search flow has
+// shipped yet (only DL search writes rows today), so this honestly reports
+// zeros until that flow lands, rather than fabricating numbers.
+microbilt.get('/background/usage', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const totals = await queryFirst<{ total: number; hits: number; subjects: number }>(db, `
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN hit = 1 THEN 1 ELSE 0 END) AS hits,
+             COUNT(DISTINCT search_input) AS subjects
+      FROM microbilt_searches WHERE product = 'background_check'
+    `);
+    const recent = await queryFirst<{ n: number }>(db, `
+      SELECT COUNT(*) AS n FROM microbilt_searches
+      WHERE product = 'background_check' AND created_at > datetime('now', '-30 days')
+    `);
+    const total = totals?.total ?? 0;
+    const hits = totals?.hits ?? 0;
+    return c.json({
+      totalSearches: total,
+      totalHits: hits,
+      hitRate: total > 0 ? Math.round((hits / total) * 1000) / 10 : 0,
+      uniqueSubjects: totals?.subjects ?? 0,
+      last30Days: recent?.n ?? 0,
+    });
+  } catch (err) {
+    console.error('[Microbilt] background usage query failed:', err);
+    return c.json({ totalSearches: 0, totalHits: 0, hitRate: 0, uniqueSubjects: 0, last30Days: 0 });
   }
 });
 
