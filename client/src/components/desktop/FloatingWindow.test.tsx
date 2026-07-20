@@ -6,6 +6,9 @@ import { setSnapEnabled } from '../../utils/snapPreference';
 import { getSavedPosition } from '../../utils/desktopWindowPositions';
 import { setTaskbarSize } from '../../utils/taskbarPreferences';
 
+vi.mock('../../utils/desktopSounds', () => ({ playDesktopSound: vi.fn() }));
+import { playDesktopSound } from '../../utils/desktopSounds';
+
 function Harness() {
   const { windows, openWindow } = useDesktopWindows();
   return (
@@ -176,6 +179,35 @@ describe('FloatingWindow — snap to edge', () => {
     if (saved) {
       expect(saved.width).not.toBe(window.innerWidth / 2);
     }
+  });
+});
+
+describe('FloatingWindow — snap sound', () => {
+  beforeEach(() => vi.mocked(playDesktopSound).mockClear());
+
+  function dragTitleBarTo(clientX: number, clientY: number) {
+    const titleBar = screen.getByText('Dispatch').closest('div')!;
+    fireEvent.pointerDown(titleBar, { clientX: 500, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX, clientY });
+  }
+  function releaseDrag() {
+    fireEvent.pointerUp(window);
+  }
+
+  it('plays a sound when a snap is actually applied', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(10, 300); // near the left edge — a snap will apply
+    releaseDrag();
+    expect(playDesktopSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not play a sound on a normal drag release with no snap applied', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open'));
+    dragTitleBarTo(500, 300); // away from any edge — no snap
+    releaseDrag();
+    expect(playDesktopSound).not.toHaveBeenCalled();
   });
 });
 
