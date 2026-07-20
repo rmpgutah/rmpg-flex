@@ -205,3 +205,40 @@ describe('DesktopPage — auto-arrange and show/hide icons toggles', () => {
     expect(screen.getByText('Show icons')).toBeInTheDocument();
   });
 });
+
+describe('DesktopPage — hidden icons layer', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('hides the icon grid (and empty-state message) but not sticky notes when icons are hidden', async () => {
+    saveFavorites(new Set(['/dispatch']));
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    // Before hiding: "Dispatch Console" renders twice — once as the icon
+    // grid's own tile, once via the always-on-by-default quick-access widget
+    // (a separate code path, unaffected by this feature). This baseline count
+    // is what proves the later drop to 1 instance is the icon grid itself
+    // disappearing, not some unrelated re-render fluke.
+    await waitFor(() => expect(screen.getAllByText('Dispatch Console').length).toBe(2));
+
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('New sticky note'));
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('Hide icons'));
+
+    // Icon grid's tile is gone — only the quick-access widget's instance remains.
+    expect(screen.getAllByText('Dispatch Console').length).toBe(1);
+    // Sticky note (no text-fixture collision with the widget) is unaffected.
+    expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
+  });
+
+  it('hides the empty-state prompt too when icons are hidden with zero favorites', async () => {
+    render(<MemoryRouter><DesktopPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText(/star modules from Module Directory/i)).toBeInTheDocument());
+    const desktopSurface = screen.getByTestId('desktop-surface');
+    fireEvent.contextMenu(desktopSurface);
+    fireEvent.click(screen.getByText('Hide icons'));
+    expect(screen.queryByText(/star modules from Module Directory/i)).not.toBeInTheDocument();
+  });
+});
