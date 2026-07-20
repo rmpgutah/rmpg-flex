@@ -65,8 +65,8 @@ function toFixPoints(points: TripPoint[] | undefined): FixPoint[] {
 }
 
 const HARSH_META = [
-  { key: 'A', icon: TrendingUp, color: '#f59e0b', title: 'Hard accel' },
-  { key: 'B', icon: TrendingDown, color: '#ef4444', title: 'Hard brake' },
+  { key: 'A', icon: TrendingUp, color: 'var(--sev-warn)', title: 'Hard accel' },
+  { key: 'B', icon: TrendingDown, color: 'var(--sev-critical)', title: 'Hard brake' },
   { key: 'C', icon: CornerUpRight, color: '#8b5cf6', title: 'Hard corner' },
 ] as const;
 
@@ -75,7 +75,7 @@ const HARSH_META = [
 // (no unit assigned) view so each trip says which unit ran it.
 function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void; onDelete?: (trip: Trip) => void }) {
   const isResponse = trip.trip_type === 'call_response';
-  const accent = isResponse ? '#d4a017' : '#888888';
+  const accent = isResponse ? 'var(--brand-gold)' : '#888888';
   const mi = tripMiles(trip);
   const durMin = tripDurationMin(trip);
   const mph = tripMaxMph(trip);
@@ -99,7 +99,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
       <div className="flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: accent }} />
         {showUnit && trip.unit_id != null && (
-          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }}>
+          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }}>
             U{trip.unit_id}
           </span>
         )}
@@ -109,7 +109,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         {active && (
           <span
             className="flex items-center gap-0.5 text-[7px] font-bold uppercase tracking-widest px-1 py-0.5 shrink-0 animate-pulse"
-            style={{ borderRadius: 2, color: '#22c55e', background: 'rgba(34,197,94,0.15)' }}
+            style={{ borderRadius: 2, color: 'var(--sev-ok)', background: 'rgba(34,197,94,0.15)' }}
           >
             <Radio className="w-2 h-2" /> Active
           </span>
@@ -141,7 +141,7 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
         <Clock className="w-2.5 h-2.5 text-brand-500 shrink-0" />
         <span>{fmtClock(trip.start_time)}</span>
         <span className="text-rmpg-700">→</span>
-        <span style={{ color: active ? '#22c55e' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
+        <span style={{ color: active ? 'var(--sev-ok)' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
       </div>
 
       {/* metrics row */}

@@ -43,11 +43,11 @@ interface RawCall {
   unit_call_signs?: string | null;
 }
 
-const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
+const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: '#888888' };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: '#888888', open: '#888888', dispatched: '#f59e0b', enroute: '#f59e0b',
-  onscene: '#ef4444', cleared: '#22c55e', closed: '#6b7280', cancelled: '#6b7280', archived: '#4b5563',
+  pending: '#888888', open: '#888888', dispatched: 'var(--sev-warn)', enroute: 'var(--sev-warn)',
+  onscene: 'var(--sev-critical)', cleared: 'var(--sev-ok)', closed: '#6b7280', cancelled: '#6b7280', archived: '#4b5563',
 };
 
 const WINDOWS = [
@@ -214,8 +214,8 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               style={{
                 borderRadius: 2,
                 color: winKey === w.key ? '#0a0a0a' : 'var(--rmpg-400)',
-                background: winKey === w.key ? '#d4a017' : 'transparent',
-                borderColor: winKey === w.key ? '#d4a017' : '#2e2e2e',
+                background: winKey === w.key ? 'var(--brand-gold)' : 'transparent',
+                borderColor: winKey === w.key ? 'var(--brand-gold)' : '#2e2e2e',
               }}
             >
               {w.label}
@@ -274,7 +274,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#888' }} />
                 <span className="text-[11px] font-mono font-bold text-rmpg-100 shrink-0">{c.call_number}</span>
                 {allUnits && meaningful(c.unit_call_signs) && (
-                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
+                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
                     {c.unit_call_signs}
                   </span>
                 )}
@@ -288,7 +288,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {stages.map((s, i) => (
                   <div key={s.k} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center flex-1 min-w-0">
-                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : 'var(--rmpg-700)' }}>{s.k}</span>
+                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? 'var(--brand-gold)' : 'var(--rmpg-700)' }}>{s.k}</span>
                       <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--rmpg-300)' : 'var(--rmpg-700)' }}>{s.t || '··'}</span>
                     </div>
                     {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : 'var(--border-subtle)' }} />}
