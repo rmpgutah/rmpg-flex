@@ -5,9 +5,11 @@ const assert = require('node:assert/strict');
 const {
   buildSandboxedChildEnv,
   scheduleChildProcessTimeout,
+  resolveChildProcessTimeoutMs,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
   isAtConcurrencyLimit,
   MAX_CONCURRENT_TOOLS,
+  isAllowedBinaryName,
 } = require('../childProcessGuard');
 
 test('buildSandboxedChildEnv: only allowlisted keys appear, sensitive keys never leak through', () => {
@@ -179,6 +181,31 @@ test('DEFAULT_CHILD_PROCESS_TIMEOUT_MS: is within the documented 5-15 minute ran
   assert.ok(DEFAULT_CHILD_PROCESS_TIMEOUT_MS <= 15 * 60 * 1000);
 });
 
+// --- resolveChildProcessTimeoutMs ---
+
+test('resolveChildProcessTimeoutMs: uses the tool override when present', () => {
+  const tool = { timeoutMs: 30 * 60 * 1000 };
+  assert.equal(resolveChildProcessTimeoutMs(tool, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), 30 * 60 * 1000);
+});
+
+test('resolveChildProcessTimeoutMs: falls back to defaultMs when the tool has no override', () => {
+  const tool = { title: 'no override here' };
+  assert.equal(resolveChildProcessTimeoutMs(tool, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), DEFAULT_CHILD_PROCESS_TIMEOUT_MS);
+});
+
+test('resolveChildProcessTimeoutMs: falls back to defaultMs for a zero or negative override', () => {
+  assert.equal(resolveChildProcessTimeoutMs({ timeoutMs: 0 }, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), DEFAULT_CHILD_PROCESS_TIMEOUT_MS);
+  assert.equal(resolveChildProcessTimeoutMs({ timeoutMs: -5000 }, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), DEFAULT_CHILD_PROCESS_TIMEOUT_MS);
+});
+
+test('resolveChildProcessTimeoutMs: falls back to defaultMs for a non-numeric override', () => {
+  assert.equal(resolveChildProcessTimeoutMs({ timeoutMs: '900000' }, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), DEFAULT_CHILD_PROCESS_TIMEOUT_MS);
+});
+
+test('resolveChildProcessTimeoutMs: falls back to defaultMs for a missing/undefined tool', () => {
+  assert.equal(resolveChildProcessTimeoutMs(undefined, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), DEFAULT_CHILD_PROCESS_TIMEOUT_MS);
+});
+
 // --- isAtConcurrencyLimit ---
 
 test('isAtConcurrencyLimit: below the limit returns false', () => {
@@ -207,4 +234,45 @@ test('MAX_CONCURRENT_TOOLS: is a positive integer in the documented 3-5 range', 
   assert.ok(Number.isInteger(MAX_CONCURRENT_TOOLS));
   assert.ok(MAX_CONCURRENT_TOOLS >= 3);
   assert.ok(MAX_CONCURRENT_TOOLS <= 5);
+});
+
+// --- isAllowedBinaryName ---
+
+test('isAllowedBinaryName: a binary matching a known command returns true', () => {
+  assert.equal(isAllowedBinaryName('nmap', ['nmap', 'nikto', 'curl']), true);
+});
+
+test('isAllowedBinaryName: a binary matching a known command in a Set returns true', () => {
+  assert.equal(isAllowedBinaryName('nikto', new Set(['nmap', 'nikto', 'curl'])), true);
+});
+
+test('isAllowedBinaryName: a syntactically-valid but unregistered binary returns false', () => {
+  // 'wget' is not a RECON_TOOLS command in this fixture, even though it
+  // would pass the existing regex check used upstream in main.js.
+  assert.equal(isAllowedBinaryName('wget', ['nmap', 'nikto', 'curl']), false);
+});
+
+test('isAllowedBinaryName: is an exact match, not a substring/prefix match', () => {
+  assert.equal(isAllowedBinaryName('nma', ['nmap']), false);
+  assert.equal(isAllowedBinaryName('nmapx', ['nmap']), false);
+});
+
+test('isAllowedBinaryName: empty binary name returns false without throwing', () => {
+  assert.equal(isAllowedBinaryName('', ['nmap']), false);
+});
+
+test('isAllowedBinaryName: null/undefined binary name returns false without throwing', () => {
+  assert.equal(isAllowedBinaryName(null, ['nmap']), false);
+  assert.equal(isAllowedBinaryName(undefined, ['nmap']), false);
+});
+
+test('isAllowedBinaryName: missing/empty allowedCommands returns false without throwing', () => {
+  assert.equal(isAllowedBinaryName('nmap', undefined), false);
+  assert.equal(isAllowedBinaryName('nmap', null), false);
+  assert.equal(isAllowedBinaryName('nmap', []), false);
+});
+
+test('isAllowedBinaryName: is case-sensitive (matches RECON_TOOLS command casing, e.g. theHarvester)', () => {
+  assert.equal(isAllowedBinaryName('theharvester', ['theHarvester']), false);
+  assert.equal(isAllowedBinaryName('theHarvester', ['theHarvester']), true);
 });

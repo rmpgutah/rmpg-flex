@@ -13,7 +13,7 @@ const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserId
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
-const { buildSandboxedChildEnv, scheduleChildProcessTimeout, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS } = require('./security/childProcessGuard');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -1725,6 +1725,10 @@ const RECON_TOOLS = {
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'nmap',
+    // Vuln-script scans against every detected service run longer than a
+    // plain service-detection scan; 20 min gives it room without inheriting
+    // nmap-full's 30 min (it's typically far more bounded than a -p- sweep).
+    timeoutMs: 20 * 60 * 1000,
   },
   'nikto-scan': {
     title: 'Nikto Web Scan',
@@ -1769,6 +1773,12 @@ const RECON_TOOLS = {
     // for every path) don't derail the scan.
     shell: true,
     command: 'bash',
+    // The actually-invoked tool binary, for callers (recon:check-binary /
+    // the renderer's install badges) that want to probe for `gobuster`
+    // itself rather than `bash` — `.command` is `bash` here because the
+    // real invocation is a wrapper script (see buildArgs below), not a
+    // direct gobuster spawn.
+    checkBinary: 'gobuster',
     buildArgs: ({ url }) => {
       const fs = require('fs');
       if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
@@ -1974,6 +1984,12 @@ const RECON_TOOLS = {
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'nmap',
+    // Full 65535-TCP-port scan with service detection routinely takes
+    // 15-40+ min against a real host (more against one with many open
+    // services, or a firewall dropping rather than rejecting probes) —
+    // the global DEFAULT_CHILD_PROCESS_TIMEOUT_MS (10 min) would kill it
+    // mid-scan under normal conditions, not just when it's actually hung.
+    timeoutMs: 30 * 60 * 1000,
   },
   'masscan': {
     title: 'masscan (High-Speed Port Scan)',
@@ -2330,7 +2346,7 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     });
     const sessionId = crypto.randomUUID();
     toolSessions.set(sessionId, child);
-    const timeoutHandle = scheduleChildProcessTimeout(child, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, setTimeout);
+    const timeoutHandle = scheduleChildProcessTimeout(child, resolveChildProcessTimeoutMs(tool, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), setTimeout);
     const send = (kind, data) => {
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
     };
@@ -2352,6 +2368,20 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
 // INSTALLED/NOT INSTALLED badges and skip the run if pre-flight fails.
 guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
   if (!binary || !/^[a-zA-Z0-9._+-]+$/.test(binary)) return { installed: false, error: 'Invalid binary name' };
+  // Additional allowlist layer (on top of the shape check above): only
+  // binaries this recon toolset actually knows about can be probed here.
+  // Derived live from RECON_TOOLS so it never drifts — includes each
+  // tool's invoked `.command`, plus the secondary binary names some
+  // entries legitimately depend on (`.checkBinary` for tools invoked via
+  // a wrapper like `bash` — see 'gobuster-dir' — and `.requiresInstall`,
+  // which for most entries is the same underlying CLI tool, e.g. r2-info's
+  // `requiresInstall: 'radare2'` for the `r2` binary).
+  const knownCommands = new Set(
+    Object.values(RECON_TOOLS).flatMap((t) => [t.command, t.checkBinary, t.requiresInstall].filter(Boolean))
+  );
+  if (!isAllowedBinaryName(binary, knownCommands)) {
+    return { installed: false, error: 'Unknown binary name' };
+  }
   const { spawnSync } = require('child_process');
   const pathParts = [
     '/opt/homebrew/bin', '/opt/homebrew/sbin',

@@ -143,6 +143,35 @@ function scheduleChildProcessTimeout(child, timeoutMs, killFn) {
 }
 
 /**
+ * Resolves the hard-kill timeout to use for a given recon tool: the
+ * tool's own `timeoutMs` override if it declares one, else `defaultMs`.
+ *
+ * Most `RECON_TOOLS` entries (WHOIS/CVE lookups, ARP scans, quick
+ * top-100-port nmap scans, etc.) finish in well under
+ * `DEFAULT_CHILD_PROCESS_TIMEOUT_MS`, but a handful of legitimately
+ * long-running scans — e.g. `nmap-full`'s full 65535-TCP-port
+ * `-p- -sV` sweep, which commonly takes 15-40+ minutes against a real
+ * host, especially one with many open services or a firewall that
+ * drops rather than rejects probes — would be killed mid-scan under
+ * completely normal conditions by the one-size-fits-all default. A
+ * per-tool override lets a slow-but-legitimate tool get the runway it
+ * actually needs without raising the timeout for every other tool
+ * (which would just make a genuinely hung fast tool sit around longer).
+ *
+ * Any non-positive or non-numeric override is treated as absent and
+ * falls back to `defaultMs` — a tool entry with `timeoutMs: 0` (or a
+ * typo'd string) should not accidentally disable the safety net.
+ *
+ * @param {{timeoutMs?: number}} tool - a `RECON_TOOLS[toolId]` entry
+ * @param {number} defaultMs - fallback timeout (e.g. `DEFAULT_CHILD_PROCESS_TIMEOUT_MS`)
+ * @returns {number} the timeout to pass to `scheduleChildProcessTimeout`
+ */
+function resolveChildProcessTimeoutMs(tool, defaultMs) {
+  const override = tool && tool.timeoutMs;
+  return typeof override === 'number' && override > 0 ? override : defaultMs;
+}
+
+/**
  * Maximum number of recon tool child processes allowed to run
  * concurrently (tracked via `toolSessions.size` in main.js — one entry
  * per live child spawned by `recon:tool-spawn`). Without a cap, a user
@@ -183,10 +212,53 @@ function isAtConcurrencyLimit(activeCount, maxConcurrent) {
   return activeCount >= maxConcurrent;
 }
 
+/**
+ * Pure predicate: is `binary` an exact match for one of `allowedCommands`?
+ *
+ * Used as an additional allowlist layer on top of the `recon:check-binary`
+ * IPC handler's existing `/^[a-zA-Z0-9._+-]+$/` shape check in main.js. The
+ * regex only rules out shell metacharacters/path separators — it happily
+ * accepts any syntactically clean word (`'wget'`, `'nc'`, `'python3'`, an
+ * arbitrary typo) and lets the handler run `command -v <binary>` against
+ * it, which leaks a bit of information about what's installed on the
+ * operator's machine to anything that can reach the IPC channel. This
+ * predicate narrows that down to only the binaries this recon toolset
+ * actually knows about, without touching the regex check (kept as-is —
+ * this is an additional layer, not a replacement).
+ *
+ * `allowedCommands` is intentionally NOT owned by this module — the real
+ * call site in main.js derives it live from the `RECON_TOOLS` registry
+ * (each tool's `.command`, plus any secondary binary names a tool
+ * legitimately depends on — see the `checkBinary` field added to
+ * `RECON_TOOLS['gobuster-dir']` and the existing `requiresInstall` field
+ * used by several entries) so this stays in sync automatically as tools
+ * are added/removed/renamed, instead of drifting against a second
+ * hardcoded list living in this file.
+ *
+ * Exact match only (no prefix/substring matching) — `allowedCommands`
+ * is expected to be a small, known-good set, so there is no reason to
+ * accept anything looser.
+ *
+ * @param {*} binary - the binary name requested via `recon:check-binary`
+ * @param {Iterable<string>} allowedCommands - known-good command names (e.g. a Set or array)
+ * @returns {boolean} true only if `binary` is a non-empty string present in `allowedCommands`
+ */
+function isAllowedBinaryName(binary, allowedCommands) {
+  if (!binary || typeof binary !== 'string') return false;
+  if (!allowedCommands) return false;
+  // Works for both Set and Array inputs without requiring a specific type.
+  for (const candidate of allowedCommands) {
+    if (candidate === binary) return true;
+  }
+  return false;
+}
+
 module.exports = {
   buildSandboxedChildEnv,
   DEFAULT_CHILD_PROCESS_TIMEOUT_MS,
   scheduleChildProcessTimeout,
+  resolveChildProcessTimeoutMs,
   MAX_CONCURRENT_TOOLS,
   isAtConcurrencyLimit,
+  isAllowedBinaryName,
 };
