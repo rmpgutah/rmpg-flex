@@ -11,7 +11,9 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
+const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
+const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -80,7 +82,51 @@ try {
   TRUSTED_HOST = 'rmpgutah.us';
 }
 
+// Hostname-only (no port) form of REMOTE_SERVER_URL, computed once at module
+// load, used by isAllowedApiHost() to pin main-process net.request calls that
+// target the remote server (e.g. the startup connectivity health check below).
+// Regression-guard framing, same as GEO_IP_LOCATE_ALLOWED_HOSTS further down:
+// REMOTE_SERVER_URL is a const/env-derived value, never renderer-influenced,
+// so this doesn't close an active vulnerability — it's a tripwire against a
+// future accidental change to the request URL. Fails closed to `null` (which
+// isAllowedApiHost never matches) if REMOTE_SERVER_URL is somehow unparseable.
+let REMOTE_SERVER_HOSTNAME;
+try {
+  REMOTE_SERVER_HOSTNAME = new URL(REMOTE_SERVER_URL).hostname;
+} catch {
+  REMOTE_SERVER_HOSTNAME = null;
+}
+
 const LOG_FILE_PATH = path.join(app.getPath('userData'), 'rmpg-flex.log');
+
+// Task 8 (childProcessGuard.js): a dedicated audit trail for the small
+// set of security-relevant IPC channels (PIN generation, recon tool
+// spawn, DB backup import/export, global shortcut registration) — kept
+// separate from the general-purpose LOG_FILE_PATH so it stays pure
+// single-line JSON (see formatSecurityAuditLine's doc comment for why
+// that rules out reusing systemInfo.js's appendToLogFile, which prefixes
+// its own timestamp ahead of the message).
+const SECURITY_AUDIT_LOG_PATH = path.join(app.getPath('userData'), 'rmpg-flex-security-audit.log');
+
+/**
+ * Formats and appends one security-relevant IPC audit event to
+ * SECURITY_AUDIT_LOG_PATH. Never throws — a logging failure (e.g. a full
+ * disk) must not break the IPC handler that called it; any fs error is
+ * caught and reported via console.error only.
+ */
+function logSecurityAuditEvent(channel, outcome, detail) {
+  try {
+    const line = formatSecurityAuditLine({
+      channel,
+      userId: getConfig('current_user_id') || null,
+      outcome,
+      detail,
+    });
+    appendSecurityAuditLog(line, require('fs'), SECURITY_AUDIT_LOG_PATH);
+  } catch (err) {
+    console.error('[SECURITY-AUDIT] Failed to write audit log entry:', err && err.message);
+  }
+}
 
 const { guardedHandle, guardedOn } = createIpcGuards(ipcMain, TRUSTED_HOST);
 
@@ -601,7 +647,15 @@ function checkServerConnectivity() {
       attempts++;
       console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
 
-      const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
+      const healthCheckUrl = `${REMOTE_SERVER_URL}/api/health`;
+      if (!isAllowedApiHost(healthCheckUrl, [REMOTE_SERVER_HOSTNAME])) {
+        console.error('[APP] Connectivity check blocked: URL host not allowlisted');
+        resolved = true;
+        resolve(false);
+        return;
+      }
+
+      const request = net.request(healthCheckUrl);
 
       // Per-request timeout — prevent hung TCP handshakes from stalling startup
       const reqTimeout = setTimeout(() => {
@@ -969,13 +1023,22 @@ guardedHandle('window:open-secondary', (event, routePath, opts) => {
   if (typeof built !== 'string') {
     return { ok: false, error: built && built.error ? built.error : 'invalid routePath' };
   }
+  const candidateWebPreferences = hardenWebPreferencesDefaults({
+    preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+  });
+  // Self-check: guard against a future regression weakening this window's
+  // webPreferences relative to the app's own hardened defaults. Should
+  // always pass today since candidateWebPreferences is itself built from
+  // hardenWebPreferencesDefaults() — this exists to catch drift later.
+  const secureCheck = assertWebPreferencesNotWeaker(candidateWebPreferences, hardenWebPreferencesDefaults());
+  if (!secureCheck.ok) {
+    return { ok: false, error: secureCheck.error };
+  }
   const win = new BrowserWindow({
     width: (opts && opts.width) || 1024,
     height: (opts && opts.height) || 768,
     title: APP_TITLE,
-    webPreferences: hardenWebPreferencesDefaults({
-      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
-    }),
+    webPreferences: candidateWebPreferences,
   });
   const { randomUUID } = require('crypto');
   const id = randomUUID();
@@ -1016,11 +1079,46 @@ guardedHandle('notify:tray-status', (event, state) => {
   if (tray) tray.setToolTip(formatTrayTooltip(state));
 });
 
-// Plain clipboard read/write wrappers. Per the Group E task-7 scope decision,
-// this is deliberately unenforced — the future sessionAuth.disableClipboardAutoSyncOfSecrets
-// guard against syncing secret values is Group I's (Auth/Session Hardening) responsibility.
+// Reads a currently-stored offline-secret config value, decrypting it via
+// safeStorage — same decrypt-with-fallback pattern as pinManager.js's
+// readSecretConfig(): a decrypt failure means "wasn't our ciphertext yet"
+// (e.g. pre-migration plaintext), so the raw value is used as-is rather
+// than treated as a crash. Returns null for an unset key.
+function readOfflineSecretConfig(key) {
+  const raw = getConfig(key);
+  if (!raw) return null;
+  try {
+    return decryptSecretForStorage(raw, safeStorage);
+  } catch {
+    return raw;
+  }
+}
+
+// Plain clipboard read wrapper (no secret content originates from a read).
 guardedHandle('clipboard:get', () => clipboard.readText());
-guardedHandle('clipboard:set', (event, text) => { clipboard.writeText(String(text)); });
+
+// clipboard:set guards against writing a currently-known secret value to
+// the OS clipboard (disableClipboardAutoSyncOfSecrets, Group I task 7) —
+// wires Group E's plain passthrough (see git history) up to
+// sessionAuth.looksLikeSecretValue. Secret values are read, compared, and
+// discarded within this handler's call stack only — never cached in a
+// module-level variable — matching the decrypt-compare-discard lifetime
+// pinManager.js already uses for these same config keys.
+guardedHandle('clipboard:set', (event, text) => {
+  const candidate = String(text);
+  const knownSecrets = [
+    readOfflineSecretConfig('admin_offline_secret'),
+    readOfflineSecretConfig('my_offline_secret'),
+    readOfflineSecretConfig('all_user_secrets'),
+    getConfig('auth_token'),
+  ].filter((value) => typeof value === 'string' && value.length > 0);
+
+  if (looksLikeSecretValue(candidate, knownSecrets)) {
+    return { ok: false, error: 'cannot copy secret values to the clipboard' };
+  }
+
+  clipboard.writeText(candidate);
+});
 
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
@@ -1168,20 +1266,29 @@ guardedHandle('fs:print-silent', async (event, printerName) => {
 });
 guardedHandle('fs:export-db-backup', async () => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('fs:export-db-backup', 'denied', {});
+    return { ok: false, error: roleCheck.error };
+  }
   const dialogResult = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `rmpg-flex-backup-${Date.now()}.rmpgbak`,
     filters: [{ name: 'RMPG Flex Backup', extensions: ['rmpgbak'] }],
   });
   if (dialogResult.canceled) return { ok: false, error: 'cancelled' };
+  // Log only the destination filename (basename), never the full path or
+  // any backup content — that's the minimal, non-sensitive detail this
+  // audit trail is scoped to.
+  const exportFilename = path.basename(dialogResult.filePath);
   const tempPath = path.join(app.getPath('temp'), `rmpg-db-backup-${Date.now()}.db`);
   try {
     await getLocalDb().backup(tempPath);
     const rawBytes = await fs.promises.readFile(tempPath);
     const encoded = encodeBackupForExport(rawBytes, safeStorage);
     await fs.promises.writeFile(dialogResult.filePath, encoded, 'utf8');
+    logSecurityAuditEvent('fs:export-db-backup', 'success', { filename: exportFilename });
     return { ok: true, path: dialogResult.filePath };
   } catch (err) {
+    logSecurityAuditEvent('fs:export-db-backup', 'error', { filename: exportFilename });
     return { ok: false, error: err.message };
   } finally {
     fs.promises.unlink(tempPath).catch(() => {});
@@ -1189,29 +1296,44 @@ guardedHandle('fs:export-db-backup', async () => {
 });
 guardedHandle('fs:import-db-backup', async (event, sourcePath) => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { ok: false, error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', {});
+    return { ok: false, error: roleCheck.error };
+  }
   const pathValidation = validateFilePathInput(sourcePath, resolveAllowedRoots(app));
-  if (!pathValidation.ok) return { ok: false, error: pathValidation.error };
+  if (!pathValidation.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', {});
+    return { ok: false, error: pathValidation.error };
+  }
+  // Log only the source filename (basename), never the full path or any
+  // decrypted backup content.
+  const importFilename = path.basename(pathValidation.resolved);
   let rawBytes;
   try {
     const encodedText = await fs.promises.readFile(pathValidation.resolved, 'utf8');
     rawBytes = decodeBackupForImport(encodedText, safeStorage);
   } catch (err) {
+    logSecurityAuditEvent('fs:import-db-backup', 'error', { filename: importFilename });
     return { ok: false, error: `could not decrypt backup: ${err.message}` };
   }
   const contentValidation = validateBackupFileBeforeImport(rawBytes);
-  if (!contentValidation.ok) return { ok: false, error: contentValidation.error };
+  if (!contentValidation.ok) {
+    logSecurityAuditEvent('fs:import-db-backup', 'denied', { filename: importFilename });
+    return { ok: false, error: contentValidation.error };
+  }
   // validateBackupFileBeforeImport only checks the 16-byte SQLite magic
   // header — a corrupted/truncated-but-genuinely-SQLite file passes that
   // and only fails once initLocalDb()'s integrity pragmas touch it. Route
   // the actual swap through swapInLocalDbWithRollback so a failure there
   // restores the pre-import DB instead of leaving local/offline mode dead.
-  return swapInLocalDbWithRollback(rawBytes, {
+  const result = await swapInLocalDbWithRollback(rawBytes, {
     dbPath: getLocalDbPath(app, path),
     fsModule: fs,
     closeLocalDb,
     initLocalDb,
   });
+  logSecurityAuditEvent('fs:import-db-backup', result && result.ok ? 'success' : 'error', { filename: importFilename });
+  return result;
 });
 
 // ─── Device & Hardware ───────────────────────────────────────
@@ -1246,10 +1368,14 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
 guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
 guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
   const validation = validateGlobalShortcutAccelerator(accelerator);
-  if (!validation.ok) return { ok: false, error: validation.error };
+  if (!validation.ok) {
+    logSecurityAuditEvent('device:register-shortcut', 'denied', { actionId });
+    return { ok: false, error: validation.error };
+  }
   const registered = globalShortcut.register(accelerator, () => {
     mainWindow?.webContents.send('device:shortcut-triggered', actionId);
   });
+  logSecurityAuditEvent('device:register-shortcut', registered ? 'success' : 'error', { accelerator, actionId });
   return registered ? { ok: true } : { ok: false, error: 'registration failed (already taken by another app?)' };
 });
 guardedHandle('device:unregister-shortcut', (event, accelerator) => {
@@ -1308,6 +1434,32 @@ guardedHandle('print:to-pdf', async (event) => {
 // privilege delegation. Returns { ok, error? } so the renderer can show
 // a copy-command fallback if the binary isn't installed.
 guardedHandle('recon:launch', async () => {
+  // First check, before any platform-detection/spawn logic: recon tools are
+  // a local-system escape hatch, so launching one requires the same
+  // admin-always-allowed / active-PIN-session-required rule offline:state
+  // enforces for local data access — this handler had NO auth check at all
+  // before this guard.
+  try {
+    const db = getLocalDb();
+    const cachedUserId = getConfig('current_user_id');
+    const cachedRole = getConfig('current_user_role');
+    let activeSession = null;
+    if (db && cachedRole !== 'admin' && cachedUserId) {
+      activeSession = db.prepare(
+        `SELECT expires_at, device_id FROM pin_sessions
+         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
+         ORDER BY expires_at DESC LIMIT 1`
+      ).get(cachedUserId, new Date().toISOString()) || null;
+    }
+    const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+    if (!isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, Date.now())) {
+      return { ok: false, error: 'recon connect requires an active authenticated session' };
+    }
+  } catch (err) {
+    console.error('[RECON:LAUNCH] Auth check failed:', err.message);
+    return { ok: false, error: 'recon connect requires an active authenticated session' };
+  }
+
   const os = require('os');
   const { spawn } = require('child_process');
   const fs = require('fs');
@@ -1653,6 +1805,10 @@ const RECON_TOOLS = {
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'nmap',
+    // Vuln-script scans against every detected service run longer than a
+    // plain service-detection scan; 20 min gives it room without inheriting
+    // nmap-full's 30 min (it's typically far more bounded than a -p- sweep).
+    timeoutMs: 20 * 60 * 1000,
   },
   'nikto-scan': {
     title: 'Nikto Web Scan',
@@ -1697,6 +1853,12 @@ const RECON_TOOLS = {
     // for every path) don't derail the scan.
     shell: true,
     command: 'bash',
+    // The actually-invoked tool binary, for callers (recon:check-binary /
+    // the renderer's install badges) that want to probe for `gobuster`
+    // itself rather than `bash` — `.command` is `bash` here because the
+    // real invocation is a wrapper script (see buildArgs below), not a
+    // direct gobuster spawn.
+    checkBinary: 'gobuster',
     buildArgs: ({ url }) => {
       const fs = require('fs');
       if (!/^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9._-]*(:\d+)?(\/[^\s]*)?$/.test(url || '')) {
@@ -1902,6 +2064,12 @@ const RECON_TOOLS = {
     },
     platform: ['darwin', 'linux'],
     requiresInstall: 'nmap',
+    // Full 65535-TCP-port scan with service detection routinely takes
+    // 15-40+ min against a real host (more against one with many open
+    // services, or a firewall dropping rather than rejecting probes) —
+    // the global DEFAULT_CHILD_PROCESS_TIMEOUT_MS (10 min) would kill it
+    // mid-scan under normal conditions, not just when it's actually hung.
+    timeoutMs: 30 * 60 * 1000,
   },
   'masscan': {
     title: 'masscan (High-Speed Port Scan)',
@@ -2223,21 +2391,36 @@ const toolSessions = new Map();
 
 guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
   const rateCheck = checkRateLimit('recon:tool-spawn');
-  if (!rateCheck.ok) return { ok: false, error: rateCheck.error };
+  if (!rateCheck.ok) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: rateCheck.error };
+  }
   const argsCheck = sanitizeReconToolArgs(toolId, args, RECON_TOOLS);
-  if (!argsCheck.ok) return { ok: false, error: argsCheck.error };
+  if (!argsCheck.ok) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: argsCheck.error };
+  }
+  if (isAtConcurrencyLimit(toolSessions.size, MAX_CONCURRENT_TOOLS)) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: 'too many concurrent recon tools running' };
+  }
   const { spawn } = require('child_process');
   const crypto = require('crypto');
   const fs = require('fs');
   const tool = RECON_TOOLS[toolId];
-  if (!tool) return { ok: false, error: `Unknown tool: ${toolId}` };
+  if (!tool) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
+    return { ok: false, error: `Unknown tool: ${toolId}` };
+  }
   if (!tool.platform.includes(process.platform)) {
+    logSecurityAuditEvent('recon:tool-spawn', 'denied', { toolId });
     return { ok: false, error: `${tool.title} is not supported on ${process.platform}.` };
   }
   let argv;
   try {
     argv = tool.buildArgs(args);
   } catch (err) {
+    logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
     return { ok: false, error: err.message || 'Invalid arguments' };
   }
   // Confirm binary exists — give users a clear "install X" message
@@ -2245,28 +2428,33 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
     const pathDirs = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
     const found = pathDirs.some((d) => fs.existsSync(`${d}/${tool.command}`));
     if (!found) {
+      logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
       return { ok: false, error: `${tool.command} is not installed. Run: brew install ${tool.requiresInstall}` };
     }
   }
   try {
     const pathParts = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources', process.env.PATH || ''].filter(Boolean);
     const child = spawn(tool.command, argv, {
-      env: { ...process.env, PATH: pathParts.join(':') },
+      env: buildSandboxedChildEnv(process.env, pathParts),
     });
     const sessionId = crypto.randomUUID();
     toolSessions.set(sessionId, child);
+    logSecurityAuditEvent('recon:tool-spawn', 'success', { toolId, sessionId });
+    const timeoutHandle = scheduleChildProcessTimeout(child, resolveChildProcessTimeoutMs(tool, DEFAULT_CHILD_PROCESS_TIMEOUT_MS), setTimeout);
     const send = (kind, data) => {
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-data', { sessionId, kind, data });
     };
     child.stdout.on('data', (b) => send('stdout', b.toString('utf8')));
     child.stderr.on('data', (b) => send('stderr', b.toString('utf8')));
     child.on('exit', (code) => {
+      clearTimeout(timeoutHandle);
       toolSessions.delete(sessionId);
       if (!event.sender.isDestroyed()) event.sender.send('recon:tool-exit', { sessionId, code });
     });
     child.on('error', (err) => send('stderr', `[spawn error] ${err.message}\n`));
     return { ok: true, sessionId, title: tool.title };
   } catch (err) {
+    logSecurityAuditEvent('recon:tool-spawn', 'error', { toolId });
     return { ok: false, error: err && err.message ? err.message : 'Spawn failed' };
   }
 });
@@ -2275,6 +2463,20 @@ guardedHandle('recon:tool-spawn', async (event, { toolId, args = {} } = {}) => {
 // INSTALLED/NOT INSTALLED badges and skip the run if pre-flight fails.
 guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
   if (!binary || !/^[a-zA-Z0-9._+-]+$/.test(binary)) return { installed: false, error: 'Invalid binary name' };
+  // Additional allowlist layer (on top of the shape check above): only
+  // binaries this recon toolset actually knows about can be probed here.
+  // Derived live from RECON_TOOLS so it never drifts — includes each
+  // tool's invoked `.command`, plus the secondary binary names some
+  // entries legitimately depend on (`.checkBinary` for tools invoked via
+  // a wrapper like `bash` — see 'gobuster-dir' — and `.requiresInstall`,
+  // which for most entries is the same underlying CLI tool, e.g. r2-info's
+  // `requiresInstall: 'radare2'` for the `r2` binary).
+  const knownCommands = new Set(
+    Object.values(RECON_TOOLS).flatMap((t) => [t.command, t.checkBinary, t.requiresInstall].filter(Boolean))
+  );
+  if (!isAllowedBinaryName(binary, knownCommands)) {
+    return { installed: false, error: 'Unknown binary name' };
+  }
   const { spawnSync } = require('child_process');
   const pathParts = [
     '/opt/homebrew/bin', '/opt/homebrew/sbin',
@@ -2289,7 +2491,7 @@ guardedHandle('recon:check-binary', async (_event, { binary } = {}) => {
   ].filter(Boolean);
   const r = spawnSync('command', ['-v', binary], {
     shell: 'bash',
-    env: { ...process.env, PATH: pathParts.join(':') },
+    env: buildSandboxedChildEnv(process.env, pathParts),
   });
   const stdout = (r.stdout || '').toString().trim();
   if (r.status === 0 && stdout) return { installed: true, path: stdout };
@@ -2504,7 +2706,13 @@ guardedHandle('recon:term-kill', async (_event, { sessionId }) => {
   if (!child) return { ok: true };
   try {
     child.kill('SIGTERM');
-    setTimeout(() => { if (!child.killed) { try { child.kill('SIGKILL'); } catch { /* ignore */ } } }, 1500);
+    setTimeout(() => {
+      // child.killed is set synchronously once kill() sends the signal, not once the
+      // process has actually exited — check exitCode/signalCode instead (see the
+      // matching fix in scheduleChildProcessTimeout, desktop/security/childProcessGuard.js).
+      const stillRunning = child.exitCode == null && child.signalCode == null;
+      if (stillRunning) { try { child.kill('SIGKILL'); } catch { /* ignore */ } }
+    }, 1500);
   } catch { /* ignore */ }
   reconSessions.delete(sessionId);
   return { ok: true };
@@ -2841,41 +3049,100 @@ guardedHandle('power:allow-sleep', () => {
 // Desktop machines often lack GPS hardware. When Chromium's
 // navigator.geolocation fails, the renderer can call this to get
 // an approximate position via Google's Geolocation API (IP-based).
+// Regression guard (see isAllowedApiHost's doc comment in childProcessGuard.js)
+// for geo:ip-locate's outbound request — the URL below is a hardcoded
+// literal today, not renderer-influenced, so this doesn't close an active
+// vulnerability; it's a tripwire against a future accidental change that
+// points this request somewhere other than Google's geolocation API.
+const GEO_IP_LOCATE_ALLOWED_HOSTS = ['www.googleapis.com'];
+
 guardedHandle('geo:ip-locate', async () => {
   try {
     const apiKey = process.env.GOOGLE_API_KEY;
     const url = `https://www.googleapis.com/geolocation/v1/geolocate?key=${apiKey}`;
-    return await new Promise((resolve, reject) => {
-      const request = net.request({ method: 'POST', url });
-      request.setHeader('Content-Type', 'application/json');
-      let body = '';
-      request.on('response', (response) => {
-        response.on('data', (chunk) => { body += chunk.toString(); });
-        response.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            if (data.location) {
+    if (!isAllowedApiHost(url, GEO_IP_LOCATE_ALLOWED_HOSTS)) {
+      console.error('[GEO] IP geolocation blocked: URL host not allowlisted');
+      return null;
+    }
+    // Task 7: bound the whole request/response cycle via withRequestTimeout
+    // (childProcessGuard.js) — without this, a hung TCP connection or a
+    // server that accepts the connection but never responds (net.request
+    // never emits 'response' or 'error' in that case) would leave this IPC
+    // handler — and the renderer awaiting it — hanging indefinitely.
+    return await withRequestTimeout(
+      new Promise((resolve, reject) => {
+        const request = net.request({ method: 'POST', url });
+        request.setHeader('Content-Type', 'application/json');
+        let body = '';
+        request.on('response', (response) => {
+          response.on('data', (chunk) => { body += chunk.toString(); });
+          response.on('end', () => {
+            // Task 6: shape-validate the response body via parseIpLocateResponse
+            // (childProcessGuard.js) instead of trusting JSON.parse + direct
+            // data.location.lat/.lng access — fails closed on malformed JSON
+            // or non-finite/missing coordinates so a bad response can never
+            // hand the renderer a NaN/string coordinate.
+            const parsed = parseIpLocateResponse(body);
+            if (parsed.ok) {
               resolve({
-                latitude: data.location.lat,
-                longitude: data.location.lng,
-                accuracy: data.accuracy || 5000,
+                latitude: parsed.latitude,
+                longitude: parsed.longitude,
+                accuracy: parsed.accuracy,
               });
             } else {
-              reject(new Error(data.error?.message || 'No location in response'));
+              reject(new Error(parsed.error));
             }
-          } catch (e) {
-            reject(e);
-          }
+          });
         });
-      });
-      request.on('error', reject);
-      request.write(JSON.stringify({}));
-      request.end();
-    });
+        request.on('error', reject);
+        request.write(JSON.stringify({}));
+        request.end();
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+      setTimeout
+    );
   } catch (err) {
     console.error('[GEO] IP geolocation fallback failed:', err.message);
     return null;
   }
+});
+
+// ─── Auth Session Bridge ─────────────────────────────────────
+// The renderer (AuthContext.tsx / tokenRefresh.ts) calls this immediately
+// after every successful login, 2FA completion, and access-token refresh.
+// This is the ONLY path that seeds auth_token / refresh_token /
+// current_user_id / current_user_role in local_config — before this
+// existed, those keys were write-never: pinManager.js, offlineRouter.js,
+// and syncManager.js's refreshAndRetry (its Task 10 identity-mismatch
+// guard) all READ current_user_id, but nothing ever wrote it at login, so
+// offline mode / PIN sessions / the mismatch guard could never actually
+// engage on a fresh session — refreshAndRetry itself couldn't even run
+// without a refresh_token, which was equally never seeded.
+//
+// current_user_id/current_user_role are derived from the token's own
+// claims (extractSessionIdentity), not taken from a separately-passed
+// value — same "trust the signed claims, not a sibling argument" approach
+// this file already uses for the Task 10 mismatch check.
+guardedHandle('auth:store-session', (_event, { token, refreshToken } = {}) => {
+  if (typeof token !== 'string' || !token) {
+    return { ok: false, error: 'token required' };
+  }
+
+  const identity = extractSessionIdentity(token);
+  if (!identity) {
+    return { ok: false, error: 'could not decode session token' };
+  }
+
+  setConfig('auth_token', token);
+  if (typeof refreshToken === 'string' && refreshToken) {
+    setConfig('refresh_token', refreshToken);
+  }
+  setConfig('current_user_id', identity.userId);
+  if (identity.role) {
+    setConfig('current_user_role', identity.role);
+  }
+
+  return { ok: true };
 });
 
 // ─── Offline Mode IPC Handlers ──────────────────────────────
@@ -2883,6 +3150,9 @@ guardedHandle('geo:ip-locate', async () => {
 // Route an API request through the local SQLite database
 guardedHandle('offline:api', async (_event, { method, path, body }) => {
   try {
+    if (isJwtExpiredLocally(getConfig('auth_token'), Date.now())) {
+      return { status: 401, error: 'cached session expired' };
+    }
     if (!offlineRouter) return { status: 503, error: 'Offline mode not initialized' };
     return offlineRouter.handle(method, path, body);
   } catch (err) {
@@ -2909,13 +3179,19 @@ guardedHandle('offline:state', () => {
     } else if (cachedUserId) {
       // Check for active PIN session
       const session = db.prepare(
-        `SELECT expires_at FROM pin_sessions
+        `SELECT expires_at, device_id FROM pin_sessions
          WHERE user_id = ? AND is_active = 1 AND expires_at > ?
          ORDER BY expires_at DESC LIMIT 1`
       ).get(cachedUserId, new Date().toISOString());
       if (session) {
-        isLocalAuthorized = true;
-        expiresAt = session.expires_at;
+        const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+        if (isPinSessionBoundToDevice(session, currentDeviceId)) {
+          isLocalAuthorized = true;
+          expiresAt = session.expires_at;
+        }
+        // else: session exists but was created on a different device —
+        // treat as if no active session exists (same as the `if (session)`
+        // falling through below with isLocalAuthorized left false).
       }
     }
 
@@ -2948,14 +3224,29 @@ guardedHandle('offline:enter-pin', (_event, { pin }) => {
 // Admin generates a PIN for an employee
 guardedHandle('offline:generate-pin', (_event, { userId }) => {
   const roleCheck = requireOfflineAuthForSensitiveIpc(getConfig('current_user_role'));
-  if (!roleCheck.ok) return { error: roleCheck.error };
+  if (!roleCheck.ok) {
+    logSecurityAuditEvent('offline:generate-pin', 'denied', { targetUserId: userId });
+    return { error: roleCheck.error };
+  }
   const userIdCheck = validateUserIdInput(userId);
-  if (!userIdCheck.ok) return { error: userIdCheck.error };
+  if (!userIdCheck.ok) {
+    logSecurityAuditEvent('offline:generate-pin', 'denied', { targetUserId: userId });
+    return { error: userIdCheck.error };
+  }
   try {
-    if (!pinManager) return { error: 'PIN system not initialized' };
-    return pinManager.generatePinForUser(userId);
+    if (!pinManager) {
+      logSecurityAuditEvent('offline:generate-pin', 'error', { targetUserId: userId });
+      return { error: 'PIN system not initialized' };
+    }
+    // Note: intentionally logging only targetUserId — never the PIN
+    // value/plaintext contained in pinManager.generatePinForUser()'s
+    // return value.
+    const result = pinManager.generatePinForUser(userId);
+    logSecurityAuditEvent('offline:generate-pin', 'success', { targetUserId: userId });
+    return result;
   } catch (err) {
     console.error('[OFFLINE:GENERATE-PIN] Error:', err.message);
+    logSecurityAuditEvent('offline:generate-pin', 'error', { targetUserId: userId });
     return { error: err.message };
   }
 });
@@ -2986,7 +3277,16 @@ guardedHandle('offline:trigger-sync', async () => {
   if (!rateCheck.ok) return { success: false, error: rateCheck.error };
   try {
     if (syncManager && connectivityMonitor?.isOnline) {
-      await syncManager.pullAll();
+      // Task 7: bound the manual "sync now" trigger via withRequestTimeout
+      // (childProcessGuard.js) — pullAll() loops sequentially over every
+      // mirrored table; without an outer bound, a network outage mid-loop
+      // (each individual pull already timing out+retrying internally)
+      // could leave this IPC call — and the renderer's "sync now" button —
+      // hanging far longer than a manual trigger should ever block for.
+      // OFFLINE_TRIGGER_SYNC_TIMEOUT_MS is deliberately longer than
+      // DEFAULT_IPC_REQUEST_TIMEOUT_MS since it bounds a multi-table pull,
+      // not a single request — see its doc comment in childProcessGuard.js.
+      await withRequestTimeout(syncManager.pullAll(), OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, setTimeout);
       return { success: true };
     }
     return { success: false, error: 'Sync not available (offline or not initialized)' };
@@ -3258,6 +3558,52 @@ app.whenReady().then(async () => {
     // Initialize local database for offline support (non-fatal if it fails)
     try {
       initLocalDb();
+      const db = getLocalDb();
+      if (db) {
+        const { prunedRows } = pruneOldPinAttempts(db, 500);
+        if (prunedRows > 0) {
+          console.log(`[APP] Pruned ${prunedRows} stale pin_attempts row(s) on startup`);
+        }
+
+        // Clock-skew detection: defends against an attacker rolling the
+        // system clock backward to replay an expired offline PIN session
+        // window. If the wall clock and monotonic clock disagree by more
+        // than the tolerance since the last check, invalidate every active
+        // PIN session so the user must re-enter their PIN.
+        const { skewDetected } = detectClockSkew(getConfig, setConfig, Date.now(), process.hrtime.bigint());
+        if (skewDetected) {
+          const { changes } = invalidateAllActivePinSessions(db);
+          console.warn(`[APP] System clock skew detected — invalidated ${changes} active PIN session(s) on startup`);
+        }
+
+        // lockOnSystemSleep: invalidate every active offline PIN session on
+        // system suspend/lock, the same DB update as the clock-skew response
+        // above (shared via invalidateAllActivePinSessions). Both events are
+        // physical-access risk windows — re-fetch getLocalDb() at fire time
+        // (rather than closing over the `db` local here) since these
+        // listeners can fire arbitrarily long after startup, well after this
+        // try block has exited.
+        //
+        // 'suspend' fires on sleep/hibernate across macOS, Windows, and
+        // Linux. 'lock-screen' is macOS/Windows only — Electron's own
+        // powerMonitor docs list it under those two platforms and it is
+        // simply never emitted on Linux, so registering the listener
+        // unconditionally degrades gracefully there (matches this
+        // program's established pattern of no-op-on-unsupported-platform
+        // rather than an explicit platform guard).
+        powerMonitor.on('suspend', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System suspend detected — invalidated ${changes} active PIN session(s)`);
+        });
+        powerMonitor.on('lock-screen', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
+        });
+      }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
@@ -3269,10 +3615,15 @@ app.whenReady().then(async () => {
     // and the connectivity result is used only to seed the monitor.
     const connectivityPromise = checkServerConnectivity();
 
+    // Lifted out of the `if (DEV_MODE)` block below (rather than left as a
+    // block-scoped const inside it) so the Task 10 self-test further down
+    // can reuse this exact result — see the self-test's own comment for
+    // why it reuses rather than recomputes this.
+    let auditResult = null;
     if (DEV_MODE) {
       const mainJsSource = fs.readFileSync(__filename, 'utf8');
       const updaterJsSource = fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8');
-      const auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
+      auditResult = auditIpcHandlerRegistry(mainJsSource + '\n' + updaterJsSource);
       if (!auditResult.ok) {
         console.error('[SECURITY] Unguarded IPC handlers detected:', auditResult.violations);
       }
@@ -3281,6 +3632,101 @@ app.whenReady().then(async () => {
     const secureDefaultsResult = assertSecureElectronDefaults(app);
     if (!secureDefaultsResult.ok) {
       console.error('[SECURITY] Insecure Electron command-line switches active:', secureDefaultsResult.violations);
+      // Group J Task 9: console.error alone is invisible on a packaged
+      // build (no attached terminal) — escalate into the Task 8 security
+      // audit log specifically when this is happening in production, so
+      // there's a durable, inspectable record of it.
+      const escalation = evaluateInsecureElectronFlagsEscalation(secureDefaultsResult, app.isPackaged);
+      if (escalation.shouldEscalate) {
+        logSecurityAuditEvent(escalation.auditEvent.channel, escalation.auditEvent.outcome, escalation.auditEvent.detail);
+      }
+    }
+
+    // Group J Task 10 (spec #50, selfTestHardeningOnStartup): the final
+    // function of the entire 10-group hardening program — a read-only
+    // aggregate rollup of this program's own startup checks via the pure
+    // `runHardeningSelfTest` aggregator (childProcessGuard.js). Reuses
+    // `auditResult`/`secureDefaultsResult` already computed above
+    // (wrapped in zero-arg closures) instead of recomputing them — the
+    // audit check in particular re-reads main.js/updater.js off disk, so
+    // recomputing it here would double that I/O for no benefit.
+    //
+    // `auditIpcHandlerRegistry` is included ONLY when DEV_MODE is on,
+    // mirroring its existing gate above: it's a static source-text audit
+    // meant to catch a developer mistake (an `ipcMain.handle` registered
+    // without a guard wrapper) before it ships, not a runtime condition
+    // that varies between launches of a packaged build — running it
+    // unconditionally in production would add a real (if small) disk-read
+    // cost on every startup for a check whose signal is only actionable
+    // to a developer with source access. When DEV_MODE is off,
+    // `auditResult` is never computed (stays `null`), so this check is
+    // simply omitted from the aggregate rather than synthesizing a fake
+    // pass/fail for it.
+    //
+    // No safeStorage-migration-status check is included here: Group H's
+    // secretsStore.js only exports `migrateOfflineSecretsToSafeStorage`,
+    // which PERFORMS the migration (a write via `setConfig`) rather than
+    // reporting on one already done — it is not a read-only status check.
+    // Its internal `looksAlreadyMigrated(value, safeStorage)` helper,
+    // which could serve as one, is not exported. Building a genuine
+    // read-only "has this already run" check from here would mean either
+    // re-running the migration as a side effect (explicitly out of scope
+    // — this self-test is a diagnostic, not a repair action) or adding a
+    // new export/state-tracking to secretsStore.js that doesn't exist
+    // today (out of scope for this task). Skipped rather than forced;
+    // flagged for the reviewer in the task report.
+    const selfTestChecks = [
+      { name: 'assertSecureElectronDefaults', fn: () => secureDefaultsResult },
+      ...(DEV_MODE ? [{ name: 'auditIpcHandlerRegistry', fn: () => auditResult }] : []),
+      {
+        // Lightweight "this group's own module loaded correctly" sanity
+        // check — confirms childProcessGuard.js's own key exports are
+        // present and callable. Not a re-test of each function's
+        // behavior (that's what the unit tests are for) — just a guard
+        // against a bad require()/bundling regression silently handing
+        // main.js an `undefined` where a function was expected.
+        name: 'childProcessGuard-module-loaded',
+        fn: () => {
+          const exportsToCheck = {
+            buildSandboxedChildEnv,
+            scheduleChildProcessTimeout,
+            isAtConcurrencyLimit,
+            isAllowedBinaryName,
+            isAllowedApiHost,
+            parseIpLocateResponse,
+            withRequestTimeout,
+          };
+          const missing = Object.keys(exportsToCheck).filter((key) => typeof exportsToCheck[key] !== 'function');
+          return missing.length === 0 ? { ok: true } : { ok: false, violations: missing };
+        },
+      },
+    ];
+
+    try {
+      const selfTestResult = runHardeningSelfTest(selfTestChecks);
+      const passCount = selfTestResult.results.filter((r) => r.ok).length;
+      const summaryLine = `[SECURITY] Startup hardening self-test: ${passCount}/${selfTestResult.results.length} checks passed`;
+      if (selfTestResult.allPassed) {
+        console.log(summaryLine);
+      } else {
+        console.error(summaryLine, selfTestResult.results.filter((r) => !r.ok));
+        // Task 8's audit logger is a sensible fit here (rather than
+        // inventing a second log file for this task) — the whole point
+        // of that log is a durable, inspectable record of security-
+        // relevant events a packaged build's missing terminal would
+        // otherwise hide, and a failed startup hardening check is
+        // squarely that. Fire-and-forget: logSecurityAuditEvent never
+        // throws (see its own doc comment above), so this can't be the
+        // thing that breaks the "never blocks launch" guarantee either.
+        logSecurityAuditEvent('security:hardening-self-test', 'violation', { results: selfTestResult.results });
+      }
+    } catch (selfTestErr) {
+      // Defense in depth beyond runHardeningSelfTest's own internal
+      // per-check try/catch: this self-test must NEVER block app launch,
+      // regardless of what goes wrong here — no process.exit, no thrown
+      // error escaping the startup sequence (the spec's Error Handling
+      // section, non-negotiable). Swallow and log only.
+      console.error('[SECURITY] Startup hardening self-test failed to run:', selfTestErr && selfTestErr.message);
     }
 
     createMenu();

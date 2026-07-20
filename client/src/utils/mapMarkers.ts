@@ -79,7 +79,13 @@ export interface UnitMarkerOpts {
   heading?: number;
 }
 
-/** Fixed-orientation photo-icon unit marker: vehicle photo + status ring + label. Never rotates — opts.heading is ignored by design (a 3/4-angle photo spinning in place looks broken). */
+// Simple top-down vehicle glyph — kept intentionally basic (one <path>, no
+// detail) so it reads clearly at small mini-map/PDF scale. Mirrors the badge
+// used by the main Map tab's unit marker (pages/map/utils/mapMarkers.ts).
+const UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="#0d1520"/></svg>';
+
+/** Bold solid-badge unit marker: status-colored disc + vehicle glyph + label. Never rotates — opts.heading is ignored by design (a spinning badge in place looks broken). */
 export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
   const color = unitStatusColor(opts.status);
   const el = document.createElement('div');
@@ -92,31 +98,20 @@ export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
     cursor: 'pointer',
   });
 
-  const photoFrame = document.createElement('div');
-  applyStyles(photoFrame, {
-    width: '40px',
-    height: '40px',
-    'border-radius': '4px',
-    overflow: 'hidden',
-    border: `3px solid ${color}`,
-    'box-shadow': `0 0 6px ${color}80`,
-    background: '#0d1520',
+  const badge = document.createElement('div');
+  applyStyles(badge, {
+    width: '30px',
+    height: '30px',
+    'border-radius': '50%',
+    display: 'flex',
+    'align-items': 'center',
+    'justify-content': 'center',
+    background: color,
+    border: '2px solid #0d1520',
+    'box-shadow': `0 0 8px ${color}b3`,
   });
-  const img = document.createElement('img');
-  img.src = '/icons/unit-vehicle.png';
-  img.alt = '';
-  applyStyles(img, {
-    width: '100%',
-    height: '100%',
-    'object-fit': 'cover',
-    display: 'block',
-  });
-  img.onerror = () => {
-    photoFrame.style.background = color;
-    img.remove();
-  };
-  photoFrame.appendChild(img);
-  el.appendChild(photoFrame);
+  badge.innerHTML = UNIT_GLYPH_SVG;
+  el.appendChild(badge);
 
   if (opts.label) {
     const labelEl = document.createElement('div');

@@ -150,7 +150,7 @@ companyDocuments.put('/:id', async (c) => {
       return c.json({ error: 'No fields to update', code: 'DOC_NO_FIELDS' }, 400);
     }
 
-    setClauses.push('updated_by = ?', "updated_at = datetime('now','localtime')");
+    setClauses.push('updated_by = ?', "updated_at = datetime('now')");
     values.push(userId ?? null, id);
 
     await execute(db, `UPDATE company_documents SET ${setClauses.join(', ')} WHERE id = ?`, ...values);

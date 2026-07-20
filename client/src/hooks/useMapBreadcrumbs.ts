@@ -12,6 +12,8 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { devLog, devWarn } from '../utils/devLog';
 import { safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+import { formatDateTime } from '../utils/dateUtils';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -152,6 +154,10 @@ export function useMapBreadcrumbs(
             properties: {
               index: i,
               opacity: 0.3 + (i / trail.points.length) * 0.7, // fade older points
+              callSign: trail.callSign,
+              timestamp: p.timestamp,
+              speed: p.speed,
+              heading: p.heading,
             },
             geometry: { type: 'Point' as const, coordinates: [p.longitude, p.latitude] },
           })),
@@ -203,6 +209,48 @@ export function useMapBreadcrumbs(
       activeSourcesRef.current.clear();
     };
   }, [map, mapLoaded, enabled, trails]);
+
+  // Click-to-detail for breadcrumb dots. Registered once (not per-trail —
+  // each trail gets its own dynamically-named dots layer, recreated on
+  // every fetch/toggle cycle, so a single delegated map-level listener that
+  // queries whichever dot layers currently exist avoids re-binding /
+  // duplicate-listener accumulation across re-renders).
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  useEffect(() => {
+    if (!map || !mapLoaded) return;
+
+    const onClick = (e: mapboxgl.MapMouseEvent) => {
+      const dotLayers = Array.from(activeSourcesRef.current)
+        .map(srcId => srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX))
+        .filter(id => map.getLayer(id));
+      if (!dotLayers.length) return;
+      const features = map.queryRenderedFeatures(e.point, { layers: dotLayers });
+      const f = features[0];
+      if (!f || f.geometry.type !== 'Point') return;
+      const p = f.properties || {};
+      popupRef.current?.remove();
+      popupRef.current = new mapboxgl.Popup({ offset: 6, closeButton: true, className: 'mapbox-popup-dark' })
+        .setLngLat(f.geometry.coordinates as [number, number])
+        .setHTML(buildDetailPopupHtml(`${p.callSign || 'Unit'} — GPS Fix`, [
+          ['Time', p.timestamp ? formatDateTime(p.timestamp) : null],
+          ['Speed', p.speed != null ? `${Math.round(p.speed)} mph` : null],
+          ['Heading', p.heading != null ? `${Math.round(p.heading)}°` : null],
+        ]))
+        .addTo(map);
+    };
+
+    const onMove = (e: mapboxgl.MapMouseEvent) => {
+      const dotLayers = Array.from(activeSourcesRef.current)
+        .map(srcId => srcId.replace(TRAIL_SOURCE_PREFIX, TRAIL_DOTS_PREFIX))
+        .filter(id => map.getLayer(id));
+      map.getCanvas().style.cursor = dotLayers.length && map.queryRenderedFeatures(e.point, { layers: dotLayers }).length
+        ? 'pointer' : '';
+    };
+
+    map.on('click', onClick);
+    map.on('mousemove', onMove);
+    return () => { map.off('click', onClick); map.off('mousemove', onMove); popupRef.current?.remove(); };
+  }, [map, mapLoaded]);
 
   const toggle = useCallback(() => setEnabled(v => !v), []);
   const refresh = useCallback(() => { fetchTrails(); }, [fetchTrails]);

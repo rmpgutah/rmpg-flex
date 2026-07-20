@@ -607,7 +607,7 @@ export async function getShiftHandoffData(
     `SELECT te.officer_id, u.full_name, te.clock_in, te.clock_out, te.status, te.break_start
        FROM time_entries te
        JOIN users u ON te.officer_id = u.id
-       WHERE DATE(te.clock_in) = DATE('now','localtime')
+       WHERE DATE(te.clock_in) = DATE('now')
          AND te.clock_out IS NULL
        ORDER BY te.clock_in ASC`,
   );

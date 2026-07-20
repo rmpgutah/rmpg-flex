@@ -127,6 +127,41 @@ const INSECURE_COMMAND_LINE_SWITCHES = [
   'allow-file-access-from-files',
   'allow-running-insecure-content',
   'ignore-certificate-errors',
+  // Added during Group J Task 9's audit of Group F's original 4-item list
+  // against the wider set of security-relevant Chromium/Electron
+  // command-line switches — the original list only covered flags that
+  // directly disable web-platform security (CORS/file-access/mixed-
+  // content/TLS-verification); it missed switches that widen the app's
+  // OS-level or debug-protocol attack surface instead:
+  //   - remote-debugging-port / remote-debugging-address: opens Chromium's
+  //     DevTools Protocol on a TCP port with NO authentication — anything
+  //     that can reach that port (a co-resident process, or another host
+  //     if `-address` is also widened past loopback) gets full control of
+  //     the renderer, including arbitrary JS execution and reading
+  //     whatever the officer-facing window has loaded. Legitimate only for
+  //     a deliberate local debugging session, never in a shipped build.
+  'remote-debugging-port',
+  'remote-debugging-address',
+  // - no-sandbox: disables Chromium's OS-level renderer sandbox entirely,
+  //   so a renderer-process compromise (e.g. via a malicious page reached
+  //   through shouldAllowNewWindow's 'external'/same-host paths, or a
+  //   future XSS) has direct, unsandboxed access to the host OS instead
+  //   of being contained. Sometimes passed for containerized/CI
+  //   environments that lack sandbox support, but must never reach a
+  //   real officer's machine.
+  'no-sandbox',
+  // - allow-insecure-localhost: tells Chromium to treat localhost TLS
+  //   errors as trusted, which defeats certificate validation for any
+  //   request this shell makes to a loopback address — a mechanism a
+  //   locally-running malicious process could exploit to MITM what looks
+  //   like a trusted local endpoint.
+  'allow-insecure-localhost',
+  // - disable-site-isolation-trials: turns off Site Isolation, the
+  //   Chromium mitigation that puts different origins in separate OS
+  //   processes specifically to contain Spectre-class cross-origin data
+  //   leaks and make a renderer compromise harder to escalate across
+  //   origins.
+  'disable-site-isolation-trials',
 ];
 
 /**

@@ -37,7 +37,7 @@ async function ensureTable(db: ReturnType<typeof getDb>): Promise<void> {
     device_id TEXT,
     mime TEXT,
     captured_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_evidence_sha ON evidence_manifests(sha256)`);
 }

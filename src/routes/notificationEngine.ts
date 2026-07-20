@@ -99,14 +99,14 @@ export async function fireRule(
     await execute(
       db,
       `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now','localtime'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
       'alert', priority, title, message,
       context.entity_type ?? 'notification_rule', context.entity_id ?? rule.id, uid,
     );
   }
   await execute(
     db,
-    `UPDATE notification_rules SET last_fired_at = datetime('now','localtime'), fire_count = fire_count + 1 WHERE id = ?`,
+    `UPDATE notification_rules SET last_fired_at = datetime('now'), fire_count = fire_count + 1 WHERE id = ?`,
     rule.id,
   );
 

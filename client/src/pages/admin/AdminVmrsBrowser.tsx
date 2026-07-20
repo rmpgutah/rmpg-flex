@@ -39,14 +39,14 @@ export function AdminVmrsBrowser() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      apiFetch<VmrsSystem[]>('/ref-data/vmrs-systems'),
-      apiFetch<VmrsAssembly[]>('/ref-data/vmrs-assemblies'),
-      apiFetch<VmrsComponent[]>('/ref-data/vmrs-components'),
+      apiFetch<{ rows: VmrsSystem[] }>('/ref-data/vmrs-systems'),
+      apiFetch<{ rows: VmrsAssembly[] }>('/ref-data/vmrs-assemblies'),
+      apiFetch<{ rows: VmrsComponent[] }>('/ref-data/vmrs-components'),
     ])
       .then(([sys, asm, cmp]) => {
-        setSystems(asArray(sys));
-        setAssemblies(asArray(asm));
-        setComponents(asArray(cmp));
+        setSystems(asArray(sys?.rows));
+        setAssemblies(asArray(asm?.rows));
+        setComponents(asArray(cmp?.rows));
       })
       .catch(() => {})
       .finally(() => setLoading(false));

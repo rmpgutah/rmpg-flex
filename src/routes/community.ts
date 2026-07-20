@@ -166,7 +166,7 @@ community.put('/tips/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE public_tips SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM public_tips WHERE id = ?', id);
     return c.json({ data: updated });

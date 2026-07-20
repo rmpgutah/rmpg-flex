@@ -7,8 +7,20 @@
 const { net } = require('electron');
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
+const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
+const { isAllowedApiHost, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS } = require('./security/childProcessGuard');
 
 let serverUrl = '';
+// Hostname-only (no port) form of serverUrl, computed once when
+// startPullSchedule() sets serverUrl (mirrors REMOTE_SERVER_HOSTNAME in
+// main.js). Used by isAllowedApiHost() to pin this module's net.request
+// call sites (serverFetch/refreshAndRetry) to the server the app was
+// actually configured to talk to. Regression-guard framing: serverUrl is
+// always main.js's REMOTE_SERVER_URL (a const/env-derived literal, never
+// renderer-influenced) — this doesn't close an active vulnerability, it's
+// a tripwire against a future accidental change routing a request
+// elsewhere. Fails closed to `null` (never matched) until set.
+let allowedSyncHost = null;
 let mainWindow = null;
 let pullTimers = {};
 let isSyncing = false;
@@ -41,6 +53,11 @@ const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 
 function startPullSchedule(url, window) {
   serverUrl = url;
+  try {
+    allowedSyncHost = new URL(url).hostname;
+  } catch {
+    allowedSyncHost = null;
+  }
   mainWindow = window;
 
   console.log('[SYNC] Starting pull schedule');
@@ -394,6 +411,11 @@ function serverFetch(endpoint, options = {}) {
       const token = getConfig('auth_token');
       const url = `${serverUrl}${endpoint}`;
 
+      if (!isAllowedApiHost(url, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
+
       const request = net.request({
         url,
         method: options.method || 'GET',
@@ -454,36 +476,82 @@ function serverFetch(endpoint, options = {}) {
 
 /**
  * Attempt to refresh the JWT token and retry the request.
+ *
+ * A token refresh is the one point in this file where a fresh,
+ * server-authoritative identity claim becomes available — the refresh
+ * response's `token` is a brand-new JWT the server just issued for
+ * whichever user the refresh_token currently maps to. No sync-pull
+ * response (pullAll/pullTable/pullSecrets) carries a user/org identity
+ * field: `/api/offline/sync/pull` only returns `rows`/`fullReplace`, and
+ * `/api/offline/my-secret` / `/api/offline/secrets` only return
+ * `secret`/`admin_secret`/`secrets`. So rather than inventing a
+ * server-response field that doesn't exist, this decodes the refreshed
+ * JWT locally (decodeJwtPayloadLocally — never verifies the signature,
+ * matching this file's other local-only JWT inspection) and compares its
+ * embedded user id against this device's cached current_user_id. If they
+ * disagree (e.g. a different officer's session got refreshed on this
+ * installed desktop shell without the previous user's cache ever being
+ * wiped), the mirrored/reference cache is wiped instead of letting sync
+ * continue writing one user's data into another's local cache.
  */
 async function refreshAndRetry(endpoint, options) {
   const refreshToken = getConfig('refresh_token');
   if (!refreshToken) throw new Error('No refresh token available');
 
-  const refreshResponse = await new Promise((resolve, reject) => {
-    const request = net.request({
-      url: `${serverUrl}/api/auth/refresh`,
-      method: 'POST',
-    });
-    request.setHeader('Content-Type', 'application/json');
+  // Task 7: unlike serverFetch (which already carries its own inline
+  // 15s timeout+abort), this net.request had no timeout at all — a hung
+  // TCP connection or a server that accepts the connection but never
+  // responds would leave a token refresh (and every caller awaiting it,
+  // including offline:trigger-sync's pullAll() loop) hanging indefinitely.
+  // Wrapped in withRequestTimeout (childProcessGuard.js) for consistency
+  // with serverFetch's bound and geo:ip-locate's Task 7 wiring.
+  const refreshResponse = await withRequestTimeout(
+    new Promise((resolve, reject) => {
+      const refreshUrl = `${serverUrl}/api/auth/refresh`;
+      if (!isAllowedApiHost(refreshUrl, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
 
-    let body = '';
-    request.on('response', (response) => {
-      response.on('data', (chunk) => { body += chunk.toString(); });
-      response.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (response.statusCode === 200) {
-            resolve(data);
-          } else {
-            reject(new Error('Refresh failed'));
-          }
-        } catch { reject(new Error('Refresh parse error')); }
+      const request = net.request({
+        url: refreshUrl,
+        method: 'POST',
       });
-    });
-    request.on('error', reject);
-    request.write(JSON.stringify({ refreshToken }));
-    request.end();
-  });
+      request.setHeader('Content-Type', 'application/json');
+
+      let body = '';
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { body += chunk.toString(); });
+        response.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (response.statusCode === 200) {
+              resolve(data);
+            } else {
+              reject(new Error('Refresh failed'));
+            }
+          } catch { reject(new Error('Refresh parse error')); }
+        });
+      });
+      request.on('error', reject);
+      request.write(JSON.stringify({ refreshToken }));
+      request.end();
+    }),
+    DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+    setTimeout
+  );
+
+  // Check the freshly-issued token's embedded identity against this
+  // device's cached identity BEFORE trusting it for anything — see the
+  // doc comment above for why this is the hook point (no sync-pull
+  // response carries a user identity field to compare against instead).
+  const freshPayload = decodeJwtPayloadLocally(refreshResponse.token);
+  const freshUserId = freshPayload ? (freshPayload.user_id ?? freshPayload.userId) : null;
+  if (hasUserOrOrgMismatch(getConfig('current_user_id'), freshUserId)) {
+    console.warn('[SYNC] User/org identity mismatch detected on token refresh — wiping mirrored cache tables');
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    throw new Error('user identity mismatch detected on token refresh — local cache wiped');
+  }
 
   // Store new tokens
   setConfig('auth_token', refreshResponse.token);

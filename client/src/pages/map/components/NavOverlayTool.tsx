@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { getSourceSafe, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface Step { maneuver: { instruction: string }; distance: number; duration: number; }
 interface Route { geometry: { coordinates: [number, number][] }; legs: { steps: Step[] }[]; duration: number; distance: number; }
@@ -75,30 +78,28 @@ export default function NavOverlayTool({ map, onClose }: Props) {
   const steps = route?.legs?.[0]?.steps ?? [];
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-60 text-xs space-y-2 shadow-lg max-h-[400px] flex flex-col">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">Nav Overlay</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-60 text-xs space-y-2 p-2 max-h-[400px] flex flex-col" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="Nav Overlay">
+        <IconButton aria-label="Close" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-200 p-0.5">
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       <input value={origin} onChange={e => setOrigin(e.target.value)}
         placeholder="Origin (lat,lng)…"
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px]" />
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px]" style={{ borderRadius: 2 }} />
       <input value={dest} onChange={e => setDest(e.target.value)}
         placeholder="Destination (lat,lng)…"
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px]" />
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px]" style={{ borderRadius: 2 }} />
       {error && <div className="text-red-400 text-[10px]">{error}</div>}
       {route && (
-        <div className="text-rmpg-200 text-[10px] bg-surface-raised rounded px-2 py-1">
+        <div className="text-rmpg-200 text-[10px] bg-surface-raised px-2 py-1" style={{ borderRadius: 2 }}>
           ETA: {fmtTime(route.duration)} · {fmtDist(route.distance)}
         </div>
       )}
-      <div className="flex gap-2">
-        <button onClick={getRoute} disabled={loading}
-          className="flex-1 bg-brand-500 text-black font-bold py-1 rounded text-[10px] disabled:opacity-50">
-          {loading ? 'Loading…' : 'Get Route'}
-        </button>
-        <button onClick={onClose}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Close
-        </button>
-      </div>
+      <button onClick={getRoute} disabled={loading}
+        className="w-full bg-brand-500 text-black font-bold py-1 text-[10px] disabled:opacity-50" style={{ borderRadius: 2 }}>
+        {loading ? 'Loading…' : 'Get Route'}
+      </button>
       {steps.length > 0 && (
         <div className="overflow-y-auto flex-1 space-y-1 border-t border-surface-raised pt-1">
           {steps.map((s, i) => (

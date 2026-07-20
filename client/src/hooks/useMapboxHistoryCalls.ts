@@ -2,11 +2,14 @@
 // Fetches from /api/dispatch/history-map and renders as color-coded dots on the map.
 // Essential for identifying call patterns, repeat locations, and response patterns.
 import { useCallback, useState, useRef } from 'react';
-import { parseTimestamp } from '../utils/dateUtils';
-import type mapboxgl from 'mapbox-gl';
+import { parseTimestamp, formatDateTime } from '../utils/dateUtils';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+import { formatIncidentType } from '../utils/caseNumbers';
+import { formatEnumValue } from '../utils/formatters';
 
 interface HistoryCall {
   id: number;
@@ -48,10 +51,13 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     try {
       [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => {
         safeRemoveLayer(map, id);
@@ -75,8 +81,10 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
           incident_type: c.incident_type,
           priority: c.priority,
           status: c.status,
+          disposition: c.disposition,
           address: c.location_address,
           response_time: c.response_time_min,
+          created_at: c.created_at,
           age_hours: Math.round(ageHours),
           priorityColor: PRIORITY_COLORS[c.priority] || '#888888',
         },
@@ -107,6 +115,27 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
         'circle-stroke-width': 1,
       },
     });
+
+    m.on('click', CIRCLE_LAYER_ID, (e) => {
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== 'Point') return;
+      const p = f.properties || {};
+      popupRef.current?.remove();
+      popupRef.current = new mapboxgl.Popup({ offset: 8, closeButton: true, className: 'mapbox-popup-dark' })
+        .setLngLat(f.geometry.coordinates as [number, number])
+        .setHTML(buildDetailPopupHtml(String(p.call_number || 'Historical Call'), [
+          ['Type', p.incident_type ? formatIncidentType(p.incident_type) : null],
+          ['Priority', p.priority],
+          ['Status', p.status ? formatEnumValue(p.status) : null],
+          ['Disposition', p.disposition],
+          ['Address', p.address],
+          ['Response Time', p.response_time != null ? `${p.response_time} min` : null],
+          ['Occurred', p.created_at ? formatDateTime(p.created_at) : null],
+        ]))
+        .addTo(m);
+    });
+    m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
   }, [clearFromMap]);
 
   const fetchHistory = useCallback(async (options: HistoryOptions = {}) => {

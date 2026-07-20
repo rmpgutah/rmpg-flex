@@ -88,7 +88,7 @@ risk.put('/assessments/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (ASSESSMENT_UPDATABLE.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE risk_assessments SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM risk_assessments WHERE id = ?', id);
     return c.json({ data: updated });
@@ -227,7 +227,7 @@ risk.put('/claims/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE insurance_claims SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM insurance_claims WHERE id = ?', id);
     return c.json({ data: updated });

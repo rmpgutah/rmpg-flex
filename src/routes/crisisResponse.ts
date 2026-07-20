@@ -37,7 +37,7 @@ crisis.put('/incidents/:id', async (c) => {
     if (incidentType === null) {
       return c.json({ error: 'Invalid incident_type', allowed: CRISIS_INCIDENT_TYPES }, 400);
     }
-    await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.incident_number || (() => { throw new Error("incident_number required"); })()), incidentType, body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
+    await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\') WHERE id=?', (body.incident_number || (() => { throw new Error("incident_number required"); })()), incidentType, body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return dbErrorResponse(c, err, 'Failed to update crisis incident'); }
 });
 

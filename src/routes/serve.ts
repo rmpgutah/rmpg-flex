@@ -104,7 +104,7 @@ sv.get('/stats/summary', async (c) => {
   const overdue = await queryFirst<{ n: number }>(
     db,
     `SELECT COUNT(*) AS n FROM serve_queue
-       WHERE deadline IS NOT NULL AND deadline < datetime('now','localtime')
+       WHERE deadline IS NOT NULL AND deadline < datetime('now')
          AND status NOT IN ('served','cancelled','failed')`,
   );
   return c.json({
@@ -184,7 +184,7 @@ sv.put('/reorder', async (c) => {
   // D1 doesn't support transactions across multiple .run() calls in
   // a single batch the same way as better-sqlite3; use db.batch().
   await db.batch(body.items.map((it) => db.prepare(
-    "UPDATE serve_queue SET sort_order = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+    "UPDATE serve_queue SET sort_order = ?, updated_at = datetime('now') WHERE id = ?",
   ).bind(it.sort_order, it.id)));
   return c.json({ success: true, updated: body.items.length });
 });
@@ -213,7 +213,7 @@ sv.get('/deadlines', async (c) => {
   const days = parseInt(c.req.query('days') || '7', 10);
   const sql = `SELECT * FROM serve_queue
     WHERE deadline IS NOT NULL
-      AND deadline <= datetime('now','localtime','+' || ? || ' days')
+      AND deadline <= datetime('now','+' || ? || ' days')
       AND status NOT IN ('served','cancelled','failed')
     ORDER BY deadline ASC LIMIT 200`;
   return c.json(await query(getDb(c.env), sql, days));
@@ -433,7 +433,7 @@ sv.post('/assignments/assign', async (c) => {
     if (!job) { skipped.push(id); continue; }
     if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
     const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
-    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?", officerId, newStatus, id);
+    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?", officerId, newStatus, id);
     await execute(db,
       `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
       user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
@@ -488,7 +488,7 @@ sv.put('/assignments/settings', async (c) => {
        approaching_hours = excluded.approaching_hours, diligence_gap_days = excluded.diligence_gap_days,
        unassigned_window_hours = excluded.unassigned_window_hours, renotify_hours = excluded.renotify_hours,
        notify_supervisor_email = excluded.notify_supervisor_email, digest_sender_user_id = excluded.digest_sender_user_id,
-       updated_at = datetime('now','localtime'), updated_by = excluded.updated_by`,
+       updated_at = datetime('now'), updated_by = excluded.updated_by`,
     b.approaching_hours ?? cur.approaching_hours ?? 48,
     b.diligence_gap_days ?? cur.diligence_gap_days ?? 3,
     b.unassigned_window_hours ?? cur.unassigned_window_hours ?? 72,
@@ -629,7 +629,7 @@ sv.put('/bulk-status', async (c) => {
   }
   const db = getDb(c.env);
   const closedAt = (status === 'served' || status === 'failed')
-    ? `datetime('now','localtime')`
+    ? `datetime('now')`
     : 'NULL';
   // D1 doesn't support array bindings — use a parameterized IN clause
   const placeholders = ids.map(() => '?').join(',');
@@ -772,11 +772,11 @@ sv.put('/:id', async (c) => {
     }
   }
 
-  sets.push("updated_at = datetime('now','localtime')");
+  sets.push("updated_at = datetime('now')");
   // Stamp closed_at when an operator explicitly marks the job served —
   // write-once: only set when transitioning to 'served' (not on every edit).
   if (body.status === 'served') {
-    sets.push("closed_at = COALESCE(closed_at, datetime('now','localtime'))");
+    sets.push("closed_at = COALESCE(closed_at, datetime('now'))");
   }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
@@ -871,17 +871,17 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     typeof body.next_attempt_note === 'string'
       ? await columnExists(db, 'serve_queue', 'next_attempt_note')
       : false;
-  const closedClause = newStatus === 'served' ? ", closed_at = datetime('now','localtime')" : '';
+  const closedClause = newStatus === 'served' ? ", closed_at = datetime('now')" : '';
   if (hasNextAttemptCol) {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
       nextNum, newStatus, body.next_attempt_note || null, id,
     );
   } else {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
       nextNum, newStatus, id,
     );
   }
@@ -943,7 +943,7 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now'), closed_at = datetime('now') WHERE id = ?`,
     nextNum, id,
   );
   await generateServeCharges(db, id);
@@ -1080,7 +1080,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
       }
       if (nextStatus !== queue.status) {
         await execute(db,
-          `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          `UPDATE serve_queue SET status = ?, updated_at = datetime('now') WHERE id = ?`,
           nextStatus, queueId);
         recomputed = { status: nextStatus };
         if (nextStatus === 'served' || nextStatus === 'failed') {
@@ -1167,7 +1167,7 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
   const clearClosed = (newStatus !== 'served' && newStatus !== 'failed') ? ", closed_at = NULL" : "";
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${clearClosed} WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${clearClosed} WHERE id = ?`,
     newCount, newStatus, queueId,
   );
 
@@ -1256,7 +1256,7 @@ sv.post('/:queueId/renumber-attempts', async (c) => {
     await db.batch(stmts);
     // Update attempt_count to reflect the actual count
     await execute(db,
-      'UPDATE serve_queue SET attempt_count = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?',
+      'UPDATE serve_queue SET attempt_count = ?, updated_at = datetime(\'now\') WHERE id = ?',
       attempts.length, queueId,
     );
   }

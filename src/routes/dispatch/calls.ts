@@ -217,7 +217,7 @@ calls.post('/', async (c) => {
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const prefix = `CFS${year}-`;
     // call_number carries a UNIQUE constraint, and this read-max-then-increment
     // isn't atomic — two near-simultaneous creates can read the same MAX and
@@ -909,6 +909,23 @@ calls.post('/:id/status', async (c) => {
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
+    // Clearing/closing a call without a disposition leaves the outcome
+    // permanently blank (nothing else ever backfills it). The UI's
+    // DispositionPrompt enforces this client-side, but that's not a
+    // backstop against a direct API call or a client bug — require it
+    // here too unless the call already has one on file.
+    if (status === 'cleared' || status === 'closed') {
+      const hasDisposition = typeof disposition === 'string' && disposition.length > 0;
+      if (!hasDisposition) {
+        const existing = await queryFirst<{ disposition: string | null }>(
+          db, 'SELECT disposition FROM calls_for_service WHERE id = ?', id
+        );
+        if (!existing?.disposition) {
+          return c.json({ error: 'A disposition is required to clear or close a call', code: 'DISPOSITION_REQUIRED' }, 400);
+        }
+      }
+    }
+
     const timeField = `${status}_at`;
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
@@ -1464,7 +1481,7 @@ calls.post('/templates', async (c) => {
     if (!body.name || !body.incident_type) return c.json({ error: 'name and incident_type required' }, 400);
     const r = await execute(db,
       `INSERT INTO call_templates (name, incident_type, priority, auto_flags, notes, owner_user_id, is_shared, created_at)
-       VALUES (?,?,?,?,?,?,?,datetime('now','localtime'))`,
+       VALUES (?,?,?,?,?,?,?,datetime('now'))`,
       body.name, body.incident_type, body.priority || 'P3', JSON.stringify(body.auto_flags || {}), body.notes || null, userId, body.is_shared ? 1 : 0);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch { return c.json({ error: 'Template creation failed' }, 500); }
@@ -1546,7 +1563,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // "Schedule Return Visit" button) can read the same MAX twice and collide
     // on insert. Recompute and retry a few times on that specific collision
     // rather than surfacing the generic SQLITE_CONSTRAINT 409 to the dispatcher.
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const prefix = `CFS${year}-`;
     const nextCallNumber = async () => {
       const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);

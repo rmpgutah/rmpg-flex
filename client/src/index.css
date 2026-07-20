@@ -10290,6 +10290,29 @@ td.sparkline-cell {
 .rmpg-crime-popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: #050505; }
 .rmpg-crime-popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: #050505; }
 .rmpg-crime-popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: #050505; }
+
+/* ── Map tab dark popup shell — every Map-tab mapboxgl.Popup passes
+   className:'mapbox-popup-dark' expecting this to theme the chrome, but the
+   class was never actually defined: every popup rendered with the default
+   Mapbox white background/box-shadow band around its dark inner content
+   (visually a "white outline"). Mirrors .rmpg-crime-popup's shape but uses
+   the app's dark-theme surface tokens instead of pure black/gold. */
+.mapbox-popup-dark .mapboxgl-popup-content {
+  background: var(--surface-raised, #15212e);
+  border: 1px solid var(--border-strong, #3a4f66);
+  border-radius: 2px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
+  padding: 0;
+  overflow: hidden;
+}
+.mapbox-popup-dark .mapboxgl-popup-close-button {
+  color: var(--text-muted, #8fa3b8); font-size: 15px; padding: 0 5px; background: transparent;
+}
+.mapbox-popup-dark .mapboxgl-popup-close-button:hover { color: var(--text-primary, #eef2f7); background: transparent; }
+.mapbox-popup-dark.mapboxgl-popup-anchor-top .mapboxgl-popup-tip { border-bottom-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: var(--surface-raised, #15212e); }
 .rmpg-pop { font-family: 'JetBrains Mono', monospace; min-width: 168px; }
 .rmpg-pop-head { display: flex; align-items: center; gap: 6px; padding: 7px 9px 4px; }
 .rmpg-pop-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent, #d4a017); box-shadow: 0 0 6px var(--accent, #d4a017); flex-shrink: 0; }

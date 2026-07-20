@@ -101,7 +101,7 @@ export async function sweepStaleInProgress(
         await execute(
           db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-           VALUES ('serve_stale', 'high', 'Serve job stalled', ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+           VALUES ('serve_stale', 'high', 'Serve job stalled', ?, 'serve_job', ?, ?, 0, datetime('now'))`,
           `Job stalled in-progress >${STALE_THRESHOLD_HOURS}h: ${who}${caseRef}`,
           job.id, uid,
         );
@@ -121,9 +121,9 @@ export async function sweepStaleInProgress(
       await execute(
         db,
         `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-         VALUES (?, 'stale_in_progress', datetime('now','localtime'))
+         VALUES (?, 'stale_in_progress', datetime('now'))
          ON CONFLICT(serve_queue_id, condition)
-         DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+         DO UPDATE SET last_notified_at = datetime('now')`,
         job.id,
       );
 

@@ -209,7 +209,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
       db,
       `UPDATE shift_swap_requests
          SET status = ?, reviewed_by = ?, reviewed_by_name = ?,
-             reviewed_at = datetime('now','localtime'), review_notes = ?
+             reviewed_at = datetime('now'), review_notes = ?
        WHERE id = ?`,
       decision,
       userId,
@@ -244,7 +244,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
 
         await execute(
           db,
-          `UPDATE shift_plans SET assignments = ?, updated_at = datetime('now','localtime')
+          `UPDATE shift_plans SET assignments = ?, updated_at = datetime('now')
              WHERE id = ?`,
           JSON.stringify(assignments),
           request.plan_id,

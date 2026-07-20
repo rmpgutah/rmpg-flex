@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { getLocalDb, getConfig, setConfig } = require('./localDb');
 const { safeStorage } = require('electron');
 const { migrateOfflineSecretsToSafeStorage, decryptSecretForStorage } = require('./security/secretsStore');
+const { getOrCreateDeviceId } = require('./security/sessionAuth');
 
 function readSecretConfig(key) {
   const raw = getConfig(key);
@@ -149,13 +150,14 @@ function validatePin(inputPin) {
     // Record successful attempt
     recordAttempt(userId, true);
 
-    // Create a 24h session
+    // Create a 24h session, bound to this device
     const expiresAt = new Date(Date.now() + PIN_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    const deviceId = getOrCreateDeviceId(getConfig, setConfig, crypto.randomUUID);
 
     db.prepare(`
-      INSERT INTO pin_sessions (user_id, authorized_at, expires_at, is_active, created_at)
-      VALUES (?, ?, ?, 1, ?)
-    `).run(userId, now, expiresAt, now);
+      INSERT INTO pin_sessions (user_id, authorized_at, expires_at, is_active, created_at, device_id)
+      VALUES (?, ?, ?, 1, ?, ?)
+    `).run(userId, now, expiresAt, now, deviceId);
 
     // Notify renderer
     emit('offline:authorization-changed', { isLocalAuthorized: true, expiresAt });

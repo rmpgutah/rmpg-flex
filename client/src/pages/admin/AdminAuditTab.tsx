@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
+import { apiFetchBlob } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -82,10 +83,7 @@ export default function AdminAuditTab({
       if (exportDateTo) params.set('date_to', exportDateTo);
       if (filterAction) params.set('action', filterAction);
 
-      const response = await fetch(`/api/admin/audit/export?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('rmpg_token')}` },
-      });
-      const blob = await response.blob();
+      const blob = await apiFetchBlob(`/audit/export?${params}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

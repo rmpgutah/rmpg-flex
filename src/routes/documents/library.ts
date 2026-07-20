@@ -113,7 +113,7 @@ lib.post('/', async (c) => {
 
     const res = await execute(db,
       `INSERT INTO documents (title, body, body_format, status, owner_id, owner_username, revision, updated_at)
-       VALUES (?, ?, 'markdown', 'draft', ?, ?, 1, datetime('now','localtime'))`,
+       VALUES (?, ?, 'markdown', 'draft', ?, ?, 1, datetime('now'))`,
       title, text, actor?.id ?? null, actor?.username ?? null);
     const id = Number(res.meta.last_row_id);
 
@@ -181,7 +181,7 @@ lib.post('/:id/revisions/:rev/restore', async (c) => {
     if (!old) return c.json({ error: 'Revision not found', code: 'DOC_REV_NOT_FOUND' }, 404);
     const nextRev = (doc.revision || 1) + 1;
     await execute(db,
-      `UPDATE documents SET title = ?, body = ?, revision = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE documents SET title = ?, body = ?, revision = ?, updated_at = datetime('now') WHERE id = ?`,
       old.title, old.body, nextRev, id);
     await execute(db,
       `INSERT INTO document_revisions (document_id, revision_number, title, body, body_format, saved_by, saved_by_username, change_note)
@@ -208,7 +208,7 @@ lib.post('/:id/finalize', async (c) => {
   if (!canModify(doc, actor)) return c.json({ error: 'Forbidden', code: 'DOC_FORBIDDEN' }, 403);
   if (doc.status !== 'finalized') {
     await execute(db,
-      `UPDATE documents SET status = 'finalized', finalized_at = datetime('now','localtime'), finalized_by = ? WHERE id = ?`,
+      `UPDATE documents SET status = 'finalized', finalized_at = datetime('now'), finalized_by = ? WHERE id = ?`,
       actor?.username ?? null, id);
     await logActivity(c, 'FINALIZE', id, {});
   }
@@ -227,7 +227,7 @@ lib.post('/:id/reopen', async (c) => {
   if (!canModify(doc, actor)) return c.json({ error: 'Forbidden', code: 'DOC_FORBIDDEN' }, 403);
   if (doc.status === 'finalized') {
     await execute(db,
-      `UPDATE documents SET status = 'draft', reopened_at = datetime('now','localtime'), reopened_by = ? WHERE id = ?`,
+      `UPDATE documents SET status = 'draft', reopened_at = datetime('now'), reopened_by = ? WHERE id = ?`,
       actor?.username ?? null, id);
     await logActivity(c, 'REOPEN', id, {});
   }
@@ -304,7 +304,7 @@ lib.put('/:id', async (c) => {
     const nextRev = (doc.revision || 1) + 1;
 
     await execute(db,
-      `UPDATE documents SET title = ?, body = ?, revision = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE documents SET title = ?, body = ?, revision = ?, updated_at = datetime('now') WHERE id = ?`,
       nextTitle, nextBody, nextRev, id);
     await execute(db,
       `INSERT INTO document_revisions (document_id, revision_number, title, body, body_format, saved_by, saved_by_username, change_note)
@@ -329,7 +329,7 @@ lib.delete('/:id', async (c) => {
   if (id == null) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
   const doc = await queryFirst<any>(db, 'SELECT id FROM documents WHERE id = ? AND deleted_at IS NULL', id);
   if (!doc) return c.json({ error: 'Document not found', code: 'DOC_NOT_FOUND' }, 404);
-  await execute(db, `UPDATE documents SET deleted_at = datetime('now','localtime') WHERE id = ?`, id);
+  await execute(db, `UPDATE documents SET deleted_at = datetime('now') WHERE id = ?`, id);
   await logActivity(c, 'DELETE', id, {});
   return c.json({ success: true });
 });

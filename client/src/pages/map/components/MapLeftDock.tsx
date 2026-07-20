@@ -10,6 +10,9 @@ import DockSection, { DockToggleRow, type DockToggleItem } from './DockSection';
 export interface MapLeftDockSection {
   title: string;
   items: DockToggleItem[];
+  /** Forwarded to DockSection — when false, this section renders
+   *  always-expanded with no collapse control. */
+  collapsible?: boolean;
 }
 
 export interface MapLeftDockProps {
@@ -23,7 +26,7 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
         LAYERS
       </div>
       {sections.map((section) => (
-        <DockSection key={section.title} title={section.title}>
+        <DockSection key={section.title} title={section.title} collapsible={section.collapsible}>
           {section.items.map((item) => (
             <DockToggleRow key={item.id} item={item} />
           ))}

@@ -255,7 +255,7 @@ admin.put('/config/:id', async (c) => {
     if (typeof category === 'string' && category.trim()) { sets.push('category = ?'); args.push(category.trim()); }
     if (Number.isFinite(sort_order)) { sets.push('sort_order = ?'); args.push(Number(sort_order)); }
     if (is_active === 0 || is_active === 1) { sets.push('is_active = ?'); args.push(is_active); }
-    sets.push("updated_at = datetime('now','localtime')");
+    sets.push("updated_at = datetime('now')");
     args.push(id);
     const result = await execute(db,
       `UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`, ...args);
@@ -306,13 +306,59 @@ admin.delete('/config/:id', async (c) => {
   }
 });
 
-// GET /admin/call-templates
+// GET /admin/call-templates — AdminSystemTab's Quick Templates panel reads
+// `description_template`, which maps to this table's `notes` column.
 admin.get('/call-templates', async (c) => {
   try {
     const db = getDb(c.env);
-    const templates = await query<Record<string, unknown>>(db, 'SELECT * FROM call_templates ORDER BY name');
+    const templates = await query<Record<string, unknown>>(db,
+      `SELECT id, name, incident_type, priority, notes AS description_template,
+              owner_user_id, is_shared, use_count, active, created_at, updated_at
+         FROM call_templates ORDER BY name`);
     return c.json(templates);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.post('/call-templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    type CallTemplateBody = { name?: string; incident_type?: string; priority?: string; description_template?: string | null };
+    const body = await c.req.json<CallTemplateBody>().catch(() => ({} as CallTemplateBody));
+    if (!body.name || !body.incident_type) return c.json({ error: 'name and incident_type are required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO call_templates (name, incident_type, priority, notes, owner_user_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      body.name, body.incident_type, body.priority || 'P3', body.description_template ?? null, userId);
+    return c.json({ success: true, id: r.meta.last_row_id });
+  } catch (err) { return c.json({ error: 'Failed to create call template' }, 500); }
+});
+
+admin.put('/call-templates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    type CallTemplateBody = { name?: string; incident_type?: string; priority?: string; description_template?: string | null };
+    const body = await c.req.json<CallTemplateBody>().catch(() => ({} as CallTemplateBody));
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
+    if (body.incident_type !== undefined) { sets.push('incident_type = ?'); vals.push(body.incident_type); }
+    if (body.priority !== undefined) { sets.push('priority = ?'); vals.push(body.priority); }
+    if (body.description_template !== undefined) { sets.push('notes = ?'); vals.push(body.description_template); }
+    if (!sets.length) return c.json({ success: true });
+    sets.push("updated_at = datetime('now','localtime')");
+    vals.push(id);
+    await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed to update call template' }, 500); }
+});
+
+admin.delete('/call-templates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'DELETE FROM call_templates WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed to delete call template' }, 500); }
 });
 
 // ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
@@ -511,50 +557,97 @@ admin.get('/expiring-certifications', async (c) => {
 admin.get('/google-maps-config', (c) => c.json({}));
 admin.get('/config/branding', (c) => c.json([]));
 
-// ── AdminHealthTab observability stubs ──────────────────────
-// AdminHealthTab.tsx polls these on mount + every 60s. Without
-// these stubs the console flooded with 404s every minute.
-// Shapes match the TypeScript interfaces in AdminHealthTab.tsx
-// (HealthData, ChangelogData, plus the inline shape for
-// systemHealth/usersActivity/realtimeStats). The UI uses
-// optional chaining throughout so null/zero values render as
-// "—" or "0" rather than crashing. Promote any of these to
-// real queries in a follow-up — D1 size + host metrics aren't
-// available to a Worker so the host block stays undefined.
-admin.get('/health/detailed', (c) => c.json({
-  version: '1.0.0',
-  server: {
-    uptime: 0,
-    memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 },
-    nodeVersion: 'workerd',
-  },
-  database: { sizeBytes: 0, tables: {} },
-  operations: { activeSessions: 0, activeUnits: 0, pendingCalls: 0, connectedClients: 0 },
-  loginStats: { successful24h: 0, failed24h: 0 },
-  recentErrors: [],
-}));
+// ── AdminHealthTab observability ────────────────────────────
+// AdminHealthTab.tsx polls these on mount + every 60s. Host/process
+// metrics (rss, heap, node version) genuinely don't exist on a Worker
+// runtime, so `server` stays zeroed — but everything D1 can answer
+// (sessions, units, calls, login/error activity) is now real, using
+// only tables that already exist (sessions, units, calls_for_service,
+// audit_log, error_log) rather than a not-yet-built metrics pipeline.
+admin.get('/health/detailed', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const cnt = async (sql: string, ...params: unknown[]) => (await queryFirst<{ n: number }>(db, sql, ...params).catch(() => null))?.n ?? 0;
+    const [activeSessions, activeUnits, pendingCalls, successful24h, failed24h, recentErrors] = await Promise.all([
+      cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
+      cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed','cleared','cancelled')`),
+      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_success' AND created_at > datetime('now','-1 day')`),
+      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'login_failed' AND created_at > datetime('now','-1 day')`),
+      query<Record<string, unknown>>(db, `SELECT id, severity, message, created_at FROM error_log ORDER BY created_at DESC LIMIT 10`).catch(() => []),
+    ]);
+    return c.json({
+      version: '1.0.0',
+      server: { uptime: 0, memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 }, nodeVersion: 'workerd' },
+      database: { sizeBytes: 0, tables: {} },
+      operations: { activeSessions, activeUnits, pendingCalls, connectedClients: 0 },
+      loginStats: { successful24h, failed24h },
+      recentErrors,
+    });
+  } catch (err) {
+    console.error('[Admin] GET health/detailed failed:', err);
+    return c.json({
+      version: '1.0.0',
+      server: { uptime: 0, memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 }, nodeVersion: 'workerd' },
+      database: { sizeBytes: 0, tables: {} },
+      operations: { activeSessions: 0, activeUnits: 0, pendingCalls: 0, connectedClients: 0 },
+      loginStats: { successful24h: 0, failed24h: 0 },
+      recentErrors: [],
+    });
+  }
+});
 
 admin.get('/changelog', (c) => c.json({
   version: '1.0.0',
   changelog: [],
 }));
 
-// Returning null lets the client's `d && setSystemHealth(d)`
-// guard skip the setState, keeping the panel hidden until a
-// real impl ships rather than rendering a frame of zeros.
-admin.get('/system-health', (c) => c.json(null));
+admin.get('/system-health', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const start = Date.now();
+    await queryFirst(db, 'SELECT 1');
+    const dbLatencyMs = Date.now() - start;
+    return c.json({ status: 'ok', database: { connected: true, latencyMs: dbLatencyMs }, checkedAt: new Date().toISOString() });
+  } catch (err) {
+    return c.json({ status: 'degraded', database: { connected: false, latencyMs: null }, checkedAt: new Date().toISOString() });
+  }
+});
 
-admin.get('/users-activity-summary', (c) => c.json({ data: [] }));
+admin.get('/users-activity-summary', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT u.id AS user_id, u.full_name, u.role,
+              COUNT(a.id) AS action_count,
+              MAX(a.created_at) AS last_active_at
+         FROM users u LEFT JOIN audit_log a ON a.user_id = u.id AND a.created_at > datetime('now','-7 days')
+        WHERE u.status = 'active'
+        GROUP BY u.id
+        ORDER BY action_count DESC LIMIT 50`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
 
-admin.get('/realtime-stats', (c) => c.json({
-  activeCalls: 0,
-  unitsOnDuty: 0,
-  pendingIncidents: 0,
-  activeBolos: 0,
-  activeSessions: 0,
-  todayActivity: 0,
-  todayCalls: 0,
-}));
+admin.get('/realtime-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const cnt = async (sql: string) => (await queryFirst<{ n: number }>(db, sql).catch(() => null))?.n ?? 0;
+    const [activeCalls, unitsOnDuty, pendingIncidents, activeBolos, activeSessions, todayActivity, todayCalls] = await Promise.all([
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed','cleared','cancelled')`),
+      cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
+      cnt(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('closed','cleared')`),
+      cnt(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
+      cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
+      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE created_at > datetime('now','-1 day')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at > datetime('now','-1 day')`),
+    ]);
+    return c.json({ activeCalls, unitsOnDuty, pendingIncidents, activeBolos, activeSessions, todayActivity, todayCalls });
+  } catch (err) {
+    console.error('[Admin] GET realtime-stats failed:', err);
+    return c.json({ activeCalls: 0, unitsOnDuty: 0, pendingIncidents: 0, activeBolos: 0, activeSessions: 0, todayActivity: 0, todayCalls: 0 });
+  }
+});
 
 // ── Departments / Retention / Announcements list stubs ─────
 // AdminDepartmentsTab, AdminRetentionTab, AdminAnnouncementsTab
@@ -621,7 +714,7 @@ function buildPartialUpdate(
     }
   }
   if (sets.length === 0) return null;
-  sets.push(`updated_at = datetime('now','localtime')`);
+  sets.push(`updated_at = datetime('now')`);
   return { setSql: sets.join(', '), values };
 }
 
@@ -900,7 +993,7 @@ admin.put('/maintenance-mode', async (c) => {
     // system_config has no UNIQUE(config_key) on live, so update-then-insert.
     const r = await execute(
       db,
-      `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?`,
       value, MAINT_KEY,
     );
     if (!r.meta.changes) {
@@ -1006,14 +1099,14 @@ admin.put('/third-party-keys', async (c) => {
     if (existing) {
       await execute(
         db,
-        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
         value, key,
       );
     } else {
       await execute(
         db,
         `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-         VALUES (?, ?, 'integrations', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+         VALUES (?, ?, 'integrations', 1, datetime('now'), datetime('now'))`,
         key, value,
       );
     }
@@ -1035,7 +1128,7 @@ admin.delete('/third-party-keys', async (c) => {
     const db = getDb(c.env);
     await execute(
       db,
-      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now') WHERE config_key = ?`,
       key,
     );
     return c.json({ success: true, message: `${key} cleared` });
@@ -1292,7 +1385,7 @@ admin.get('/sessions', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query(db,
-      `SELECT session_id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
+      `SELECT session_id AS id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
               COALESCE(is_active, 1) AS is_active
          FROM sessions
         WHERE COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
@@ -1304,8 +1397,76 @@ admin.get('/sessions', async (c) => {
     return c.json([]);
   }
 });
-admin.get('/database/stats', (c) => c.json({ tables: 0, rows: 0, size_mb: 0 }));
-admin.get('/system-overview', (c) => c.json({ status: 'ok', uptime: 0, workers: 1 }));
+
+// DELETE /admin/sessions/:id — revoke a single session (AdminSessionsTab).
+admin.delete('/sessions/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, `UPDATE sessions SET is_active = 0 WHERE session_id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE session failed:', err);
+    return c.json({ error: 'Failed to revoke session' }, 500);
+  }
+});
+// GET /admin/database/stats — real D1 introspection for AdminGodModeTab's DbStats panel.
+admin.get('/database/stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tableRows = await query<{ name: string }>(db,
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%'`);
+    const indexCount = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'`);
+    const pageCount = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
+    const pageSize = await queryFirst<{ page_size: number }>(db, 'PRAGMA page_size');
+    const freelist = await queryFirst<{ freelist_count: number }>(db, 'PRAGMA freelist_count');
+    const journalMode = await queryFirst<{ journal_mode: string }>(db, 'PRAGMA journal_mode');
+    const sizeMb = ((pageCount?.page_count ?? 0) * (pageSize?.page_size ?? 4096)) / (1024 * 1024);
+    const freelistMb = ((freelist?.freelist_count ?? 0) * (pageSize?.page_size ?? 4096)) / (1024 * 1024);
+    const tables = (await Promise.all((tableRows || []).slice(0, 40).map(async (t) => {
+      const row = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM "${t.name}"`).catch(() => null);
+      return { name: t.name, row_count: row?.n ?? 0 };
+    })));
+    const totalRows = tables.reduce((sum, t) => sum + t.row_count, 0);
+    return c.json({
+      database_size_mb: Math.round(sizeMb * 100) / 100,
+      freelist_mb: Math.round(freelistMb * 100) / 100,
+      reclaimable_percent: sizeMb > 0 ? Math.round((freelistMb / sizeMb) * 10000) / 100 : 0,
+      table_count: tableRows?.length ?? 0,
+      total_rows: totalRows,
+      index_count: indexCount?.n ?? 0,
+      journal_mode: journalMode?.journal_mode ?? 'unknown',
+      integrity: 'not checked — use Integrity Check button',
+      tables,
+    });
+  } catch (err) {
+    console.error('[Admin] GET database/stats failed:', err);
+    return c.json({ database_size_mb: 0, freelist_mb: 0, reclaimable_percent: 0, table_count: 0, total_rows: 0, index_count: 0, journal_mode: 'unknown', integrity: 'unknown', tables: [] });
+  }
+});
+
+// GET /admin/system-overview — real D1-derived counts (Workers has no process/node
+// runtime info to report, so `server` is omitted rather than faked).
+admin.get('/system-overview', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const active24h = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(DISTINCT user_id) AS n FROM sessions WHERE COALESCE(last_used_at, created_at) > datetime('now', '-1 day')`);
+    const countTable = async (t: string) => (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM "${t}"`).catch(() => null))?.n ?? 0;
+    const [users, calls, persons, warrants] = await Promise.all([
+      countTable('users'), countTable('calls_for_service'), countTable('persons'), countTable('warrants'),
+    ]);
+    return c.json({
+      status: 'ok',
+      active_users_24h: active24h?.n ?? 0,
+      record_counts: { users, calls_for_service: calls, persons, warrants },
+    });
+  } catch (err) {
+    console.error('[Admin] GET system-overview failed:', err);
+    return c.json({ status: 'degraded', active_users_24h: 0, record_counts: {} });
+  }
+});
 
 // GET /api/admin/users/presence — minimal presence snapshot for the
 // God Mode page. Reuses the users table + a sub-query against sessions.
@@ -1375,7 +1536,7 @@ admin.get('/policies/acknowledgements', async (c) => {
 });
 
 // ── Database management ────────────────────────────────────
-admin.get('/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
+admin.on(['GET', 'POST'], '/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
 admin.get('/database/backups', (c) => c.json({ backups: [], note: 'D1 automatic backups — use Cloudflare dashboard or Time Travel API' }));
 
 admin.post('/database/analyze', async (c) => {
@@ -1386,12 +1547,26 @@ admin.post('/database/analyze', async (c) => {
   } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
 });
 
-admin.get('/database/integrity-check', async (c) => {
+// D1 rejects PRAGMA integrity_check outright (SQLITE_AUTH: "not authorized") —
+// confirmed live via a direct d1_database_query probe, not just a Workers-runtime
+// restriction. There's no substitute query that verifies page-level integrity,
+// so this honestly reports the platform limitation (200, not_supported) instead
+// of masking it as a fake "ok" (the pre-2026-07-20 stub) or a bare 500.
+admin.on(['GET', 'POST'], '/database/integrity-check', async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ integrity_check: string }>(db, "PRAGMA integrity_check");
-    return c.json({ result: row?.integrity_check ?? 'unknown', ok: row?.integrity_check === 'ok' });
-  } catch (err) { return c.json({ error: 'Integrity check failed' }, 500); }
+    const healthy = row?.integrity_check === 'ok';
+    return c.json({ result: row?.integrity_check ?? 'unknown', ok: healthy, healthy });
+  } catch (err) {
+    return c.json({
+      result: 'not_supported',
+      ok: false,
+      healthy: false,
+      code: 'not_supported',
+      message: 'D1 does not authorize PRAGMA integrity_check — Cloudflare manages storage integrity internally with no user-facing equivalent.',
+    });
+  }
 });
 
 admin.post('/database/vacuum', async (c) => {
@@ -1405,27 +1580,31 @@ admin.post('/database/vacuum', async (c) => {
 // ── Purge endpoints ────────────────────────────────────────
 admin.post('/purge/activity-logs', async (c) => {
   try {
-    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
-    const cutoff = body.before_date || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date
+      || new Date(Date.now() - (body.days_to_keep ?? 90) * 86400000).toISOString().slice(0, 10);
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM audit_log WHERE created_at < ?`, cutoff);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/activity-logs failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
 admin.post('/purge/notifications', async (c) => {
   try {
-    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
-    const cutoff = body.before_date || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date
+      || new Date(Date.now() - (body.days_to_keep ?? 30) * 86400000).toISOString().slice(0, 10);
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM notifications WHERE created_at < ? AND COALESCE(read_at, '') != ''`, cutoff);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/notifications failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
@@ -1433,10 +1612,11 @@ admin.post('/purge/sessions', async (c) => {
   try {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/sessions failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
@@ -1520,8 +1700,8 @@ admin.get('/activity-feed', async (c) => {
       `SELECT a.*, u.full_name AS user_name
        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
        ORDER BY a.created_at DESC LIMIT ?`, limit);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+    return c.json({ data: rows, actions: rows });
+  } catch { return c.json({ data: [], actions: [] }); }
 });
 
 // ── Client-error telemetry (ErrorBoundary crash reports) ────
@@ -1658,10 +1838,10 @@ admin.put('/map-config', async (c) => {
 });
 
 // ── Impersonate (admin-only view-as) ───────────────────────
-admin.post('/impersonate', async (c) => {
+admin.post('/impersonate/:id', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  const { user_id } = await c.req.json<{ user_id: number }>().catch(() => ({ user_id: 0 }));
+  const user_id = parseInt(c.req.param('id'), 10);
   if (!user_id) return c.json({ error: 'user_id required' }, 400);
   try {
     const db = getDb(c.env);
@@ -1700,10 +1880,24 @@ admin.get('/shift-plans', async (c) => {
 });
 
 // ── System lockdown ────────────────────────────────────────
+// GET /admin/system/lockdown — current status (AdminGodModeTab loads this on mount).
+admin.get('/system/lockdown', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config WHERE config_key = 'system_lockdown'`);
+    const parsed = row?.config_value ? JSON.parse(row.config_value) : { enabled: false };
+    return c.json({ enabled: !!parsed.enabled, reason: parsed.reason ?? null, at: parsed.at ?? null });
+  } catch { return c.json({ enabled: false }); }
+});
+
 admin.post('/system/lockdown', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
+  const body: { enabled?: boolean; reason?: string; message?: string; kick_sessions?: boolean } =
+    await c.req.json().catch(() => ({}));
+  const enabled = body.enabled ?? true;
+  const reason = body.reason ?? body.message;
   try {
     const db = getDb(c.env);
     // Same composite-unique-index trap as system-settings above: live UNIQUE
@@ -1713,7 +1907,25 @@ admin.post('/system/lockdown', async (c) => {
       `INSERT INTO system_config (config_key, config_value, updated_at)
        VALUES ('system_lockdown', ?, datetime('now'))`,
       JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
-    return c.json({ success: true, lockdown: enabled });
+    if (enabled && body.kick_sessions) {
+      await execute(db, `UPDATE sessions SET is_active = 0`);
+    }
+    return c.json({ success: true, lockdown: enabled, enabled });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
+// DELETE /admin/system/lockdown — disable lockdown (AdminGodModeTab's toggle-off path).
+admin.delete('/system/lockdown', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'system_lockdown'`);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('system_lockdown', ?, datetime('now'))`,
+      JSON.stringify({ enabled: false, at: new Date().toISOString() }));
+    return c.json({ success: true, lockdown: false, enabled: false });
   } catch { return c.json({ error: 'Failed' }, 500); }
 });
 

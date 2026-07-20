@@ -61,7 +61,7 @@ export async function generateServeCharges(db: D1Database, serveQueueId: number)
     if (existing) {
       chargeId = existing.id;
       await execute(db,
-        `UPDATE serve_charges SET contract_id = ?, subtotal = ?, computed_at = datetime('now','localtime'), status = 'pending_review' WHERE id = ?`,
+        `UPDATE serve_charges SET contract_id = ?, subtotal = ?, computed_at = datetime('now'), status = 'pending_review' WHERE id = ?`,
         gathered.contractId, computed.subtotal, chargeId);
       await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id = ?', chargeId);
     } else {

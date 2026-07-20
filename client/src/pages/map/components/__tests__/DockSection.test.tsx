@@ -20,6 +20,14 @@ describe('DockSection', () => {
     fireEvent.click(screen.getByText('Live Conditions'));
     expect(screen.getByText('Traffic')).toBeInTheDocument();
   });
+
+  it('renders as always-expanded with no toggle button when collapsible is false', () => {
+    render(<DockSection title="Live Conditions" collapsible={false}><div>Traffic</div></DockSection>);
+    expect(screen.getByText('Traffic')).toBeInTheDocument();
+    // No clickable header button — just static text, so clicking the title does nothing.
+    fireEvent.click(screen.getByText('Live Conditions'));
+    expect(screen.getByText('Traffic')).toBeInTheDocument();
+  });
 });
 
 describe('DockToggleRow', () => {
@@ -56,5 +64,19 @@ describe('DockToggleRow', () => {
     render(<DockToggleRow item={{ id: 'y', label: 'Y', active: true, onToggle, color: '#22c55e' }} />);
     const dot = screen.getByText('Y').closest('button')!.querySelector('span');
     expect(dot).toHaveStyle({ boxShadow: '0 0 4px #22c55e80' });
+  });
+
+  it('renders a colored left-border accent when pinned is true', () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ id: 'p1audio', label: 'P1 Audio Alert', active: true, onToggle, color: '#ef4444', pinned: true }} />);
+    const row = screen.getByText('P1 Audio Alert').closest('button')!;
+    expect(row).toHaveStyle({ borderLeft: '3px solid #ef4444' });
+  });
+
+  it('has no left-border accent when pinned is false or omitted', () => {
+    const onToggle = vi.fn();
+    render(<DockToggleRow item={{ id: 'traffic', label: 'Live Traffic', active: true, onToggle, color: '#22c55e' }} />);
+    const row = screen.getByText('Live Traffic').closest('button')!;
+    expect(row).not.toHaveStyle({ borderLeft: '3px solid #22c55e' });
   });
 });

@@ -341,17 +341,10 @@ const STUBS: StubRule[] = [
   },
   // (removed 2026-07-12) /api/iped/download/info stub — real handler
   // exists (iped.ts .get('/download/info')) and was being shadowed.
-  // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
-  // integrity-check: kept stubbed — its real handler in admin.ts is
-  // GET-only while the client calls it via POST, so removing the stub
-  // would just turn a fake-success 200 into a real 404. Needs a proper
-  // fix (add a POST handler or fix the client) before this stub can go.
-  {
-    match: /^\/api\/admin\/database\/integrity-check$/,
-    methods: ['POST'],
-    body: { status: 'not_implemented', message: 'D1 integrity check not exposed by Cloudflare Workers runtime' },
-    reason: 'admin.ts has a GET /database/integrity-check handler but the client POSTs; method mismatch, not yet fixed',
-  },
+  // (removed 2026-07-20, PR #2905) /api/admin/database/integrity-check
+  // (POST) stub — admin.ts now registers the handler on both GET and
+  // POST (admin.on(['GET','POST'], ...)), so the method mismatch this
+  // stub worked around no longer exists. Was shadowing real results.
   // (removed 2026-07-12) /api/admin/database/vacuum (POST) stub — real
   // handler exists (admin.ts .post('/database/vacuum')) and the client
   // does call it via POST, so this was being shadowed.

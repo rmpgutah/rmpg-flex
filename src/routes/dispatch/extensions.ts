@@ -672,7 +672,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
     if (!type || !title) return c.json({ error: 'type and title are required', code: 'BOLO_MISSING_FIELDS' }, 400);
     if (!VALID_BOLO_TYPES.includes(type)) return c.json({ error: `type must be one of ${VALID_BOLO_TYPES.join(', ')}`, code: 'BOLO_INVALID_TYPE' }, 400);
 
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const [{ max }] = await query<{ max: string | null }>(db, "SELECT MAX(bolo_number) AS max FROM bolos WHERE bolo_number LIKE ?", `${year}-BOLO-%`);
     const seq = max ? String(parseInt(max.split('-BOLO-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
     const bolo_number = `${year}-BOLO-${seq}`;
@@ -763,7 +763,7 @@ bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
     if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
-    await execute(db, "UPDATE bolos SET archived_at = datetime('now','localtime') WHERE id = ?", id);
+    await execute(db, "UPDATE bolos SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
   } catch (err) {
     log.error('POST /bolos/:id/archive failed', {}, err);
@@ -794,11 +794,11 @@ bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
     const body = await c.req.json().catch(() => ({} as any));
     const daysExpired = Number.isFinite(body.days_expired) ? Number(body.days_expired) : 7;
     const result = await execute(db, `
-      UPDATE bolos SET archived_at = datetime('now','localtime')
+      UPDATE bolos SET archived_at = datetime('now')
       WHERE archived_at IS NULL
         AND status IN ('expired', 'cancelled')
         AND expires_at IS NOT NULL
-        AND expires_at < datetime('now','localtime', ?)`,
+        AND expires_at < datetime('now', ?)`,
       `-${daysExpired} days`);
     return c.json({ archived: result.meta.changes ?? 0 });
   } catch (err) {
@@ -1291,7 +1291,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
           if (q && (q.status === 'served' || q.status === 'failed')) {
             const openStatus = q.status === 'served' ? 'attempted' : 'pending';
             await execute(db,
-              `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime'), closed_at = NULL WHERE id = ?`,
+              `UPDATE serve_queue SET status = ?, updated_at = datetime('now'), closed_at = NULL WHERE id = ?`,
               openStatus, q.id);
             await execute(db,
               `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
@@ -1380,7 +1380,7 @@ callActions.post('/:id/referrals', requireRole(...WRITE_ROLES), async (c) => {
     if (!body.agency_name || !body.referral_reason) return c.json({ error: 'agency_name and referral_reason required' }, 400);
     const r = await execute(db,
       `INSERT INTO external_referrals (call_id, agency_name, agency_case_number, referral_reason, status, follow_up_date, created_by, created_at, updated_at)
-       VALUES (?,?,?,?,'pending',?,?,datetime('now','localtime'),datetime('now','localtime'))`,
+       VALUES (?,?,?,?,'pending',?,?,datetime('now'),datetime('now'))`,
       id, body.agency_name, body.agency_case_number || null, body.referral_reason, body.follow_up_date || null, userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch { return c.json({ error: 'Referral creation failed' }, 500); }
@@ -1431,7 +1431,7 @@ callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), as
     const userId = c.get('userId') as number | undefined;
     const r = await execute(db,
       `INSERT INTO geofences (name, geojson, alert_type, created_by, created_at, updated_at)
-       VALUES (?,?,?,'info',?,datetime('now','localtime'),datetime('now','localtime'))`,
+       VALUES (?,?,?,'info',?,datetime('now'),datetime('now'))`,
       body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch { return c.json({ error: 'Geofence creation failed' }, 500); }
@@ -1670,7 +1670,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     }
 
     // Incident number: YY-RMP-NNNNN (matches src/routes/incidents.ts convention).
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const [{ max }] = await query<{ max: string | null }>(db,
       'SELECT MAX(incident_number) AS max FROM incidents WHERE incident_number LIKE ?', `${year}-RMP-%`);
     const seq = max ? String(parseInt(max.split('-RMP-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
@@ -1873,7 +1873,7 @@ callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'superv
     const caseNumber = `CASE-${incident.incident_number}`;
     const result = await execute(db,
       `INSERT INTO cases (case_number, incident_id, case_type, status, priority, officer_id, created_at, updated_at)
-       VALUES (?, ?, ?, 'open', ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+       VALUES (?, ?, ?, 'open', ?, ?, datetime('now'), datetime('now'))`,
       caseNumber, incident.id, (incident.incident_type as string) || 'general',
       (incident.priority as string) || 'P3', incident.officer_id ?? userId ?? null);
     const caseId = Number(result.meta.last_row_id);

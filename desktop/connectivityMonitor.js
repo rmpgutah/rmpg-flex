@@ -6,6 +6,7 @@
 // ============================================================
 
 const { net } = require('electron');
+const { isAllowedApiHost } = require('./security/childProcessGuard');
 
 class ConnectivityMonitor {
   constructor(serverUrl, options = {}) {
@@ -13,6 +14,20 @@ class ConnectivityMonitor {
     this.pollInterval = options.pollInterval || 10_000;    // 10s default
     this.stableCount = options.stableCount || 3;           // 3 consecutive checks to confirm transition
     this.requestTimeout = options.requestTimeout || 5_000; // 5s timeout per check
+
+    // Regression tripwire, not an active-vulnerability fix — serverUrl is
+    // always the module-scoped REMOTE_SERVER_URL today, never renderer
+    // input. Computed once here (mirrors REMOTE_SERVER_HOSTNAME/
+    // allowedSyncHost's pattern elsewhere) so a future accidental change
+    // that threads untrusted input into serverUrl can't silently start
+    // issuing health-check requests to an arbitrary host.
+    this._allowedHealthCheckHosts = (() => {
+      try {
+        return [new URL(serverUrl).hostname];
+      } catch {
+        return [];
+      }
+    })();
 
     this.isOnline = false;           // Current confirmed state
     this._consecutiveState = 0;      // How many consecutive checks agree
@@ -84,8 +99,14 @@ class ConnectivityMonitor {
   _doHealthCheck() {
     return new Promise((resolve) => {
       try {
+        const url = `${this.serverUrl}/api/health`;
+        if (!isAllowedApiHost(url, this._allowedHealthCheckHosts)) {
+          resolve(false);
+          return;
+        }
+
         const request = net.request({
-          url: `${this.serverUrl}/api/health`,
+          url,
           method: 'GET',
         });
 

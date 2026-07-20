@@ -57,7 +57,7 @@ narcotics.put('/cases/:id', async (c) => {
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const v = validateNarcCase(body);
     if (!v.ok) return c.json(narcEnumError(v.field), 400);
-    await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
+    await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\') WHERE id=?', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return dbErrorResponse(c, err, 'Failed to update narcotics case'); }
 });
 

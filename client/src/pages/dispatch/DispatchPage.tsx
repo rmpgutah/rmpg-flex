@@ -444,13 +444,26 @@ export default function DispatchPage() {
   }, [userPrefs, localSort]);
 
   // ── Feature 1: Call priority sound alerts ──
+  // The "Mute" toolbar button is meant to silence ALL dispatch audio — tone
+  // chimes (gated below via soundAlertsMutedRef) AND spoken voice alerts
+  // (gated separately, in voiceAlerts.ts, by the 'rmpg-sound' localStorage
+  // key). Those used to be two independent keys that never synced, so
+  // muting here silenced only the chimes while announceNewCall/etc. kept
+  // talking. Keep both keys in lockstep from this one control.
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
   const soundAlertsMutedRef = useRef(soundAlertsMuted);
   useEffect(() => { soundAlertsMutedRef.current = soundAlertsMuted; }, [soundAlertsMuted]);
+  useEffect(() => {
+    // Reconcile the two keys once on mount in case they'd drifted from
+    // before this fix (e.g. a prior session muted only one of them).
+    localStorage.setItem('rmpg-sound', String(!soundAlertsMuted));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const toggleSoundAlerts = useCallback(() => {
     setSoundAlertsMuted(prev => {
       const next = !prev;
       localStorage.setItem('rmpg_sound_alerts_muted', String(next));
+      localStorage.setItem('rmpg-sound', String(!next));
       return next;
     });
   }, []);
@@ -1529,12 +1542,24 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
 
-  // When the admin-config disposition list is empty (production default),
-  // derive the correct fallback codes from the incident type so PSO calls
-  // see PS codes in the clear prompt and general calls see general codes.
+  // Process-service calls ALWAYS get the PS/## library, regardless of
+  // whether admin has configured custom general-disposition codes — the
+  // admin-config list (system_config disposition_code rows, e.g. "Report
+  // Taken", "GOA") is general-purpose and doesn't apply to a process-server
+  // job (per dispositionGroupsForIncident's own contract). Previously the
+  // admin list unconditionally won whenever non-empty, which in production
+  // (it's populated) meant PSO calls never showed PS/## codes at all.
+  // For everything else, prefer the admin-config list when present, else
+  // fall back to the built-in general groups. Kept GROUPED (not flatMap'd)
+  // so DispositionPrompt can render <optgroup> sections instead of one
+  // giant flat list — with 51 PS/## codes across 10 categories, a flat
+  // list was unusable.
   const effectiveDispositionCodes = useMemo(() => {
+    if (PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall?.incident_type || '')) {
+      return dispositionGroupsForIncident(selectedCall?.incident_type);
+    }
     if (dispositionCodes.length > 0) return dispositionCodes;
-    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+    return dispositionGroupsForIncident(selectedCall?.incident_type);
   }, [dispositionCodes, selectedCall?.incident_type]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)
@@ -3780,7 +3805,19 @@ export default function DispatchPage() {
                     isSelected={selectedCall?.id === call.id}
                     onClick={setSelectedCall}
                     onUnitDrop={handleDragAssignUnit}
-                    onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
+                    onStatusChange={(callId, newStatus) => {
+                      // 'closed'/'cleared' require a disposition server-side
+                      // (calls.ts POST /:id/status) — route the card's quick
+                      // Close button through the same select+prompt flow as
+                      // every other clear action instead of calling the
+                      // status endpoint bare, which now 400s.
+                      if (newStatus === 'closed' || newStatus === 'cleared') {
+                        setSelectedCall(call);
+                        handleClearWithDisposition(callId);
+                        return;
+                      }
+                      handleStatusChange(callId, newStatus as CallStatus);
+                    }}
                     onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
                     stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                     onQuickNote={handleQuickNote}

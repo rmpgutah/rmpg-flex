@@ -48,12 +48,12 @@ export async function sweepServeNudges(db: Bindings['DB'], _env: Bindings): Prom
         for (const uid of recipients) {
           await execute(db,
             `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-             VALUES ('serve_nudge', ?, ?, ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+             VALUES ('serve_nudge', ?, ?, ?, 'serve_job', ?, ?, 0, datetime('now'))`,
             prio, title, `${title}: ${who}`, j.id, uid);
         }
         await execute(db,
-          `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at) VALUES (?, ?, datetime('now','localtime'))
-           ON CONFLICT(serve_queue_id, condition) DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+          `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(serve_queue_id, condition) DO UPDATE SET last_notified_at = datetime('now')`,
           j.id, cond);
         notified++;
         if (cond === 'deadline_passed') overdueForEmail.push({ who, id: j.id, deadline: j.deadline });

@@ -1276,7 +1276,7 @@ si.get('/stats', async (c) => {
   const served = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='served'");
   const overdue = await queryFirst<{ n: number }>(
     db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime('now','localtime') AND status NOT IN ('served','cancelled','failed')",
+    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime('now') AND status NOT IN ('served','cancelled','failed')",
   );
   return c.json({
     total: total?.n ?? 0,
@@ -1941,7 +1941,7 @@ si.put('/:id', async (c) => {
     args.push(body[k]);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now','localtime')");
+  sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
 
@@ -2105,11 +2105,11 @@ si.post('/:id/attempts', async (c) => {
   else newStatus = 'attempted';
 
   const closedClause = (newStatus === 'served' || newStatus === 'failed')
-    ? ", closed_at = datetime('now','localtime')"
+    ? ", closed_at = datetime('now')"
     : '';
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
     nextNum, newStatus, id,
   );
 
