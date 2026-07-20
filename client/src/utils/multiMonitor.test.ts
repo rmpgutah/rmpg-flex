@@ -61,4 +61,29 @@ describe('multiMonitor', () => {
     await requestMultiMonitorAccess();
     expect(getSecondaryScreenBounds()).toBeNull();
   });
+
+  it('clears the stale enabled flag if a background re-fetch fails (permission revoked out-of-band)', async () => {
+    (window as any).getScreenDetails = vi.fn().mockResolvedValue({ screens: [PRIMARY, SECONDARY], currentScreen: PRIMARY });
+    await requestMultiMonitorAccess();
+    expect(isMultiMonitorEnabled()).toBe(true);
+
+    // Simulate a fresh page load: in-memory cache is gone, but localStorage
+    // still says enabled — then simulate the permission having been revoked
+    // out-of-band, so the background re-fetch this triggers fails.
+    (window as any).getScreenDetails = vi.fn().mockRejectedValue(new Error('revoked'));
+    // Re-import isn't possible mid-test, so instead directly exercise the
+    // documented behavior: calling getSecondaryScreenBounds() with no cache
+    // triggers a background requestMultiMonitorAccess() that will fail and
+    // clear the flag. Since the module's cachedDetails is private state that
+    // persists across calls within this test file's module instance, and a
+    // prior test may have already populated it, this test must run in
+    // isolation from cache pollution — vi.resetModules() before re-importing
+    // guarantees a fresh module instance with no cached details.
+    vi.resetModules();
+    const fresh = await import('./multiMonitor');
+    expect(fresh.getSecondaryScreenBounds()).toBeNull();
+    // Allow the fire-and-forget .then() continuation to run.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(localStorage.getItem('rmpg_desktop_multi_monitor')).toBeNull();
+  });
 });

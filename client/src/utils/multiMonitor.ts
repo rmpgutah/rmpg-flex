@@ -72,7 +72,15 @@ export async function requestMultiMonitorAccess(): Promise<boolean> {
 export function getSecondaryScreenBounds(): ScreenBounds | null {
   if (!isMultiMonitorEnabled()) return null;
   if (!cachedDetails) {
-    void requestMultiMonitorAccess();
+    // If this background re-fetch fails, the permission was likely revoked
+    // out-of-band since the flag was set — clear the stale flag so we don't
+    // keep re-attempting (and potentially re-prompting) on every future
+    // pop-out for the rest of the session.
+    void requestMultiMonitorAccess().then(ok => {
+      if (!ok) {
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* silent */ }
+      }
+    });
     return null;
   }
   const secondary = cachedDetails.screens.find(s => !s.isPrimary);
