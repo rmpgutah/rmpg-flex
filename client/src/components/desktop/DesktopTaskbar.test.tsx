@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useEffect } from 'react';
-import { isAppPinned } from '../../utils/taskbarPreferences';
+import { isAppPinned, pinApp } from '../../utils/taskbarPreferences';
 
 const apiFetchMock = vi.fn().mockResolvedValue({ count: 0 });
 vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
@@ -115,5 +115,29 @@ describe('DesktopTaskbar — Pin to Taskbar (launcher search)', () => {
     fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
     fireEvent.contextMenu(screen.getByText('Dispatch Console'));
     expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — pinned apps render when not running', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('a pinned app with no open window renders a launcher-style taskbar button', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'Dispatch Console' })).toBeInTheDocument();
+  });
+
+  it('clicking a pinned-not-running button opens the window', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch Console' }));
+    expect(screen.getByText('/dispatch')).toBeInTheDocument();
+  });
+
+  it('once the pinned app is running, only one button shows (no duplicate placeholder)', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch Console' }));
+    expect(screen.getAllByRole('button', { name: 'Dispatch Console' })).toHaveLength(1);
   });
 });

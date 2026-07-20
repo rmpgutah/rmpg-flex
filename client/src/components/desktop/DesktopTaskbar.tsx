@@ -9,7 +9,7 @@ import type { NavFunction } from '../../data/navCatalog';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
-import { isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
+import { isAppPinned, pinApp, unpinApp, getPinnedApps } from '../../utils/taskbarPreferences';
 
 export interface DesktopTaskbarProps {
   icons: NavFunction[];
@@ -121,6 +121,14 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
       fn.label.toLowerCase().includes(q) || fn.description.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q));
   }, [query, icons, catalog]);
 
+  const pinnedNotRunning = useMemo(() => {
+    const runningPaths = new Set(windows.map(w => w.path));
+    return getPinnedApps()
+      .filter(path => !runningPaths.has(path))
+      .map(path => catalog.find(fn => fn.path === path))
+      .filter((fn): fn is NavFunction => !!fn);
+  }, [windows, catalog]);
+
   return (
     <div
       className="flex items-center justify-between px-2 gap-2"
@@ -179,6 +187,17 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
       </div>
 
       <div className="flex items-center gap-1 flex-1 overflow-x-auto">
+        {pinnedNotRunning.map(fn => (
+          <button
+            key={fn.path}
+            type="button"
+            onClick={() => activateNavFunction(fn, { navigate, openWindow })}
+            className="px-3 py-1 text-[11px] truncate"
+            style={{ maxWidth: 160, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+          >
+            {fn.label}
+          </button>
+        ))}
         {windows.map(w => (
           <button
             key={w.id}
