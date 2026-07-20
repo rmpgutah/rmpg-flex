@@ -5,6 +5,7 @@ import { LayoutDashboard, Map as MapIcon, Package, Radio } from 'lucide-react';
 import DesktopIconGrid from './DesktopIconGrid';
 import { DesktopWindowManagerProvider, useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import type { NavFunction } from '../../data/navCatalog';
+import { getIconLabelOverride, setIconLabelOverride } from '../../utils/desktopIconPreferences';
 import { isAppPinned } from '../../utils/taskbarPreferences';
 
 // `vi.mock` factories are hoisted above all other module-level code, including
@@ -189,6 +190,70 @@ describe('DesktopIconGrid — icon size + list view', () => {
     );
     const button = screen.getByText('Dispatch').closest('button')!;
     expect(button).not.toHaveStyle({ position: 'absolute' });
+  });
+});
+
+describe('DesktopIconGrid — Rename', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('right-clicking an icon offers Rename; typing a new label and pressing Enter updates the display and persists it', () => {
+    renderGrid();
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Dispatch');
+    fireEvent.change(input, { target: { value: 'Radio Ops' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByText('Radio Ops')).toBeInTheDocument();
+    expect(getIconLabelOverride('/dispatch')).toBe('Radio Ops');
+  });
+
+  it('pressing Escape while renaming cancels without persisting', () => {
+    renderGrid();
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Dispatch');
+    fireEvent.change(input, { target: { value: 'Radio Ops' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.getByText('Dispatch')).toBeInTheDocument();
+    expect(getIconLabelOverride('/dispatch')).toBeNull();
+  });
+
+  it('has an accessible label while renaming, matching the icon being renamed', () => {
+    renderGrid();
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Rename'));
+    expect(screen.getByLabelText('Rename Dispatch')).toBeInTheDocument();
+  });
+
+  it('a pointerdown+pointermove drag gesture started inside the rename input does not reposition the icon', () => {
+    const props = renderGrid();
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Dispatch');
+
+    // Simulate click-and-drag text selection inside the input: pointerdown
+    // on the input, then a pointermove on window (as the drag handler would
+    // listen for). If the input's pointerdown reached the button's drag
+    // handler, this would have registered a window pointermove listener and
+    // called onReposition.
+    fireEvent.pointerDown(input, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(window, { clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(window);
+
+    expect(props.onReposition).not.toHaveBeenCalled();
+  });
+
+  it('committing an empty value clears the override and reverts to the catalog label', () => {
+    setIconLabelOverride('/dispatch', 'Radio Ops');
+    renderGrid();
+    expect(screen.getByText('Radio Ops')).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText('Radio Ops'));
+    fireEvent.click(screen.getByText('Rename'));
+    const input = screen.getByDisplayValue('Radio Ops');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByText('Dispatch')).toBeInTheDocument();
+    expect(getIconLabelOverride('/dispatch')).toBeNull();
   });
 });
 

@@ -10,7 +10,8 @@ import { DEFAULT_WALLPAPER_ID } from '../data/desktopWallpapers';
 import { DEFAULT_ACCENT_ID, getAccent } from '../data/desktopAccents';
 import { normalizeDesktopLayout, serializeDesktopLayout, type DesktopGroup } from '../utils/normalizeDesktopLayout';
 import { normalizeDesktopWidgets, serializeDesktopWidgets } from '../utils/normalizeDesktopWidgets';
-import { sortIconPositions, snapToGrid } from '../utils/desktopLayoutOps';
+import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/desktopLayoutOps';
+import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import FloatingWindow from '../components/desktop/FloatingWindow';
@@ -73,6 +74,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     });
   }, [isAdmin, isClientViewer, isContractManager]);
 
+  const [, forceRerender] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const pinnedIcons: NavFunction[] = useMemo(
     () => allFunctions.filter(fn => favorites.has(fn.path)),
@@ -122,6 +124,31 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, wallpaperId, widgets, accentId, notes]);
+
+  // Reconciles `layout.icons` against `pinnedIcons` whenever a favorite lacks
+  // a saved position — e.g. a favorite added elsewhere (Module Directory)
+  // whose position never made it into `desktop_layout_json`. Without this,
+  // DesktopIconGrid falls back to a hardcoded {x:20,y:20} for any unpositioned
+  // icon, stacking it directly on top of whatever else already sits there.
+  // Only ADDS positions for missing paths — never touches an icon that
+  // already has one, so auto-arrange never retroactively moves a placed icon.
+  useEffect(() => {
+    const positioned = new Set(layout.icons.map(p => p.path));
+    const missing = pinnedIcons.filter(fn => !positioned.has(fn.path));
+    if (missing.length === 0) return;
+    setLayout(prev => {
+      const existingPositions = Object.fromEntries(prev.icons.map(p => [p.path, { x: p.x, y: p.y }]));
+      const additions = missing.map(fn => {
+        const slot = isAutoArrangeEnabled()
+          ? nextAutoArrangeSlot(existingPositions)
+          : { x: 20 + prev.icons.length * 24, y: 20 + prev.icons.length * 24 };
+        existingPositions[fn.path] = slot;
+        return { path: fn.path, x: slot.x, y: slot.y };
+      });
+      return { ...prev, icons: [...prev.icons, ...additions] };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinnedIcons]);
 
   const handleReposition = useCallback((path: string, x: number, y: number) => {
     setLayout(prev => ({ ...prev, icons: prev.icons.map(p => p.path === path ? { ...p, x, y } : p) }));
@@ -207,22 +234,35 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
+            { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
+            { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
+            { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
+            { label: 'View: Grid', onClick: () => handleViewModeChange('grid') },
+            { label: 'View: List', onClick: () => handleViewModeChange('list') },
+            { label: 'Icon size: Small', onClick: () => handleIconSizeChange('small') },
+            { label: 'Icon size: Medium', onClick: () => handleIconSizeChange('medium') },
+            { label: 'Icon size: Large', onClick: () => handleIconSizeChange('large') },
+            { label: isAutoArrangeEnabled() ? 'Auto-arrange: On' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
+            { label: areIconsHidden() ? 'Show icons' : 'Hide icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'New sticky note', onClick: () => addNote(60, 60) },
           ]}
         >
-          <div style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>
+          <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()]}px)`, overflow: 'hidden' }}>
             <DesktopWallpaper wallpaperId={wallpaperId}>
-              {pinnedIcons.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  No modules pinned yet — star modules from Module Directory, or right-click here to get started.
-                </div>
-              ) : (
-                <DesktopIconGrid
-                  icons={pinnedIcons} positions={positions} onReposition={handleReposition} onUnpin={handleUnpin}
-                  groups={layout.groups} onCreateGroup={handleCreateGroup} onUngroup={handleUngroup}
-                  iconSize={layout.iconSize} viewMode={layout.viewMode}
-                />
+              {!areIconsHidden() && (
+                pinnedIcons.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    No modules pinned yet — star modules from Module Directory, or right-click here to get started.
+                  </div>
+                ) : (
+                  <DesktopIconGrid
+                    icons={pinnedIcons} positions={positions} onReposition={handleReposition} onUnpin={handleUnpin}
+                    groups={layout.groups} onCreateGroup={handleCreateGroup} onUngroup={handleUngroup}
+                    iconSize={layout.iconSize} viewMode={layout.viewMode}
+                  />
+                )
               )}
               {notes.map(note => (
                 <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
