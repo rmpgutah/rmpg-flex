@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle,
+  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle, Route, CloudRain,
 } from 'lucide-react';
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_SATELLITE,
@@ -16,6 +16,8 @@ import {
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
+import { useMapTraffic } from '../hooks/useMapTraffic';
+import { useMapWeatherRadar } from '../hooks/useMapWeatherRadar';
 import type { NavRoutePoint } from '../types';
 import {
   applyNavTheme, resolveNavTheme, navThemeStyleUrl, trailFilter, speedAdaptiveZoom,
@@ -118,6 +120,8 @@ export default function NavMapView({
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [userPanned, setUserPanned] = useState(false);
   const positionMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const traffic = useMapTraffic(mapRef.current, mapReady);
+  const weatherRadar = useMapWeatherRadar(mapRef.current, mapReady);
 
   // #99 inset (3D look-ahead) map — only mounted when not low-power.
   const insetContainerRef = useRef<HTMLDivElement>(null);
@@ -772,6 +776,33 @@ export default function NavMapView({
               title="Zoom out"
             >
               <ZoomOut size={14} />
+            </button>
+          </div>
+
+          {/* Live traffic + weather radar (top-right). Positioned with a
+              generous buffer below Mapbox's native zoom control (added via
+              addControl(NavigationControl, 'top-right') above), which
+              occupies roughly the top ~70px of this corner — not
+              precisely measured, so the buffer is intentionally generous
+              rather than tight. */}
+          <div className="absolute top-24 right-2 flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => traffic.toggle()}
+              className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
+              style={{ background: 'rgba(10,10,10,0.85)', color: traffic.enabled ? '#22c55e' : '#888' }}
+              title={traffic.enabled ? 'Hide live traffic' : 'Show live traffic'}
+            >
+              <Route size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => weatherRadar.toggle()}
+              className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
+              style={{ background: 'rgba(10,10,10,0.85)', color: weatherRadar.enabled ? '#3b82f6' : '#888' }}
+              title={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+            >
+              <CloudRain size={14} />
             </button>
           </div>
 
