@@ -16,5 +16,7 @@ describe('navCatalog', () => {
   it('blocks /admin for both client_viewer and contract_manager', () => {
     expect(CLIENT_VIEWER_BLOCKED.has('/admin')).toBe(true);
     expect(CONTRACT_MANAGER_BLOCKED.has('/admin')).toBe(true);
+    expect(CLIENT_VIEWER_BLOCKED.has('/desktop-company-browser')).toBe(true);
+    expect(CONTRACT_MANAGER_BLOCKED.has('/desktop-company-browser')).toBe(true);
   });
 });
