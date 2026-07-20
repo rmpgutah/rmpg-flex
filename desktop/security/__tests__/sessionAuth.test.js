@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Database = require('better-sqlite3');
-const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew } = require('../sessionAuth');
+const { decodeJwtPayloadLocally, isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue } = require('../sessionAuth');
 
 // Base64url-encode helper matching the encoding sessionAuth.js decodes
 // (standard base64 with '+'->'-', '/'->'_', trailing '=' stripped —
@@ -516,4 +516,39 @@ test('detectClockSkew: reboot-detection short-circuit does not mask genuine back
   const result = detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs);
 
   assert.deepEqual(result, { skewDetected: true });
+});
+
+// ─── looksLikeSecretValue ─────────────────────────────────────
+
+test('looksLikeSecretValue: text exactly matching one of knownSecrets -> true', () => {
+  const knownSecrets = ['abc123offlineSecret', 'eyJhbGciOiJIUzI1NiJ9.token.sig'];
+  assert.equal(looksLikeSecretValue('abc123offlineSecret', knownSecrets), true);
+  assert.equal(looksLikeSecretValue('eyJhbGciOiJIUzI1NiJ9.token.sig', knownSecrets), true);
+});
+
+test('looksLikeSecretValue: text not matching any knownSecrets -> false', () => {
+  const knownSecrets = ['abc123offlineSecret', 'eyJhbGciOiJIUzI1NiJ9.token.sig'];
+  assert.equal(looksLikeSecretValue('some ordinary report text the officer copied', knownSecrets), false);
+});
+
+test('looksLikeSecretValue: empty knownSecrets array -> false for any input', () => {
+  assert.equal(looksLikeSecretValue('abc123offlineSecret', []), false);
+  assert.equal(looksLikeSecretValue('', []), false);
+  assert.equal(looksLikeSecretValue('anything at all', []), false);
+});
+
+test('looksLikeSecretValue: text is a SUBSTRING of a known secret but not an exact match -> false (exact-match only, not substring/pattern-match, by design)', () => {
+  const knownSecrets = ['abc123offlineSecretXYZ'];
+  assert.equal(looksLikeSecretValue('abc123offlineSecret', knownSecrets), false);
+  assert.equal(looksLikeSecretValue('offlineSecret', knownSecrets), false);
+});
+
+test('looksLikeSecretValue: a known secret is a substring of the copied text -> false (still not a match either direction)', () => {
+  const knownSecrets = ['abc123offlineSecret'];
+  assert.equal(looksLikeSecretValue('prefix-abc123offlineSecret-suffix', knownSecrets), false);
+});
+
+test('looksLikeSecretValue: non-array knownSecrets -> false, does not throw', () => {
+  assert.equal(looksLikeSecretValue('abc123offlineSecret', null), false);
+  assert.equal(looksLikeSecretValue('abc123offlineSecret', undefined), false);
 });

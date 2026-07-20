@@ -293,6 +293,29 @@ function detectClockSkew(getConfigFn, setConfigFn, nowMs, monotonicNs, tolerance
   return { skewDetected };
 }
 
+/**
+ * Guards `clipboard:set` against writing a currently-known secret value
+ * (offline PIN seeds, the cached auth token) to the OS clipboard, where
+ * it could linger and sync via OS-level clipboard-history/handoff features.
+ *
+ * Deliberately an EXACT-match check only, not a substring/pattern match:
+ * this CAD tool's users legitimately copy all kinds of free-text report
+ * content, and a heuristic guard that could flag ordinary text as
+ * "looks like a secret" would itself be a usability regression (a blocked
+ * legitimate copy is worse than a missed one here — precision over
+ * recall). `knownSecrets` is expected to be the small, current set of
+ * decrypted offline-PIN secrets / auth token — see main.js's clipboard:set
+ * handler for how that list is assembled.
+ *
+ * @param {string} text
+ * @param {string[]} knownSecrets
+ * @returns {boolean}
+ */
+function looksLikeSecretValue(text, knownSecrets) {
+  if (!Array.isArray(knownSecrets) || knownSecrets.length === 0) return false;
+  return knownSecrets.some((secret) => typeof secret === 'string' && secret.length > 0 && secret === text);
+}
+
 module.exports = {
   decodeJwtPayloadLocally,
   isJwtExpiredLocally,
@@ -302,4 +325,5 @@ module.exports = {
   invalidateAllActivePinSessions,
   isReconLaunchAuthorized,
   detectClockSkew,
+  looksLikeSecretValue,
 };

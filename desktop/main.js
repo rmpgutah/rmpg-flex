@@ -11,8 +11,8 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
-const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew } = require('./security/sessionAuth');
+const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -1017,11 +1017,46 @@ guardedHandle('notify:tray-status', (event, state) => {
   if (tray) tray.setToolTip(formatTrayTooltip(state));
 });
 
-// Plain clipboard read/write wrappers. Per the Group E task-7 scope decision,
-// this is deliberately unenforced — the future sessionAuth.disableClipboardAutoSyncOfSecrets
-// guard against syncing secret values is Group I's (Auth/Session Hardening) responsibility.
+// Reads a currently-stored offline-secret config value, decrypting it via
+// safeStorage — same decrypt-with-fallback pattern as pinManager.js's
+// readSecretConfig(): a decrypt failure means "wasn't our ciphertext yet"
+// (e.g. pre-migration plaintext), so the raw value is used as-is rather
+// than treated as a crash. Returns null for an unset key.
+function readOfflineSecretConfig(key) {
+  const raw = getConfig(key);
+  if (!raw) return null;
+  try {
+    return decryptSecretForStorage(raw, safeStorage);
+  } catch {
+    return raw;
+  }
+}
+
+// Plain clipboard read wrapper (no secret content originates from a read).
 guardedHandle('clipboard:get', () => clipboard.readText());
-guardedHandle('clipboard:set', (event, text) => { clipboard.writeText(String(text)); });
+
+// clipboard:set guards against writing a currently-known secret value to
+// the OS clipboard (disableClipboardAutoSyncOfSecrets, Group I task 7) —
+// wires Group E's plain passthrough (see git history) up to
+// sessionAuth.looksLikeSecretValue. Secret values are read, compared, and
+// discarded within this handler's call stack only — never cached in a
+// module-level variable — matching the decrypt-compare-discard lifetime
+// pinManager.js already uses for these same config keys.
+guardedHandle('clipboard:set', (event, text) => {
+  const candidate = String(text);
+  const knownSecrets = [
+    readOfflineSecretConfig('admin_offline_secret'),
+    readOfflineSecretConfig('my_offline_secret'),
+    readOfflineSecretConfig('all_user_secrets'),
+    getConfig('auth_token'),
+  ].filter((value) => typeof value === 'string' && value.length > 0);
+
+  if (looksLikeSecretValue(candidate, knownSecrets)) {
+    return { ok: false, error: 'cannot copy secret values to the clipboard' };
+  }
+
+  clipboard.writeText(candidate);
+});
 
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
