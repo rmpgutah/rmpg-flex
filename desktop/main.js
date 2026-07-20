@@ -11,7 +11,8 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { createIpcGuards, sanitizeReconToolArgs, validatePinInput, validateUserIdInput, validateFilePathInput, validateGlobalShortcutAccelerator, createRateLimiter, requireOfflineAuthForSensitiveIpc, auditIpcHandlerRegistry } = require('./security/ipcGuard');
 const { installContentSecurityPolicy, isPermissionAllowed, shouldAllowNavigation, shouldAllowNewWindow, hardenWebPreferencesDefaults, assertSecureElectronDefaults, shouldExposeDevToolsMenuItem, createCertificateVerifyProc, resolveTrustedPreloadPath } = require('./security/sessionHardening');
-const { decryptPasswordHashOrFallback, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
+const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
+const { isJwtExpiredLocally, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -969,13 +970,22 @@ guardedHandle('window:open-secondary', (event, routePath, opts) => {
   if (typeof built !== 'string') {
     return { ok: false, error: built && built.error ? built.error : 'invalid routePath' };
   }
+  const candidateWebPreferences = hardenWebPreferencesDefaults({
+    preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
+  });
+  // Self-check: guard against a future regression weakening this window's
+  // webPreferences relative to the app's own hardened defaults. Should
+  // always pass today since candidateWebPreferences is itself built from
+  // hardenWebPreferencesDefaults() — this exists to catch drift later.
+  const secureCheck = assertWebPreferencesNotWeaker(candidateWebPreferences, hardenWebPreferencesDefaults());
+  if (!secureCheck.ok) {
+    return { ok: false, error: secureCheck.error };
+  }
   const win = new BrowserWindow({
     width: (opts && opts.width) || 1024,
     height: (opts && opts.height) || 768,
     title: APP_TITLE,
-    webPreferences: hardenWebPreferencesDefaults({
-      preload: resolveTrustedPreloadPath(path.join(__dirname, 'preload.js'), path.join(__dirname, 'preload.js')),
-    }),
+    webPreferences: candidateWebPreferences,
   });
   const { randomUUID } = require('crypto');
   const id = randomUUID();
@@ -1016,11 +1026,46 @@ guardedHandle('notify:tray-status', (event, state) => {
   if (tray) tray.setToolTip(formatTrayTooltip(state));
 });
 
-// Plain clipboard read/write wrappers. Per the Group E task-7 scope decision,
-// this is deliberately unenforced — the future sessionAuth.disableClipboardAutoSyncOfSecrets
-// guard against syncing secret values is Group I's (Auth/Session Hardening) responsibility.
+// Reads a currently-stored offline-secret config value, decrypting it via
+// safeStorage — same decrypt-with-fallback pattern as pinManager.js's
+// readSecretConfig(): a decrypt failure means "wasn't our ciphertext yet"
+// (e.g. pre-migration plaintext), so the raw value is used as-is rather
+// than treated as a crash. Returns null for an unset key.
+function readOfflineSecretConfig(key) {
+  const raw = getConfig(key);
+  if (!raw) return null;
+  try {
+    return decryptSecretForStorage(raw, safeStorage);
+  } catch {
+    return raw;
+  }
+}
+
+// Plain clipboard read wrapper (no secret content originates from a read).
 guardedHandle('clipboard:get', () => clipboard.readText());
-guardedHandle('clipboard:set', (event, text) => { clipboard.writeText(String(text)); });
+
+// clipboard:set guards against writing a currently-known secret value to
+// the OS clipboard (disableClipboardAutoSyncOfSecrets, Group I task 7) —
+// wires Group E's plain passthrough (see git history) up to
+// sessionAuth.looksLikeSecretValue. Secret values are read, compared, and
+// discarded within this handler's call stack only — never cached in a
+// module-level variable — matching the decrypt-compare-discard lifetime
+// pinManager.js already uses for these same config keys.
+guardedHandle('clipboard:set', (event, text) => {
+  const candidate = String(text);
+  const knownSecrets = [
+    readOfflineSecretConfig('admin_offline_secret'),
+    readOfflineSecretConfig('my_offline_secret'),
+    readOfflineSecretConfig('all_user_secrets'),
+    getConfig('auth_token'),
+  ].filter((value) => typeof value === 'string' && value.length > 0);
+
+  if (looksLikeSecretValue(candidate, knownSecrets)) {
+    return { ok: false, error: 'cannot copy secret values to the clipboard' };
+  }
+
+  clipboard.writeText(candidate);
+});
 
 guardedHandle('app:version', () => app.getVersion());
 guardedHandle('sys:info', () => {
@@ -1308,6 +1353,32 @@ guardedHandle('print:to-pdf', async (event) => {
 // privilege delegation. Returns { ok, error? } so the renderer can show
 // a copy-command fallback if the binary isn't installed.
 guardedHandle('recon:launch', async () => {
+  // First check, before any platform-detection/spawn logic: recon tools are
+  // a local-system escape hatch, so launching one requires the same
+  // admin-always-allowed / active-PIN-session-required rule offline:state
+  // enforces for local data access — this handler had NO auth check at all
+  // before this guard.
+  try {
+    const db = getLocalDb();
+    const cachedUserId = getConfig('current_user_id');
+    const cachedRole = getConfig('current_user_role');
+    let activeSession = null;
+    if (db && cachedRole !== 'admin' && cachedUserId) {
+      activeSession = db.prepare(
+        `SELECT expires_at, device_id FROM pin_sessions
+         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
+         ORDER BY expires_at DESC LIMIT 1`
+      ).get(cachedUserId, new Date().toISOString()) || null;
+    }
+    const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+    if (!isReconLaunchAuthorized(cachedRole, activeSession, currentDeviceId, Date.now())) {
+      return { ok: false, error: 'recon connect requires an active authenticated session' };
+    }
+  } catch (err) {
+    console.error('[RECON:LAUNCH] Auth check failed:', err.message);
+    return { ok: false, error: 'recon connect requires an active authenticated session' };
+  }
+
   const os = require('os');
   const { spawn } = require('child_process');
   const fs = require('fs');
@@ -2883,6 +2954,9 @@ guardedHandle('geo:ip-locate', async () => {
 // Route an API request through the local SQLite database
 guardedHandle('offline:api', async (_event, { method, path, body }) => {
   try {
+    if (isJwtExpiredLocally(getConfig('auth_token'), Date.now())) {
+      return { status: 401, error: 'cached session expired' };
+    }
     if (!offlineRouter) return { status: 503, error: 'Offline mode not initialized' };
     return offlineRouter.handle(method, path, body);
   } catch (err) {
@@ -2909,13 +2983,19 @@ guardedHandle('offline:state', () => {
     } else if (cachedUserId) {
       // Check for active PIN session
       const session = db.prepare(
-        `SELECT expires_at FROM pin_sessions
+        `SELECT expires_at, device_id FROM pin_sessions
          WHERE user_id = ? AND is_active = 1 AND expires_at > ?
          ORDER BY expires_at DESC LIMIT 1`
       ).get(cachedUserId, new Date().toISOString());
       if (session) {
-        isLocalAuthorized = true;
-        expiresAt = session.expires_at;
+        const currentDeviceId = getOrCreateDeviceId(getConfig, setConfig, require('crypto').randomUUID);
+        if (isPinSessionBoundToDevice(session, currentDeviceId)) {
+          isLocalAuthorized = true;
+          expiresAt = session.expires_at;
+        }
+        // else: session exists but was created on a different device —
+        // treat as if no active session exists (same as the `if (session)`
+        // falling through below with isLocalAuthorized left false).
       }
     }
 
@@ -3258,6 +3338,52 @@ app.whenReady().then(async () => {
     // Initialize local database for offline support (non-fatal if it fails)
     try {
       initLocalDb();
+      const db = getLocalDb();
+      if (db) {
+        const { prunedRows } = pruneOldPinAttempts(db, 500);
+        if (prunedRows > 0) {
+          console.log(`[APP] Pruned ${prunedRows} stale pin_attempts row(s) on startup`);
+        }
+
+        // Clock-skew detection: defends against an attacker rolling the
+        // system clock backward to replay an expired offline PIN session
+        // window. If the wall clock and monotonic clock disagree by more
+        // than the tolerance since the last check, invalidate every active
+        // PIN session so the user must re-enter their PIN.
+        const { skewDetected } = detectClockSkew(getConfig, setConfig, Date.now(), process.hrtime.bigint());
+        if (skewDetected) {
+          const { changes } = invalidateAllActivePinSessions(db);
+          console.warn(`[APP] System clock skew detected — invalidated ${changes} active PIN session(s) on startup`);
+        }
+
+        // lockOnSystemSleep: invalidate every active offline PIN session on
+        // system suspend/lock, the same DB update as the clock-skew response
+        // above (shared via invalidateAllActivePinSessions). Both events are
+        // physical-access risk windows — re-fetch getLocalDb() at fire time
+        // (rather than closing over the `db` local here) since these
+        // listeners can fire arbitrarily long after startup, well after this
+        // try block has exited.
+        //
+        // 'suspend' fires on sleep/hibernate across macOS, Windows, and
+        // Linux. 'lock-screen' is macOS/Windows only — Electron's own
+        // powerMonitor docs list it under those two platforms and it is
+        // simply never emitted on Linux, so registering the listener
+        // unconditionally degrades gracefully there (matches this
+        // program's established pattern of no-op-on-unsupported-platform
+        // rather than an explicit platform guard).
+        powerMonitor.on('suspend', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System suspend detected — invalidated ${changes} active PIN session(s)`);
+        });
+        powerMonitor.on('lock-screen', () => {
+          const liveDb = getLocalDb();
+          if (!liveDb) return;
+          const { changes } = invalidateAllActivePinSessions(liveDb);
+          console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
+        });
+      }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }

@@ -586,3 +586,28 @@ test('applyPulledRows: fullReplace=false (delta) still routes through deltaSync 
   const row = db.prepare('SELECT * FROM units WHERE id = 1').get();
   assert.equal(row.status, 'on_duty', 'deltaSync path must still apply the update for a non-dirty row');
 });
+
+// ─── pin_sessions.device_id reconciliation (device-binding) ───────────
+
+test('initLocalDb: pin_sessions has a device_id column (fresh-install DDL)', () => {
+  const db = getLocalDb();
+  const columns = db.prepare("PRAGMA table_info('pin_sessions')").all().map((c) => c.name);
+  assert.ok(columns.includes('device_id'), 'pin_sessions.device_id must exist');
+});
+
+test('initLocalDb: the pin_sessions.device_id ALTER TABLE reconciliation is idempotent — re-running initLocalDb() against the same DB does not throw on the second ADD COLUMN attempt', () => {
+  // The shared `db` singleton in localDb.js already has device_id (added by
+  // test.before()'s initial initLocalDb() call, and asserted above). Calling
+  // initLocalDb() again re-opens the SAME on-disk file (same tmpUserDataDir)
+  // and re-runs the full init flow, including the `ALTER TABLE pin_sessions
+  // ADD COLUMN device_id TEXT` reconciliation — which must swallow SQLite's
+  // "duplicate column name" error rather than throw, since the column is
+  // already there from the first run.
+  assert.doesNotThrow(() => {
+    initLocalDb();
+  }, 'second initLocalDb() call must not throw when device_id already exists');
+
+  const db = getLocalDb();
+  const columns = db.prepare("PRAGMA table_info('pin_sessions')").all().map((c) => c.name);
+  assert.equal(columns.filter((c) => c === 'device_id').length, 1, 'device_id must appear exactly once, not duplicated');
+});
