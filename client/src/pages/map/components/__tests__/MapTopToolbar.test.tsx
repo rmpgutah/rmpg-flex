@@ -8,6 +8,7 @@ const baseProps = {
   minimapOpen: false, onToggleMinimap: vi.fn(),
   mapStyle: 'dark' as const, onStyleChange: vi.fn(),
   showBookmarksPanel: false, onToggleBookmarks: vi.fn(),
+  legendOpen: false, onToggleLegend: vi.fn(),
   onSnapshot: vi.fn(),
 };
 

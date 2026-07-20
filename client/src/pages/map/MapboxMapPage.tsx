@@ -91,6 +91,7 @@ import { useMapBookmarks } from '../../hooks/useMapBookmarks';
 import { useMapPrintExport } from '../../hooks/useMapPrintExport';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import { useActivityChoropleth } from '../../hooks/useActivityChoropleth';
 import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
 import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
 import { useMapboxDraw } from '../../hooks/useMapboxDraw';
@@ -100,6 +101,7 @@ import MapRosterDock, { type MapRosterDockProps, type RosterUnit, type RosterCal
 import MapLeftDock, { type MapLeftDockSection } from './components/MapLeftDock';
 import MapRightDock, { type MapRightDockSection } from './components/MapRightDock';
 import MapTopToolbar from './components/MapTopToolbar';
+import UnifiedMapLegend from './components/UnifiedMapLegend';
 import MapBottomTray from './components/MapBottomTray';
 import SafetyAlertTicker from './components/SafetyAlertTicker';
 import BufferRingTool from './components/BufferRingTool';
@@ -518,6 +520,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
   const districtHierarchy = useDistrictHierarchyLayers({ map: mapRef.current, popup: null });
+  const activityChoropleth = useActivityChoropleth({
+    map: mapRef.current,
+    calls,
+    level: districtHierarchy.hierarchyStates['area']?.visible ? 'area'
+      : districtHierarchy.hierarchyStates['sector']?.visible ? 'sector'
+      : districtHierarchy.hierarchyStates['zone']?.visible ? 'zone'
+      : null,
+  });
   const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
   const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
   const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
@@ -527,6 +537,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [gpsHudOpen, setGpsHudOpen] = useState(false);
   const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
@@ -1159,6 +1170,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     minimapOpen, onToggleMinimap: () => setMinimapOpen((v) => !v),
     mapStyle, onStyleChange: handleStyleChange,
     showBookmarksPanel, onToggleBookmarks: () => setShowBookmarksPanel((v) => !v),
+    legendOpen, onToggleLegend: () => setLegendOpen((v) => !v),
     onSnapshot: () => {
       const c = mapRef.current?.getCenter();
       if (c) snapshot.captureSnapshot({ lng: c.lng, lat: c.lat, zoom: mapRef.current?.getZoom() ?? 14 });
@@ -1524,6 +1536,25 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {minimapOpen && mapRef.current && (
         <MinimapControl parentMap={mapRef.current} onClose={() => setMinimapOpen(false)} />
+      )}
+
+      {legendOpen && (
+        <UnifiedMapLegend
+          hierarchy={{
+            area: districtHierarchy.hierarchyStates['area']?.visible ?? false,
+            sector: districtHierarchy.hierarchyStates['sector']?.visible ?? false,
+            zone: districtHierarchy.hierarchyStates['zone']?.visible ?? false,
+            beat: geoJsonLayers.layerStates['beat']?.visible ?? false,
+          }}
+          boundaries={{
+            county: geoJsonLayers.layerStates['county']?.visible ?? false,
+            municipality: geoJsonLayers.layerStates['municipality']?.visible ?? false,
+          }}
+          statewide={{ roads: false, addresses: false }}
+          choro={activityChoropleth.choroLegend}
+          categorical={[]}
+          isLight={false}
+        />
       )}
 
       {showBookmarksPanel && (
