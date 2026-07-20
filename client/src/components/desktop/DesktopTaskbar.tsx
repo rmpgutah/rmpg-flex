@@ -263,7 +263,7 @@ export default function DesktopTaskbar({ icons, catalog }: DesktopTaskbarProps) 
               key={path}
               items={[
                 { label: isAppPinned(path) ? 'Unpin from Taskbar' : 'Pin to Taskbar', onClick: () => { if (isAppPinned(path)) unpinApp(path); else pinApp(path); forceRerender(n => n + 1); } },
-                { label: 'Close', onClick: () => closeWindow(group[cycleIndexRef.current[path] ?? 0].id) },
+                { label: 'Close', onClick: () => closeWindow(group[Math.min(cycleIndexRef.current[path] ?? 0, group.length - 1)].id) },
                 { label: 'Close all', onClick: () => group.forEach(w => closeWindow(w.id)) },
               ]}
             >

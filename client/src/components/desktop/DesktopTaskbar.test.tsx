@@ -179,6 +179,37 @@ describe('DesktopTaskbar — window button context menu', () => {
     expect(screen.queryByRole('button', { name: 'Dispatch' })).not.toBeInTheDocument();
   });
 
+  it('closing via the jump-list Close item repeatedly on a shrinking group never throws (stale cycle-index regression)', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w3', path: '/dispatch', title: 'Dispatch', x: 120, y: 100, width: 1050, height: 800, zIndex: 103, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+
+    // Cycle the group button twice so cycleIndexRef.current['/dispatch'] === 2
+    // (advances via % group.length against the 3-window group).
+    const groupButton = () => screen.getByRole('button', { name: /Dispatch.*\d/ });
+    fireEvent.click(groupButton());
+    fireEvent.click(groupButton());
+
+    // First Close via jump-list: group[2] is valid (3 windows), leaves 2 —
+    // still rendered grouped since group.length (2) is still >= 2, but the
+    // stale ref index (2) is now out of bounds for the new 2-window group.
+    fireEvent.contextMenu(groupButton());
+    expect(() => fireEvent.click(screen.getByText('Close'))).not.toThrow();
+
+    // Second Close via jump-list: without the clamp, group[cycleIndexRef.current[path]]
+    // (still 2) would be undefined against the now 1-window array and `.id` would throw.
+    expect(() => {
+      fireEvent.contextMenu(groupButton());
+      fireEvent.click(screen.getByText('Close'));
+    }).not.toThrow();
+
+    // Only one window should remain after both closes.
+    expect(screen.getAllByText(/^\/dispatch$/)).toHaveLength(1);
+  });
+
   it('a grouped window button offers Close all in addition to Close', () => {
     sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
       { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
