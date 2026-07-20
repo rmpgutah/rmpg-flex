@@ -17,7 +17,7 @@ import FloatingWindow from '../components/desktop/FloatingWindow';
 import DesktopIconGrid from '../components/desktop/DesktopIconGrid';
 import DesktopTaskbar from '../components/desktop/DesktopTaskbar';
 import DesktopWidgetPanel from '../components/desktop/DesktopWidgetPanel';
-import DesktopWidgetSettingsPopover from '../components/desktop/DesktopWidgetSettingsPopover';
+import DesktopSettingsApp from '../components/desktop/DesktopSettingsApp';
 import DesktopStickyNote from '../components/desktop/DesktopStickyNote';
 import { useDesktopNotes, type DesktopNote } from '../hooks/useDesktopNotes';
 import ContextMenu from '../components/ContextMenu';
@@ -205,7 +205,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       <DesktopWindowManagerProvider>
         <ContextMenu
           items={[
-            { label: 'Widget settings', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'Settings', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'New sticky note', onClick: () => addNote(60, 60) },
           ]}
         >
@@ -232,7 +232,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         </ContextMenu>
         <DesktopTaskbar icons={pinnedIcons} catalog={allFunctions} />
         {widgetSettingsOpen && (
-          <DesktopWidgetSettingsPopover
+          <DesktopSettingsApp
             widgets={widgets} onToggleWidget={handleToggleWidget}
             iconSize={layout.iconSize} onIconSizeChange={handleIconSizeChange}
             viewMode={layout.viewMode} onViewModeChange={handleViewModeChange}

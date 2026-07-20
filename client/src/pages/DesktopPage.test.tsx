@@ -92,10 +92,11 @@ describe('DesktopPage', () => {
     expect(screen.queryByText('Dispatch Console')).not.toBeInTheDocument();
   });
 
-  it('opens the settings popover with icon size, sort, wallpaper, accent, and reset controls', () => {
+  it('opens the settings app with icon size, sort, wallpaper, accent, and reset controls', () => {
     render(<MemoryRouter><DesktopPage /></MemoryRouter>);
     fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-    fireEvent.click(screen.getByText('Widget settings'));
+    fireEvent.click(screen.getByText('Settings'));
+    fireEvent.click(screen.getByText('Desktop & Icons'));
     expect(screen.getByText('Icon Size')).toBeInTheDocument();
     expect(screen.getByText('Reset to Default')).toBeInTheDocument();
   });
@@ -138,7 +139,8 @@ describe('DesktopPage', () => {
       expect(screen.getByLabelText('Delete note')).toBeInTheDocument();
 
       fireEvent.contextMenu(screen.getByText(/No modules pinned yet/i));
-      fireEvent.click(screen.getByText('Widget settings'));
+      fireEvent.click(screen.getByText('Settings'));
+      fireEvent.click(screen.getByText('Desktop & Icons'));
       fireEvent.click(screen.getByText('Reset to Default'));
 
       expect(confirmSpy).toHaveBeenCalled();
