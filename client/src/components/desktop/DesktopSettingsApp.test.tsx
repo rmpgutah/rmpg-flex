@@ -215,3 +215,41 @@ describe('DesktopSettingsApp — export/import', () => {
     await screen.findByText(/not valid json/i);
   });
 });
+
+describe('DesktopSettingsApp — per-category reset', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('Personalization reset calls onWallpaperChange/onAccentChange with the defaults', () => {
+    const props = renderApp();
+    fireEvent.click(screen.getByText('Personalization'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(props.onWallpaperChange).toHaveBeenCalledWith('blue-silver-default');
+    expect(props.onAccentChange).toHaveBeenCalled();
+  });
+
+  it('Window Management reset re-enables snap without touching taskbar keys', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    renderApp();
+    fireEvent.click(screen.getByText('Window Management'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(localStorage.getItem('rmpg_desktop_snap_enabled')).toBe('1');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('top');
+  });
+
+  it('Taskbar reset restores position/size/auto-hide defaults without touching pinned apps', () => {
+    localStorage.setItem('rmpg_desktop_taskbar_position', 'top');
+    localStorage.setItem('rmpg_desktop_taskbar_size', 'large');
+    localStorage.setItem('rmpg_desktop_taskbar_autohide', '1');
+    localStorage.setItem('rmpg_desktop_pinned_apps', JSON.stringify(['/dispatch']));
+    renderApp();
+    fireEvent.click(screen.getByText('Taskbar'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText('Reset this category to default'));
+    expect(localStorage.getItem('rmpg_desktop_taskbar_position')).toBe('bottom');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_size')).toBe('small');
+    expect(localStorage.getItem('rmpg_desktop_taskbar_autohide')).toBe('0');
+    expect(localStorage.getItem('rmpg_desktop_pinned_apps')).toBe(JSON.stringify(['/dispatch']));
+  });
+});

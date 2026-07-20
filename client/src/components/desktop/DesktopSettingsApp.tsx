@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
-import { DESKTOP_WALLPAPERS } from '../../data/desktopWallpapers';
-import { DESKTOP_ACCENTS } from '../../data/desktopAccents';
+import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID } from '../../data/desktopWallpapers';
+import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
 import { SETTINGS_SEARCH_INDEX } from '../../data/settingsSearchIndex';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { isSnapEnabled, setSnapEnabled } from '../../utils/snapPreference';
@@ -213,6 +213,17 @@ export default function DesktopSettingsApp({
                   />
                 ))}
               </div>
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => { if (window.confirm('Reset wallpaper and accent color to default?')) { onWallpaperChange(DEFAULT_WALLPAPER_ID); onAccentChange(DEFAULT_ACCENT_ID); } }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
+              </div>
             </div>
           )}
 
@@ -314,6 +325,17 @@ export default function DesktopSettingsApp({
               ) : (
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not supported in this browser.</p>
               )}
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => { if (window.confirm('Reset window management settings (snap to edge) to default?')) { setSnapEnabled(true); setSnapEnabledState(true); } }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
+              </div>
             </div>
           )}
 
@@ -356,6 +378,22 @@ export default function DesktopSettingsApp({
                     {size === 'small' ? 'Small' : 'Large'}
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm('Reset taskbar position, size, and auto-hide to default? (Pinned apps are kept.)')) return;
+                    setTaskbarPosition('bottom'); setTaskbarPositionState('bottom');
+                    setTaskbarSize('small'); setTaskbarSizeState('small');
+                    setTaskbarAutoHide(false); setAutoHideState(false);
+                  }}
+                  className="text-[10px] px-2 py-1 w-full"
+                  style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)' }}
+                >
+                  Reset this category to default
+                </button>
               </div>
             </div>
           )}
