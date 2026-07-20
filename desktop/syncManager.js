@@ -6,7 +6,7 @@
 
 const { net } = require('electron');
 const { getLocalDb, replaceTable, deltaSync, getSyncMeta, getConfig, setConfig,
-        getPendingQueue, markQueueItem, getQueueDepth } = require('./localDb');
+        getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 
 let serverUrl = '';
 let mainWindow = null;
@@ -18,6 +18,11 @@ let isPaused = false;
 const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
+// This object's keys are also the single source of truth for which tables
+// count as "mirrored/reference cache" — forceFullResync() below passes
+// Object.keys(PULL_INTERVALS) to localDb.js's wipeMirroredCacheTables()
+// rather than that function owning its own duplicate table list, since
+// localDb.js has no import of syncManager.js (avoiding a circular require).
 const PULL_INTERVALS = {
   users:              300_000,  // 5 min (reference)
   clients:            300_000,  // 5 min (reference)
@@ -114,6 +119,28 @@ async function pullAll() {
     console.log('[SYNC] Pull all complete');
   } finally {
     releaseSyncLock();
+  }
+}
+
+/**
+ * Destructively wipes the local mirrored/reference cache tables (exactly
+ * PULL_INTERVALS's keys — never sync_queue or gps_breadcrumbs, which hold
+ * local unsynced writes) and their sync_metadata bookkeeping, then does a
+ * full pullAll() to repopulate from the server. Used when the local cache
+ * is suspected corrupt/stale beyond what incremental pulls can repair.
+ *
+ * pullAll() already handles the sync-lock/progress-emit cycle and swallows
+ * its own per-table pull failures, so it doesn't normally throw — the
+ * try/catch here is defensive in case it (or the wipe) ever does.
+ */
+async function forceFullResync() {
+  try {
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    await pullAll();
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYNC] Force full resync failed:', err.message);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -434,6 +461,7 @@ module.exports = {
   stopPullSchedule,
   pullAll,
   pushAll,
+  forceFullResync,
   pauseSync,
   resumeSync,
   get isSyncing() { return isSyncing; },

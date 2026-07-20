@@ -192,6 +192,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Most recent sync error, for diagnostics UI
   getLastSyncError: () => ipcRenderer.invoke('sync:last-error'),
 
+  // Destructive: wipe the mirrored/reference cache tables and re-pull
+  // everything fresh from the server (never touches sync_queue/gps_breadcrumbs)
+  forceFullResync: () => ipcRenderer.invoke('sync:force-full'),
+
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
     ipcRenderer.invoke('offline:get-cached-user', { username }),

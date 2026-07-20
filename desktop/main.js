@@ -2862,6 +2862,14 @@ guardedHandle('sync:clear-failed', () => clearFailedSyncItems());
 // Most recent sync error (pullTable/pushAll failure), for diagnostics UI
 guardedHandle('sync:last-error', () => getLastSyncError());
 
+// Destructive: wipes the mirrored/reference cache tables (never sync_queue
+// or gps_breadcrumbs) and does a full re-pull from the server. Diagnostics
+// UI "force full resync" action.
+guardedHandle('sync:force-full', async () => {
+  if (!syncManager) return { ok: false, error: 'sync not initialized' };
+  return syncManager.forceFullResync();
+});
+
 // Get locally cached user for offline authentication
 guardedHandle('offline:get-cached-user', (_event, { username }) => {
   try {

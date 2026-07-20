@@ -40,7 +40,7 @@ require.cache[electronPath] = {
   },
 };
 
-const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError } = require('../localDb');
+const { initLocalDb, getLocalDb, closeLocalDb, getSyncQueueDetail, retrySyncQueueItem, clearFailedSyncItems, setConfig, getLastSyncError, wipeMirroredCacheTables } = require('../localDb');
 
 test.before(() => {
   initLocalDb();
@@ -272,4 +272,54 @@ test('getLastSyncError: returns null (not a throw) for malformed JSON in the sto
 
   assert.doesNotThrow(() => getLastSyncError());
   assert.equal(getLastSyncError(), null);
+});
+
+test('wipeMirroredCacheTables: empties the given mirror tables + their sync_metadata rows, but leaves sync_queue completely untouched', () => {
+  const db = getLocalDb();
+  db.exec('DELETE FROM sync_queue');
+  db.exec('DELETE FROM sync_metadata');
+  db.exec('DELETE FROM users');
+  db.exec('DELETE FROM units');
+
+  // Seed rows in two mirrored cache tables.
+  db.prepare(`
+    INSERT INTO users (id, username, password_hash, full_name, role)
+    VALUES (1, 'jdoe', 'hash', 'Jane Doe', 'officer')
+  `).run();
+  db.prepare(`
+    INSERT INTO units (id, call_sign, status)
+    VALUES (1, 'U-1', 'on_duty')
+  `).run();
+
+  // Seed sync_metadata rows for both, so we can assert they get cleared.
+  db.prepare(`
+    INSERT INTO sync_metadata (table_name, last_pull_at, row_count)
+    VALUES ('users', '2026-07-18T00:00:00.000Z', 1), ('units', '2026-07-18T00:00:00.000Z', 1)
+  `).run();
+
+  // Seed a sync_queue row — this represents a locally-created, not-yet-pushed
+  // write and must NOT be touched by the wipe (this is the load-bearing
+  // assertion: "wipe local cache" means the mirrored read cache only, never
+  // sync_queue).
+  seedQueueRow(db, {
+    method: 'POST',
+    table_name: 'calls_for_service',
+    local_id: 'unsynced-1',
+    attempts: 1,
+    status: 'pending',
+    error: null,
+  });
+  const queueBefore = db.prepare('SELECT * FROM sync_queue').all();
+  assert.equal(queueBefore.length, 1);
+
+  wipeMirroredCacheTables(['users', 'units']);
+
+  assert.equal(db.prepare('SELECT COUNT(*) as c FROM users').get().c, 0, 'users table must be empty');
+  assert.equal(db.prepare('SELECT COUNT(*) as c FROM units').get().c, 0, 'units table must be empty');
+
+  const metaAfter = db.prepare(`SELECT table_name FROM sync_metadata WHERE table_name IN ('users', 'units')`).all();
+  assert.equal(metaAfter.length, 0, 'sync_metadata rows for wiped tables must be gone');
+
+  const queueAfter = db.prepare('SELECT * FROM sync_queue').all();
+  assert.deepEqual(queueAfter, queueBefore, 'sync_queue must be completely untouched by the wipe');
 });

@@ -535,6 +535,42 @@ function clearFailedSyncItems() {
   return { cleared: result.changes };
 }
 
+// ─── Force Full Resync (destructive mirrored-cache wipe) ─────
+
+/**
+ * Deletes every row from each given mirrored/reference cache table (the
+ * tables pullTable()/replaceTable() in syncManager.js populate FROM the
+ * server) plus that table's sync_metadata bookkeeping row, so the next
+ * pull has no last_pull_at to diff against and is treated as a full pull.
+ *
+ * The table list is intentionally a caller-supplied parameter rather than
+ * a constant duplicated/owned here: syncManager.js's PULL_INTERVALS object
+ * is the single source of truth for which tables count as "mirrored cache"
+ * (see its keys), and syncManager.js already requires FROM localDb.js —
+ * localDb.js importing back from syncManager.js would create a circular
+ * require. The caller (syncManager.js's forceFullResync()) passes
+ * Object.keys(PULL_INTERVALS).
+ *
+ * Table names are NEVER accepted from renderer/IPC input here — this only
+ * runs against the trusted, code-defined PULL_INTERVALS key list, so the
+ * `DELETE FROM ${table}` string interpolation is safe (not the same risk
+ * class as a renderer-supplied table name).
+ *
+ * Deliberately does NOT touch sync_queue (locally-created writes not yet
+ * pushed to the server) or gps_breadcrumbs (same reasoning) — those hold
+ * real officer work that hasn't synced yet, and wiping them would silently
+ * destroy it. This function only ever gets a mirrored-cache table list.
+ */
+function wipeMirroredCacheTables(tableNames) {
+  const tx = db.transaction(() => {
+    for (const table of tableNames) {
+      db.exec(`DELETE FROM ${table}`);
+      db.prepare('DELETE FROM sync_metadata WHERE table_name = ?').run(table);
+    }
+  });
+  tx();
+}
+
 module.exports = {
   initLocalDb,
   getLocalDb,
@@ -556,4 +592,5 @@ module.exports = {
   getSyncQueueDetail,
   retrySyncQueueItem,
   clearFailedSyncItems,
+  wipeMirroredCacheTables,
 };
